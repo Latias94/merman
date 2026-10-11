@@ -14,8 +14,12 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 - Default and release CLI builds include `native-fonts` and `system-fonts`: Mermaid-to-SVG/PNG/JPEG/PDF resolves local fonts before layout and shares selected font bytes with native painting. Use `--font-measurement deterministic` for the previous font-independent layout; this also opts out of automatic measurement-time discovery. Rust library and FFI measurement defaults remain host-independent. Native measurement rejects unsupported typography rather than silently claiming exact metrics; text SVGs still require compatible fonts on the viewing machine.
 
+- Semantic and layout JSON now use `ManagedSemanticJson` with iterative clone, drop, equality, and deep JSON writers. State, Block, Treemap, and Ishikawa retain flat canonical records; direct Rust consumers must migrate document/child references. Mermaid-compatible JSON shapes remain unchanged. See the [migration guide](docs/migrations/deep-diagram-lifecycle.md).
+
 ### Fixed
 
+- Deep parser fragments and semantic projections dispose safely after success, malformed input, cancellation, and resource rejection. Flowchart/ER/Class/Sequence grammar carriers avoid repeated ancestor movement; C4 boundary fragments use flat ownership. Railroad counts postfix wrappers against its existing construction-depth boundary.
+- Block nested metadata and repeated composite declarations follow pinned Mermaid: later style/class updates reach existing children, while redeclarations retain the first child list and columns.
 - Core SVG and native CLI SVG output no longer add an implicit white canvas, matching Mermaid core. Use `SvgOutputPolicy.root_background_color` or CLI `--background white` when an opaque canvas is required. The `mmdc` command retains its white default; diagram-owned edge-label colors and opacity are unchanged.
 
 ### Performance

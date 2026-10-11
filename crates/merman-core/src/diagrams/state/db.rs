@@ -1,15 +1,18 @@
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
-use crate::{Error, MermaidConfig, ParseMetadata, Result};
+use crate::{
+    Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult,
+    ParseMetadata, Result,
+};
 use indexmap::IndexMap;
 use serde_json::{Map, Value, json};
 use std::collections::HashMap;
 use std::collections::hash_map::Entry;
 
 use super::{
-    Note, StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
+    StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
     StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
-    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass, StateStmt,
-    Stmt,
+    StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
+    StateDocument, StateDocumentId, StateStatement, StateStatementNote, StateStatementState,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -31,7 +34,7 @@ struct StateRecord {
     id: String,
     ty: String,
     descriptions: Vec<String>,
-    note: Option<Note>,
+    note: Option<StateStatementNote>,
     classes: Vec<String>,
     styles: Vec<String>,
     text_styles: Vec<String>,
@@ -40,7 +43,7 @@ struct StateRecord {
 
 #[derive(Debug, Default)]
 pub(super) struct StateDb {
-    root_doc: Vec<Stmt>,
+    document: StateDocument,
     states: HashMap<String, StateRecord>,
     state_order: Vec<String>,
     relations: Vec<RelationEdge>,
@@ -97,13 +100,18 @@ impl StateDb {
         format!("id-{mid}-{}", self.generated_id_cnt)
     }
 
-    pub(super) fn set_root_doc(&mut self, mut doc: Vec<Stmt>) {
-        self.translate_doc("root", &mut doc);
-        self.extract(&doc);
-        self.root_doc = doc;
+    pub(super) fn set_root_doc(
+        &mut self,
+        mut document: StateDocument,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        self.translate_doc(&mut document, control)?;
+        self.extract(document.root_statements(), control)?;
+        self.document = document;
+        Ok(())
     }
 
-    fn translate_state_ref(&self, parent_id: &str, s: &mut StateStmt, first: bool) {
+    fn translate_state_ref(parent_id: &str, s: &mut StateStatementState, first: bool) {
         if s.id.trim() == "[*]" {
             s.id = format!("{}_{}", parent_id, if first { "start" } else { "end" });
             s.start = Some(first);
@@ -112,77 +120,83 @@ impl StateDb {
         }
     }
 
-    fn translate_state_concurrency_split(&mut self, doc: &mut Vec<Stmt>) {
-        let old = std::mem::take(doc);
-        let mut out: Vec<Stmt> = Vec::new();
-        let mut current: Vec<Stmt> = Vec::new();
+    fn translate_state_concurrency_split(
+        &mut self,
+        document: &mut StateDocument,
+        doc: StateDocumentId,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        let old = std::mem::take(&mut document.documents[doc.0]);
+        let mut out = Vec::new();
+        let mut current = Vec::new();
         let mut saw_divider = false;
-
-        for stmt in old {
-            match &stmt {
-                Stmt::State(s) if s.ty == "divider" => {
+        for (index, stmt) in old.into_iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            match stmt {
+                StateStatement::State(mut state) if state.ty == "divider" => {
                     saw_divider = true;
-                    let mut divider = s.clone();
-                    divider.doc = Some(std::mem::take(&mut current));
-                    out.push(Stmt::State(divider));
+                    state.doc = Some(document.push(std::mem::take(&mut current)));
+                    out.push(StateStatement::State(state));
                 }
-                _ => current.push(stmt),
+                stmt => current.push(stmt),
             }
         }
-
         if saw_divider && !current.is_empty() {
-            let mut divider = StateStmt::new_typed(self.generate_id(), "divider");
-            divider.doc = Some(std::mem::take(&mut current));
-            out.push(Stmt::State(divider));
+            let mut divider = StateStatementState::new_typed(self.generate_id(), "divider");
+            divider.doc = Some(document.push(std::mem::take(&mut current)));
+            out.push(StateStatement::State(divider));
         }
-
-        if saw_divider {
-            *doc = out;
-        } else {
-            *doc = current;
-        }
+        document.documents[doc.0] = if saw_divider { out } else { current };
+        Ok(())
     }
 
-    fn translate_doc(&mut self, parent_id: &str, doc: &mut [Stmt]) {
-        struct TranslateFrame<'a> {
-            parent_id: String,
-            iter: std::slice::IterMut<'a, Stmt>,
-        }
-
-        let mut stack = vec![TranslateFrame {
-            parent_id: parent_id.to_string(),
-            iter: doc.iter_mut(),
-        }];
-
-        while let Some(frame) = stack.last_mut() {
-            let Some(stmt) = frame.iter.next() else {
+    fn translate_doc(
+        &mut self,
+        document: &mut StateDocument,
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        let Some(root) = document.root else {
+            return Ok(());
+        };
+        let mut stack = vec![("root".to_string(), root, 0usize)];
+        let mut inspected = 0usize;
+        while let Some((parent, doc, index)) = stack.last_mut() {
+            if inspected.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let Some(stmt) = document.documents[doc.0].get_mut(*index) else {
                 stack.pop();
                 continue;
             };
-            let parent_id = frame.parent_id.clone();
-
-            match stmt {
-                Stmt::Relation(relation) => {
-                    self.translate_state_ref(&parent_id, &mut relation.state1, true);
-                    self.translate_state_ref(&parent_id, &mut relation.state2, false);
+            *index += 1;
+            let child = match stmt {
+                StateStatement::Relation(relation) => {
+                    Self::translate_state_ref(parent, &mut relation.state1, true);
+                    Self::translate_state_ref(parent, &mut relation.state2, false);
+                    None
                 }
-                Stmt::State(s) => {
-                    self.translate_state_ref(&parent_id, s, true);
-                    let child_parent_id = s.id.clone();
-                    if let Some(inner) = s.doc.as_mut() {
-                        self.translate_state_concurrency_split(inner);
-                        stack.push(TranslateFrame {
-                            parent_id: child_parent_id,
-                            iter: inner.iter_mut(),
-                        });
-                    }
+                StateStatement::State(state) => {
+                    Self::translate_state_ref(parent, state, true);
+                    state.doc.map(|doc| (state.id.clone(), doc))
                 }
-                _ => {}
+                _ => None,
+            };
+            if let Some((parent, child)) = child {
+                self.translate_state_concurrency_split(document, child, control)?;
+                stack.push((parent, child, 0));
             }
+            inspected = inspected.saturating_add(1);
         }
+        control.checkpoint()
     }
 
-    fn extract(&mut self, root_doc: &[Stmt]) {
+    fn extract(
+        &mut self,
+        root_doc: &[StateStatement],
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
         self.states.clear();
         self.state_order.clear();
         self.relations.clear();
@@ -193,24 +207,30 @@ impl StateDb {
         self.generated_id_cnt = 0;
         self.links.clear();
 
-        for stmt in root_doc {
+        for (index, stmt) in root_doc.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
             match stmt {
-                Stmt::State(s) => self.add_state(s),
-                Stmt::Relation(relation) => self.add_relation(
+                StateStatement::State(s) => self.add_state(s),
+                StateStatement::Relation(relation) => self.add_relation(
                     &relation.state1,
                     &relation.state2,
                     relation.description.as_deref(),
                 ),
-                Stmt::ClassDef { id, classes } => self.add_style_class(id, classes),
-                Stmt::ApplyClass { ids, class_name } => self.set_css_class(ids, class_name),
-                Stmt::Style { ids, styles } => self.handle_style_def(ids, styles),
-                Stmt::Direction(dir) => self.direction = Some(dir.clone()),
-                Stmt::AccTitle(t) => self.acc_title = Some(t.clone()),
-                Stmt::AccDescr(d) => self.acc_descr = Some(normalize_multiline_ws(d)),
-                Stmt::Click(c) => self.add_link(&c.id, &c.url, &c.tooltip),
-                Stmt::Noop => {}
+                StateStatement::ClassDef { id, classes } => self.add_style_class(id, classes),
+                StateStatement::ApplyClass { ids, class_name } => {
+                    self.set_css_class(ids, class_name)
+                }
+                StateStatement::Style { ids, styles } => self.handle_style_def(ids, styles),
+                StateStatement::Direction(dir) => self.direction = Some(dir.clone()),
+                StateStatement::AccTitle(t) => self.acc_title = Some(t.clone()),
+                StateStatement::AccDescr(d) => self.acc_descr = Some(normalize_multiline_ws(d)),
+                StateStatement::Click(c) => self.add_link(&c.id, &c.url, &c.tooltip),
+                StateStatement::Noop => {}
             }
         }
+        control.checkpoint()
     }
 
     fn add_link(&mut self, state_id: &str, url: &str, tooltip: &str) {
@@ -253,7 +273,7 @@ impl StateDb {
         self.ensure_state(id).descriptions.push(clean);
     }
 
-    fn add_state(&mut self, state: &StateStmt) {
+    fn add_state(&mut self, state: &StateStatementState) {
         let id = state.id.trim();
         let st = self.ensure_state(id);
         if st.ty == "default" && state.ty != "default" {
@@ -283,7 +303,12 @@ impl StateDb {
         }
     }
 
-    fn add_relation(&mut self, s1: &StateStmt, s2: &StateStmt, title: Option<&str>) {
+    fn add_relation(
+        &mut self,
+        s1: &StateStatementState,
+        s2: &StateStatementState,
+        title: Option<&str>,
+    ) {
         let id1 = s1.id.trim();
         let id2 = s2.id.trim();
 
@@ -382,101 +407,127 @@ impl StateDb {
         }
     }
 
-    pub(super) fn to_model(&self, meta: &ParseMetadata) -> Result<Value> {
-        let model = self.to_model_for_render_typed(meta)?;
+    pub(super) fn into_model(self, meta: &ParseMetadata) -> Result<Value> {
+        let model = self
+            .into_model_controlled(meta, &OperationControl::new())
+            .expect("a private operation control cannot be cancelled")?;
         super::render_model_to_compat_json(&model, meta)
     }
 
-    pub(super) fn to_model_for_render_typed(
-        &self,
+    pub(super) fn into_model_controlled(
+        self,
         meta: &ParseMetadata,
-    ) -> Result<StateDiagramRenderModel> {
-        let (nodes, edges) = build_layout_data_typed(
-            &self.root_doc,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<StateDiagramRenderModel>> {
+        let (nodes, edges) = match build_layout_data_typed(
+            &self.document,
             &self.states,
             &self.style_classes,
             &meta.effective_config,
-        )
-        .map_err(|message| Error::diagram_parse_fallback(meta.diagram_type.clone(), message))?;
-
-        let mut doc_json_by_state_id = root_state_doc_json_by_id(&self.root_doc);
-        let states: HashMap<String, StateDiagramRenderState> = self
-            .state_order
-            .iter()
-            .filter_map(|id| self.states.get(id))
-            .map(|s| {
-                let note = s.note.as_ref().map(|n| StateDiagramRenderNote {
-                    position: n.position.clone(),
-                    text: n.text.clone(),
-                });
-                (
-                    s.id.clone(),
-                    StateDiagramRenderState {
-                        id: s.id.clone(),
-                        state_type: s.ty.clone(),
-                        descriptions: s.descriptions.clone(),
-                        doc: doc_json_by_state_id.remove(&s.id),
-                        note,
-                        classes: s.classes.clone(),
-                        styles: s.styles.clone(),
-                        text_styles: s.text_styles.clone(),
-                        start: s.start,
-                    },
-                )
-            })
-            .collect();
-
-        let relations = self
-            .relations
-            .iter()
-            .map(|relation| StateDiagramRenderRelation {
+            control,
+        ) {
+            Ok(data) => data,
+            Err(StateBuildError::Cancelled(error)) => return Err(error),
+            Err(StateBuildError::Semantic(message)) => {
+                return Ok(Err(Error::diagram_parse_fallback(
+                    meta.diagram_type.clone(),
+                    message,
+                )));
+            }
+        };
+        let mut doc_by_state_id = HashMap::new();
+        for (index, stmt) in self.document.root_statements().iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            if let StateStatement::State(state) = stmt
+                && let Some(doc) = state.doc
+            {
+                doc_by_state_id.entry(state.id.clone()).or_insert(doc);
+            }
+        }
+        let mut states = HashMap::with_capacity(self.states.len());
+        for (index, id) in self.state_order.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let Some(s) = self.states.get(id) else {
+                continue;
+            };
+            let note = s.note.as_ref().map(|n| StateDiagramRenderNote {
+                position: n.position.clone(),
+                text: n.text.clone(),
+            });
+            states.insert(
+                s.id.clone(),
+                StateDiagramRenderState {
+                    id: s.id.clone(),
+                    state_type: s.ty.clone(),
+                    descriptions: s.descriptions.clone(),
+                    doc: doc_by_state_id.remove(&s.id),
+                    note,
+                    classes: s.classes.clone(),
+                    styles: s.styles.clone(),
+                    text_styles: s.text_styles.clone(),
+                    start: s.start,
+                },
+            );
+        }
+        let mut relations = Vec::with_capacity(self.relations.len());
+        for (index, relation) in self.relations.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            relations.push(StateDiagramRenderRelation {
                 id1: relation.id1.clone(),
                 id2: relation.id2.clone(),
                 relation_title: relation.relation_title.clone(),
-            })
-            .collect();
-
-        let style_classes: IndexMap<String, StateDiagramRenderStyleClass> = self
-            .style_classes
-            .iter()
-            .map(|(k, sc)| {
-                (
-                    k.clone(),
-                    StateDiagramRenderStyleClass {
-                        id: sc.id.clone(),
-                        styles: sc.styles.clone(),
-                        text_styles: sc.text_styles.clone(),
-                    },
-                )
-            })
-            .collect();
-
-        let links: HashMap<String, StateDiagramRenderLinks> = self
-            .links
-            .iter()
-            .map(|(key, links)| {
-                let links = if links.len() == 1 {
-                    let link = &links[0];
-                    StateDiagramRenderLinks::One(StateDiagramRenderLink {
+            });
+        }
+        let mut style_classes = IndexMap::with_capacity(self.style_classes.len());
+        for (index, (key, class)) in self.style_classes.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            style_classes.insert(
+                key.clone(),
+                StateDiagramRenderStyleClass {
+                    id: class.id.clone(),
+                    styles: class.styles.clone(),
+                    text_styles: class.text_styles.clone(),
+                },
+            );
+        }
+        let mut links = HashMap::with_capacity(self.links.len());
+        for (index, (key, declarations)) in self.links.iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let declarations = if declarations.len() == 1 {
+                let link = &declarations[0];
+                StateDiagramRenderLinks::One(StateDiagramRenderLink {
+                    url: link.url.clone(),
+                    tooltip: link.tooltip.clone(),
+                })
+            } else {
+                let mut out = Vec::with_capacity(declarations.len());
+                for (index, link) in declarations.iter().enumerate() {
+                    if index.is_multiple_of(128) {
+                        control.checkpoint()?;
+                    }
+                    out.push(StateDiagramRenderLink {
                         url: link.url.clone(),
                         tooltip: link.tooltip.clone(),
-                    })
-                } else {
-                    StateDiagramRenderLinks::Many(
-                        links
-                            .iter()
-                            .map(|link| StateDiagramRenderLink {
-                                url: link.url.clone(),
-                                tooltip: link.tooltip.clone(),
-                            })
-                            .collect(),
-                    )
-                };
-                (key.clone(), links)
-            })
-            .collect();
+                    });
+                }
+                StateDiagramRenderLinks::Many(out)
+            };
+            links.insert(key.clone(), declarations);
+        }
 
-        Ok(StateDiagramRenderModel {
+        control.checkpoint()?;
+        Ok(Ok(StateDiagramRenderModel {
+            document: self.document,
             direction: self.direction.clone().unwrap_or_else(|| "TB".to_string()),
             acc_title: self.acc_title.clone(),
             acc_descr: self.acc_descr.clone(),
@@ -486,14 +537,7 @@ impl StateDb {
             links,
             states,
             style_classes,
-        })
-    }
-}
-
-impl Drop for StateDb {
-    fn drop(&mut self) {
-        let root_doc = std::mem::take(&mut self.root_doc);
-        drop_doc_nonrecursive(root_doc);
+        }))
     }
 }
 
@@ -546,19 +590,6 @@ fn option_string_value(value: &Option<String>) -> Value {
         .as_ref()
         .map(|v| Value::String(v.clone()))
         .unwrap_or(Value::Null)
-}
-
-fn drop_doc_nonrecursive(doc: Vec<Stmt>) {
-    let mut stack = vec![doc];
-    while let Some(mut current_doc) = stack.pop() {
-        while let Some(mut stmt) = current_doc.pop() {
-            if let Stmt::State(state) = &mut stmt
-                && let Some(child_doc) = state.doc.take()
-            {
-                stack.push(child_doc);
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -633,10 +664,10 @@ fn apply_state_descriptions(
     }
 }
 
-fn get_dir_for_doc(doc: &[Stmt], default_dir: &str) -> String {
+fn get_dir_for_doc(doc: &[StateStatement], default_dir: &str) -> String {
     let mut dir = default_dir.to_string();
     for stmt in doc {
-        if let Stmt::Direction(d) = stmt {
+        if let StateStatement::Direction(d) = stmt {
             dir = d.clone();
         }
     }
@@ -713,12 +744,32 @@ fn arrow_type_end_for_look_name(look: Option<&str>) -> &'static str {
     }
 }
 
+#[derive(Debug)]
+enum StateBuildError {
+    Cancelled(OperationCancelled),
+    Semantic(String),
+}
+
+impl From<String> for StateBuildError {
+    fn from(message: String) -> Self {
+        Self::Semantic(message)
+    }
+}
+
+impl From<OperationCancelled> for StateBuildError {
+    fn from(error: OperationCancelled) -> Self {
+        Self::Cancelled(error)
+    }
+}
+
 fn build_layout_data_typed(
-    root_doc: &[Stmt],
+    document: &StateDocument,
     states: &HashMap<String, StateRecord>,
     classes: &IndexMap<String, StyleClass>,
     config: &MermaidConfig,
-) -> std::result::Result<(Vec<StateDiagramRenderNode>, Vec<StateDiagramRenderEdge>), String> {
+    control: &OperationControl,
+) -> std::result::Result<(Vec<StateDiagramRenderNode>, Vec<StateDiagramRenderEdge>), StateBuildError>
+{
     let mut nodes: Vec<StateDiagramRenderNode> = Vec::new();
     let mut edges: Vec<StateDiagramRenderEdge> = Vec::new();
     let mut node_index: HashMap<String, usize> = HashMap::new();
@@ -727,6 +778,8 @@ fn build_layout_data_typed(
     let mut graph_item_count: usize = 0;
 
     struct TypedLayoutContext<'a> {
+        document: &'a StateDocument,
+        control: &'a OperationControl,
         states: &'a HashMap<String, StateRecord>,
         classes: &'a IndexMap<String, StyleClass>,
         config: &'a MermaidConfig,
@@ -741,13 +794,13 @@ fn build_layout_data_typed(
 
     fn setup_doc(
         ctx: &mut TypedLayoutContext<'_>,
-        parent: Option<&StateStmt>,
-        doc: &[Stmt],
+        parent: Option<&StateStatementState>,
+        doc: StateDocumentId,
         alt_flag: bool,
-    ) -> std::result::Result<(), String> {
+    ) -> std::result::Result<(), StateBuildError> {
         struct DocFrame<'a> {
-            parent: Option<&'a StateStmt>,
-            doc: &'a [Stmt],
+            parent: Option<&'a StateStatementState>,
+            doc: StateDocumentId,
             index: usize,
             alt_flag: bool,
         }
@@ -759,8 +812,13 @@ fn build_layout_data_typed(
             alt_flag,
         }];
 
+        let mut inspected = 0usize;
         while let Some(frame) = stack.last_mut() {
-            let Some(item) = frame.doc.get(frame.index) else {
+            if inspected.is_multiple_of(128) {
+                ctx.control.checkpoint()?;
+            }
+            inspected = inspected.saturating_add(1);
+            let Some(item) = ctx.document.documents[frame.doc.0].get(frame.index) else {
                 stack.pop();
                 continue;
             };
@@ -769,9 +827,9 @@ fn build_layout_data_typed(
             let alt_flag = frame.alt_flag;
 
             match item {
-                Stmt::State(s) => {
+                StateStatement::State(s) => {
                     data_fetcher(ctx, parent, s, alt_flag)?;
-                    if let Some(doc) = s.doc.as_ref() {
+                    if let Some(doc) = s.doc {
                         stack.push(DocFrame {
                             parent: Some(s),
                             doc,
@@ -780,7 +838,7 @@ fn build_layout_data_typed(
                         });
                     }
                 }
-                Stmt::Relation(relation) => {
+                StateStatement::Relation(relation) => {
                     let relation = relation.as_ref();
                     data_fetcher(ctx, parent, &relation.state1, alt_flag)?;
                     data_fetcher(ctx, parent, &relation.state2, alt_flag)?;
@@ -818,7 +876,7 @@ fn build_layout_data_typed(
         container_color_index: &mut HashMap<String, Option<usize>>,
         shape: &str,
         item_id: &str,
-        parent: Option<&StateStmt>,
+        parent: Option<&StateStatementState>,
         user_styled: bool,
     ) -> Option<usize> {
         if shape == SHAPE_DIVIDER
@@ -838,10 +896,10 @@ fn build_layout_data_typed(
 
     fn data_fetcher(
         ctx: &mut TypedLayoutContext<'_>,
-        parent: Option<&StateStmt>,
-        parsed_item: &StateStmt,
+        parent: Option<&StateStatementState>,
+        parsed_item: &StateStatementState,
         alt_flag: bool,
-    ) -> std::result::Result<(), String> {
+    ) -> std::result::Result<(), StateBuildError> {
         let item_id = parsed_item.id.clone();
         if item_id == "root" || item_id.is_empty() {
             return Ok(());
@@ -903,13 +961,17 @@ fn build_layout_data_typed(
 
         // Group handling (composite states)
         if entry.node_type.is_none()
-            && let Some(doc) = parsed_item.doc.as_ref()
+            && let Some(doc_id) = parsed_item.doc
         {
+            let doc = &ctx.document.documents[doc_id.0];
             entry.node_type = Some("group".to_string());
             entry.is_group = true;
             let dir = get_dir_for_doc(doc, DEFAULT_NESTED_DOC_DIR);
             entry.dir = Some(dir);
-            entry.explicit_dir = Some(doc.iter().any(|stmt| matches!(stmt, Stmt::Direction(_))));
+            entry.explicit_dir = Some(
+                doc.iter()
+                    .any(|stmt| matches!(stmt, StateStatement::Direction(_))),
+            );
             entry.shape = if parsed_item.ty == "divider" {
                 SHAPE_DIVIDER.to_string()
             } else {
@@ -1097,6 +1159,8 @@ fn build_layout_data_typed(
 
     {
         let mut ctx = TypedLayoutContext {
+            document,
+            control,
             states,
             classes,
             config,
@@ -1108,11 +1172,16 @@ fn build_layout_data_typed(
             next_color_index: 0,
             container_color_index: HashMap::new(),
         };
-        setup_doc(&mut ctx, None, root_doc, false)?;
+        if let Some(root) = document.root {
+            setup_doc(&mut ctx, None, root, false)?;
+        }
     }
 
     // Post-process label arrays into (label, description) like Mermaid's StateDB.extract().
-    for node in nodes.iter_mut() {
+    for (index, node) in nodes.iter_mut().enumerate() {
+        if index.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
         let Some(label_val) = node.label.clone() else {
             continue;
         };
@@ -1129,7 +1198,7 @@ fn build_layout_data_typed(
             .filter_map(|v| v.as_str().map(|s| s.to_string()))
             .collect();
         if node.is_group && !rest.is_empty() {
-            return Err("Group nodes can only have label".to_string());
+            return Err("Group nodes can only have label".to_string().into());
         }
         node.label = Some(label0);
         node.description = Some(rest);
@@ -1138,32 +1207,7 @@ fn build_layout_data_typed(
     Ok((nodes, edges))
 }
 
-fn root_state_doc_json_by_id(root_doc: &[Stmt]) -> HashMap<String, Value> {
-    let mut out = HashMap::new();
-    for stmt in root_doc {
-        let Stmt::State(state) = stmt else {
-            continue;
-        };
-        if out.contains_key(&state.id) {
-            continue;
-        }
-        let Some(doc) = state.doc.as_ref() else {
-            continue;
-        };
-        out.insert(state.id.clone(), Value::Array(doc_to_json(doc)));
-    }
-    out
-}
-
-fn doc_to_json(doc: &[Stmt]) -> Vec<Value> {
-    let mut out = Vec::with_capacity(doc.len());
-    for stmt in doc {
-        out.push(stmt_to_json(stmt));
-    }
-    out
-}
-
-fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
+fn state_stmt_ref_to_json(state: &StateStatementState) -> Value {
     let mut obj = Map::new();
     obj.insert("id".to_string(), Value::String(state.id.clone()));
     obj.insert("type".to_string(), Value::String(state.ty.clone()));
@@ -1171,10 +1215,13 @@ fn state_stmt_ref_to_json(state: &StateStmt) -> Value {
     Value::Object(obj)
 }
 
-fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
-    match stmt {
-        Stmt::Noop => Value::Null,
-        Stmt::State(s) => {
+pub(super) fn stmt_to_json_shallow(
+    stmt: &StateStatement,
+    doc: Option<crate::ManagedSemanticJson>,
+) -> crate::ManagedSemanticJson {
+    let value = match stmt {
+        StateStatement::Noop => Value::Null,
+        StateStatement::State(s) => {
             let mut obj = Map::new();
             obj.insert("stmt".to_string(), Value::String("state".to_string()));
             obj.insert("id".to_string(), Value::String(s.id.clone()));
@@ -1185,12 +1232,13 @@ fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
             );
             obj.insert(
                 "doc".to_string(),
-                doc.map(Value::Array).unwrap_or(Value::Null),
+                doc.map(crate::ManagedSemanticJson::into_unmanaged_value)
+                    .unwrap_or(Value::Null),
             );
             obj.insert("classes".to_string(), string_array_value(&s.classes));
             Value::Object(obj)
         }
-        Stmt::Relation(relation) => {
+        StateStatement::Relation(relation) => {
             let mut obj = Map::new();
             obj.insert("stmt".to_string(), Value::String("relation".to_string()));
             obj.insert(
@@ -1207,58 +1255,23 @@ fn stmt_to_json_shallow(stmt: &Stmt, doc: Option<Vec<Value>>) -> Value {
             );
             Value::Object(obj)
         }
-        Stmt::ClassDef { id, classes } => {
+        StateStatement::ClassDef { id, classes } => {
             json!({ "stmt": "classDef", "id": id, "classes": classes })
         }
-        Stmt::ApplyClass { ids, class_name } => {
+        StateStatement::ApplyClass { ids, class_name } => {
             json!({ "stmt": "applyClass", "id": ids, "styleClass": class_name })
         }
-        Stmt::Style { ids, styles } => json!({ "stmt": "style", "id": ids, "styleClass": styles }),
-        Stmt::Direction(v) => json!({ "stmt": "dir", "value": v }),
-        Stmt::AccTitle(t) => json!(t),
-        Stmt::AccDescr(d) => json!(d),
-        Stmt::Click(c) => {
+        StateStatement::Style { ids, styles } => {
+            json!({ "stmt": "style", "id": ids, "styleClass": styles })
+        }
+        StateStatement::Direction(v) => json!({ "stmt": "dir", "value": v }),
+        StateStatement::AccTitle(t) => json!(t),
+        StateStatement::AccDescr(d) => json!(d),
+        StateStatement::Click(c) => {
             json!({ "stmt": "click", "id": c.id, "url": c.url, "tooltip": c.tooltip })
         }
-    }
-}
-
-fn stmt_to_json(stmt: &Stmt) -> Value {
-    let mut stack: Vec<(&Stmt, bool)> = vec![(stmt, false)];
-    let mut completed: HashMap<*const Stmt, Value> = HashMap::new();
-
-    while let Some((current, visited)) = stack.pop() {
-        if visited {
-            let doc = match current {
-                Stmt::State(s) => s.doc.as_ref().map(|children| {
-                    let mut values = Vec::with_capacity(children.len());
-                    for child in children {
-                        values.push(
-                            completed
-                                .remove(&(child as *const Stmt))
-                                .unwrap_or(Value::Null),
-                        );
-                    }
-                    values
-                }),
-                _ => None,
-            };
-            completed.insert(current as *const Stmt, stmt_to_json_shallow(current, doc));
-        } else {
-            stack.push((current, true));
-            if let Stmt::State(s) = current
-                && let Some(doc) = s.doc.as_ref()
-            {
-                for child in doc.iter().rev() {
-                    stack.push((child, false));
-                }
-            }
-        }
-    }
-
-    completed
-        .remove(&(stmt as *const Stmt))
-        .unwrap_or(Value::Null)
+    };
+    value.into()
 }
 
 fn normalize_multiline_ws(input: &str) -> String {

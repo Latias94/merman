@@ -8,6 +8,7 @@ use super::layout::{
 };
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::routing;
+use super::shape::GraphNodeShapeSemantics;
 use super::surface::{GraphSurface, OutputTransform, TransformedSurface};
 use crate::canvas::Canvas as RawCanvas;
 use crate::color::AsciiColorRole;
@@ -446,8 +447,8 @@ fn draw_node_foreground(
         GraphNodeShape::Cylinder => {
             draw_cylinder_node(canvas, layout, charset, options, layout_policy)
         }
-        GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset, options, true),
-        GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options, false),
+        GraphNodeShape::LeanRight => draw_lean_node(canvas, layout, charset, options),
+        GraphNodeShape::LeanLeft => draw_lean_node(canvas, layout, charset, options),
         GraphNodeShape::ManualInput => draw_manual_input_node(canvas, layout, charset),
         GraphNodeShape::Datastore => draw_datastore_node(canvas, layout, charset, options),
         GraphNodeShape::BowTie => draw_bow_tie_node(canvas, layout, charset),
@@ -915,8 +916,10 @@ fn draw_diamond_node(
     } else {
         ('/', '\\')
     };
-    set_node_border(canvas, layout.x, layout.y + 1, top_left_slope, layout.style)?;
-    set_node_border(canvas, right, layout.y + 1, top_right_slope, layout.style)?;
+    if layout.y + 1 < center_y {
+        set_node_border(canvas, layout.x, layout.y + 1, top_left_slope, layout.style)?;
+        set_node_border(canvas, right, layout.y + 1, top_right_slope, layout.style)?;
+    }
     set_node_border(canvas, layout.x, center_y, '<', layout.style)?;
     set_node_border(canvas, right, center_y, '>', layout.style)?;
     let (bottom_left_slope, bottom_right_slope) = if charset.unicode {
@@ -924,14 +927,16 @@ fn draw_diamond_node(
     } else {
         ('\\', '/')
     };
-    set_node_border(
-        canvas,
-        layout.x,
-        bottom - 1,
-        bottom_left_slope,
-        layout.style,
-    )?;
-    set_node_border(canvas, right, bottom - 1, bottom_right_slope, layout.style)?;
+    if bottom - 1 > center_y {
+        set_node_border(
+            canvas,
+            layout.x,
+            bottom - 1,
+            bottom_left_slope,
+            layout.style,
+        )?;
+        set_node_border(canvas, right, bottom - 1, bottom_right_slope, layout.style)?;
+    }
     set_node_border(
         canvas,
         layout.x,
@@ -963,14 +968,15 @@ fn draw_subroutine_node(
     layout_policy: &GraphLayoutPolicy,
 ) -> Result<()> {
     draw_rect_node(canvas, layout, charset, options)?;
-    if layout.width > 5 {
-        let left_inner = layout.x + 2;
-        let right_inner = layout.right().saturating_sub(2);
+    if layout.width > 3 {
+        let decoration_inset = 1 + usize::from(layout_policy.node_padding_x > 0);
+        let left_inner = layout.x + decoration_inset;
+        let right_inner = layout.right().saturating_sub(decoration_inset);
         for y in (layout.y + 1)..layout.bottom() {
             set_node_border(canvas, left_inner, y, charset.vertical, layout.style)?;
             set_node_border(canvas, right_inner, y, charset.vertical, layout.style)?;
         }
-        let text_y = layout.y + 1 + layout_policy.node_border_padding;
+        let text_y = layout.y + 1 + layout_policy.node_padding_y;
         for x in (left_inner + 1)..right_inner {
             canvas.set(x, text_y, ' ')?;
         }
@@ -991,7 +997,7 @@ fn draw_cylinder_node(
             set_node_border(canvas, x, layout.y + 1, charset.horizontal, layout.style)?;
         }
     }
-    let text_y = layout.y + 1 + layout_policy.node_border_padding;
+    let text_y = layout.y + 1 + layout_policy.node_padding_y;
     for x in (layout.x + 1)..layout.right() {
         canvas.set(x, text_y, ' ')?;
     }
@@ -1003,21 +1009,25 @@ fn draw_lean_node(
     layout: &NodeLayout,
     charset: &GraphCharset,
     options: &AsciiRenderOptions,
-    lean_right: bool,
 ) -> Result<()> {
-    let right = layout.right();
+    let lean_right = layout.shape == GraphNodeShape::LeanRight;
     let top = layout.y;
     let bottom = layout.bottom();
-    let slant = layout
-        .height
-        .saturating_sub(1)
-        .min(layout.width.saturating_sub(2));
-    let left_shift = if lean_right { 0 } else { slant };
-    let right_shift = if lean_right { slant } else { 0 };
-    let top_left = layout.x + left_shift;
-    let top_right = right.saturating_sub(right_shift);
-    let bottom_left = layout.x + right_shift;
-    let bottom_right = right.saturating_sub(left_shift);
+    let semantics = GraphNodeShapeSemantics::new(layout.shape);
+    let (top_left, top_right) =
+        semantics
+            .horizontal_span(layout, top)
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "nodes without a top contour",
+            })?;
+    let (bottom_left, bottom_right) =
+        semantics
+            .horizontal_span(layout, bottom)
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "nodes without a bottom contour",
+            })?;
 
     set_node_border(
         canvas,
@@ -1062,20 +1072,14 @@ fn draw_lean_node(
 
     let start_y = top + 1;
     let end_y = bottom.saturating_sub(1);
-    let denom = bottom.saturating_sub(top).max(1);
     for y in start_y..=end_y {
-        let progress = y - top;
-        let shift = progress.saturating_mul(slant) / denom;
-        let left_x = if lean_right {
-            top_left + shift
-        } else {
-            top_left.saturating_sub(shift)
-        };
-        let right_x = if lean_right {
-            top_right + shift
-        } else {
-            top_right.saturating_sub(shift)
-        };
+        let (left_x, right_x) =
+            semantics
+                .horizontal_span(layout, y)
+                .ok_or(AsciiError::UnsupportedFeature {
+                    diagram_type: "flowchart",
+                    feature: "nodes without a row contour",
+                })?;
         set_node_border(
             canvas,
             left_x,
@@ -1591,8 +1595,8 @@ fn redraw_transformed_node_label(
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
         let text_width = layout.label.line_width(line);
-        let text_x = layout.x + centered_label_offset(layout.width, text_width);
         let text_y = content_y + line_index * line_step;
+        let text_x = node_label_x(layout, text_y, text_width);
         clear_text_span(
             canvas,
             transform.text_x(text_x, text_width, width),
@@ -1603,12 +1607,20 @@ fn redraw_transformed_node_label(
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
         let text_width = layout.label.line_width(line);
-        let text_x = layout.x + centered_label_offset(layout.width, text_width);
-        let transformed_x = transform.text_x(text_x, text_width, width);
         let transformed_y = transformed_content_y + line_index * line_step;
+        let contour_y = transform.text_y(transformed_y, height);
+        let text_x = node_label_x(layout, contour_y, text_width);
+        let transformed_x = transform.text_x(text_x, text_width, width);
         write_node_text(canvas, transformed_x, transformed_y, line, layout.style)?;
     }
     Ok(())
+}
+
+fn node_label_x(layout: &NodeLayout, y: usize, text_width: usize) -> usize {
+    let (left, right) = GraphNodeShapeSemantics::new(layout.shape)
+        .horizontal_span(layout, y)
+        .unwrap_or((layout.x, layout.right()));
+    left + centered_label_offset(right - left + 1, text_width)
 }
 
 fn label_content_y(layout: &NodeLayout) -> usize {

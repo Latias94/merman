@@ -111,7 +111,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
 
     let boundary =
         edge_boundary_context_with_resources(request.graph, request.edge, topology, resources)?;
-    if endpoints_are_nodes(request, topology) && boundary_stays_within_one_scope(boundary) {
+    if endpoints_are_nodes(request, topology) {
         for (start, end) in PORT_PAIRS {
             if let Some(plan) =
                 plan_left_right_grid_path_route_with_options_resources_and_execution(
@@ -121,7 +121,16 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
                     request.edge,
                     label,
                     request.charset,
-                    GridRouteOptions::with_fixed_ports(start, end),
+                    GridRouteOptions::with_fixed_ports(start, end).with_segment(match boundary {
+                        EdgeBoundaryContext::Entering { .. }
+                        | EdgeBoundaryContext::Leaving { .. } => {
+                            super::PlannedRouteSegment::Boundary
+                        }
+                        EdgeBoundaryContext::External { .. }
+                        | EdgeBoundaryContext::Internal { .. } => {
+                            super::PlannedRouteSegment::Direct
+                        }
+                    }),
                     resources,
                     execution,
                 )?
@@ -174,13 +183,6 @@ fn endpoint_is_group(
     ) || matches!(
         topology.endpoint_index(&request.edge.to),
         Some(GraphEndpointIndex::Group(_))
-    )
-}
-
-fn boundary_stays_within_one_scope(boundary: EdgeBoundaryContext<'_>) -> bool {
-    matches!(
-        boundary,
-        EdgeBoundaryContext::External { .. } | EdgeBoundaryContext::Internal { .. }
     )
 }
 

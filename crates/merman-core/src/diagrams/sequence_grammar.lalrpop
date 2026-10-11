@@ -1,6 +1,8 @@
 // Sequence diagram minimal grammar (phase 1).
 
-grammar;
+grammar(arena: &mut ActionArena, control: &crate::OperationControl);
+
+use crate::diagrams::sequence::ast::{ActionArena, ActionList};
 
 use crate::diagrams::sequence::{
   Action, Tok, LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
@@ -76,26 +78,18 @@ extern {
   }
 }
 
-pub Actions: Vec<Action> = {
+pub Actions: ActionList = {
   <_n:Newlines> "sequenceDiagram" <_n2:Newlines> <a:Statements> => a
 };
 
-Statements: Vec<Action> = {
-  => Vec::new(),
-  <s:Statement> <rest:StatementRest> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  }
+Statements: ActionList = {
+  => ActionList::default(),
+  <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
 };
 
-StatementRest: Vec<Action> = {
-  <_n:Newlines1> <s:Statement> <rest:StatementRest> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  },
-  Newlines => Vec::new(),
+StatementRest: ActionList = {
+  <_n:Newlines1> <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
+  Newlines => ActionList::default(),
 };
 
 Newlines: () = {
@@ -107,34 +101,30 @@ Newlines1: () = {
   Newline Newlines => (),
 };
 
-Statement: Vec<Action> = {
-  <p:ParticipantStatement> => p,
-  <c:CreateStatement> => c,
-  <d:DestroyStatement> => d,
+Statement: ActionList = {
+  <p:ParticipantStatement> =>? arena.push_actions(p, control),
+  <c:CreateStatement> =>? arena.push_actions(c, control),
+  <d:DestroyStatement> =>? arena.push_actions(d, control),
   <b:BlockStatement> => b,
-  <s:SignalStatement> => s,
-  <n:NoteStatement> => n,
+  <s:SignalStatement> =>? arena.push_actions(s, control),
+  <n:NoteStatement> =>? arena.push_actions(n, control),
   <b:BoxStatement> => b,
-  <l:LinksStatement> => l,
-  <l:LinkStatement> => l,
-  <p:PropertiesStatement> => p,
-  <d:DetailsStatement> => d,
-  <t:TitleStatement> => vec![Action::SetTitle(t)],
-  <a:AccTitleStatement> => vec![Action::SetAccTitle(a)],
-  <d:AccDescrStatement> => vec![Action::SetAccDescr(d)],
-  <au:AutonumberStatement> => vec![au],
-  <ac:ActivateStatement> => vec![ac],
-  <de:DeactivateStatement> => vec![de],
+  <l:LinksStatement> =>? arena.push_actions(l, control),
+  <l:LinkStatement> =>? arena.push_actions(l, control),
+  <p:PropertiesStatement> =>? arena.push_actions(p, control),
+  <d:DetailsStatement> =>? arena.push_actions(d, control),
+  <t:TitleStatement> =>? arena.push_actions(vec![Action::SetTitle(t)], control),
+  <a:AccTitleStatement> =>? arena.push_actions(vec![Action::SetAccTitle(a)], control),
+  <d:AccDescrStatement> =>? arena.push_actions(vec![Action::SetAccDescr(d)], control),
+  <au:AutonumberStatement> =>? arena.push_actions(vec![au], control),
+  <ac:ActivateStatement> =>? arena.push_actions(vec![ac], control),
+  <de:DeactivateStatement> =>? arena.push_actions(vec![de], control),
 };
 
-Doc: Vec<Action> = {
-  => Vec::new(),
+Doc: ActionList = {
+  => ActionList::default(),
   Newline <rest:Doc> => rest,
-  <s:Statement> Newline <rest:Doc> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  },
+  <s:Statement> Newline <rest:Doc> =>? arena.concat(s, rest, control),
 };
 
 TitleStatement: String = {
@@ -183,7 +173,7 @@ DestroyStatement: Vec<Action> = {
   "destroy" <a:ActorId> => vec![Action::DestroyParticipant { id: a }],
 };
 
-BlockStatement: Vec<Action> = {
+BlockStatement: ActionList = {
   <l:LoopBlock> => l,
   <o:OptBlock> => o,
   <a:AltBlock> => a,
@@ -194,117 +184,101 @@ BlockStatement: Vec<Action> = {
   <r:RectBlock> => r,
 };
 
-LoopBlock: Vec<Action> = {
-  "loop" <h:RestOfLine> <body:Doc> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_LOOP_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_LOOP_END, text: None });
-    v
-  }
+LoopBlock: ActionList = {
+  "loop" <h:RestOfLine> <body:Doc> "end" =>? arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_LOOP_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_LOOP_END, text: None },
+    control,
+  ),
 };
 
-OptBlock: Vec<Action> = {
-  "opt" <h:RestOfLine> <body:Doc> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_OPT_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_OPT_END, text: None });
-    v
-  }
+OptBlock: ActionList = {
+  "opt" <h:RestOfLine> <body:Doc> "end" =>? arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_OPT_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_OPT_END, text: None },
+    control,
+  ),
 };
 
-RectBlock: Vec<Action> = {
-  "rect" <h:RestOfLine> <body:Doc> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_RECT_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_RECT_END, text: None });
-    v
-  }
+RectBlock: ActionList = {
+  "rect" <h:RestOfLine> <body:Doc> "end" =>? arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_RECT_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_RECT_END, text: None },
+    control,
+  ),
 };
 
-AltBlock: Vec<Action> = {
-  "alt" <h:RestOfLine> <body:Doc> <else_branches:AltElseBranch*> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_ALT_START, text: Some(h) }];
-    v.extend(body);
-    for (label, doc) in else_branches {
-      v.push(Action::ControlSignal { signal_type: LINETYPE_ALT_ELSE, text: Some(label) });
-      v.extend(doc);
-    }
-    v.push(Action::ControlSignal { signal_type: LINETYPE_ALT_END, text: None });
-    v
-  }
+AltBlock: ActionList = {
+  "alt" <h:RestOfLine> <body:Doc> <else_branches:AltElseBranch*> "end" =>? arena.branch_block(
+    Action::ControlSignal { signal_type: LINETYPE_ALT_START, text: Some(h) },
+    body, else_branches, LINETYPE_ALT_ELSE,
+    Action::ControlSignal { signal_type: LINETYPE_ALT_END, text: None },
+    control,
+  ),
 };
 
-AltElseBranch: (String, Vec<Action>) = {
+AltElseBranch: (String, ActionList) = {
   "else" <h:RestOfLine> <body:Doc> => (h, body),
 };
 
-ParBlock: Vec<Action> = {
-  "par" <h:RestOfLine> <body:Doc> <branches:ParAndBranch*> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_PAR_START, text: Some(h) }];
-    v.extend(body);
-    for (label, doc) in branches {
-      v.push(Action::ControlSignal { signal_type: LINETYPE_PAR_AND, text: Some(label) });
-      v.extend(doc);
-    }
-    v.push(Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None });
-    v
-  }
+ParBlock: ActionList = {
+  "par" <h:RestOfLine> <body:Doc> <branches:ParAndBranch*> "end" =>? arena.branch_block(
+    Action::ControlSignal { signal_type: LINETYPE_PAR_START, text: Some(h) },
+    body, branches, LINETYPE_PAR_AND,
+    Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None },
+    control,
+  ),
 };
 
-ParOverBlock: Vec<Action> = {
-  "par_over" <h:RestOfLine> <body:Doc> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_PAR_OVER_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None });
-    v
-  }
+ParOverBlock: ActionList = {
+  "par_over" <h:RestOfLine> <body:Doc> "end" =>? arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_PAR_OVER_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None },
+    control,
+  ),
 };
 
-ParAndBranch: (String, Vec<Action>) = {
+ParAndBranch: (String, ActionList) = {
   "and" <h:RestOfLine> <body:Doc> => (h, body),
 };
 
-CriticalBlock: Vec<Action> = {
-  "critical" <h:RestOfLine> <body:Doc> <branches:CriticalOptionBranch*> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_CRITICAL_START, text: Some(h) }];
-    v.extend(body);
-    for (label, doc) in branches {
-      v.push(Action::ControlSignal { signal_type: LINETYPE_CRITICAL_OPTION, text: Some(label) });
-      v.extend(doc);
-    }
-    v.push(Action::ControlSignal { signal_type: LINETYPE_CRITICAL_END, text: None });
-    v
-  }
+CriticalBlock: ActionList = {
+  "critical" <h:RestOfLine> <body:Doc> <branches:CriticalOptionBranch*> "end" =>? arena.branch_block(
+    Action::ControlSignal { signal_type: LINETYPE_CRITICAL_START, text: Some(h) },
+    body, branches, LINETYPE_CRITICAL_OPTION,
+    Action::ControlSignal { signal_type: LINETYPE_CRITICAL_END, text: None },
+    control,
+  ),
 };
 
-CriticalOptionBranch: (String, Vec<Action>) = {
+CriticalOptionBranch: (String, ActionList) = {
   "option" <h:RestOfLine> <body:Doc> => (h, body),
 };
 
-BreakBlock: Vec<Action> = {
-  "break" <h:RestOfLine> <body:Doc> "end" => {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_BREAK_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_BREAK_END, text: None });
-    v
-  }
+BreakBlock: ActionList = {
+  "break" <h:RestOfLine> <body:Doc> "end" =>? arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_BREAK_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_BREAK_END, text: None },
+    control,
+  ),
 };
 
-BoxStatement: Vec<Action> = {
-  "box" <h:RestOfLine> <_n:Newlines1> <inner:BoxBody> "end" => {
-    let mut v = vec![Action::BoxStart { header: h }];
-    v.extend(inner);
-    v.push(Action::BoxEnd);
-    v
-  },
+BoxStatement: ActionList = {
+  "box" <h:RestOfLine> <_n:Newlines1> <inner:BoxBody> "end" =>? arena.wrap(
+    Action::BoxStart { header: h }, inner, Action::BoxEnd, control,
+  ),
 };
 
-BoxBody: Vec<Action> = {
-  => Vec::new(),
-  <p:ParticipantStatement> <_n:Newlines1> <rest:BoxBody> => {
-    let mut v = p;
-    v.extend(rest);
-    v
+BoxBody: ActionList = {
+  => ActionList::default(),
+  <p:ParticipantStatement> <_n:Newlines1> <rest:BoxBody> =>? {
+    let participant = arena.push_actions(p, control)?;
+    arena.concat(participant, rest, control)
   },
 };
 

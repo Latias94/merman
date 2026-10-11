@@ -72,7 +72,12 @@ pub struct AsciiRenderOptions {
     pub default_direction: AsciiDirection,
     pub color_mode: AsciiColorMode,
     pub color_theme: AsciiColorTheme,
+    /// Fallback padding for both node axes, measured in terminal cells.
     pub box_border_padding: usize,
+    /// Horizontal node padding; `None` uses `box_border_padding`.
+    pub node_padding_x: Option<usize>,
+    /// Vertical node padding; `None` uses `box_border_padding`.
+    pub node_padding_y: Option<usize>,
     pub graph_padding_x: usize,
     pub graph_padding_y: usize,
     pub flowchart_node_label_wrap_width: usize,
@@ -108,7 +113,8 @@ pub(crate) struct AsciiOutputPolicy {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FlowchartLayoutPolicy {
     /// Padding inside a node frame, measured in terminal cells.
-    pub node_border_padding: usize,
+    pub node_padding_x: usize,
+    pub node_padding_y: usize,
     /// Gap between ranked graph columns and rows.
     pub rank_gap_x: usize,
     pub rank_gap_y: usize,
@@ -131,7 +137,8 @@ impl FlowchartLayoutPolicy {
 
     pub(crate) const fn graph_policy(self) -> GraphLayoutPolicy {
         GraphLayoutPolicy {
-            node_border_padding: self.node_border_padding,
+            node_padding_x: self.node_padding_x,
+            node_padding_y: self.node_padding_y,
             rank_gap_x: self.rank_gap_x,
             rank_gap_y: self.rank_gap_y,
             group_padding_x: self.group_padding_x,
@@ -148,7 +155,8 @@ impl FlowchartLayoutPolicy {
 /// State construct this policy independently so profile experiments cannot cross family bounds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GraphLayoutPolicy {
-    pub node_border_padding: usize,
+    pub node_padding_x: usize,
+    pub node_padding_y: usize,
     pub rank_gap_x: usize,
     pub rank_gap_y: usize,
     pub group_padding_x: usize,
@@ -233,6 +241,8 @@ impl Default for AsciiRenderOptions {
             color_mode: AsciiColorMode::Plain,
             color_theme: AsciiColorTheme::default_light(),
             box_border_padding: 1,
+            node_padding_x: None,
+            node_padding_y: None,
             graph_padding_x: 5,
             graph_padding_y: 5,
             flowchart_node_label_wrap_width: 40,
@@ -274,6 +284,27 @@ impl AsciiRenderOptions {
     #[must_use]
     pub fn with_layout_profile(mut self, profile: AsciiLayoutProfile) -> Self {
         self.layout_profile = profile;
+        self
+    }
+
+    /// Sets the fallback node padding for both axes. Explicit axis overrides take precedence.
+    #[must_use]
+    pub fn with_node_padding(mut self, padding: usize) -> Self {
+        self.box_border_padding = padding;
+        self
+    }
+
+    /// Sets horizontal padding inside graph node frames. Zero padding is supported.
+    #[must_use]
+    pub fn with_node_padding_x(mut self, padding: usize) -> Self {
+        self.node_padding_x = Some(padding);
+        self
+    }
+
+    /// Sets vertical padding inside graph node frames. Zero padding is supported.
+    #[must_use]
+    pub fn with_node_padding_y(mut self, padding: usize) -> Self {
+        self.node_padding_y = Some(padding);
         self
     }
 
@@ -345,7 +376,8 @@ impl AsciiRenderOptions {
             layout: AsciiLayoutPolicies {
                 profile: self.layout_profile,
                 flowchart: FlowchartLayoutPolicy {
-                    node_border_padding: self.box_border_padding,
+                    node_padding_x: self.node_padding_x.unwrap_or(self.box_border_padding),
+                    node_padding_y: self.node_padding_y.unwrap_or(self.box_border_padding),
                     rank_gap_x: self.resolved_flowchart_rank_gap_x(),
                     rank_gap_y: self.graph_padding_y,
                     node_label_wrap_width: self.resolved_flowchart_wrap_width(),
@@ -495,7 +527,8 @@ impl AsciiRenderOptions {
 
 fn graph_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> GraphLayoutPolicy {
     GraphLayoutPolicy {
-        node_border_padding: options.box_border_padding,
+        node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
+        node_padding_y: options.node_padding_y.unwrap_or(options.box_border_padding),
         rank_gap_x: options.graph_padding_x,
         rank_gap_y: options.graph_padding_y,
         group_padding_x: 2,
@@ -517,6 +550,54 @@ mod tests {
             AsciiRenderOptions::unicode().with_terminal_width_profile(TerminalWidthProfile::Cjk);
 
         assert_eq!(options.structural_charset(), AsciiCharset::Ascii);
+    }
+
+    #[test]
+    fn node_padding_defaults_and_legacy_scalar_apply_to_both_graph_axes() {
+        for padding in [0, 1, 3] {
+            let mut options = AsciiRenderOptions::unicode();
+            options.box_border_padding = padding;
+            options.validate().expect("zero node padding is valid");
+            let layout = options.resolve_policies().layout;
+            assert_eq!(layout.flowchart.node_padding_x, padding);
+            assert_eq!(layout.flowchart.node_padding_y, padding);
+            assert_eq!(layout.state.node_padding_x, padding);
+            assert_eq!(layout.state.node_padding_y, padding);
+        }
+        let defaults = AsciiRenderOptions::unicode();
+        assert_eq!(defaults.box_border_padding, 1);
+        assert_eq!(defaults.node_padding_x, None);
+        assert_eq!(defaults.node_padding_y, None);
+    }
+
+    #[test]
+    fn node_axis_overrides_win_over_scalar_regardless_of_builder_order_or_profile() {
+        for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+            for options in [
+                AsciiRenderOptions::unicode()
+                    .with_node_padding(2)
+                    .with_node_padding_x(3)
+                    .with_node_padding_y(0),
+                AsciiRenderOptions::unicode()
+                    .with_node_padding_y(0)
+                    .with_node_padding_x(3)
+                    .with_node_padding(2),
+            ] {
+                options
+                    .validate()
+                    .expect("independent zero padding is valid");
+                let layout = options
+                    .with_layout_profile(profile)
+                    .resolve_policies()
+                    .layout;
+                assert_eq!(layout.flowchart.node_padding_x, 3);
+                assert_eq!(layout.flowchart.node_padding_y, 0);
+                assert_eq!(layout.state.node_padding_x, 3);
+                assert_eq!(layout.state.node_padding_y, 0);
+                assert_eq!(layout.flowchart.graph_policy().node_padding_x, 3);
+                assert_eq!(layout.flowchart.graph_policy().node_padding_y, 0);
+            }
+        }
     }
 
     #[test]
@@ -542,8 +623,12 @@ mod tests {
             compact.layout.flowchart.node_label_wrap_width
         );
         assert_eq!(
-            canonical.layout.flowchart.node_border_padding,
-            compact.layout.flowchart.node_border_padding
+            canonical.layout.flowchart.node_padding_x,
+            compact.layout.flowchart.node_padding_x
+        );
+        assert_eq!(
+            canonical.layout.flowchart.node_padding_y,
+            compact.layout.flowchart.node_padding_y
         );
         assert_eq!(
             canonical.layout.flowchart.group_padding_x,

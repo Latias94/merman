@@ -93,7 +93,9 @@ pub(crate) use ast::{
     ClassAssignStmt, ClassDefStmt, ClickAction, ClickStmt, LinkStylePos, LinkStyleStmt, StyleStmt,
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use ast::{FlowchartAst, Stmt, SubgraphBlock};
+use ast::{
+    FlowchartAst, StatementArena, StatementEvent, StatementId, StatementList, Stmt, SubgraphBlock,
+};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use model::{
     Edge, EdgeDefaults, FlowNodeSyntax, FlowSubgraphVertexStyle, FlowchartRenderLabelSources,
@@ -386,9 +388,23 @@ fn parse_flowchart_ast_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartAst>> {
     control.checkpoint()?;
-    let parsed = parse_flowchart_ast(code, meta);
+    let mut statements = StatementArena::default();
+    let mut emitted = 0usize;
+    let tokens = Lexer::new(code).take_while(|_| {
+        let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
+        emitted = emitted.saturating_add(1);
+        active
+    });
+    let parsed =
+        flowchart_grammar::FlowchartAstParser::new().parse(&mut statements, control, tokens);
+    // Parser EOF and user errors are subordinate to the sticky operation outcome.
     control.checkpoint()?;
-    Ok(parsed)
+    Ok(parsed.map_err(|error| {
+        Error::diagram_parse_diagnostic(
+            meta.diagram_type.clone(),
+            lalrpop_parse_diagnostic(&error, code.len()),
+        )
+    }))
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -399,7 +415,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
     meta: &ParseMetadata,
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
-    let shape_data_documents = prepare_flowchart_shape_data(&ast.statements, control)?;
+    let shape_data_documents = prepare_flowchart_shape_data(&ast, control)?;
     control.checkpoint()?;
     let inherit_dir = meta
         .effective_config
@@ -409,7 +425,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
-    builder.visit_statements(&ast.statements, control)?;
+    builder.visit_statements(&ast, control)?;
 
     let subgraph_ids: HashSet<String> = builder
         .subgraphs
@@ -418,7 +434,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
         .collect();
 
     let mut build = FlowchartBuildState::new(subgraph_ids);
-    build.add_statements(&ast.statements, control)?;
+    build.add_statements(&ast, control)?;
     let FlowchartBuildState { nodes, edges, .. } = build;
     let mut nodes = nodes;
     let mut edges = edges;
@@ -462,7 +478,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
             shape_data_documents: &shape_data_documents,
             control,
         };
-        if let Err(error) = apply_semantic_statements(&ast.statements, &mut semantic_ctx)? {
+        if let Err(error) = apply_semantic_statements(&ast, &mut semantic_ctx)? {
             return Ok(Err(error));
         }
     }
@@ -490,22 +506,17 @@ fn parse_flowchart_semantic_source_from_ast_controlled(
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn prepare_flowchart_shape_data(
-    statements: &[Stmt],
+    ast: &FlowchartAst,
     control: &OperationControl,
 ) -> OperationControlResult<HashMap<String, std::result::Result<Value, String>>> {
     let mut documents = HashMap::new();
-    let mut stack = vec![statements.iter()];
-    let mut visited = 0usize;
-
-    while let Some(iter) = stack.last_mut() {
-        let Some(statement) = iter.next() else {
-            stack.pop();
-            continue;
-        };
+    for (visited, event) in ast.walk().enumerate() {
         if visited.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        visited = visited.saturating_add(1);
+        let StatementEvent::Enter(statement) = event else {
+            continue;
+        };
 
         match statement {
             Stmt::Chain { node_groups, .. } => {
@@ -523,7 +534,7 @@ fn prepare_flowchart_shape_data(
                     prepare_flowchart_shape_data_document(source, control, &mut documents)?;
                 }
             }
-            Stmt::Subgraph(subgraph) => stack.push(subgraph.statements.iter()),
+            Stmt::Subgraph(_) => {}
             Stmt::ShapeData { yaml, .. } => {
                 prepare_flowchart_shape_data_document(yaml, control, &mut documents)?;
             }
@@ -556,14 +567,7 @@ fn prepare_flowchart_shape_data_document(
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn parse_flowchart_ast(code: &str, meta: &ParseMetadata) -> Result<FlowchartAst> {
-    flowchart_grammar::FlowchartAstParser::new()
-        .parse(Lexer::new(code))
-        .map_err(|e| {
-            Error::diagram_parse_diagnostic(
-                meta.diagram_type.clone(),
-                lalrpop_parse_diagnostic(&e, code.len()),
-            )
-        })
+    parse_flowchart_ast_controlled(code, meta, &OperationControl::new())?
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -598,7 +602,7 @@ impl FlowchartTokenTrace {
         self.items
             .iter()
             .take_while(move |_| {
-                let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+                let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
                 emitted = emitted.saturating_add(1);
                 active
             })
@@ -666,8 +670,9 @@ fn parse_flowchart_ast_from_trace(
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<FlowchartAst, Box<FlowchartAstParseError>>> {
     control.checkpoint()?;
+    let mut statements = StatementArena::default();
     let parsed = flowchart_grammar::FlowchartAstParser::new()
-        .parse(trace.parser_items(control))
+        .parse(&mut statements, control, trace.parser_items(control))
         .map_err(Box::new);
     control.checkpoint()?;
     Ok(parsed)
@@ -698,7 +703,7 @@ fn editor_facts_from_flowchart_ast(
     control: &OperationControl,
 ) -> OperationControlResult<EditorSemanticFacts> {
     let mut facts = EditorSemanticFacts::new();
-    collect_editor_facts_from_statements(&ast.statements, &mut facts, control)?;
+    collect_editor_facts_from_statements(ast, &mut facts, control)?;
     Ok(facts)
 }
 
@@ -973,7 +978,7 @@ fn collect_editor_fact_from_token(
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn collect_editor_facts_from_statements(
-    statements: &[Stmt],
+    ast: &FlowchartAst,
     facts: &mut EditorSemanticFacts,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
@@ -981,7 +986,7 @@ fn collect_editor_facts_from_statements(
     let mut seen_edge_ids = HashSet::new();
     let mut seen_entities = HashSet::new();
     collect_editor_facts_from_statements_with_seen_edges(
-        statements,
+        ast,
         facts,
         &mut emitted_edge_label_spans,
         &mut seen_edge_ids,
@@ -992,24 +997,20 @@ fn collect_editor_facts_from_statements(
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 fn collect_editor_facts_from_statements_with_seen_edges(
-    statements: &[Stmt],
+    ast: &FlowchartAst,
     facts: &mut EditorSemanticFacts,
     emitted_edge_label_spans: &mut HashSet<(usize, usize)>,
     seen_edge_ids: &mut HashSet<String>,
     seen_entities: &mut HashSet<String>,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
-    let mut stack = vec![statements.iter()];
-    let mut visited = 0usize;
-    while let Some(iter) = stack.last_mut() {
-        let Some(stmt) = iter.next() else {
-            stack.pop();
-            continue;
-        };
+    for (visited, event) in ast.walk().enumerate() {
         if visited.is_multiple_of(128) {
             control.checkpoint()?;
         }
-        visited = visited.saturating_add(1);
+        let StatementEvent::Enter(stmt) = event else {
+            continue;
+        };
 
         match stmt {
             Stmt::Chain {
@@ -1046,7 +1047,6 @@ fn collect_editor_facts_from_statements_with_seen_edges(
             ),
             Stmt::Subgraph(subgraph) => {
                 push_flowchart_subgraph_symbol(facts, subgraph);
-                stack.push(subgraph.statements.iter());
             }
             Stmt::Style(stmt) => push_flowchart_style_stmt_facts(facts, stmt),
             Stmt::ClassDef(stmt) => push_flowchart_classdef_stmt_facts(facts, stmt),
@@ -2812,15 +2812,15 @@ F -- "&nbsp;" --> G
         };
         let ast = parse_flowchart_ast(&source, &meta).expect("large node group should parse");
         assert!(matches!(
-            ast.statements.as_slice(),
-            [Stmt::Chain { node_groups, .. }]
+            ast.walk().next(),
+            Some(StatementEvent::Enter(Stmt::Chain { node_groups, .. }))
                 if node_groups.iter().map(Vec::len).sum::<usize>() == 256
         ));
 
         let shape_data_control = OperationControl::new();
         shape_data_control.cancel_after_checkpoints(2);
         assert!(matches!(
-            prepare_flowchart_shape_data(&ast.statements, &shape_data_control),
+            prepare_flowchart_shape_data(&ast, &shape_data_control),
             Err(crate::OperationCancelled { .. })
         ));
 
@@ -2861,7 +2861,7 @@ F -- "&nbsp;" --> G
         control.cancel_after_checkpoints(2);
 
         assert!(matches!(
-            builder.visit_statements(&ast.statements, &control),
+            builder.visit_statements(&ast, &control),
             Err(crate::OperationCancelled { .. })
         ));
     }

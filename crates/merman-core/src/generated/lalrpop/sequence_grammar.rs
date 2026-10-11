@@ -1,5 +1,6 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: e4e48d90f4f0086a9224c7fd16953e1b2ed186ab267a883e4fb324f835acb421
+// sha3: 3b72abcbaaa6a62eee8b8c2f0bfa56e6cf1eeb429b7e78184235dab87deeda62
+use crate::diagrams::sequence::ast::{ActionArena, ActionList};
 use crate::diagrams::sequence::{
   Action, Tok, LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
   LINETYPE_BREAK_START, LINETYPE_CRITICAL_END, LINETYPE_CRITICAL_OPTION, LINETYPE_CRITICAL_START,
@@ -19,6 +20,7 @@ extern crate alloc;
 #[allow(explicit_outlives_requirements, non_snake_case, non_camel_case_types, unused_mut, unused_variables, unused_imports, unused_parens, clippy::needless_lifetimes, clippy::type_complexity, clippy::needless_return, clippy::too_many_arguments, clippy::match_single_binding, clippy::clone_on_copy, clippy::unit_arg)]
 mod __parse__Actions {
 
+    use crate::diagrams::sequence::ast::{ActionArena, ActionList};
     use crate::diagrams::sequence::{
   Action, Tok, LINETYPE_ALT_ELSE, LINETYPE_ALT_END, LINETYPE_ALT_START, LINETYPE_BREAK_END,
   LINETYPE_BREAK_START, LINETYPE_CRITICAL_END, LINETYPE_CRITICAL_OPTION, LINETYPE_CRITICAL_START,
@@ -41,12 +43,13 @@ mod __parse__Actions {
         Variant1(f64),
         Variant2(String),
         Variant3(i32),
-        Variant4(Vec<Action>),
+        Variant4(ActionList),
         Variant5(Action),
-        Variant6((String, Vec<Action>)),
-        Variant7(alloc::vec::Vec<(String, Vec<Action>)>),
-        Variant8(()),
-        Variant9((String, Option<String>, String, Option<String>)),
+        Variant6((String, ActionList)),
+        Variant7(alloc::vec::Vec<(String, ActionList)>),
+        Variant8(Vec<Action>),
+        Variant9(()),
+        Variant10((String, Option<String>, String, Option<String>)),
     }
     const __ACTION: &[i16] = &[
         // State 0
@@ -981,6 +984,8 @@ mod __parse__Actions {
         }).collect()
     }
     fn __expected_tokens_from_states<
+        '__0,
+        '__1,
     >(
         __states: &[i16],
         _: core::marker::PhantomData<()>,
@@ -994,12 +999,14 @@ mod __parse__Actions {
             }
         }).collect()
     }
-    struct __StateMachine<>
+    struct __StateMachine<'__0, '__1>
     where
     {
+        arena: &'__0 mut ActionArena,
+        control: &'__1 crate::OperationControl,
         __phantom: core::marker::PhantomData<()>,
     }
-    impl<> __state_machine::ParserDefinition for __StateMachine<>
+    impl<'__0, '__1> __state_machine::ParserDefinition for __StateMachine<'__0, '__1>
     where
     {
         type Location = usize;
@@ -1007,7 +1014,7 @@ mod __parse__Actions {
         type Token = Tok;
         type TokenIndex = usize;
         type Symbol = __Symbol<>;
-        type Success = Vec<Action>;
+        type Success = ActionList;
         type StateIndex = i16;
         type Action = i16;
         type ReduceIndex = i16;
@@ -1081,6 +1088,8 @@ mod __parse__Actions {
             symbols: &mut alloc::vec::Vec<__state_machine::SymbolTriple<Self>>,
         ) -> Option<__state_machine::ParseResult<Self>> {
             __reduce(
+                self.arena,
+                self.control,
                 action,
                 start_location,
                 states,
@@ -1176,10 +1185,12 @@ mod __parse__Actions {
         }
     }
     fn __simulate_reduce<
+        '__0,
+        '__1,
     >(
         __reduce_index: i16,
         _: core::marker::PhantomData<()>,
-    ) -> __state_machine::SimulatedReduce<__StateMachine<>>
+    ) -> __state_machine::SimulatedReduce<__StateMachine<'__0, '__1>>
     {
         match __reduce_index {
             0 => {
@@ -1828,13 +1839,17 @@ mod __parse__Actions {
             __TOKENS: IntoIterator<Item=__TOKEN>,
         >(
             &self,
+            arena: &mut ActionArena,
+            control: &crate::OperationControl,
             __tokens0: __TOKENS,
-        ) -> Result<Vec<Action>, __lalrpop_util::ParseError<usize, Tok, crate::diagrams::sequence::LexError>>
+        ) -> Result<ActionList, __lalrpop_util::ParseError<usize, Tok, crate::diagrams::sequence::LexError>>
         {
             let __tokens = __tokens0.into_iter();
             let mut __tokens = __tokens.map(|t| __ToTriple::to_triple(t));
             __state_machine::Parser::drive(
                 __StateMachine {
+                    arena,
+                    control,
                     __phantom: core::marker::PhantomData::<()>,
                 },
                 __tokens,
@@ -1842,6 +1857,8 @@ mod __parse__Actions {
         }
     }
     fn __accepts<
+        '__0,
+        '__1,
     >(
         __error_state: Option<i16>,
         __states: &[i16],
@@ -1875,332 +1892,676 @@ mod __parse__Actions {
     }
     fn __reduce<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __action: i16,
         __lookahead_start: Option<&usize>,
         __states: &mut alloc::vec::Vec<i16>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
-    ) -> Option<Result<Vec<Action>,__lalrpop_util::ParseError<usize, Tok, crate::diagrams::sequence::LexError>>>
+    ) -> Option<Result<ActionList,__lalrpop_util::ParseError<usize, Tok, crate::diagrams::sequence::LexError>>>
     {
         let (__pop_states, __nonterminal) = match __action {
             0 => {
-                __reduce0(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce0(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             1 => {
-                __reduce1(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce1(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             2 => {
-                __reduce2(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce2(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             3 => {
-                __reduce3(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce3(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             4 => {
-                __reduce4(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce4(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             5 => {
-                __reduce5(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce5(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             6 => {
-                __reduce6(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce6(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             7 => {
-                __reduce7(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // AltBlock = "alt", RestOfLine, Doc, "end" => ActionFn(102);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action102::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 5)
             }
             8 => {
-                __reduce8(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // AltBlock = "alt", RestOfLine, Doc, AltElseBranch+, "end" => ActionFn(103);
+                assert!(__symbols.len() >= 5);
+                let __sym4 = __pop_Variant0(__symbols);
+                let __sym3 = __pop_Variant7(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym4.2.clone();
+                let __nt = match super::__action103::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (5, 5)
             }
             9 => {
-                __reduce9(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce9(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             10 => {
-                __reduce10(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce10(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             11 => {
-                __reduce11(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce11(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             12 => {
-                __reduce12(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce12(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             13 => {
-                __reduce13(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce13(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             14 => {
-                __reduce14(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce14(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             15 => {
-                __reduce15(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce15(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             16 => {
-                __reduce16(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce16(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             17 => {
-                __reduce17(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce17(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             18 => {
-                __reduce18(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce18(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             19 => {
-                __reduce19(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce19(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             20 => {
-                __reduce20(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce20(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             21 => {
-                __reduce21(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce21(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             22 => {
-                __reduce22(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce22(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             23 => {
-                __reduce23(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce23(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             24 => {
-                __reduce24(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce24(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             25 => {
-                __reduce25(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce25(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             26 => {
-                __reduce26(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce26(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             27 => {
-                __reduce27(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // BoxBody = ParticipantStatement, Newlines1, BoxBody => ActionFn(68);
+                assert!(__symbols.len() >= 3);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant9(__symbols);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym2.2.clone();
+                let __nt = match super::__action68::<>(arena, control, __sym0, __sym1, __sym2) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (3, 11)
             }
             28 => {
-                __reduce28(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // BoxStatement = "box", RestOfLine, Newlines1, BoxBody, "end" => ActionFn(66);
+                assert!(__symbols.len() >= 5);
+                let __sym4 = __pop_Variant0(__symbols);
+                let __sym3 = __pop_Variant4(__symbols);
+                let __sym2 = __pop_Variant9(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym4.2.clone();
+                let __nt = match super::__action66::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (5, 12)
             }
             29 => {
-                __reduce29(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // BreakBlock = "break", RestOfLine, Doc, "end" => ActionFn(65);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action65::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 13)
             }
             30 => {
-                __reduce30(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce30(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             31 => {
-                __reduce31(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // CriticalBlock = "critical", RestOfLine, Doc, "end" => ActionFn(104);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action104::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 15)
             }
             32 => {
-                __reduce32(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // CriticalBlock = "critical", RestOfLine, Doc, CriticalOptionBranch+, "end" => ActionFn(105);
+                assert!(__symbols.len() >= 5);
+                let __sym4 = __pop_Variant0(__symbols);
+                let __sym3 = __pop_Variant7(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym4.2.clone();
+                let __nt = match super::__action105::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (5, 15)
             }
             33 => {
-                __reduce33(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce33(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             34 => {
-                __reduce34(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce34(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             35 => {
-                __reduce35(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce35(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             36 => {
-                __reduce36(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce36(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             37 => {
-                __reduce37(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce37(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             38 => {
-                __reduce38(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce38(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             39 => {
-                __reduce39(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce39(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             40 => {
-                __reduce40(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce40(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             41 => {
-                __reduce41(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce41(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             42 => {
-                __reduce42(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce42(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             43 => {
-                __reduce43(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Doc = Statement, Newline, Doc => ActionFn(28);
+                assert!(__symbols.len() >= 3);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant0(__symbols);
+                let __sym0 = __pop_Variant4(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym2.2.clone();
+                let __nt = match super::__action28::<>(arena, control, __sym0, __sym1, __sym2) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (3, 22)
             }
             44 => {
-                __reduce44(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce44(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             45 => {
-                __reduce45(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce45(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             46 => {
-                __reduce46(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // LoopBlock = "loop", RestOfLine, Doc, "end" => ActionFn(55);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action55::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 25)
             }
             47 => {
-                __reduce47(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce47(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             48 => {
-                __reduce48(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce48(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             49 => {
-                __reduce49(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce49(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             50 => {
-                __reduce50(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce50(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             51 => {
-                __reduce51(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce51(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             52 => {
-                __reduce52(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce52(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             53 => {
-                __reduce53(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // OptBlock = "opt", RestOfLine, Doc, "end" => ActionFn(56);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action56::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 29)
             }
             54 => {
-                __reduce54(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce54(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             55 => {
-                __reduce55(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce55(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             56 => {
-                __reduce56(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce56(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             57 => {
-                __reduce57(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce57(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             58 => {
-                __reduce58(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce58(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             59 => {
-                __reduce59(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // ParBlock = "par", RestOfLine, Doc, "end" => ActionFn(106);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action106::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 33)
             }
             60 => {
-                __reduce60(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // ParBlock = "par", RestOfLine, Doc, ParAndBranch+, "end" => ActionFn(107);
+                assert!(__symbols.len() >= 5);
+                let __sym4 = __pop_Variant0(__symbols);
+                let __sym3 = __pop_Variant7(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym4.2.clone();
+                let __nt = match super::__action107::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (5, 33)
             }
             61 => {
-                __reduce61(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // ParOverBlock = "par_over", RestOfLine, Doc, "end" => ActionFn(61);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action61::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 34)
             }
             62 => {
-                __reduce62(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce62(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             63 => {
-                __reduce63(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce63(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             64 => {
-                __reduce64(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce64(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             65 => {
-                __reduce65(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce65(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             66 => {
-                __reduce66(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce66(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             67 => {
-                __reduce67(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce67(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             68 => {
-                __reduce68(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce68(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             69 => {
-                __reduce69(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce69(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             70 => {
-                __reduce70(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce70(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             71 => {
-                __reduce71(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce71(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             72 => {
-                __reduce72(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce72(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             73 => {
-                __reduce73(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce73(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             74 => {
-                __reduce74(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // RectBlock = "rect", RestOfLine, Doc, "end" => ActionFn(57);
+                assert!(__symbols.len() >= 4);
+                let __sym3 = __pop_Variant0(__symbols);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant2(__symbols);
+                let __sym0 = __pop_Variant0(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym3.2.clone();
+                let __nt = match super::__action57::<>(arena, control, __sym0, __sym1, __sym2, __sym3) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (4, 39)
             }
             75 => {
-                __reduce75(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce75(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             76 => {
-                __reduce76(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce76(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             77 => {
-                __reduce77(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce77(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             78 => {
-                __reduce78(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce78(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             79 => {
-                __reduce79(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce79(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             80 => {
-                __reduce80(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce80(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             81 => {
-                __reduce81(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = ParticipantStatement => ActionFn(9);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action9::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             82 => {
-                __reduce82(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = CreateStatement => ActionFn(10);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action10::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             83 => {
-                __reduce83(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = DestroyStatement => ActionFn(11);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action11::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             84 => {
-                __reduce84(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce84(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             85 => {
-                __reduce85(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = SignalStatement => ActionFn(13);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action13::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             86 => {
-                __reduce86(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = NoteStatement => ActionFn(14);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action14::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             87 => {
-                __reduce87(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce87(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             88 => {
-                __reduce88(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = LinksStatement => ActionFn(16);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action16::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             89 => {
-                __reduce89(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = LinkStatement => ActionFn(17);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action17::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             90 => {
-                __reduce90(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = PropertiesStatement => ActionFn(18);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action18::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             91 => {
-                __reduce91(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = DetailsStatement => ActionFn(19);
+                let __sym0 = __pop_Variant8(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action19::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             92 => {
-                __reduce92(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = TitleStatement => ActionFn(20);
+                let __sym0 = __pop_Variant2(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action20::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             93 => {
-                __reduce93(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = AccTitleStatement => ActionFn(21);
+                let __sym0 = __pop_Variant2(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action21::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             94 => {
-                __reduce94(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = AccDescrStatement => ActionFn(22);
+                let __sym0 = __pop_Variant2(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action22::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             95 => {
-                __reduce95(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = AutonumberStatement => ActionFn(23);
+                let __sym0 = __pop_Variant5(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action23::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             96 => {
-                __reduce96(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = ActivateStatement => ActionFn(24);
+                let __sym0 = __pop_Variant5(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action24::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             97 => {
-                __reduce97(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statement = DeactivateStatement => ActionFn(25);
+                let __sym0 = __pop_Variant5(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym0.2.clone();
+                let __nt = match super::__action25::<>(arena, control, __sym0) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (1, 41)
             }
             98 => {
-                __reduce98(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // StatementRest = Newlines1, Statement, StatementRest => ActionFn(4);
+                assert!(__symbols.len() >= 3);
+                let __sym2 = __pop_Variant4(__symbols);
+                let __sym1 = __pop_Variant4(__symbols);
+                let __sym0 = __pop_Variant9(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym2.2.clone();
+                let __nt = match super::__action4::<>(arena, control, __sym0, __sym1, __sym2) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (3, 42)
             }
             99 => {
-                __reduce99(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce99(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             100 => {
-                __reduce100(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce100(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             101 => {
-                __reduce101(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                // Statements = Statement, StatementRest => ActionFn(3);
+                assert!(__symbols.len() >= 2);
+                let __sym1 = __pop_Variant4(__symbols);
+                let __sym0 = __pop_Variant4(__symbols);
+                let __start = __sym0.0.clone();
+                let __end = __sym1.2.clone();
+                let __nt = match super::__action3::<>(arena, control, __sym0, __sym1) {
+                    Ok(v) => v,
+                    Err(e) => return Some(Err(e)),
+                };
+                __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+                (2, 43)
             }
             102 => {
-                __reduce102(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce102(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             103 => {
-                __reduce103(__lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce103(arena, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             104 => {
                 // __Actions = Actions => ActionFn(0);
                 let __sym0 = __pop_Variant4(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = super::__action0::<>(__sym0);
+                let __nt = super::__action0::<>(arena, control, __sym0);
                 return Some(Ok(__nt));
             }
             _ => panic!("invalid action code {__action}")
@@ -2216,20 +2577,10 @@ mod __parse__Actions {
     fn __symbol_type_mismatch() -> ! {
         panic!("symbol type mismatch")
     }
-    fn __pop_Variant8<
-    >(
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
-    ) -> (usize, (), usize)
-     {
-        match __symbols.pop() {
-            Some((__l, __Symbol::Variant8(__v), __r)) => (__l, __v, __r),
-            _ => __symbol_type_mismatch()
-        }
-    }
     fn __pop_Variant9<
     >(
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
-    ) -> (usize, (String, Option<String>, String, Option<String>), usize)
+    ) -> (usize, (), usize)
      {
         match __symbols.pop() {
             Some((__l, __Symbol::Variant9(__v), __r)) => (__l, __v, __r),
@@ -2239,10 +2590,20 @@ mod __parse__Actions {
     fn __pop_Variant6<
     >(
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
-    ) -> (usize, (String, Vec<Action>), usize)
+    ) -> (usize, (String, ActionList), usize)
      {
         match __symbols.pop() {
             Some((__l, __Symbol::Variant6(__v), __r)) => (__l, __v, __r),
+            _ => __symbol_type_mismatch()
+        }
+    }
+    fn __pop_Variant10<
+    >(
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+    ) -> (usize, (String, Option<String>, String, Option<String>), usize)
+     {
+        match __symbols.pop() {
+            Some((__l, __Symbol::Variant10(__v), __r)) => (__l, __v, __r),
             _ => __symbol_type_mismatch()
         }
     }
@@ -2253,6 +2614,16 @@ mod __parse__Actions {
      {
         match __symbols.pop() {
             Some((__l, __Symbol::Variant5(__v), __r)) => (__l, __v, __r),
+            _ => __symbol_type_mismatch()
+        }
+    }
+    fn __pop_Variant4<
+    >(
+        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
+    ) -> (usize, ActionList, usize)
+     {
+        match __symbols.pop() {
+            Some((__l, __Symbol::Variant4(__v), __r)) => (__l, __v, __r),
             _ => __symbol_type_mismatch()
         }
     }
@@ -2276,20 +2647,20 @@ mod __parse__Actions {
             _ => __symbol_type_mismatch()
         }
     }
-    fn __pop_Variant4<
+    fn __pop_Variant8<
     >(
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
     ) -> (usize, Vec<Action>, usize)
      {
         match __symbols.pop() {
-            Some((__l, __Symbol::Variant4(__v), __r)) => (__l, __v, __r),
+            Some((__l, __Symbol::Variant8(__v), __r)) => (__l, __v, __r),
             _ => __symbol_type_mismatch()
         }
     }
     fn __pop_Variant7<
     >(
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>
-    ) -> (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize)
+    ) -> (usize, alloc::vec::Vec<(String, ActionList)>, usize)
      {
         match __symbols.pop() {
             Some((__l, __Symbol::Variant7(__v), __r)) => (__l, __v, __r),
@@ -2318,6 +2689,8 @@ mod __parse__Actions {
     }
     fn __reduce0<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2327,12 +2700,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action32::<>(__sym0);
+        let __nt = super::__action32::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 0)
     }
     fn __reduce1<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2342,12 +2717,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action33::<>(__sym0);
+        let __nt = super::__action33::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 0)
     }
     fn __reduce2<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2357,12 +2734,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action31::<>(__sym0);
+        let __nt = super::__action31::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 1)
     }
     fn __reduce3<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2371,17 +2750,19 @@ mod __parse__Actions {
         // Actions = Newlines, "sequenceDiagram", Newlines, Statements => ActionFn(1);
         assert!(__symbols.len() >= 4);
         let __sym3 = __pop_Variant4(__symbols);
-        let __sym2 = __pop_Variant8(__symbols);
+        let __sym2 = __pop_Variant9(__symbols);
         let __sym1 = __pop_Variant0(__symbols);
-        let __sym0 = __pop_Variant8(__symbols);
+        let __sym0 = __pop_Variant9(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action1::<>(__sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action1::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (4, 2)
     }
     fn __reduce4<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2393,12 +2774,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action88::<>(__sym0, __sym1);
+        let __nt = super::__action88::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (2, 3)
     }
     fn __reduce5<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2408,12 +2791,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action34::<>(__sym0);
+        let __nt = super::__action34::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 4)
     }
     fn __reduce6<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2423,51 +2808,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action35::<>(__sym0);
+        let __nt = super::__action35::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 4)
     }
-    fn __reduce7<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // AltBlock = "alt", RestOfLine, Doc, "end" => ActionFn(102);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action102::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 5)
-    }
-    fn __reduce8<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // AltBlock = "alt", RestOfLine, Doc, AltElseBranch+, "end" => ActionFn(103);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant0(__symbols);
-        let __sym3 = __pop_Variant7(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action103::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (5, 5)
-    }
     fn __reduce9<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2480,12 +2828,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action59::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action59::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (3, 6)
     }
     fn __reduce10<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2494,12 +2844,14 @@ mod __parse__Actions {
         // AltElseBranch* =  => ActionFn(94);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action94::<>(&__start, &__end);
+        let __nt = super::__action94::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (0, 7)
     }
     fn __reduce11<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2509,12 +2861,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant7(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action95::<>(__sym0);
+        let __nt = super::__action95::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (1, 7)
     }
     fn __reduce12<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2524,12 +2878,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant6(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action96::<>(__sym0);
+        let __nt = super::__action96::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (1, 8)
     }
     fn __reduce13<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2541,12 +2897,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant7(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action97::<>(__sym0, __sym1);
+        let __nt = super::__action97::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (2, 8)
     }
     fn __reduce14<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2559,12 +2917,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action84::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action84::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (3, 9)
     }
     fn __reduce15<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2576,12 +2936,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action85::<>(__sym0, __sym1);
+        let __nt = super::__action85::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (2, 9)
     }
     fn __reduce16<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2593,12 +2955,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action86::<>(__sym0, __sym1);
+        let __nt = super::__action86::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (2, 9)
     }
     fn __reduce17<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2608,12 +2972,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action87::<>(__sym0);
+        let __nt = super::__action87::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (1, 9)
     }
     fn __reduce18<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2623,12 +2989,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action47::<>(__sym0);
+        let __nt = super::__action47::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce19<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2638,12 +3006,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action48::<>(__sym0);
+        let __nt = super::__action48::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce20<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2653,12 +3023,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action49::<>(__sym0);
+        let __nt = super::__action49::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce21<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2668,12 +3040,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action50::<>(__sym0);
+        let __nt = super::__action50::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce22<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2683,12 +3057,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action51::<>(__sym0);
+        let __nt = super::__action51::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce23<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2698,12 +3074,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action52::<>(__sym0);
+        let __nt = super::__action52::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce24<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2713,12 +3091,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action53::<>(__sym0);
+        let __nt = super::__action53::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce25<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2728,12 +3108,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action54::<>(__sym0);
+        let __nt = super::__action54::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 10)
     }
     fn __reduce26<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2742,69 +3124,14 @@ mod __parse__Actions {
         // BoxBody =  => ActionFn(67);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action67::<>(&__start, &__end);
+        let __nt = super::__action67::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (0, 11)
     }
-    fn __reduce27<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // BoxBody = ParticipantStatement, Newlines1, BoxBody => ActionFn(68);
-        assert!(__symbols.len() >= 3);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant8(__symbols);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym2.2.clone();
-        let __nt = super::__action68::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (3, 11)
-    }
-    fn __reduce28<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // BoxStatement = "box", RestOfLine, Newlines1, BoxBody, "end" => ActionFn(66);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant0(__symbols);
-        let __sym3 = __pop_Variant4(__symbols);
-        let __sym2 = __pop_Variant8(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action66::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (5, 12)
-    }
-    fn __reduce29<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // BreakBlock = "break", RestOfLine, Doc, "end" => ActionFn(65);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action65::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 13)
-    }
     fn __reduce30<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2812,55 +3139,18 @@ mod __parse__Actions {
     {
         // CreateStatement = "create", ParticipantDecl => ActionFn(45);
         assert!(__symbols.len() >= 2);
-        let __sym1 = __pop_Variant9(__symbols);
+        let __sym1 = __pop_Variant10(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action45::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action45::<>(arena, control, __sym0, __sym1);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (2, 14)
-    }
-    fn __reduce31<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // CriticalBlock = "critical", RestOfLine, Doc, "end" => ActionFn(104);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action104::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 15)
-    }
-    fn __reduce32<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // CriticalBlock = "critical", RestOfLine, Doc, CriticalOptionBranch+, "end" => ActionFn(105);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant0(__symbols);
-        let __sym3 = __pop_Variant7(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action105::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (5, 15)
     }
     fn __reduce33<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2873,12 +3163,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action64::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action64::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (3, 16)
     }
     fn __reduce34<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2887,12 +3179,14 @@ mod __parse__Actions {
         // CriticalOptionBranch* =  => ActionFn(90);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action90::<>(&__start, &__end);
+        let __nt = super::__action90::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (0, 17)
     }
     fn __reduce35<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2902,12 +3196,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant7(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action91::<>(__sym0);
+        let __nt = super::__action91::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (1, 17)
     }
     fn __reduce36<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2917,12 +3213,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant6(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action100::<>(__sym0);
+        let __nt = super::__action100::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (1, 18)
     }
     fn __reduce37<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2934,12 +3232,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant7(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action101::<>(__sym0, __sym1);
+        let __nt = super::__action101::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (2, 18)
     }
     fn __reduce38<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2951,12 +3251,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action89::<>(__sym0, __sym1);
+        let __nt = super::__action89::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant5(__nt), __end));
         (2, 19)
     }
     fn __reduce39<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2968,12 +3270,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action46::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action46::<>(arena, control, __sym0, __sym1);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (2, 20)
     }
     fn __reduce40<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2986,12 +3290,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action72::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action72::<>(arena, control, __sym0, __sym1, __sym2);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 21)
     }
     fn __reduce41<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3000,12 +3306,14 @@ mod __parse__Actions {
         // Doc =  => ActionFn(26);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action26::<>(&__start, &__end);
+        let __nt = super::__action26::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (0, 22)
     }
     fn __reduce42<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3017,30 +3325,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action27::<>(__sym0, __sym1);
+        let __nt = super::__action27::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (2, 22)
     }
-    fn __reduce43<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Doc = Statement, Newline, Doc => ActionFn(28);
-        assert!(__symbols.len() >= 3);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant0(__symbols);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym2.2.clone();
-        let __nt = super::__action28::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (3, 22)
-    }
     fn __reduce44<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3053,12 +3345,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action70::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action70::<>(arena, control, __sym0, __sym1, __sym2);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 23)
     }
     fn __reduce45<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3071,31 +3365,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action69::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action69::<>(arena, control, __sym0, __sym1, __sym2);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 24)
-    }
-    fn __reduce46<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // LoopBlock = "loop", RestOfLine, Doc, "end" => ActionFn(55);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action55::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 25)
     }
     fn __reduce47<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3104,12 +3381,14 @@ mod __parse__Actions {
         // Newlines =  => ActionFn(6);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action6::<>(&__start, &__end);
-        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
+        let __nt = super::__action6::<>(arena, control, &__start, &__end);
+        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (0, 26)
     }
     fn __reduce48<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3117,16 +3396,18 @@ mod __parse__Actions {
     {
         // Newlines = Newline, Newlines => ActionFn(7);
         assert!(__symbols.len() >= 2);
-        let __sym1 = __pop_Variant8(__symbols);
+        let __sym1 = __pop_Variant9(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action7::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
+        let __nt = super::__action7::<>(arena, control, __sym0, __sym1);
+        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (2, 26)
     }
     fn __reduce49<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3134,16 +3415,18 @@ mod __parse__Actions {
     {
         // Newlines1 = Newline, Newlines => ActionFn(8);
         assert!(__symbols.len() >= 2);
-        let __sym1 = __pop_Variant8(__symbols);
+        let __sym1 = __pop_Variant9(__symbols);
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action8::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
+        let __nt = super::__action8::<>(arena, control, __sym0, __sym1);
+        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
         (2, 27)
     }
     fn __reduce50<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3157,12 +3440,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action79::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action79::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 28)
     }
     fn __reduce51<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3178,12 +3463,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym5.2.clone();
-        let __nt = super::__action80::<>(__sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action80::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (6, 28)
     }
     fn __reduce52<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3197,31 +3484,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action81::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action81::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 28)
-    }
-    fn __reduce53<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // OptBlock = "opt", RestOfLine, Doc, "end" => ActionFn(56);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action56::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 29)
     }
     fn __reduce54<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3234,12 +3504,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action62::<>(__sym0, __sym1, __sym2);
+        let __nt = super::__action62::<>(arena, control, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant6(__nt), __end));
         (3, 30)
     }
     fn __reduce55<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3248,12 +3520,14 @@ mod __parse__Actions {
         // ParAndBranch* =  => ActionFn(92);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action92::<>(&__start, &__end);
+        let __nt = super::__action92::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (0, 31)
     }
     fn __reduce56<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3263,12 +3537,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant7(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action93::<>(__sym0);
+        let __nt = super::__action93::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (1, 31)
     }
     fn __reduce57<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3278,12 +3554,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant6(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action98::<>(__sym0);
+        let __nt = super::__action98::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (1, 32)
     }
     fn __reduce58<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3295,70 +3573,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant7(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action99::<>(__sym0, __sym1);
+        let __nt = super::__action99::<>(arena, control, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant7(__nt), __end));
         (2, 32)
     }
-    fn __reduce59<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // ParBlock = "par", RestOfLine, Doc, "end" => ActionFn(106);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action106::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 33)
-    }
-    fn __reduce60<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // ParBlock = "par", RestOfLine, Doc, ParAndBranch+, "end" => ActionFn(107);
-        assert!(__symbols.len() >= 5);
-        let __sym4 = __pop_Variant0(__symbols);
-        let __sym3 = __pop_Variant7(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym4.2.clone();
-        let __nt = super::__action107::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (5, 33)
-    }
-    fn __reduce61<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // ParOverBlock = "par_over", RestOfLine, Doc, "end" => ActionFn(61);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action61::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 34)
-    }
     fn __reduce62<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3372,12 +3594,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action36::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action36::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (4, 35)
     }
     fn __reduce63<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3392,12 +3616,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action37::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action37::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (5, 35)
     }
     fn __reduce64<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3410,12 +3636,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action38::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action38::<>(arena, control, __sym0, __sym1, __sym2);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (3, 35)
     }
     fn __reduce65<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3427,12 +3655,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action39::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action39::<>(arena, control, __sym0, __sym1);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (2, 35)
     }
     fn __reduce66<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3446,12 +3676,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action40::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action40::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (4, 35)
     }
     fn __reduce67<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3466,12 +3698,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action41::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action41::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (5, 35)
     }
     fn __reduce68<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3484,12 +3718,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action42::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action42::<>(arena, control, __sym0, __sym1, __sym2);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (3, 35)
     }
     fn __reduce69<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3501,27 +3737,31 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action43::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant9(__nt), __end));
+        let __nt = super::__action43::<>(arena, control, __sym0, __sym1);
+        __symbols.push((__start, __Symbol::Variant10(__nt), __end));
         (2, 35)
     }
     fn __reduce70<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
         // ParticipantStatement = ParticipantDecl => ActionFn(44);
-        let __sym0 = __pop_Variant9(__symbols);
+        let __sym0 = __pop_Variant10(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action44::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action44::<>(arena, control, __sym0);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (1, 36)
     }
     fn __reduce71<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3531,12 +3771,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action82::<>(__sym0);
+        let __nt = super::__action82::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (1, 37)
     }
     fn __reduce72<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3546,12 +3788,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action83::<>(__sym0);
+        let __nt = super::__action83::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant3(__nt), __end));
         (1, 37)
     }
     fn __reduce73<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3564,31 +3808,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action71::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action71::<>(arena, control, __sym0, __sym1, __sym2);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (3, 38)
-    }
-    fn __reduce74<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // RectBlock = "rect", RestOfLine, Doc, "end" => ActionFn(57);
-        assert!(__symbols.len() >= 4);
-        let __sym3 = __pop_Variant0(__symbols);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant2(__symbols);
-        let __sym0 = __pop_Variant0(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym3.2.clone();
-        let __nt = super::__action57::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (4, 39)
     }
     fn __reduce75<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3603,12 +3830,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action73::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action73::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
     fn __reduce76<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3623,12 +3852,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action74::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action74::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
     fn __reduce77<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3643,12 +3874,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action75::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action75::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
     fn __reduce78<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3663,12 +3896,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action76::<>(__sym0, __sym1, __sym2, __sym3, __sym4);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action76::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (5, 40)
     }
     fn __reduce79<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3684,12 +3919,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym5.2.clone();
-        let __nt = super::__action77::<>(__sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action77::<>(arena, control, __sym0, __sym1, __sym2, __sym3, __sym4, __sym5);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (6, 40)
     }
     fn __reduce80<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3703,57 +3940,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action78::<>(__sym0, __sym1, __sym2, __sym3);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
+        let __nt = super::__action78::<>(arena, control, __sym0, __sym1, __sym2, __sym3);
+        __symbols.push((__start, __Symbol::Variant8(__nt), __end));
         (4, 40)
-    }
-    fn __reduce81<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = ParticipantStatement => ActionFn(9);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action9::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce82<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = CreateStatement => ActionFn(10);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action10::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce83<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = DestroyStatement => ActionFn(11);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action11::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
     }
     fn __reduce84<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3763,42 +3957,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action12::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce85<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = SignalStatement => ActionFn(13);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action13::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce86<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = NoteStatement => ActionFn(14);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action14::<>(__sym0);
+        let __nt = super::__action12::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 41)
     }
     fn __reduce87<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -3808,195 +3974,31 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action15::<>(__sym0);
+        let __nt = super::__action15::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 41)
-    }
-    fn __reduce88<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = LinksStatement => ActionFn(16);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action16::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce89<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = LinkStatement => ActionFn(17);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action17::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce90<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = PropertiesStatement => ActionFn(18);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action18::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce91<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = DetailsStatement => ActionFn(19);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action19::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce92<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = TitleStatement => ActionFn(20);
-        let __sym0 = __pop_Variant2(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action20::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce93<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = AccTitleStatement => ActionFn(21);
-        let __sym0 = __pop_Variant2(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action21::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce94<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = AccDescrStatement => ActionFn(22);
-        let __sym0 = __pop_Variant2(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action22::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce95<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = AutonumberStatement => ActionFn(23);
-        let __sym0 = __pop_Variant5(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action23::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce96<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = ActivateStatement => ActionFn(24);
-        let __sym0 = __pop_Variant5(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action24::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce97<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statement = DeactivateStatement => ActionFn(25);
-        let __sym0 = __pop_Variant5(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym0.2.clone();
-        let __nt = super::__action25::<>(__sym0);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (1, 41)
-    }
-    fn __reduce98<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // StatementRest = Newlines1, Statement, StatementRest => ActionFn(4);
-        assert!(__symbols.len() >= 3);
-        let __sym2 = __pop_Variant4(__symbols);
-        let __sym1 = __pop_Variant4(__symbols);
-        let __sym0 = __pop_Variant8(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym2.2.clone();
-        let __nt = super::__action4::<>(__sym0, __sym1, __sym2);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (3, 42)
     }
     fn __reduce99<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
     ) -> (usize, usize)
     {
         // StatementRest = Newlines => ActionFn(5);
-        let __sym0 = __pop_Variant8(__symbols);
+        let __sym0 = __pop_Variant9(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action5::<>(__sym0);
+        let __nt = super::__action5::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (1, 42)
     }
     fn __reduce100<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -4005,29 +4007,14 @@ mod __parse__Actions {
         // Statements =  => ActionFn(2);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action2::<>(&__start, &__end);
+        let __nt = super::__action2::<>(arena, control, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant4(__nt), __end));
         (0, 43)
     }
-    fn __reduce101<
-    >(
-        __lookahead_start: Option<&usize>,
-        __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
-        _: core::marker::PhantomData<()>,
-    ) -> (usize, usize)
-    {
-        // Statements = Statement, StatementRest => ActionFn(3);
-        assert!(__symbols.len() >= 2);
-        let __sym1 = __pop_Variant4(__symbols);
-        let __sym0 = __pop_Variant4(__symbols);
-        let __start = __sym0.0.clone();
-        let __end = __sym1.2.clone();
-        let __nt = super::__action3::<>(__sym0, __sym1);
-        __symbols.push((__start, __Symbol::Variant4(__nt), __end));
-        (2, 43)
-    }
     fn __reduce102<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -4037,12 +4024,14 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action29::<>(__sym0);
+        let __nt = super::__action29::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 44)
     }
     fn __reduce103<
     >(
+        arena: &mut ActionArena,
+        control: &crate::OperationControl,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -4052,7 +4041,7 @@ mod __parse__Actions {
         let __sym0 = __pop_Variant2(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action30::<>(__sym0);
+        let __nt = super::__action30::<>(arena, control, __sym0);
         __symbols.push((__start, __Symbol::Variant2(__nt), __end));
         (1, 44)
     }
@@ -4060,356 +4049,455 @@ mod __parse__Actions {
 #[allow(unused_imports)]
 pub use self::__parse__Actions::ActionsParser;
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action0<
 >(
-    (_, __0, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, __0, _): (usize, ActionList, usize),
+) -> ActionList
 {
     __0
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action1<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _n, _): (usize, (), usize),
     (_, _, _): (usize, Tok, usize),
     (_, _n2, _): (usize, (), usize),
-    (_, a, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    (_, a, _): (usize, ActionList, usize),
+) -> ActionList
 {
     a
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action2<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> Vec<Action>
+) -> ActionList
 {
-    Vec::new()
+    ActionList::default()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action3<
 >(
-    (_, s, _): (usize, Vec<Action>, usize),
-    (_, rest, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, s, _): (usize, ActionList, usize),
+    (_, rest, _): (usize, ActionList, usize),
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = s;
-    v.extend(rest);
-    v
-  }
+    arena.concat(s, rest, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action4<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _n, _): (usize, (), usize),
-    (_, s, _): (usize, Vec<Action>, usize),
-    (_, rest, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    (_, s, _): (usize, ActionList, usize),
+    (_, rest, _): (usize, ActionList, usize),
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = s;
-    v.extend(rest);
-    v
-  }
+    arena.concat(s, rest, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action5<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, (), usize),
-) -> Vec<Action>
+) -> ActionList
 {
-    Vec::new()
+    ActionList::default()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action6<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
 )
 {
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action7<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, Tok, usize),
     (_, __1, _): (usize, (), usize),
 )
 {
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action8<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, Tok, usize),
     (_, __1, _): (usize, (), usize),
 )
 {
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action9<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, p, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    p
+    arena.push_actions(p, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action10<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, c, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    c
+    arena.push_actions(c, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action11<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, d, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    d
+    arena.push_actions(d, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action12<
 >(
-    (_, b, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, b, _): (usize, ActionList, usize),
+) -> ActionList
 {
     b
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action13<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, s, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    s
+    arena.push_actions(s, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action14<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, n, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    n
+    arena.push_actions(n, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action15<
 >(
-    (_, b, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, b, _): (usize, ActionList, usize),
+) -> ActionList
 {
     b
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action16<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, l, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    l
+    arena.push_actions(l, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action17<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, l, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    l
+    arena.push_actions(l, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action18<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, p, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    p
+    arena.push_actions(p, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action19<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, d, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    d
+    arena.push_actions(d, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action20<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, t, _): (usize, String, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    vec![Action::SetTitle(t)]
+    arena.push_actions(vec![Action::SetTitle(t)], control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action21<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, a, _): (usize, String, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    vec![Action::SetAccTitle(a)]
+    arena.push_actions(vec![Action::SetAccTitle(a)], control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action22<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, d, _): (usize, String, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    vec![Action::SetAccDescr(d)]
+    arena.push_actions(vec![Action::SetAccDescr(d)], control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action23<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, au, _): (usize, Action, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    vec![au]
+    arena.push_actions(vec![au], control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action24<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, ac, _): (usize, Action, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    vec![ac]
+    arena.push_actions(vec![ac], control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action25<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, de, _): (usize, Action, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    vec![de]
+    arena.push_actions(vec![de], control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action26<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> Vec<Action>
+) -> ActionList
 {
-    Vec::new()
+    ActionList::default()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action27<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
-    (_, rest, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    (_, rest, _): (usize, ActionList, usize),
+) -> ActionList
 {
     rest
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action28<
 >(
-    (_, s, _): (usize, Vec<Action>, usize),
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, s, _): (usize, ActionList, usize),
     (_, _, _): (usize, Tok, usize),
-    (_, rest, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    (_, rest, _): (usize, ActionList, usize),
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = s;
-    v.extend(rest);
-    v
-  }
+    arena.concat(s, rest, control)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action29<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, t, _): (usize, String, usize),
 ) -> String
 {
     t
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action30<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, t, _): (usize, String, usize),
 ) -> String
 {
     t
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action31<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, t, _): (usize, String, usize),
 ) -> String
 {
     t
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action32<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, t, _): (usize, String, usize),
 ) -> String
 {
     t
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action33<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, t, _): (usize, String, usize),
 ) -> String
 {
     t
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action34<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, a, _): (usize, String, usize),
 ) -> String
 {
     a
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action35<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, n, _): (usize, f64, usize),
 ) -> String
 {
     n.to_string()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action36<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
@@ -4419,9 +4507,12 @@ fn __action36<
     (id, Some(desc), "participant".to_string(), None)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action37<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, cfg, _): (usize, String, usize),
@@ -4432,9 +4523,12 @@ fn __action37<
     (id, Some(desc), "participant".to_string(), Some(cfg))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action38<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, cfg, _): (usize, String, usize),
@@ -4443,9 +4537,12 @@ fn __action38<
     (id, None, "participant".to_string(), Some(cfg))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action39<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
 ) -> (String, Option<String>, String, Option<String>)
@@ -4453,9 +4550,12 @@ fn __action39<
     (id, None, "participant".to_string(), None)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action40<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
@@ -4465,9 +4565,12 @@ fn __action40<
     (id, Some(desc), "actor".to_string(), None)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action41<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, cfg, _): (usize, String, usize),
@@ -4478,9 +4581,12 @@ fn __action41<
     (id, Some(desc), "actor".to_string(), Some(cfg))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action42<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
     (_, cfg, _): (usize, String, usize),
@@ -4489,9 +4595,12 @@ fn __action42<
     (id, None, "actor".to_string(), Some(cfg))
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action43<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, id, _): (usize, String, usize),
 ) -> (String, Option<String>, String, Option<String>)
@@ -4499,9 +4608,12 @@ fn __action43<
     (id, None, "actor".to_string(), None)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action44<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, d, _): (usize, (String, Option<String>, String, Option<String>), usize),
 ) -> Vec<Action>
 {
@@ -4510,9 +4622,12 @@ fn __action44<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action45<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, (String, Option<String>, String, Option<String>), usize),
 ) -> Vec<Action>
@@ -4522,9 +4637,12 @@ fn __action45<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action46<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
 ) -> Vec<Action>
@@ -4532,308 +4650,361 @@ fn __action46<
     vec![Action::DestroyParticipant { id: a }]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action47<
 >(
-    (_, l, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, l, _): (usize, ActionList, usize),
+) -> ActionList
 {
     l
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action48<
 >(
-    (_, o, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, o, _): (usize, ActionList, usize),
+) -> ActionList
 {
     o
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action49<
 >(
-    (_, a, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, a, _): (usize, ActionList, usize),
+) -> ActionList
 {
     a
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action50<
 >(
-    (_, p, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, p, _): (usize, ActionList, usize),
+) -> ActionList
 {
     p
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action51<
 >(
-    (_, p, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, p, _): (usize, ActionList, usize),
+) -> ActionList
 {
     p
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action52<
 >(
-    (_, c, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, c, _): (usize, ActionList, usize),
+) -> ActionList
 {
     c
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action53<
 >(
-    (_, b, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, b, _): (usize, ActionList, usize),
+) -> ActionList
 {
     b
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action54<
 >(
-    (_, r, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, r, _): (usize, ActionList, usize),
+) -> ActionList
 {
     r
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action55<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
+    (_, body, _): (usize, ActionList, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_LOOP_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_LOOP_END, text: None });
-    v
-  }
+    arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_LOOP_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_LOOP_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action56<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
+    (_, body, _): (usize, ActionList, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_OPT_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_OPT_END, text: None });
-    v
-  }
+    arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_OPT_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_OPT_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action57<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
+    (_, body, _): (usize, ActionList, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_RECT_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_RECT_END, text: None });
-    v
-  }
+    arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_RECT_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_RECT_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action58<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
-    (_, else_branches, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
+    (_, body, _): (usize, ActionList, usize),
+    (_, else_branches, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_ALT_START, text: Some(h) }];
-    v.extend(body);
-    for (label, doc) in else_branches {
-      v.push(Action::ControlSignal { signal_type: LINETYPE_ALT_ELSE, text: Some(label) });
-      v.extend(doc);
-    }
-    v.push(Action::ControlSignal { signal_type: LINETYPE_ALT_END, text: None });
-    v
-  }
+    arena.branch_block(
+    Action::ControlSignal { signal_type: LINETYPE_ALT_START, text: Some(h) },
+    body, else_branches, LINETYPE_ALT_ELSE,
+    Action::ControlSignal { signal_type: LINETYPE_ALT_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action59<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
-) -> (String, Vec<Action>)
+    (_, body, _): (usize, ActionList, usize),
+) -> (String, ActionList)
 {
     (h, body)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action60<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
-    (_, branches, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
+    (_, body, _): (usize, ActionList, usize),
+    (_, branches, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_PAR_START, text: Some(h) }];
-    v.extend(body);
-    for (label, doc) in branches {
-      v.push(Action::ControlSignal { signal_type: LINETYPE_PAR_AND, text: Some(label) });
-      v.extend(doc);
-    }
-    v.push(Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None });
-    v
-  }
+    arena.branch_block(
+    Action::ControlSignal { signal_type: LINETYPE_PAR_START, text: Some(h) },
+    body, branches, LINETYPE_PAR_AND,
+    Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action61<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
+    (_, body, _): (usize, ActionList, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_PAR_OVER_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None });
-    v
-  }
+    arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_PAR_OVER_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_PAR_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action62<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
-) -> (String, Vec<Action>)
+    (_, body, _): (usize, ActionList, usize),
+) -> (String, ActionList)
 {
     (h, body)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action63<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
-    (_, branches, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
+    (_, body, _): (usize, ActionList, usize),
+    (_, branches, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_CRITICAL_START, text: Some(h) }];
-    v.extend(body);
-    for (label, doc) in branches {
-      v.push(Action::ControlSignal { signal_type: LINETYPE_CRITICAL_OPTION, text: Some(label) });
-      v.extend(doc);
-    }
-    v.push(Action::ControlSignal { signal_type: LINETYPE_CRITICAL_END, text: None });
-    v
-  }
+    arena.branch_block(
+    Action::ControlSignal { signal_type: LINETYPE_CRITICAL_START, text: Some(h) },
+    body, branches, LINETYPE_CRITICAL_OPTION,
+    Action::ControlSignal { signal_type: LINETYPE_CRITICAL_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action64<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
-) -> (String, Vec<Action>)
+    (_, body, _): (usize, ActionList, usize),
+) -> (String, ActionList)
 {
     (h, body)
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action65<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
-    (_, body, _): (usize, Vec<Action>, usize),
+    (_, body, _): (usize, ActionList, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::ControlSignal { signal_type: LINETYPE_BREAK_START, text: Some(h) }];
-    v.extend(body);
-    v.push(Action::ControlSignal { signal_type: LINETYPE_BREAK_END, text: None });
-    v
-  }
+    arena.wrap(
+    Action::ControlSignal { signal_type: LINETYPE_BREAK_START, text: Some(h) },
+    body,
+    Action::ControlSignal { signal_type: LINETYPE_BREAK_END, text: None },
+    control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action66<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, String, usize),
     (_, _n, _): (usize, (), usize),
-    (_, inner, _): (usize, Vec<Action>, usize),
+    (_, inner, _): (usize, ActionList, usize),
     (_, _, _): (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
-    {
-    let mut v = vec![Action::BoxStart { header: h }];
-    v.extend(inner);
-    v.push(Action::BoxEnd);
-    v
-  }
+    arena.wrap(
+    Action::BoxStart { header: h }, inner, Action::BoxEnd, control,
+  )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action67<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> Vec<Action>
+) -> ActionList
 {
-    Vec::new()
+    ActionList::default()
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action68<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, p, _): (usize, Vec<Action>, usize),
     (_, _n, _): (usize, (), usize),
-    (_, rest, _): (usize, Vec<Action>, usize),
-) -> Vec<Action>
+    (_, rest, _): (usize, ActionList, usize),
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     {
-    let mut v = p;
-    v.extend(rest);
-    v
+    let participant = arena.push_actions(p, control)?;
+    arena.concat(participant, rest, control)
   }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action69<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
     (_, t, _): (usize, String, usize),
@@ -4845,9 +5016,12 @@ fn __action69<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action70<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
     (_, t, _): (usize, String, usize),
@@ -4859,9 +5033,12 @@ fn __action70<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action71<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
     (_, t, _): (usize, String, usize),
@@ -4873,9 +5050,12 @@ fn __action71<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action72<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
     (_, t, _): (usize, String, usize),
@@ -4887,9 +5067,12 @@ fn __action72<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action73<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, from, _): (usize, String, usize),
     (_, ty, _): (usize, i32, usize),
     (_, _, _): (usize, Tok, usize),
@@ -4905,9 +5088,12 @@ fn __action73<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action74<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, from, _): (usize, String, usize),
     (_, ty, _): (usize, i32, usize),
     (_, _, _): (usize, Tok, usize),
@@ -4923,9 +5109,12 @@ fn __action74<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action75<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, from, _): (usize, String, usize),
     (_, ty, _): (usize, i32, usize),
     (_, _, _): (usize, Tok, usize),
@@ -4948,9 +5137,12 @@ fn __action75<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action76<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, from, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, ty, _): (usize, i32, usize),
@@ -4973,9 +5165,12 @@ fn __action76<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action77<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, from, _): (usize, String, usize),
     (_, _, _): (usize, Tok, usize),
     (_, ty, _): (usize, i32, usize),
@@ -5000,9 +5195,12 @@ fn __action77<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action78<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, from, _): (usize, String, usize),
     (_, ty, _): (usize, i32, usize),
     (_, to, _): (usize, String, usize),
@@ -5016,9 +5214,12 @@ fn __action78<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action79<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, p, _): (usize, i32, usize),
     (_, a, _): (usize, String, usize),
@@ -5031,9 +5232,12 @@ fn __action79<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action80<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
@@ -5049,9 +5253,12 @@ fn __action80<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action81<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
@@ -5064,27 +5271,36 @@ fn __action81<
   ]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action82<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, Tok, usize),
 ) -> i32
 {
     0
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action83<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, Tok, usize),
 ) -> i32
 {
     1
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action84<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, f64, usize),
     (_, b, _): (usize, f64, usize),
@@ -5093,9 +5309,12 @@ fn __action84<
     Action::Autonumber { start: Some(a), step: Some(b), visible: true }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action85<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, f64, usize),
 ) -> Action
@@ -5103,9 +5322,12 @@ fn __action85<
     Action::Autonumber { start: Some(a), step: Some(1.0), visible: true }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action86<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, Tok, usize),
     (_, __1, _): (usize, Tok, usize),
 ) -> Action
@@ -5113,18 +5335,24 @@ fn __action86<
     Action::Autonumber { start: None, step: None, visible: false }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action87<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, __0, _): (usize, Tok, usize),
 ) -> Action
 {
     Action::Autonumber { start: None, step: None, visible: true }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action88<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
 ) -> Action
@@ -5132,9 +5360,12 @@ fn __action88<
     Action::ActiveStart { actor: a }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action89<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     (_, _, _): (usize, Tok, usize),
     (_, a, _): (usize, String, usize),
 ) -> Action
@@ -5142,138 +5373,181 @@ fn __action89<
     Action::ActiveEnd { actor: a }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action90<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     alloc::vec![]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action91<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, v, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     v
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action92<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     alloc::vec![]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action93<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, v, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     v
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action94<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __lookbehind: &usize,
     __lookahead: &usize,
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     alloc::vec![]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action95<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, v, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     v
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action96<
 >(
-    (_, __0, _): (usize, (String, Vec<Action>), usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, __0, _): (usize, (String, ActionList), usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     alloc::vec![__0]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action97<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
-    (_, e, _): (usize, (String, Vec<Action>), usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, v, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
+    (_, e, _): (usize, (String, ActionList), usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     { let mut v = v; v.push(e); v }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action98<
 >(
-    (_, __0, _): (usize, (String, Vec<Action>), usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, __0, _): (usize, (String, ActionList), usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     alloc::vec![__0]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action99<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
-    (_, e, _): (usize, (String, Vec<Action>), usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, v, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
+    (_, e, _): (usize, (String, ActionList), usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     { let mut v = v; v.push(e); v }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action100<
 >(
-    (_, __0, _): (usize, (String, Vec<Action>), usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, __0, _): (usize, (String, ActionList), usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     alloc::vec![__0]
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes, clippy::just_underscores_and_digits)]
 fn __action101<
 >(
-    (_, v, _): (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
-    (_, e, _): (usize, (String, Vec<Action>), usize),
-) -> alloc::vec::Vec<(String, Vec<Action>)>
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
+    (_, v, _): (usize, alloc::vec::Vec<(String, ActionList)>, usize),
+    (_, e, _): (usize, (String, ActionList), usize),
+) -> alloc::vec::Vec<(String, ActionList)>
 {
     { let mut v = v; v.push(e); v }
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action102<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Vec<Action>, usize),
+    __2: (usize, ActionList, usize),
     __3: (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     let __start0 = __2.2;
     let __end0 = __3.0;
     let __temp0 = __action94(
+        arena,
+        control,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action58(
+        arena,
+        control,
         __0,
         __1,
         __2,
@@ -5282,24 +5556,31 @@ fn __action102<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action103<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Vec<Action>, usize),
-    __3: (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
+    __2: (usize, ActionList, usize),
+    __3: (usize, alloc::vec::Vec<(String, ActionList)>, usize),
     __4: (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     let __start0 = __3.0;
     let __end0 = __3.2;
     let __temp0 = __action95(
+        arena,
+        control,
         __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action58(
+        arena,
+        control,
         __0,
         __1,
         __2,
@@ -5308,24 +5589,31 @@ fn __action103<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action104<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Vec<Action>, usize),
+    __2: (usize, ActionList, usize),
     __3: (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     let __start0 = __2.2;
     let __end0 = __3.0;
     let __temp0 = __action90(
+        arena,
+        control,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action63(
+        arena,
+        control,
         __0,
         __1,
         __2,
@@ -5334,24 +5622,31 @@ fn __action104<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action105<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Vec<Action>, usize),
-    __3: (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
+    __2: (usize, ActionList, usize),
+    __3: (usize, alloc::vec::Vec<(String, ActionList)>, usize),
     __4: (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     let __start0 = __3.0;
     let __end0 = __3.2;
     let __temp0 = __action91(
+        arena,
+        control,
         __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action63(
+        arena,
+        control,
         __0,
         __1,
         __2,
@@ -5360,24 +5655,31 @@ fn __action105<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action106<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Vec<Action>, usize),
+    __2: (usize, ActionList, usize),
     __3: (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     let __start0 = __2.2;
     let __end0 = __3.0;
     let __temp0 = __action92(
+        arena,
+        control,
         &__start0,
         &__end0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action60(
+        arena,
+        control,
         __0,
         __1,
         __2,
@@ -5386,24 +5688,31 @@ fn __action106<
     )
 }
 
+#[allow(unused_variables)]
 #[allow(clippy::too_many_arguments, clippy::needless_lifetimes,
     clippy::just_underscores_and_digits)]
 fn __action107<
 >(
+    arena: &mut ActionArena,
+    control: &crate::OperationControl,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
-    __2: (usize, Vec<Action>, usize),
-    __3: (usize, alloc::vec::Vec<(String, Vec<Action>)>, usize),
+    __2: (usize, ActionList, usize),
+    __3: (usize, alloc::vec::Vec<(String, ActionList)>, usize),
     __4: (usize, Tok, usize),
-) -> Vec<Action>
+) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::sequence::LexError>>
 {
     let __start0 = __3.0;
     let __end0 = __3.2;
     let __temp0 = __action93(
+        arena,
+        control,
         __3,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action60(
+        arena,
+        control,
         __0,
         __1,
         __2,

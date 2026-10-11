@@ -345,25 +345,35 @@ enum C4SemanticStatement {
     SetTitle(String),
     SetAccDescription(String),
     Macro(SpannedMacroStmt),
-    Boundary {
-        declaration: SpannedMacroStmt,
-        statements: Vec<C4SemanticStatement>,
-    },
+    Boundary(C4BoundaryId),
+}
+
+#[derive(Debug, Clone, Copy)]
+struct C4BoundaryId(usize);
+
+#[derive(Debug)]
+struct C4BoundaryRecord {
+    declaration: SpannedMacroStmt,
+    statements: Vec<C4SemanticStatement>,
 }
 
 #[derive(Debug)]
 struct C4BoundaryFrame {
-    declaration: SpannedMacroStmt,
-    statements: Vec<C4SemanticStatement>,
+    boundary: C4BoundaryId,
     has_diagram_statement: bool,
     is_valid: bool,
 }
 
 impl C4BoundaryFrame {
-    fn new(declaration: SpannedMacroStmt) -> Self {
-        Self {
+    fn new(declaration: SpannedMacroStmt, records: &mut Vec<C4BoundaryRecord>) -> Self {
+        let boundary = C4BoundaryId(records.len());
+        // Incomplete and completed boundaries share flat ownership from construction onward.
+        records.push(C4BoundaryRecord {
             declaration,
             statements: Vec::new(),
+        });
+        Self {
+            boundary,
             has_diagram_statement: false,
             is_valid: true,
         }
@@ -373,12 +383,13 @@ impl C4BoundaryFrame {
 fn push_c4_semantic_statement(
     root: &mut Vec<C4SemanticStatement>,
     boundaries: &mut [C4BoundaryFrame],
+    records: &mut [C4BoundaryRecord],
     statement: C4SemanticStatement,
     is_diagram_statement: bool,
 ) {
     if let Some(boundary) = boundaries.last_mut() {
         boundary.has_diagram_statement |= is_diagram_statement;
-        boundary.statements.push(statement);
+        records[boundary.boundary.0].statements.push(statement);
     } else {
         root.push(statement);
     }
@@ -1911,6 +1922,7 @@ fn parse_c4_semantic_source(
     let mut editor_facts = EditorSemanticFacts::new();
     let mut issues = Vec::new();
     let mut semantic_statements = Vec::new();
+    let mut boundary_records = Vec::new();
     let mut boundary_frames = Vec::new();
     let mut pending_boundary = None;
     let mut saw_statement_after_header = false;
@@ -1965,7 +1977,7 @@ fn parse_c4_semantic_source(
         let statement_start = line_start + raw.len() - raw.trim_start().len();
         if let Some(declaration) = pending_boundary.take() {
             if t == "{" {
-                boundary_frames.push(C4BoundaryFrame::new(declaration));
+                boundary_frames.push(C4BoundaryFrame::new(declaration, &mut boundary_records));
                 continue;
             }
             issues.push(c4_parse_issue(
@@ -2008,10 +2020,8 @@ fn parse_c4_semantic_source(
             push_c4_semantic_statement(
                 &mut semantic_statements,
                 &mut boundary_frames,
-                C4SemanticStatement::Boundary {
-                    declaration: frame.declaration,
-                    statements: frame.statements,
-                },
+                &mut boundary_records,
+                C4SemanticStatement::Boundary(frame.boundary),
                 true,
             );
             continue;
@@ -2022,6 +2032,7 @@ fn parse_c4_semantic_source(
                 push_c4_semantic_statement(
                     &mut semantic_statements,
                     &mut boundary_frames,
+                    &mut boundary_records,
                     C4SemanticStatement::SetTitle(title.text.clone()),
                     false,
                 );
@@ -2042,6 +2053,7 @@ fn parse_c4_semantic_source(
                 push_c4_semantic_statement(
                     &mut semantic_statements,
                     &mut boundary_frames,
+                    &mut boundary_records,
                     C4SemanticStatement::SetTitle(acc_title.text.clone()),
                     false,
                 );
@@ -2061,6 +2073,7 @@ fn parse_c4_semantic_source(
                 push_c4_semantic_statement(
                     &mut semantic_statements,
                     &mut boundary_frames,
+                    &mut boundary_records,
                     C4SemanticStatement::SetAccDescription(acc_description.text.clone()),
                     false,
                 );
@@ -2084,6 +2097,7 @@ fn parse_c4_semantic_source(
                 push_c4_semantic_statement(
                     &mut semantic_statements,
                     &mut boundary_frames,
+                    &mut boundary_records,
                     C4SemanticStatement::SetAccDescription(acc_descr.value.text.clone()),
                     false,
                 );
@@ -2158,7 +2172,7 @@ fn parse_c4_semantic_source(
         }
         if is_boundary_macro(&stmt.name) {
             if stmt.has_lbrace {
-                boundary_frames.push(C4BoundaryFrame::new(stmt));
+                boundary_frames.push(C4BoundaryFrame::new(stmt, &mut boundary_records));
             } else {
                 pending_boundary = Some(stmt);
             }
@@ -2166,6 +2180,7 @@ fn parse_c4_semantic_source(
             push_c4_semantic_statement(
                 &mut semantic_statements,
                 &mut boundary_frames,
+                &mut boundary_records,
                 C4SemanticStatement::Macro(stmt),
                 true,
             );
@@ -2210,6 +2225,7 @@ fn parse_c4_semantic_source(
     apply_c4_semantic_statements(
         &mut db,
         &semantic_statements,
+        &boundary_records,
         "global",
         meta,
         &mut issues,
@@ -2227,6 +2243,7 @@ fn parse_c4_semantic_source(
 fn apply_c4_semantic_statements(
     db: &mut C4Db,
     statements: &[C4SemanticStatement],
+    boundaries: &[C4BoundaryRecord],
     parent_boundary: &str,
     meta: &ParseMetadata,
     issues: &mut Vec<C4ParseIssue>,
@@ -2244,12 +2261,11 @@ fn apply_c4_semantic_statements(
         parent_boundary: parent_boundary.to_string(),
     }];
     while let Some(frame) = frames.last_mut() {
+        control.checkpoint()?;
         if frame.next_statement == frame.statements.len() {
             frames.pop();
             continue;
         }
-
-        control.checkpoint()?;
         let statement = &frame.statements[frame.next_statement];
         frame.next_statement += 1;
         let parent_boundary = frame.parent_boundary.clone();
@@ -2265,27 +2281,30 @@ fn apply_c4_semantic_statements(
                     issues.push(c4_parse_issue(error, statement.span));
                 }
             }
-            C4SemanticStatement::Boundary {
-                declaration,
-                statements,
-            } => match apply_c4_macro(db, declaration, meta, &parent_boundary) {
-                Ok(Some(alias)) => {
-                    frames.push(ReplayFrame {
-                        statements,
-                        next_statement: 0,
-                        parent_boundary: alias,
-                    });
-                }
-                Ok(None) => issues.push(c4_parse_issue(
-                    Error::diagram_parse_exact(
-                        meta.diagram_type.clone(),
-                        "expected C4 boundary declaration".to_string(),
+            C4SemanticStatement::Boundary(boundary) => {
+                let C4BoundaryRecord {
+                    declaration,
+                    statements,
+                } = &boundaries[boundary.0];
+                match apply_c4_macro(db, declaration, meta, &parent_boundary) {
+                    Ok(Some(alias)) => {
+                        frames.push(ReplayFrame {
+                            statements,
+                            next_statement: 0,
+                            parent_boundary: alias,
+                        });
+                    }
+                    Ok(None) => issues.push(c4_parse_issue(
+                        Error::diagram_parse_exact(
+                            meta.diagram_type.clone(),
+                            "expected C4 boundary declaration".to_string(),
+                            declaration.span,
+                        ),
                         declaration.span,
-                    ),
-                    declaration.span,
-                )),
-                Err(error) => issues.push(c4_parse_issue(error, declaration.span)),
-            },
+                    )),
+                    Err(error) => issues.push(c4_parse_issue(error, declaration.span)),
+                }
+            }
         }
     }
     Ok(())
@@ -2444,7 +2463,7 @@ mod tests {
     use futures::executor::block_on;
     use serde_json::json;
 
-    fn parse(text: &str) -> Value {
+    fn parse(text: &str) -> crate::ManagedSemanticJson {
         let engine = Engine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
@@ -2477,6 +2496,219 @@ mod tests {
             config: MermaidConfig::empty_object(),
             effective_config: MermaidConfig::empty_object(),
             title: None,
+        }
+    }
+
+    fn boundary_chain(depth: usize) -> String {
+        let mut source = String::from("C4Context\n");
+        for level in 0..depth {
+            source.push_str(&format!("Boundary(b{level}, \"B{level}\") {{\n"));
+        }
+        source.push_str("System(leaf, \"Leaf\")\n");
+        for _ in 0..depth {
+            source.push_str("}\n");
+        }
+        source
+    }
+
+    #[test]
+    fn c4_cancellation_during_boundary_closure_releases_partial_fragments() {
+        std::thread::Builder::new()
+            .name("c4-deep-closure-cancellation".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                const DEPTH: usize = 15_000;
+                let source = boundary_chain(DEPTH);
+                let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+                // Construction entry/header use three checkpoints; each macro uses two. Cancel
+                // halfway through the closers, after completed inner boundaries belong to an
+                // open frame. Nextest isolates this named unit in its own OS subprocess.
+                control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH / 2);
+
+                let cancelled =
+                    match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
+                        Ok(_) => panic!("closure construction must observe cancellation"),
+                        Err(cancelled) => cancelled,
+                    };
+                assert_eq!(cancelled.reason, crate::CancelReason::Requested);
+                assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
+                assert_eq!(control.checkpoint().unwrap_err(), cancelled);
+                assert!(
+                    parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta())
+                        .is_ok()
+                );
+                println!(
+                    "depth={DEPTH} worker_stack_bytes=2097152 phase=after-small-operation status=done"
+                );
+            })
+            .expect("spawn 2 MiB C4 closure-cancellation worker")
+            .join()
+            .expect("C4 closure cancellation releases completed inner frames");
+    }
+
+    #[test]
+    fn c4_cancellation_during_boundary_replay_releases_partial_fragments() {
+        std::thread::Builder::new()
+            .name("c4-deep-replay-cancellation".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                const DEPTH: usize = 15_000;
+                let source = boundary_chain(DEPTH);
+                let control = OperationControl::new().for_phase(crate::OperationPhase::Parse);
+                // Consume construction and all closers, then enter half the nested replay
+                // frames. Nextest isolates this named unit in its own OS subprocess.
+                control.cancel_after_checkpoints(3 + 2 * (DEPTH + 1) + DEPTH + DEPTH / 2);
+
+                let cancelled =
+                    match construct_c4_semantic_source_controlled(&source, &meta(), &control) {
+                        Ok(_) => panic!("boundary replay must observe cancellation"),
+                        Err(cancelled) => cancelled,
+                    };
+                assert_eq!(cancelled.reason, crate::CancelReason::Requested);
+                assert_eq!(cancelled.phase, crate::OperationPhase::Parse);
+                assert_eq!(control.checkpoint().unwrap_err(), cancelled);
+                assert!(
+                    parse_c4_model_for_render("C4Context\nSystem(after, \"After\")\n", &meta())
+                        .is_ok()
+                );
+                println!(
+                    "depth={DEPTH} worker_stack_bytes=2097152 phase=after-small-operation status=done"
+                );
+            })
+            .expect("spawn 2 MiB C4 replay-cancellation worker")
+            .join()
+            .expect("C4 replay cancellation releases completed boundary records");
+    }
+
+    #[test]
+    fn c4_flat_boundaries_preserve_declaration_context_and_statement_order() {
+        let source = r#"C4Context
+title Root title
+System(before, "Before")
+Boundary(outer, "Outer") {
+  System(outer_before, "Outer Before")
+  accTitle: Outer title
+  Boundary(inner, "Inner") {
+    System(inside, "Inside")
+    accDescr: Inner description
+    Rel(inside, before, "Inside relation")
+  }
+  System(outer_after, "Outer After")
+}
+Boundary(sibling, "Sibling") {
+  System(sibling_shape, "Sibling Shape")
+  title Sibling title
+}
+System(after, "After")
+Rel(after, sibling_shape, "After relation")
+"#;
+        let model = parse_c4_model_for_render(source, &meta()).expect("valid boundary contexts");
+        assert_eq!(model.title.as_deref(), Some("Sibling title"));
+        assert_eq!(model.acc_title, None);
+        assert_eq!(model.acc_descr.as_deref(), Some("Inner description"));
+        assert_eq!(
+            model
+                .boundaries
+                .iter()
+                .map(|boundary| (boundary.alias.as_str(), boundary.parent_boundary.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("global", ""),
+                ("outer", "global"),
+                ("inner", "outer"),
+                ("sibling", "global")
+            ]
+        );
+        assert_eq!(
+            model
+                .shapes
+                .iter()
+                .map(|shape| (shape.alias.as_str(), shape.parent_boundary.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                ("before", "global"),
+                ("outer_before", "outer"),
+                ("inside", "inner"),
+                ("outer_after", "outer"),
+                ("sibling_shape", "sibling"),
+                ("after", "global"),
+            ]
+        );
+        assert_eq!(
+            model
+                .rels
+                .iter()
+                .map(|relation| relation.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Inside relation", "After relation"]
+        );
+    }
+
+    #[test]
+    fn c4_completed_inner_boundary_is_discarded_with_unclosed_outer() {
+        let source = r#"C4Context
+title Root title
+System(before, "Before")
+Boundary(open, "Open") {
+  Boundary(completed, "Completed") {
+    System(inside, "Inside")
+  }
+  title Unfinished title
+"#;
+        let outcome = construct_c4_semantic_source(source, &meta());
+        assert_eq!(outcome.issues.len(), 1);
+        assert_eq!(
+            outcome.issues[0].span,
+            SourceSpan::new(source.len(), source.len())
+        );
+        assert!(
+            outcome.issues[0]
+                .error
+                .to_string()
+                .contains("expected '}' before end")
+        );
+        let model = outcome
+            .source
+            .db
+            .to_render_model()
+            .expect("safe recovered model");
+        assert_eq!(model.boundaries.len(), 1);
+        assert_eq!(model.shapes.len(), 1);
+        assert_eq!(model.shapes[0].alias, "before");
+        assert_eq!(model.title.as_deref(), Some("Root title"));
+        assert!(
+            outcome
+                .source
+                .editor_facts
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "inside")
+        );
+    }
+
+    #[test]
+    fn c4_empty_nested_boundary_does_not_publish_or_change_sibling_context() {
+        let (model, errors) = recovered_model_and_errors(
+            r#"C4Context
+Boundary(outer, "Outer") {
+  System(before, "Before")
+  Boundary(empty, "Empty") {
+  }
+  Boundary(sibling, "Sibling") {
+    System(inside, "Inside")
+  }
+  System(after, "After")
+}
+System(root_after, "Root After")
+"#,
+        );
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains("boundary must contain"));
+        assert_eq!(model["boundaries"].as_array().unwrap().len(), 3);
+        assert_eq!(model["boundaries"][2]["alias"], json!("sibling"));
+        assert_eq!(model["boundaries"][2]["parentBoundary"], json!("outer"));
+        for (index, parent) in ["outer", "sibling", "outer", "global"].iter().enumerate() {
+            assert_eq!(model["shapes"][index]["parentBoundary"], json!(parent));
         }
     }
 

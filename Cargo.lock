@@ -2675,6 +2675,7 @@ dependencies = [
  "merman-core",
  "merman-fixture-render-context",
  "merman-layout-elk",
+ "merman-unicode-linebreak",
  "pulldown-cmark",
  "quick-xml",
  "ratex-layout",
@@ -2690,7 +2691,6 @@ dependencies = [
  "serde_json",
  "svgtypes 0.16.1",
  "thiserror 2.0.21",
- "unicode-linebreak",
  "unicode-segmentation",
  "unicode-width",
 ]
@@ -2717,6 +2717,10 @@ dependencies = [
  "serde_json",
  "wasm-minimal-protocol",
 ]
+
+[[package]]
+name = "merman-unicode-linebreak"
+version = "0.8.0"
 
 [[package]]
 name = "merman-uniffi"
@@ -5126,12 +5130,6 @@ name = "unicode-ident"
 version = "1.0.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d245f478577f809a851594d02313b640fb437e0bb33866753cff937863096954"
-
-[[package]]
-name = "unicode-linebreak"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f"
 
 [[package]]
 name = "unicode-normalization"

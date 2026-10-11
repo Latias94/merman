@@ -1,11 +1,11 @@
 // Flowchart minimal grammar (phase 1).
 
-grammar;
+grammar(statements: &mut StatementArena, control: &crate::OperationControl);
 
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
   FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
-  Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
+  StatementArena, StatementId, StatementList, Stmt, StyleStmt, SubgraphBlock, SubgraphHeader, TitleKind, Tok
 };
 use crate::SourceSpan;
 
@@ -47,7 +47,7 @@ extern {
 pub FlowchartAst: FlowchartAst = {
   <_lead:Seps> <h:Header> <_s:Seps> <st:Statements> => {
     let (keyword, direction, header_span) = h;
-    FlowchartAst { keyword, direction, header_span, statements: st }
+    FlowchartAst { keyword, direction, header_span, statements: std::mem::take(statements), root: st }
   },
 };
 
@@ -58,22 +58,14 @@ Header: (String, Option<String>, SourceSpan) = {
   <l:@L> "swimlane-beta" <d:Direction?> <r:@R> => ("swimlane-beta".to_string(), d, SourceSpan::new(l, r)),
 };
 
-Statements: Vec<Stmt> = {
-  => Vec::new(),
-  <s:Statement> <rest:StatementRest> => {
-    let mut st = vec![s];
-    st.extend(rest);
-    st
-  }
+Statements: StatementList = {
+  => StatementList::default(),
+  <s:Statement> <rest:StatementRest> =>? statements.prepend(s, rest, control),
 };
 
-StatementRest: Vec<Stmt> = {
-  <_sep:Sep> <_seps:Seps> <s:Statement> <rest:StatementRest> => {
-    let mut st = vec![s];
-    st.extend(rest);
-    st
-  },
-  Seps => Vec::new(),
+StatementRest: StatementList = {
+  <_sep:Sep> <_seps:Seps> <s:Statement> <rest:StatementRest> =>? statements.prepend(s, rest, control),
+  Seps => StatementList::default(),
 };
 
 Seps: () = {
@@ -81,26 +73,26 @@ Seps: () = {
   Sep Seps => (),
 };
 
-Statement: Stmt = {
-  <c:Chain> => Stmt::Chain { node_groups: c.0, edge_groups: c.1 },
-  <l:@L> <id:Id> <r:@R> <sd:ShapeData> => Stmt::ShapeData {
+Statement: StatementId = {
+  <c:Chain> =>? statements.push(Stmt::Chain { node_groups: c.0, edge_groups: c.1 }, control),
+  <l:@L> <id:Id> <r:@R> <sd:ShapeData> =>? statements.push(Stmt::ShapeData {
     target: id,
     target_span: Some(SourceSpan::new(l, r)),
     yaml: sd,
-  },
-  <g:NodeGroupOnly> => Stmt::Chain { node_groups: vec![g], edge_groups: Vec::new() },
-  <n:NodeRef> => Stmt::Node(Box::new(n)),
-  <sg:SubgraphBlock> => Stmt::Subgraph(sg),
-  <d:DirectionStmt> => Stmt::Direction(d.direction),
-  <s:StyleStmt> => Stmt::Style(s),
-  <c:ClassDefStmt> => Stmt::ClassDef(c),
-  <c:ClassAssignStmt> => Stmt::ClassAssign(c),
-  <c:ClickStmt> => Stmt::Click(c),
-  <ls:LinkStyleStmt> => Stmt::LinkStyle(ls),
+  }, control),
+  <g:NodeGroupOnly> =>? statements.push(Stmt::Chain { node_groups: vec![g], edge_groups: Vec::new() }, control),
+  <n:NodeRef> =>? statements.push(Stmt::Node(Box::new(n)), control),
+  <sg:SubgraphBlock> =>? statements.push(Stmt::Subgraph(sg), control),
+  <d:DirectionStmt> =>? statements.push(Stmt::Direction(d.direction), control),
+  <s:StyleStmt> =>? statements.push(Stmt::Style(s), control),
+  <c:ClassDefStmt> =>? statements.push(Stmt::ClassDef(c), control),
+  <c:ClassAssignStmt> =>? statements.push(Stmt::ClassAssign(c), control),
+  <c:ClickStmt> =>? statements.push(Stmt::Click(c), control),
+  <ls:LinkStyleStmt> =>? statements.push(Stmt::LinkStyle(ls), control),
 };
 
 Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
-  <start:NodeGroup> <segs:EdgeSeg+> => {
+  <start:NodeGroup> <segs:EdgeSeg+> =>? {
     let mut node_groups: Vec<Vec<Node>> = vec![start.clone()];
     let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
 
@@ -109,6 +101,7 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
       let mut segment_edges: Vec<Edge> = Vec::new();
       for from in &prev_group {
         for to in &next_group {
+          statements.construction_checkpoint(control)?;
           let is_last_start = from.id == prev_group[prev_group.len() - 1].id;
           let is_first_end = to.id == next_group[0].id;
           let edge_id = if is_last_start && is_first_end {
@@ -143,7 +136,7 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
       prev_group = next_group;
     }
 
-    (node_groups, edge_groups)
+    Ok((node_groups, edge_groups))
   }
 };
 

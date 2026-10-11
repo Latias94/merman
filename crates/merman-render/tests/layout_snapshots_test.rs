@@ -317,9 +317,9 @@ fn fixtures_match_layout_golden_snapshots_when_present() {
         };
 
         let mut layout_json = match artifact.layout_json() {
-            Ok(mut artifact_json) => artifact_json
-                .get_mut("layout")
-                .map(JsonValue::take)
+            Ok(artifact_json) => artifact_json
+                .get("layout")
+                .map(|value| merman_core::ManagedSemanticJson::from(value).into_unmanaged_value())
                 .expect("layout artifact contains layout projection"),
             Err(err) => {
                 failures.push(format!(

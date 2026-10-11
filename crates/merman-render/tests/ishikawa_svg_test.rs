@@ -411,7 +411,7 @@ ishikawa-beta
 }
 
 #[test]
-fn ishikawa_deep_hierarchy_is_rejected_before_recursive_projection() {
+fn ishikawa_deep_hierarchy_projects_and_renders_flat_model() {
     let input = deep_ishikawa_source(DEEP_ISHIKAWA_RENDER_DEPTH);
     let parsed = Engine::new()
         .parse_diagram_for_render_model_sync(&input, ParseOptions::strict())
@@ -422,15 +422,22 @@ fn ishikawa_deep_hierarchy_is_rejected_before_recursive_projection() {
         .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
         .unwrap();
-    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
-        Ok(_) => panic!("deep recursive Ishikawa model must be rejected before projection"),
-        Err(error) => error,
-    };
-    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
-        panic!("expected typed resource-limit error, got {error}");
-    };
-
-    assert_eq!(limit.limit, "typed_model_tree_depth");
-    assert_eq!(limit.actual, DEEP_ISHIKAWA_RENDER_DEPTH);
-    assert!(limit.actual > limit.max);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("flat deep Ishikawa layout");
+    let projection = artifact
+        .layout_json()
+        .expect("managed deep semantic projection");
+    assert_eq!(
+        projection["semantic"]["nodes"].as_array().unwrap().len(),
+        DEEP_ISHIKAWA_RENDER_DEPTH + 1
+    );
+    let mut exported = Vec::new();
+    projection.write_json(&mut exported).unwrap();
+    assert!(serde_json::to_vec(&projection).is_err());
+    drop(projection.clone());
+    drop(projection);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("deep Ishikawa SVG");
+    roxmltree::Document::parse(rendered.svg()).expect("well-formed deep Ishikawa SVG");
 }

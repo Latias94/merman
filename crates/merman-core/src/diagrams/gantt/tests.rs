@@ -30,11 +30,14 @@ fn large_gantt_db(task_count: usize) -> GanttDb {
     db
 }
 
-fn parse(text: &str) -> Value {
+fn parse(text: &str) -> crate::ManagedSemanticJson {
     parse_with_site_config(text, None)
 }
 
-fn parse_with_site_config(text: &str, site_config: Option<MermaidConfig>) -> Value {
+fn parse_with_site_config(
+    text: &str,
+    site_config: Option<MermaidConfig>,
+) -> crate::ManagedSemanticJson {
     let engine = match site_config {
         Some(site_config) => Engine::new().with_site_config(site_config),
         None => Engine::new(),

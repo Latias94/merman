@@ -176,6 +176,28 @@ The public typed-model path accepts an empty orientation as the legacy vertical 
 
 Header-only charts and typed plots with no terminal slots use an injective `xychart: empty` report instead of returning an empty document. The report preserves orientation, title, typed axes and categories, display policy, and any empty-series metadata through the same byte-length framing and resource limits as other StructuredText disclosures.
 
+## Node padding and graph spacing
+
+Flowchart, Swimlane, and State resolve node padding independently on each axis. The default is
+one cell on each side. Use `with_node_padding_y(0)` to remove the blank rows inside ordinary
+node frames while preserving the space for edges between ranks. Use `with_node_padding(0)` to
+remove padding on both axes, or combine `with_node_padding_x` and `with_node_padding_y`.
+Fixed State symbols retain their own dimensions.
+
+The existing `box_border_padding` field remains the scalar compatibility default. Explicit
+`node_padding_x` and `node_padding_y` overrides take precedence, including zero. Bindings accept
+both snake_case and camelCase spellings. Graph rank gaps are separate preferences:
+`with_graph_padding_x` and `with_graph_padding_y` preserve explicit values under Compact.
+Required frame gutters, label clearance, and valid arrow berths can increase these gaps.
+
+Sequence spacing is measured from participant names and messages before rows are painted.
+A message label occupies one interval between adjacent lifelines, including when its arrow
+crosses intermediate participants. Explicit `wrap:` messages retain their wrapping policy.
+
+Complete unwrapped labels can increase the required width and grid cell count. Resource ceilings
+remain unchanged: large offline diagrams can use the bounded `TrustedNative` resource profile;
+interactive callers can author explicit wrapping or select their own resource limits.
+
 ## Relation Summary Diagnostics
 
 Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when parallel lane ports cannot land on both endpoint box faces, or when route or overlay collision checks would damage a box. Simple Class relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; the authored member identity is disclosed independently with byte-length framing. Dense or colliding cross-namespace scenes still use the lossless summary. Default output hides the internal fallback reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: crossing` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, and `overlay_collision`; port-fit failures are reported as `route_collision`. Resource limits always return `AsciiError::ResourceLimitExceeded` instead of selecting this summary path.

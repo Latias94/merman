@@ -3,7 +3,9 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Number, Value, json};
 
-use crate::{Error, OperationControl, OperationControlResult, ParseMetadata, Result};
+use crate::{
+    Error, ManagedSemanticJson, OperationControl, OperationControlResult, ParseMetadata, Result,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -105,14 +107,14 @@ pub(crate) fn render_model_to_compat_json_controlled(
         }
         edges.push(mindmap_edge_to_compat_json(edge));
     }
-    let config = mindmap_compat_config(meta);
+    let config = ManagedSemanticJson::from_value(mindmap_compat_config(meta));
     control.checkpoint()?;
 
     if model.nodes.is_empty() {
         let mut root = Map::with_capacity(3);
         root.insert("nodes".to_string(), Value::Array(nodes));
         root.insert("edges".to_string(), Value::Array(edges));
-        root.insert("config".to_string(), config);
+        root.insert("config".to_string(), config.into_unmanaged_value());
         return Ok(Ok(Value::Object(root)));
     }
 
@@ -132,26 +134,25 @@ pub(crate) fn render_model_to_compat_json_controlled(
         );
     }
 
+    let root_node = match mindmap_root_node_to_compat_json_controlled(model, meta, control)? {
+        Ok(root) => root,
+        Err(error) => return Ok(Err(error)),
+    };
     let mut root = Map::with_capacity(12);
     root.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     root.insert("nodes".to_string(), Value::Array(nodes));
     root.insert("edges".to_string(), Value::Array(edges));
-    root.insert("config".to_string(), config);
-    root.insert(
-        "rootNode".to_string(),
-        match mindmap_root_node_to_compat_json_controlled(model, meta, control)? {
-            Ok(root) => root,
-            Err(error) => return Ok(Err(error)),
-        },
-    );
+    root.insert("config".to_string(), config.into_unmanaged_value());
+    root.insert("rootNode".to_string(), root_node.into_unmanaged_value());
     root.insert("markers".to_string(), json!(["point"]));
     root.insert("direction".to_string(), Value::String("TB".to_string()));
     root.insert("nodeSpacing".to_string(), Number::from(50).into());
     root.insert("rankSpacing".to_string(), Number::from(50).into());
     root.insert("shapes".to_string(), Value::Object(shapes));
     root.insert("diagramId".to_string(), Value::String(mindmap_diagram_id()));
+    let root = ManagedSemanticJson::from_value(Value::Object(root));
     control.checkpoint()?;
-    Ok(Ok(Value::Object(root)))
+    Ok(Ok(root.into_unmanaged_value()))
 }
 
 fn mindmap_diagram_id() -> String {
@@ -261,11 +262,11 @@ fn mindmap_edge_to_compat_json(edge: &MindmapDiagramRenderEdge) -> Value {
     Value::Object(out)
 }
 
-fn mindmap_root_node_to_compat_json_controlled(
+pub(super) fn mindmap_root_node_to_compat_json_controlled(
     model: &MindmapDiagramRenderModel,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<Value>> {
+) -> OperationControlResult<Result<ManagedSemanticJson>> {
     let mut node_index = HashMap::with_capacity(model.nodes.len());
     for (index, node) in model.nodes.iter().enumerate() {
         if index % 128 == 0 {
@@ -316,7 +317,7 @@ fn mindmap_root_node_to_compat_json_controlled(
         children[parent].push(child);
     }
 
-    let mut values = vec![None; model.nodes.len()];
+    let mut values = vec![None::<ManagedSemanticJson>; model.nodes.len()];
     let mut stack = vec![(root_index, false)];
     let mut processed = 0usize;
     while let Some((index, expanded)) = stack.pop() {
@@ -326,10 +327,11 @@ fn mindmap_root_node_to_compat_json_controlled(
         processed = processed.saturating_add(1);
         if expanded {
             let node = &model.nodes[index];
-            let child_values = children[index]
-                .iter()
-                .map(|child| values[*child].take().unwrap_or(Value::Null))
-                .collect();
+            let mut child_values = Vec::with_capacity(children[index].len());
+            for &child in &children[index] {
+                control.checkpoint()?;
+                child_values.push(values[child].take().unwrap_or_default());
+            }
             let value = match mindmap_root_record(node, child_values, meta) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
@@ -338,20 +340,21 @@ fn mindmap_root_node_to_compat_json_controlled(
         } else {
             stack.push((index, true));
             for child in children[index].iter().rev() {
+                control.checkpoint()?;
                 stack.push((*child, false));
             }
         }
     }
 
     control.checkpoint()?;
-    Ok(Ok(values[root_index].take().unwrap_or(Value::Null)))
+    Ok(Ok(values[root_index].take().unwrap_or_default()))
 }
 
 fn mindmap_root_record(
     node: &MindmapDiagramRenderNode,
-    children: Vec<Value>,
+    children: Vec<ManagedSemanticJson>,
     meta: &ParseMetadata,
-) -> Result<Value> {
+) -> Result<ManagedSemanticJson> {
     let id = node.id.parse::<i64>().map_err(|_| {
         invalid_mindmap_model(
             meta,
@@ -364,7 +367,15 @@ fn mindmap_root_record(
     out.insert("level".to_string(), Number::from(node.level).into());
     out.insert("descr".to_string(), Value::String(node.label.clone()));
     out.insert("type".to_string(), Number::from(node.node_type).into());
-    out.insert("children".to_string(), Value::Array(children));
+    out.insert(
+        "children".to_string(),
+        Value::Array(
+            children
+                .into_iter()
+                .map(ManagedSemanticJson::into_unmanaged_value)
+                .collect(),
+        ),
+    );
     out.insert(
         "width".to_string(),
         crate::compatibility_json::number_value(node.width),
@@ -397,7 +408,7 @@ fn mindmap_root_record(
     if node.level == 0 {
         out.insert("isRoot".to_string(), Value::Bool(true));
     }
-    Ok(Value::Object(out))
+    Ok(ManagedSemanticJson::from_value(Value::Object(out)))
 }
 
 fn mindmap_custom_class(node: &MindmapDiagramRenderNode) -> Option<String> {

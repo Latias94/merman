@@ -71,7 +71,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::LayoutJson(self.svg.clone()),
-                control,
+                control.clone(),
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::LayoutJson(layout_json) = output else {
@@ -81,7 +81,12 @@ impl RenderRequestPlan {
             .map(|output| output.into_parts().0)
             .ok_or_else(no_diagram_error)?;
 
-        serde_json::to_vec(&layout_json).map_err(internal_json_error)
+        let mut bytes = Vec::new();
+        layout_json
+            .write_json_controlled(&mut bytes, &control.for_phase(merman::OperationPhase::Emit))
+            .map_err(BindingError::cancelled)?
+            .map_err(internal_json_error)?;
+        Ok(bytes)
     }
 
     pub(super) fn edge_geometry_json(

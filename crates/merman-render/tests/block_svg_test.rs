@@ -595,3 +595,35 @@ fn block_composite_palette_wraps_slots_and_preserves_author_styles() {
         assert_eq!(css.contains(&rule), theme != "redux");
     }
 }
+
+#[test]
+fn block_flat_records_preserve_nested_dom_order_and_directives() {
+    let svg = render_block_svg_from_text(
+        "block\ncolumns 2\nblock:outer:2\ncolumns 2\nA[\"Alpha\"]\nblock:inner\nB<[\"Route\"]>(left,down)\nend\nend\nC\nA --> C\nclassDef branded fill:#696,stroke:#333\nclass A branded\nstyle inner fill:#112233,stroke:#445566\n",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let nodes = document
+        .descendants()
+        .filter(|node| {
+            node.attribute("class").is_some_and(|classes| {
+                classes
+                    .split_ascii_whitespace()
+                    .any(|class| class == "node")
+            })
+        })
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        nodes,
+        [
+            "merman-outer",
+            "merman-A",
+            "merman-inner",
+            "merman-B",
+            "merman-C"
+        ]
+    );
+    assert!(svg.contains("node branded flowchart-label"));
+    assert!(svg.contains("fill:#112233;stroke:#445566"));
+    assert!(svg.contains("merman-1-A-C"));
+}

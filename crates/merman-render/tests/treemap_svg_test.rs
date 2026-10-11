@@ -336,7 +336,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 }
 
 #[test]
-fn treemap_deep_chain_is_rejected_before_recursive_projection() {
+fn treemap_deep_chain_projects_and_renders_flat_model() {
     const DEPTH: usize = 1200;
     let source = deep_treemap_chain(DEPTH);
 
@@ -350,17 +350,24 @@ fn treemap_deep_chain_is_rejected_before_recursive_projection() {
         .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
         .begin_session()
         .expect("begin render session");
-    let error = match family::prepare(parsed, &LayoutOptions::default(), session) {
-        Ok(_) => panic!("deep recursive Treemap model must be rejected before projection"),
-        Err(error) => error,
-    };
-    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
-        panic!("expected typed resource-limit error, got {error}");
-    };
-
-    assert_eq!(limit.limit, "typed_model_tree_depth");
-    assert_eq!(limit.actual, DEPTH + 1);
-    assert!(limit.actual > limit.max);
+    let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("flat deep Treemap layout");
+    let projection = artifact
+        .layout_json()
+        .expect("managed deep semantic projection");
+    assert_eq!(
+        projection["semantic"]["nodes"].as_array().unwrap().len(),
+        DEPTH + 1
+    );
+    let mut exported = Vec::new();
+    projection.write_json(&mut exported).unwrap();
+    assert!(serde_json::to_vec(&projection).is_err());
+    drop(projection.clone());
+    drop(projection);
+    let rendered = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("deep Treemap SVG");
+    roxmltree::Document::parse(rendered.svg()).expect("well-formed deep Treemap SVG");
 }
 
 #[test]

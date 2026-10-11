@@ -4034,3 +4034,96 @@ fn flowchart_unicode_click_separators_preserve_links_and_editor_ranges() {
         }
     }
 }
+
+#[test]
+fn parse_diagram_flowchart_completed_membership_filters_self_before_claiming() {
+    let source =
+        "flowchart TB\nsubgraph X\nX\nend\nsubgraph owner\nX\nend\nsubgraph sibling\nX & Y\nend\n";
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let subgraphs = parsed.model["subgraphs"].as_array().unwrap();
+    assert_eq!(
+        subgraphs
+            .iter()
+            .map(|subgraph| subgraph["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["X", "owner", "sibling"]
+    );
+    assert_eq!(subgraphs[0]["nodes"], json!([]));
+    assert_eq!(subgraphs[1]["nodes"], json!(["X"]));
+    assert_eq!(subgraphs[2]["nodes"], json!(["Y"]));
+}
+
+#[test]
+fn parse_diagram_flowchart_repeated_nested_id_keeps_first_completed_owner() {
+    let source = concat!(
+        "flowchart TB\nsubgraph X[Outer]\ndirection TB\n",
+        "subgraph X[Inner]\ndirection LR\nA\nend\n",
+        "B\nend\nclass X grouped\n",
+        "subgraph X[Later]\ndirection RL\nA & C\nend\n",
+        "subgraph sibling\nX & A & B & C & D\nend\nX-->D\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let groups = parsed.model["subgraphs"].as_array().unwrap();
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0]["id"], "X");
+    assert_eq!(groups[0]["title"], "Inner");
+    assert_eq!(groups[0]["dir"], "LR");
+    assert_eq!(groups[0]["nodes"], json!(["A", "B", "C"]));
+    assert_eq!(groups[0]["classes"], json!(["grouped"]));
+    assert_eq!(groups[1]["nodes"], json!(["X", "D"]));
+    assert_eq!(parsed.model["edges"][0]["from"], "X");
+    assert_eq!(parsed.model["edges"][0]["to"], "D");
+}
+
+#[test]
+fn parse_diagram_flowchart_empty_and_anonymous_groups_number_in_completion_order() {
+    let source = concat!(
+        "flowchart TB\nsubgraph Explicit\nend\n",
+        "subgraph Outer Title\nsubgraph Inner Title\nA\nend\nB\nend\n",
+        "subgraph Last Title\nA & C\nend\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let groups = parsed.model["subgraphs"].as_array().unwrap();
+    assert_eq!(
+        groups
+            .iter()
+            .map(|group| group["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ["Explicit", "subGraph1", "subGraph2", "subGraph3"]
+    );
+    assert_eq!(groups[0]["nodes"], json!([]));
+    assert_eq!(groups[1]["nodes"], json!(["A"]));
+    assert_eq!(groups[2]["nodes"], json!(["subGraph1", "B"]));
+    assert_eq!(groups[3]["nodes"], json!(["C"]));
+}
+
+#[test]
+fn parse_diagram_flowchart_wide_flat_statements_preserve_node_and_edge_order() {
+    let mut source = String::from("flowchart TB\n");
+    for index in 0..512 {
+        source.push_str(&format!("a{index}-->b{index}\n"));
+    }
+    let parsed = Engine::new()
+        .parse_diagram_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let nodes = parsed.model["nodes"].as_array().unwrap();
+    let edges = parsed.model["edges"].as_array().unwrap();
+    assert_eq!(nodes.len(), 1024);
+    assert_eq!(edges.len(), 512);
+    for index in 0..512 {
+        assert_eq!(nodes[index * 2]["id"], format!("a{index}"));
+        assert_eq!(nodes[index * 2 + 1]["id"], format!("b{index}"));
+        assert_eq!(edges[index]["from"], format!("a{index}"));
+        assert_eq!(edges[index]["to"], format!("b{index}"));
+    }
+}

@@ -1060,7 +1060,12 @@ impl SemanticOperationEngine {
         control
             .checkpoint_at(OperationPhase::Postprocess)
             .map_err(BindingError::cancelled)?;
-        serde_json::to_vec(&model).map_err(common::internal_json_error)
+        let mut output = Vec::new();
+        model
+            .write_json_controlled(&mut output, &control.for_phase(OperationPhase::Postprocess))
+            .map_err(BindingError::cancelled)?
+            .map_err(common::internal_json_error)?;
+        Ok(output)
     }
 }
 
@@ -1365,6 +1370,30 @@ mod tests {
         .expect("binding semantic JSON value");
 
         assert_eq!(actual, expected);
+    }
+
+    #[cfg(feature = "diagram-mindmap")]
+    #[test]
+    fn semantic_parse_exports_beyond_generic_serde_depth() {
+        use std::fmt::Write as _;
+        let mut source = String::from("mindmap\nroot\n");
+        for depth in 1..=150 {
+            writeln!(source, "{}node{depth}", "  ".repeat(depth)).unwrap();
+        }
+        let expected = merman::Engine::new()
+            .parse_diagram_sync(&source, merman::ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .model;
+        assert!(serde_json::to_vec(&expected).is_err());
+        let mut expected_bytes = Vec::new();
+        expected.write_json(&mut expected_bytes).unwrap();
+        let actual =
+            BindingEngine::new(b"{\"resources\":{\"profile\":\"unbounded-for-trusted-input\"}}")
+                .unwrap()
+                .parse_json(source.as_bytes())
+                .unwrap();
+        assert_eq!(actual, expected_bytes);
     }
 
     #[test]

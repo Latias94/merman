@@ -119,7 +119,8 @@ fn relocated_marker_suppresses_a_three_cell_mixed_body_tail() {
     let mut resources = unbounded_resources();
     let candidates = plan
         .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
-        .unwrap();
+        .unwrap()
+        .expect("straight terminal should have marker candidates");
     let candidate = candidates[3];
 
     plan.materialize_marker_at(MarkerEndpoint::End, candidate, &charset, "flowchart")
@@ -394,6 +395,7 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
         .marker_candidate_disposition_before_commit(
             &existing_routes,
             &candidate_route.owner,
+            &candidate_route.plan,
             MarkerEndpoint::End,
             candidate,
             &mut measured_resources,
@@ -411,6 +413,7 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
             .marker_candidate_disposition_before_commit(
                 &existing_routes,
                 &candidate_route.owner,
+                &candidate_route.plan,
                 MarkerEndpoint::End,
                 candidate,
                 &mut exact_resources,
@@ -428,6 +431,7 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
         .marker_candidate_disposition_before_commit(
             &existing_routes,
             &candidate_route.owner,
+            &candidate_route.plan,
             MarkerEndpoint::End,
             candidate,
             &mut below_resources,

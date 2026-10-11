@@ -248,7 +248,7 @@ fn flowchart_parser_unicode_diamond_uses_sloped_shoulders() {
 
     assert_eq!(
         rendered,
-        "╭───╮     ┌───┐\n╱   ╲     │   │\n< A ├────►│ B │\n╲   ╱     │   │\n╰───╯     └───┘\n"
+        "╭───╮     ┌───┐\n╱   ╲     │   │\n< A >────►│ B │\n╲   ╱     │   │\n╰───╯     └───┘\n"
     );
 }
 

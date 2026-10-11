@@ -704,3 +704,38 @@ fn upstream_swimlane_ddlt_corpus_renders_valid_svg() {
         failures.join("\n")
     );
 }
+
+#[test]
+fn swimlane_typed_entrypoint_preserves_repeated_nested_group_completion() {
+    let mut source = String::from("swimlane-beta LR\n");
+    for _ in 0..127 {
+        source.push_str("subgraph lane[Outer]\n");
+    }
+    source.push_str("subgraph lane[First]\ndirection TB\nA-->B\n");
+    source.push_str(&"end\n".repeat(128));
+    source.push_str("class lane grouped\nsubgraph lane[Later]\nC\nend\nB-->C\n");
+    let parsed = merman::Engine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .expect("typed Swimlane parse")
+        .expect("Swimlane detected");
+    assert_eq!(parsed.metadata().diagram_type, "swimlane");
+    let merman::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected the shared Flowchart typed model");
+    };
+    assert_eq!(model.subgraphs.len(), 1);
+    assert_eq!(model.subgraphs[0].id, "lane");
+    assert_eq!(model.subgraphs[0].title, "First");
+    assert_eq!(model.subgraphs[0].dir.as_deref(), Some("TB"));
+    assert_eq!(model.subgraphs[0].nodes, ["B", "A", "C"]);
+    assert_eq!(model.subgraphs[0].classes, ["grouped"]);
+    assert_eq!(
+        model
+            .edges
+            .iter()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str()))
+            .collect::<Vec<_>>(),
+        [("A", "B"), ("B", "C")]
+    );
+    drop(parsed.clone());
+    drop(parsed);
+}

@@ -397,36 +397,31 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
     let horizontal = edge_line_char(edge, charset, GraphDirection::LeftRight);
     let vertical = edge_line_char(edge, charset, GraphDirection::TopDown);
     let mut cells = PlannedRouteCells::new();
-    let mut start_anchor =
-        if GraphNodeShapeSemantics::new(from.shape).uses_external_self_loop_connector() {
-            Some(cells.try_push_anchor(
-                resources,
-                || edge_line_cell(from.right(), y, charset.right_connector),
-                StepDirection::Left,
-            )?)
-        } else {
-            None
-        };
+    let mut start_anchor = if GraphNodeShapeSemantics::new(from.shape).uses_route_connector() {
+        Some(cells.try_push_anchor(
+            resources,
+            || edge_line_cell(from.right(), y, charset.right_connector),
+            StepDirection::Left,
+        )?)
+    } else {
+        None
+    };
     let first_loop_x = resources.checked_grid_add(from.right(), 1)?;
     for x in first_loop_x..loop_x {
-        cells.try_push(resources, || route_cell(x, y, horizontal))?;
+        let cell = cells.try_push(resources, || route_cell(x, y, horizontal))?;
+        if start_anchor.is_none() {
+            start_anchor = Some(super::MarkerAnchor::new(cell, StepDirection::Left));
+        }
     }
     let top_corner = if self_loop_has_right_neighbor(layouts, from) {
         charset.down_junction
     } else {
         charset.top_right
     };
-    let top_corner_anchor = if start_anchor.is_none() {
-        Some(cells.try_push_anchor(
-            resources,
-            || route_cell(loop_x, y, top_corner),
-            StepDirection::Left,
-        )?)
-    } else {
-        cells.try_push(resources, || route_cell(loop_x, y, top_corner))?;
-        None
+    let Some(start_anchor) = start_anchor else {
+        return Ok(None);
     };
-    start_anchor = start_anchor.or(top_corner_anchor);
+    cells.try_push(resources, || route_cell(loop_x, y, top_corner))?;
 
     let first_loop_y = resources.checked_grid_add(y, 1)?;
     for line_y in first_loop_y..bottom_y {
@@ -455,9 +450,6 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
         StepDirection::Up,
     )?;
 
-    let Some(start_anchor) = start_anchor else {
-        return Ok(None);
-    };
     let labels = planned_label(
         label,
         CanvasCoord {

@@ -1386,6 +1386,7 @@ mod tests {
 
     fn test_layout() -> SequenceLayout {
         SequenceLayout {
+            message_labels: Default::default(),
             participant_widths: Vec::new(),
             participant_centers: Vec::new(),
             total_width: 3,

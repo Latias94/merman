@@ -252,6 +252,14 @@ impl OperationControl {
         self.checkpoint_at(self.default_phase)
     }
 
+    /// Replays this scope's observed cancellation without checking for a new terminal.
+    pub(crate) fn observed_cancellation(&self) -> Option<OperationCancelled> {
+        match self.state.terminal.get() {
+            Some(OperationLedgerError::Cancelled(error)) => Some(*error),
+            _ => None,
+        }
+    }
+
     /// Checks cancellation/deadline at a named phase.
     ///
     /// This cancellation-only projection is used by parsing and analysis code that cannot produce

@@ -244,6 +244,10 @@ and migration. The two paths are explicit alternatives; neither silently falls b
 
 ## Compatibility
 
+Source-checkout consumers migrating semantic JSON or State/Block/Treemap/Ishikawa model fields
+should read the [deep diagram lifecycle migration](docs/migrations/deep-diagram-lifecycle.md).
+It covers managed JSON ownership, canonical child IDs, and maintained deep JSON export.
+
 Merman aims for source-backed agreement in parsing, semantic models, layout, configuration,
 theming, sanitization, and SVG DOM structure. It does not promise byte-for-byte Chromium pixels.
 

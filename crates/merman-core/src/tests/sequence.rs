@@ -3,6 +3,83 @@ use futures::executor::block_on;
 use serde_json::json;
 
 #[test]
+fn sequence_fragment_carriers_preserve_nested_control_and_activation_order() {
+    let source = concat!(
+        "sequenceDiagram\n",
+        "loop L\nalt A\nopt O\n",
+        "Alice->>+Bob: start\nBob-->>-Alice: done\nend\n",
+        "else E\npar P\nAlice->>Bob: left\n",
+        "and Q\ncritical C\nAlice->>Bob: protected\n",
+        "option R\nbreak B\nAlice->>Bob: stop\n",
+        "end\nend\nend\nend\nend\n",
+        "Alice->>Bob: after\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let messages = parsed.model["messages"].as_array().unwrap();
+    let types: Vec<_> = messages
+        .iter()
+        .map(|message| message["type"].as_i64().unwrap())
+        .collect();
+    assert_eq!(
+        types,
+        [
+            10, 12, 15, 0, 17, 1, 18, 16, 13, 19, 0, 20, 27, 0, 28, 30, 0, 31, 29, 21, 14, 11, 0
+        ]
+    );
+    let signal_text: Vec<_> = messages
+        .iter()
+        .filter(|message| matches!(message["type"].as_i64(), Some(0 | 1)))
+        .map(|message| message["message"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        signal_text,
+        ["start", "done", "left", "protected", "stop", "after"]
+    );
+    assert_eq!(parsed.model["actorOrder"], json!(["Alice", "Bob"]));
+}
+
+#[test]
+fn sequence_fragment_carrier_failures_preserve_eof_and_first_error_recovery() {
+    let engine = Engine::new();
+    let incomplete = "sequenceDiagram\nloop Outer\nopt Inner\nA->>B: message\nend\n";
+    let unexpected = "sequenceDiagram\nend\nloop Later\nA->>B: message\n";
+    for (source, span, kind) in [
+        (
+            incomplete,
+            SourceSpan::new(incomplete.len(), incomplete.len()),
+            ParseDiagnosticSpanKind::InsertionPoint,
+        ),
+        (
+            unexpected,
+            SourceSpan::new("sequenceDiagram\n".len(), "sequenceDiagram\nend".len()),
+            ParseDiagnosticSpanKind::Exact,
+        ),
+    ] {
+        let error = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("malformed Sequence fragment is rejected");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("Sequence grammar failure must remain a parse error");
+        };
+        assert_eq!(diagnostic.span(), Some(span));
+        assert_eq!(diagnostic.span_kind(), kind);
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("sequence", source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "B"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(span)
+        }));
+    }
+}
+
+#[test]
 fn parse_diagram_sequence_basic_messages_and_notes() {
     let engine = Engine::new();
     let text = r#"sequenceDiagram

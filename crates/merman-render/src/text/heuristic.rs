@@ -4,6 +4,10 @@ use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 fn estimate_char_width_em(ch: char) -> f64 {
+    if ch == '\u{00ad}' {
+        // Keep the source control as a shaping boundary without an unselected glyph advance.
+        return 0.0;
+    }
     if matches!(ch, ' ' | '\u{00A0}') {
         return 0.33;
     }

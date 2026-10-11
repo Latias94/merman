@@ -16,11 +16,11 @@ use crate::{
 };
 use serde_json::Value;
 
-pub(crate) use model::render_model_to_compat_json;
 pub use model::{
     ZenumlDiagramRenderModel, ZenumlFragmentKind, ZenumlFragmentSection, ZenumlGroup,
     ZenumlMessageStyle, ZenumlParticipant, ZenumlStatement, ZenumlStatementKind,
 };
+pub(crate) use model::{render_model_to_compat_json, render_model_to_compat_json_controlled};
 
 struct ZenumlSemanticSource {
     model: ZenumlDiagramRenderModel,
@@ -72,16 +72,14 @@ pub(crate) fn parse_zenuml_json_and_editor_facts(
             ),
             source.editor_facts,
         )),
-        None => Ok(source),
+        None => Ok((
+            model::render_model_to_compat_json_controlled(&source.model, meta, control)?,
+            source.editor_facts,
+        )),
     };
     let parsed = crate::family::CombinedSemanticParse::from_construction(
         construction,
-        |source| {
-            (
-                model::render_model_to_compat_json(&source.model, meta),
-                source.editor_facts,
-            )
-        },
+        |projected| projected,
         crate::family::CombinedSemanticFailure::into_parts,
     );
     control.checkpoint()?;
@@ -137,6 +135,58 @@ mod tests {
             effective_config: MermaidConfig::empty_object(),
             title: None,
         }
+    }
+
+    #[test]
+    fn zenuml_boundary_construction_stages_on_host_stack() {
+        use std::io::Write as _;
+
+        fn phase(name: &str) {
+            let mut output = std::io::stdout().lock();
+            writeln!(output, "zenuml_boundary_phase={name}").unwrap();
+            output.flush().unwrap();
+        }
+
+        std::thread::Builder::new()
+            .name("zenuml-boundary-construction".into())
+            .stack_size(2 * 1024 * 1024)
+            .spawn(|| {
+                let depth = crate::MAX_DIAGRAM_NESTING_DEPTH;
+                let source = format!(
+                    "zenuml\n{}A.call()\n{}",
+                    "opt {\n".repeat(depth),
+                    "}\n".repeat(depth)
+                );
+                phase("lex-begin");
+                let tokens = lexer::lex_controlled(&source, &OperationControl::new()).unwrap();
+                phase("syntax-begin");
+                let parsed =
+                    parser::parse_controlled(&source, &tokens, &OperationControl::new()).unwrap();
+                assert!(parsed.diagnostics.is_empty());
+                phase("semantic-begin");
+                let built = semantic::build_controlled(parsed, &OperationControl::new()).unwrap();
+                phase("clone-begin");
+                let cloned = built.model.clone();
+                drop(cloned);
+                phase("serde-begin");
+                let error = serde_json::to_value(&built.model).unwrap_err();
+                assert!(error.to_string().contains("128-container"), "{error}");
+                phase("projection-begin");
+                let json = crate::ManagedSemanticJson::from_value(
+                    model::render_model_to_compat_json(&built.model, &meta()).unwrap(),
+                );
+                phase("writer-begin");
+                let mut bytes = Vec::new();
+                json.write_json(&mut bytes).unwrap();
+                assert!(!bytes.is_empty());
+                phase("drop-begin");
+                drop(json);
+                drop(built);
+                phase("done");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]

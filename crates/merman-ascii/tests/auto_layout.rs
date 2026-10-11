@@ -207,7 +207,7 @@ fn explicit_family_overrides_survive_auto_and_equal_width_prefers_canonical() {
 }
 
 #[test]
-fn auto_sequence_with_notes_and_self_messages_fits_eighty_columns() {
+fn auto_sequence_with_notes_and_self_messages_respects_required_label_space() {
     let model = parse_model(&local_semantic_input(
         "sequence/self_messages_with_notes.mmd",
     ));
@@ -215,14 +215,14 @@ fn auto_sequence_with_notes_and_self_messages_fits_eighty_columns() {
     let output = render_model_report(
         &model,
         &options,
-        AsciiViewportPolicy::with_max_width(80).overflow(OverflowPolicy::Error),
+        AsciiViewportPolicy::with_max_width(105).overflow(OverflowPolicy::Error),
     )
     .expect("Compact should fit the note/self-message diagram");
     assert_eq!(output.layout_profile, AsciiLayoutProfile::Compact);
     assert!(output.compact_attempted);
     assert_eq!(
         (output.emitted_extent.width, output.emitted_extent.height),
-        (78, 58)
+        (105, 58)
     );
     for label in [
         "event.preventDefault()",
@@ -379,7 +379,7 @@ fn auto_sequence_retains_canonical_document_under_the_same_exact_cell_budget() {
                 .expect("deterministic test operation context");
             renderer.render_model_report(
                 &model,
-                AsciiViewportPolicy::with_max_width(80).overflow(OverflowPolicy::Allow),
+                AsciiViewportPolicy::with_max_width(105).overflow(OverflowPolicy::Allow),
                 &OperationControl::new(),
                 &context,
                 AsciiResourcePolicy::default()
@@ -399,7 +399,7 @@ fn auto_sequence_retains_canonical_document_under_the_same_exact_cell_budget() {
         );
         assert_eq!(
             (output.primary_extent.width, output.primary_extent.height),
-            (78, 58)
+            (105, 58)
         );
         assert_eq!(output.emitted_extent, output.primary_extent);
         assert!(!output.overflowed);
@@ -418,5 +418,167 @@ fn auto_sequence_retains_canonical_document_under_the_same_exact_cell_budget() {
             "{profile:?} returned an unexpected error with {} cells: {error:?}",
             exact_cells - 1
         );
+    }
+}
+
+#[test]
+fn compact_and_auto_keep_sibling_group_frames_separate_at_width_fifty() {
+    let model = parse_model(
+        "flowchart LR\n subgraph CI\n L[Lint] --> T[Test]\n end\n subgraph Deploy\n S[Staging] --> P[Prod]\n end\n T --> S\n",
+    );
+    for options in [AsciiRenderOptions::unicode(), AsciiRenderOptions::ascii()] {
+        let compact = render_model_report(
+            &model,
+            &options.with_layout_profile(AsciiLayoutProfile::Compact),
+            AsciiViewportPolicy::with_max_width(50),
+        )
+        .unwrap();
+        assert_eq!(compact.primary_extent.width, 50);
+        assert_eq!(compact.primary_extent.height, 11);
+        let automatic = render_model_report(
+            &model,
+            &options.with_layout_profile(AsciiLayoutProfile::Auto),
+            AsciiViewportPolicy::with_max_width(50),
+        )
+        .unwrap();
+        assert_eq!(automatic.layout_profile, AsciiLayoutProfile::Compact);
+        assert_eq!(automatic.text, compact.text);
+        let top: Vec<char> = compact.text.lines().next().unwrap().chars().collect();
+        let bottom: Vec<char> = compact.text.lines().last().unwrap().chars().collect();
+        let (left, right) = if options == AsciiRenderOptions::unicode() {
+            ('┌', '┐')
+        } else {
+            ('+', '+')
+        };
+        let corners: Vec<_> = top
+            .iter()
+            .enumerate()
+            .filter(|(_, ch)| **ch == left || **ch == right)
+            .map(|(index, _)| index)
+            .collect();
+        assert_eq!(
+            corners.len(),
+            4,
+            "two independent closed frames: {}",
+            compact.text
+        );
+        assert_eq!(
+            corners[2],
+            corners[1] + 2,
+            "one column must separate the frames"
+        );
+        assert_eq!(top[corners[1] + 1], ' ');
+        assert_eq!(bottom[corners[1] + 1], ' ');
+        for label in ["CI", "Deploy", "Lint", "Test", "Staging", "Prod"] {
+            assert_eq!(compact.text.matches(label).count(), 1);
+        }
+    }
+}
+
+#[test]
+fn nested_empty_sibling_frames_are_closed_and_keep_a_reading_gutter() {
+    fn frame_for_title(rows: &[Vec<char>], title: &str) -> (usize, usize, usize, usize) {
+        let title_chars = title.chars().collect::<Vec<_>>();
+        let (title_y, title_x) = rows
+            .iter()
+            .enumerate()
+            .find_map(|(y, row)| {
+                row.windows(title_chars.len())
+                    .position(|part| part == title_chars)
+                    .map(|x| (y, x))
+            })
+            .expect("authored group title must survive");
+        // BT mirrors the title row toward the bottom. Locate the closed enclosing frame
+        // rather than assuming that a title always appears directly below its top border.
+        for top in (0..title_y).rev() {
+            let Some(left) = (0..=title_x).rev().find(|x| rows[top][*x] == '┌') else {
+                continue;
+            };
+            let Some(right) =
+                (title_x + title_chars.len()..rows[top].len()).find(|x| rows[top][*x] == '┐')
+            else {
+                continue;
+            };
+            let Some(bottom) =
+                (title_y + 1..rows.len()).find(|y| rows[*y][left] == '└' && rows[*y][right] == '┘')
+            else {
+                continue;
+            };
+            for border in [&rows[top], &rows[bottom]] {
+                assert!(
+                    border[left + 1..right]
+                        .iter()
+                        .all(|ch| matches!(ch, '─' | '┼' | '┬' | '┴')),
+                    "frame must retain its horizontal connections"
+                );
+            }
+            return (left, top, right, bottom);
+        }
+        panic!("complete frame around title {title} must survive");
+    }
+    for direction in ["LR", "RL", "TD", "BT"] {
+        for recursive_empty in [false, true] {
+            for empty_first in [false, true] {
+                let nested = if recursive_empty {
+                    "subgraph F\nend\n"
+                } else {
+                    ""
+                };
+                let populated_source = format!("subgraph X\nA[AAA]\n{nested}end\n");
+                let empty_source = "subgraph E\nend\n";
+                let children = if empty_first {
+                    format!("{empty_source}{populated_source}")
+                } else {
+                    format!("{populated_source}{empty_source}")
+                };
+                let source = format!(
+                    "flowchart {direction}
+subgraph G1
+{children}end
+subgraph G2
+B[BBB]
+end
+A --> B
+"
+                );
+                let model = parse_model(&source);
+                for layout_profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+                    let text = render_model(
+                        &model,
+                        &AsciiRenderOptions::unicode().with_layout_profile(layout_profile),
+                    )
+                    .expect("empty and populated siblings should render");
+                    let rows: Vec<Vec<char>> =
+                        text.lines().map(|line| line.chars().collect()).collect();
+                    let populated = frame_for_title(&rows, "X");
+                    let empty = frame_for_title(&rows, "E");
+                    let separated = populated.2 + 1 < empty.0
+                        || empty.2 + 1 < populated.0
+                        || populated.3 + 1 < empty.1
+                        || empty.3 + 1 < populated.1;
+                    assert!(
+                        separated,
+                        "siblings require an empty column or row: {direction} {layout_profile:?}\n{text}"
+                    );
+                    if recursive_empty {
+                        let nested_empty = frame_for_title(&rows, "F");
+                        assert!(
+                            populated.0 < nested_empty.0
+                                && nested_empty.2 < populated.2
+                                && populated.1 < nested_empty.1
+                                && nested_empty.3 < populated.3,
+                            "populated sibling must contain its recursive empty frame: {direction} {layout_profile:?}\n{text}"
+                        );
+                    }
+                    let (left, top, right, bottom) = frame_for_title(&rows, "G1");
+                    for child in [populated, empty] {
+                        assert!(
+                            left < child.0 && child.2 < right && top < child.1 && child.3 < bottom,
+                            "parent must contain complete child frames: {direction} {layout_profile:?}\n{text}"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

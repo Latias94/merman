@@ -497,7 +497,7 @@ impl ModelComplexity {
         match model {
             RenderSemanticModel::Error(model) => Self::from_serializable(model),
             RenderSemanticModel::CustomJson(model) => {
-                let mut complexity = Self::from_serializable(model.value());
+                let mut complexity = Self::from_json(model.value());
                 complexity.text_bytes = complexity
                     .text_bytes
                     .saturating_add(model.model_name().len());
@@ -508,7 +508,7 @@ impl ModelComplexity {
                 MindmapComplexity::from_model(model).as_model_complexity()
             }
             #[cfg(feature = "diagram-state")]
-            RenderSemanticModel::State(model) => Self::from_serializable(model),
+            RenderSemanticModel::State(model) => model.model_complexity(),
             #[cfg(feature = "diagram-sequence")]
             RenderSemanticModel::Sequence(model) => {
                 SequenceComplexity::from_model(model).as_model_complexity()
@@ -558,7 +558,7 @@ impl ModelComplexity {
                 TreemapComplexity::from_model(model).as_model_complexity()
             }
             #[cfg(feature = "diagram-block")]
-            RenderSemanticModel::Block(model) => Self::from_serializable(model),
+            RenderSemanticModel::Block(model) => model.model_complexity(),
             #[cfg(feature = "diagram-er")]
             RenderSemanticModel::Er(model) => Self::from_serializable(model),
             #[cfg(feature = "diagram-quadrant-chart")]
@@ -587,12 +587,26 @@ impl ModelComplexity {
     }
 
     /// Counts the stable serialized model shape used by JSON-returning transport operations.
+    ///
+    /// A model whose serializer refuses the generic depth boundary receives saturated complexity
+    /// so resource policy rejects it without panicking. Use [`Self::from_json`] for an exact count
+    /// of a managed JSON value at arbitrary depth.
     pub fn from_serializable<T: Serialize + ?Sized>(model: &T) -> Self {
         let mut counter = ModelComplexitySerializer::default();
-        model
-            .serialize(&mut counter)
-            .expect("model complexity serialization is infallible");
+        if model.serialize(&mut counter).is_err() {
+            return Self::new(usize::MAX, usize::MAX, usize::MAX);
+        }
         counter.finish()
+    }
+
+    /// Counts JSON's serialized shape without invoking a recursive serializer.
+    pub fn from_json(model: &serde_json::Value) -> Self {
+        let complexity = json_value_complexity(model, 0);
+        Self::new(
+            complexity.items.max(1),
+            complexity.text_bytes,
+            complexity.container_depth,
+        )
     }
 
     #[cfg(feature = "diagram-kanban")]
@@ -1185,6 +1199,7 @@ impl TreemapComplexity {
         let mut nesting_depth = 0usize;
 
         let mut pending = vec![(&model.root, 0usize)];
+        let mut visited = vec![false; model.nodes.len()];
         while let Some((node, depth)) = pending.pop() {
             nodes = nodes.saturating_add(1);
             nesting_depth = nesting_depth.max(depth);
@@ -1205,7 +1220,12 @@ impl TreemapComplexity {
             }
             if let Some(children) = node.children.as_ref() {
                 for child in children.iter().rev() {
-                    pending.push((child, depth.saturating_add(1)));
+                    if let Some(record) = model.nodes.get(*child)
+                        && !visited[*child]
+                    {
+                        visited[*child] = true;
+                        pending.push((record, depth.saturating_add(1)));
+                    }
                 }
             }
         }
@@ -1260,17 +1280,26 @@ impl IshikawaComplexity {
             .fold(0usize, |total, value| total.saturating_add(value.len())),
             nesting_depth: 0,
         };
-        let Some(root) = model.root.as_ref() else {
+        let Some(root) = model.root.and_then(|id| model.nodes.get(id)) else {
             return complexity;
         };
 
         let mut pending = vec![(root, 0usize)];
+        let mut visited = vec![false; model.nodes.len()];
+        if let Some(root) = model.root {
+            visited[root] = true;
+        }
         while let Some((node, depth)) = pending.pop() {
             complexity.nodes = complexity.nodes.saturating_add(1);
             complexity.label_bytes = complexity.label_bytes.saturating_add(node.text.len());
             complexity.nesting_depth = complexity.nesting_depth.max(depth);
             for child in node.children.iter().rev() {
-                pending.push((child, depth.saturating_add(1)));
+                if let Some(record) = model.nodes.get(*child)
+                    && !visited[*child]
+                {
+                    visited[*child] = true;
+                    pending.push((record, depth.saturating_add(1)));
+                }
             }
         }
         complexity
@@ -2002,11 +2031,11 @@ fn kanban_nesting_depth(model: &KanbanDiagramRenderModel) -> usize {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-#[cfg(any(feature = "diagram-sequence", feature = "diagram-treemap"))]
 struct JsonValueComplexity {
     items: usize,
     text_bytes: usize,
     nesting_depth: usize,
+    container_depth: usize,
 }
 
 #[cfg(feature = "diagram-sequence")]
@@ -2015,10 +2044,10 @@ impl JsonValueComplexity {
         self.items = self.items.saturating_add(other.items);
         self.text_bytes = self.text_bytes.saturating_add(other.text_bytes);
         self.nesting_depth = self.nesting_depth.max(other.nesting_depth);
+        self.container_depth = self.container_depth.max(other.container_depth);
     }
 }
 
-#[cfg(any(feature = "diagram-sequence", feature = "diagram-treemap"))]
 enum JsonTraversalFrame<'a> {
     Value(&'a serde_json::Value, usize),
     Array(std::slice::Iter<'a, serde_json::Value>, usize),
@@ -2036,6 +2065,7 @@ fn json_map_complexity(
             .keys()
             .fold(0usize, |total, key| total.saturating_add(key.len())),
         nesting_depth: 0,
+        container_depth: 0,
     };
     for value in map.values() {
         complexity.merge(json_value_complexity(value, value_depth));
@@ -2044,7 +2074,6 @@ fn json_map_complexity(
 }
 
 /// Counts an arbitrary JSON subtree without recursive calls or width-proportional scratch space.
-#[cfg(any(feature = "diagram-sequence", feature = "diagram-treemap"))]
 fn json_value_complexity(value: &serde_json::Value, initial_depth: usize) -> JsonValueComplexity {
     let mut complexity = JsonValueComplexity::default();
     let mut pending = vec![JsonTraversalFrame::Value(value, initial_depth)];
@@ -2057,6 +2086,7 @@ fn json_value_complexity(value: &serde_json::Value, initial_depth: usize) -> Jso
                         complexity.text_bytes = complexity.text_bytes.saturating_add(value.len());
                     }
                     serde_json::Value::Array(values) => {
+                        complexity.container_depth = complexity.container_depth.max(depth);
                         complexity.items = complexity.items.saturating_add(values.len());
                         pending.push(JsonTraversalFrame::Array(
                             values.iter(),
@@ -2064,6 +2094,7 @@ fn json_value_complexity(value: &serde_json::Value, initial_depth: usize) -> Jso
                         ));
                     }
                     serde_json::Value::Object(values) => {
+                        complexity.container_depth = complexity.container_depth.max(depth);
                         complexity.items = complexity.items.saturating_add(values.len());
                         pending.push(JsonTraversalFrame::Object(
                             values.iter(),
@@ -2106,6 +2137,49 @@ fn json_item_count(value: &serde_json::Value) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iterative_json_complexity_matches_existing_serialized_shape() {
+        for value in [
+            serde_json::json!(null),
+            serde_json::json!([]),
+            serde_json::json!({"empty": [], "nested": {"name": ["value", {}]}}),
+            serde_json::json!([1, "text", [[], {}]]),
+        ] {
+            assert_eq!(
+                ModelComplexity::from_json(&value),
+                ModelComplexity::from_serializable(&value),
+            );
+        }
+    }
+
+    #[test]
+    fn generic_complexity_rejects_managed_json_depth_without_panicking() {
+        let mut value = serde_json::Value::Null;
+        for _ in 0..129 {
+            value = serde_json::Value::Array(vec![value]);
+        }
+        let managed = crate::ManagedSemanticJson::from_value(value);
+        assert_eq!(
+            ModelComplexity::from_serializable(&managed),
+            ModelComplexity::new(usize::MAX, usize::MAX, usize::MAX)
+        );
+    }
+
+    #[test]
+    fn custom_json_complexity_preserves_deep_payload_and_model_name() {
+        let mut value = serde_json::json!("leaf");
+        for _ in 0..5_000 {
+            value = serde_json::Value::Array(vec![value]);
+        }
+        let model =
+            RenderSemanticModel::CustomJson(crate::CustomJsonRenderModel::new("custom", value));
+        assert_eq!(
+            ModelComplexity::from_render_model(&model),
+            ModelComplexity::new(5_000, 10, 4_999),
+        );
+        drop(model);
+    }
 
     #[test]
     fn profile_values_are_single_source_for_input_limits() {
@@ -2386,19 +2460,20 @@ mod tests {
     #[cfg(feature = "diagram-treemap")]
     #[test]
     fn treemap_complexity_handles_deep_typed_trees_without_serde_recursion() {
-        let mut node = crate::diagrams::treemap::TreemapNodeRenderModel {
+        let mut nodes = vec![crate::diagrams::treemap::TreemapNodeRenderModel {
             name: "leaf".to_string(),
             ..Default::default()
-        };
+        }];
         for index in (0..1_500).rev() {
-            node = crate::diagrams::treemap::TreemapNodeRenderModel {
+            nodes.push(crate::diagrams::treemap::TreemapNodeRenderModel {
                 name: format!("section{index}"),
-                children: Some(vec![node]),
+                children: Some(vec![nodes.len() - 1]),
                 ..Default::default()
-            };
+            });
         }
         let model = TreemapDiagramRenderModel {
-            root: node,
+            root: nodes.pop().unwrap(),
+            nodes,
             ..Default::default()
         };
 
@@ -2412,18 +2487,19 @@ mod tests {
     #[cfg(feature = "diagram-ishikawa")]
     #[test]
     fn ishikawa_complexity_handles_deep_typed_trees_without_serde_recursion() {
-        let mut node = crate::diagrams::ishikawa::IshikawaNodeRenderModel {
+        let mut nodes = vec![crate::diagrams::ishikawa::IshikawaNodeRenderModel {
             text: "leaf".to_string(),
             children: Vec::new(),
-        };
+        }];
         for index in (0..1_500).rev() {
-            node = crate::diagrams::ishikawa::IshikawaNodeRenderModel {
+            nodes.push(crate::diagrams::ishikawa::IshikawaNodeRenderModel {
                 text: format!("cause{index}"),
-                children: vec![node],
-            };
+                children: vec![nodes.len() - 1],
+            });
         }
         let model = IshikawaDiagramRenderModel {
-            root: Some(node),
+            root: Some(nodes.len() - 1),
+            nodes,
             ..Default::default()
         };
 
