@@ -36,7 +36,11 @@ pub fn host_text_measurement_transport_fields(
     let white_space = match request.wrap_mode {
         WrapMode::HtmlLike
             if request.max_width.is_some()
-                || request.operation == merman::svg::TextMeasurementOperation::TspanBBoxWidth =>
+                || matches!(
+                    request.operation,
+                    merman::svg::TextMeasurementOperation::TspanBBoxWidth
+                        | merman::svg::TextMeasurementOperation::TspanBBoxHeight
+                ) =>
         {
             HostTextWhiteSpaceCode::BreakSpaces
         }
@@ -268,7 +272,7 @@ mod tests {
     }
 
     #[test]
-    fn preserved_tspan_width_projects_break_spaces_without_a_wrap_limit() {
+    fn preserved_tspan_bbox_projects_break_spaces_without_a_wrap_limit() {
         let style = TextStyle::default();
         let preserved = HostTextMeasurementRequest {
             operation: TextMeasurementOperation::TspanBBoxWidth,
@@ -280,6 +284,14 @@ mod tests {
         };
         let fields = host_text_measurement_transport_fields(preserved);
         assert_eq!(fields.operation, 7);
+        assert_eq!(
+            host_text_measurement_transport_fields(HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::TspanBBoxHeight,
+                ..preserved
+            })
+            .white_space,
+            HostTextWhiteSpaceCode::BreakSpaces.external_code(),
+        );
         assert_eq!(
             fields.white_space,
             HostTextWhiteSpaceCode::BreakSpaces.external_code()
