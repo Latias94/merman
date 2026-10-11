@@ -587,11 +587,15 @@ impl ModelComplexity {
     }
 
     /// Counts the stable serialized model shape used by JSON-returning transport operations.
+    ///
+    /// A model whose serializer refuses the generic depth boundary receives saturated complexity
+    /// so resource policy rejects it without panicking. Use [`Self::from_json`] for an exact count
+    /// of a managed JSON value at arbitrary depth.
     pub fn from_serializable<T: Serialize + ?Sized>(model: &T) -> Self {
         let mut counter = ModelComplexitySerializer::default();
-        model
-            .serialize(&mut counter)
-            .expect("model complexity serialization is infallible");
+        if model.serialize(&mut counter).is_err() {
+            return Self::new(usize::MAX, usize::MAX, usize::MAX);
+        }
         counter.finish()
     }
 
@@ -2147,6 +2151,19 @@ mod tests {
                 ModelComplexity::from_serializable(&value),
             );
         }
+    }
+
+    #[test]
+    fn generic_complexity_rejects_managed_json_depth_without_panicking() {
+        let mut value = serde_json::Value::Null;
+        for _ in 0..129 {
+            value = serde_json::Value::Array(vec![value]);
+        }
+        let managed = crate::ManagedSemanticJson::from_value(value);
+        assert_eq!(
+            ModelComplexity::from_serializable(&managed),
+            ModelComplexity::new(usize::MAX, usize::MAX, usize::MAX)
+        );
     }
 
     #[test]

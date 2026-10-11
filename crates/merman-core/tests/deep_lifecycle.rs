@@ -1,6 +1,6 @@
 #![cfg(feature = "all-diagrams")]
 
-use merman_core::{Engine, ParseOptions};
+use merman_core::{BuiltinRenderSemantic, Engine, ParseOptions};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};
@@ -235,7 +235,7 @@ fn run_worker(case: Case, depth: usize) {
             .unwrap();
         marker(started, "parse", "done");
         marker(started, "projection", "begin");
-        let (_, model) = parsed.into_parts();
+        let (meta, model) = parsed.into_parts();
         let control =
             merman_core::OperationControl::new().for_phase(merman_core::OperationPhase::Export);
         let (cancelled, scheduled_checkpoints) = match model {
@@ -251,9 +251,9 @@ fn run_worker(case: Case, depth: usize) {
                 // have completed and become a deep managed value in an open parent frame.
                 let scheduled = 1 + (depth + depth / 2 + 1).div_ceil(128);
                 control.cancel_after_checkpoints(scheduled);
-                let cancelled = model
-                    .to_json_controlled(&control)
-                    .expect_err("projection cancels after completed inner documents");
+                let cancelled =
+                    BuiltinRenderSemantic::compatibility_json_controlled(&model, &meta, &control)
+                        .expect_err("projection cancels after completed inner documents");
                 drop(model);
                 (cancelled, scheduled)
             }
@@ -265,9 +265,9 @@ fn run_worker(case: Case, depth: usize) {
                 // containing at least depth / 2 nested ancestors.
                 let scheduled = 1 + (depth + depth / 2 + 3).div_ceil(128);
                 control.cancel_after_checkpoints(scheduled);
-                let cancelled = model
-                    .to_json_controlled(&control)
-                    .expect_err("projection cancels after a completed inner Block subtree");
+                let cancelled =
+                    BuiltinRenderSemantic::compatibility_json_controlled(&model, &meta, &control)
+                        .expect_err("projection cancels after a completed inner Block subtree");
                 drop(model);
                 (cancelled, scheduled)
             }
@@ -351,15 +351,6 @@ fn run_worker(case: Case, depth: usize) {
         marker(started, "model", "done");
         // A typed ownership probe must not introduce compatibility JSON ownership.
         marker(started, "export", "not-requested");
-        if matches!(case, Case::StateTypedCloneDrop) && depth >= 128 {
-            let merman_core::RenderSemanticModel::State(model) = parsed.model() else {
-                panic!("expected the canonical State model");
-            };
-            marker(started, "generic-serde", "begin");
-            let error = serde_json::to_vec(model).unwrap_err();
-            assert!(error.to_string().contains("128"));
-            marker(started, "generic-serde", "reported-error");
-        }
         if matches!(case, Case::StateTypedDrop) {
             marker(started, "clone", "not-requested");
         } else {

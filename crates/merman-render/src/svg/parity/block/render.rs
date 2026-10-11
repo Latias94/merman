@@ -969,14 +969,19 @@ mod tests {
             shape_geometries: Vec::new(),
             bounds: None,
         };
-        let model: merman_core::diagrams::block::BlockDiagramRenderModel =
-            serde_json::from_value(serde_json::json!({
-                "blocksFlat": [{ "id": "node" }]
-            }))
-            .expect("valid Block render model");
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "block\nnode\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("parse Block render model")
+            .expect("Block input is detected");
+        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            panic!("expected Block render model");
+        };
 
         let error =
-            render_block_diagram_svg_model(&layout, &model, &serde_json::json!({}), &options)
+            render_block_diagram_svg_model(&layout, model, &serde_json::json!({}), &options)
                 .expect_err("diagram-id projection must stop before missing geometry validation");
         let Error::ResourceLimitExceeded(details) = error else {
             panic!("expected SVG byte resource rejection");

@@ -163,141 +163,6 @@ impl BlockDiagramRenderModel {
         result.items = result.items.max(1);
         result
     }
-
-    /// Projects the original nested typed wire shape into a managed JSON owner.
-    ///
-    /// Use the owner's iterative writer for output deeper than generic serde supports.
-    pub fn to_json(&self) -> Result<ManagedSemanticJson> {
-        self.to_json_controlled(&OperationControl::new())
-            .expect("a private projection control cannot be cancelled")
-    }
-
-    /// Projects typed JSON while safely owning partial nested results during cancellation.
-    pub fn to_json_controlled(
-        &self,
-        control: &OperationControl,
-    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
-        control.checkpoint()?;
-        if let Err(message) = self.record_metrics() {
-            return Ok(Err(Error::diagram_parse_fallback("block", message)));
-        }
-        let mut blocks = Vec::with_capacity(self.blocks_flat.len());
-        for index in 0..self.blocks_flat.len() {
-            blocks.push(block_render_node_to_value_controlled(
-                self, index, true, control,
-            )?);
-        }
-        control.checkpoint()?;
-        // Preserve derive's field order; transfers occur only in this checkpoint-free assembly.
-        let mut object = Map::new();
-        object.insert(
-            "blocksFlat".to_string(),
-            Value::Array(
-                blocks
-                    .into_iter()
-                    .map(ManagedSemanticJson::into_unmanaged_value)
-                    .collect(),
-            ),
-        );
-        object.insert("edges".to_string(), json!(self.edges));
-        if !self.warning_facts.is_empty() {
-            object.insert("warningFacts".to_string(), json!(self.warning_facts));
-        }
-        object.insert("classes".to_string(), json!(self.class_defs));
-        Ok(Ok(Value::Object(object).into()))
-    }
-}
-
-impl serde::Serialize for BlockDiagramRenderModel {
-    fn serialize<S: serde::Serializer>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error> {
-        let metrics = self.record_metrics().map_err(serde::ser::Error::custom)?;
-        if metrics
-            .iter()
-            .any(|value| value.container_depth.saturating_add(2) > 128)
-        {
-            return Err(serde::ser::Error::custom(
-                "semantic JSON exceeds generic serde's 128-container depth; use compatibility_json().write_json",
-            ));
-        }
-        serde::Serialize::serialize(
-            &self.to_json().map_err(serde::ser::Error::custom)?,
-            serializer,
-        )
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for BlockDiagramRenderModel {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
-        let value = <ManagedSemanticJson as serde::Deserialize>::deserialize(deserializer)?;
-        if !value.is_object() {
-            return Err(serde::de::Error::custom("Block model must be an object"));
-        }
-        let mut model = Self::default();
-        let mut indices = HashMap::<String, usize>::new();
-        let mut pending = Vec::<(usize, &Value)>::new();
-        if let Some(blocks) = value.get("blocksFlat") {
-            let blocks = blocks
-                .as_array()
-                .ok_or_else(|| serde::de::Error::custom("blocksFlat must be an array"))?;
-            for block in blocks {
-                let record = <BlockNodeRenderModel as serde::Deserialize>::deserialize(block)
-                    .map_err(serde::de::Error::custom)?;
-                let index = model.blocks_flat.len();
-                indices.insert(record.id.clone(), index);
-                model.blocks_flat.push(record);
-                pending.push((index, block));
-            }
-        }
-        // Top-level records are authoritative; nested-only records follow in first-encounter order.
-        let mut next = 0usize;
-        while let Some(&(index, block)) = pending.get(next) {
-            next += 1;
-            let mut children = Vec::new();
-            if let Some(value) = block.get("children") {
-                let nested = value
-                    .as_array()
-                    .ok_or_else(|| serde::de::Error::custom("Block children must be an array"))?;
-                for child in nested {
-                    let record = <BlockNodeRenderModel as serde::Deserialize>::deserialize(child)
-                        .map_err(serde::de::Error::custom)?;
-                    let child_index = if let Some(&index) = indices.get(&record.id) {
-                        index
-                    } else {
-                        let index = model.blocks_flat.len();
-                        indices.insert(record.id.clone(), index);
-                        model.blocks_flat.push(record);
-                        pending.push((index, child));
-                        index
-                    };
-                    children.push(child_index);
-                }
-            }
-            model.blocks_flat[index].children = children;
-        }
-        if let Some(edges) = value.get("edges") {
-            model.edges = <Vec<BlockEdgeRenderModel> as serde::Deserialize>::deserialize(edges)
-                .map_err(serde::de::Error::custom)?;
-        }
-        if let Some(classes) = value.get("classes") {
-            model.class_defs =
-                <IndexMap<String, BlockClassDefRenderModel> as serde::Deserialize>::deserialize(
-                    classes,
-                )
-                .map_err(serde::de::Error::custom)?;
-        }
-        if let Some(warnings) = value.get("warningFacts") {
-            model.warning_facts =
-                <Vec<DiagramWarningFact> as serde::Deserialize>::deserialize(warnings)
-                    .map_err(serde::de::Error::custom)?;
-        }
-        model.record_metrics().map_err(serde::de::Error::custom)?;
-        Ok(model)
-    }
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
@@ -310,35 +175,20 @@ pub struct BlockClassDefRenderModel {
     pub text_styles: Vec<String>,
 }
 
-#[derive(Debug, Clone, Default, serde::Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct BlockNodeRenderModel {
     pub id: String,
-    #[serde(
-        default,
-        rename = "colorIndex",
-        skip_serializing_if = "Option::is_none"
-    )]
     pub color_index: Option<usize>,
-    #[serde(default)]
     pub label: String,
-    #[serde(default, rename = "type")]
     pub block_type: String,
     /// Indices of direct children in the owning model's `blocks_flat` records.
-    #[serde(skip)]
     pub children: Vec<usize>,
-    #[serde(default)]
     pub columns: Option<i64>,
-    #[serde(default, rename = "widthInColumns")]
     pub width_in_columns: Option<i64>,
-    #[serde(default)]
     pub width: Option<i64>,
-    #[serde(default)]
     pub classes: Vec<String>,
-    #[serde(default)]
     pub styles: Vec<String>,
-    #[serde(default)]
     pub directions: Vec<String>,
-    #[serde(skip)]
     compatibility: BlockNodeCompatibility,
 }
 
@@ -719,7 +569,6 @@ fn block_render_node_to_value_shallow(block: &BlockNodeRenderModel, children: Ve
 fn block_render_node_to_value_controlled(
     model: &BlockDiagramRenderModel,
     index: usize,
-    typed: bool,
     control: &OperationControl,
 ) -> OperationControlResult<ManagedSemanticJson> {
     struct Frame {
@@ -760,11 +609,7 @@ fn block_render_node_to_value_controlled(
             .into_iter()
             .map(ManagedSemanticJson::into_unmanaged_value)
             .collect();
-        let value = if typed {
-            block_typed_node_to_value_shallow(block, children)
-        } else {
-            block_render_node_to_value_shallow(block, children)
-        };
+        let value = block_render_node_to_value_shallow(block, children);
         let value = ManagedSemanticJson::from(value);
         if let Some(parent) = stack.last_mut() {
             parent.children.push(value);
@@ -772,24 +617,6 @@ fn block_render_node_to_value_controlled(
             return Ok(value);
         }
     }
-}
-
-fn block_typed_node_to_value_shallow(block: &BlockNodeRenderModel, children: Vec<Value>) -> Value {
-    let mut obj = Map::new();
-    obj.insert("id".to_string(), json!(block.id));
-    if let Some(index) = block.color_index {
-        obj.insert("colorIndex".to_string(), json!(index));
-    }
-    obj.insert("label".to_string(), json!(block.label));
-    obj.insert("type".to_string(), json!(block.block_type));
-    obj.insert("children".to_string(), Value::Array(children));
-    obj.insert("columns".to_string(), json!(block.columns));
-    obj.insert("widthInColumns".to_string(), json!(block.width_in_columns));
-    obj.insert("width".to_string(), json!(block.width));
-    obj.insert("classes".to_string(), json!(block.classes));
-    obj.insert("styles".to_string(), json!(block.styles));
-    obj.insert("directions".to_string(), json!(block.directions));
-    Value::Object(obj)
 }
 
 fn block_render_edge_to_value(edge: &BlockEdgeRenderModel) -> Value {
@@ -2699,7 +2526,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     if let Some(root) = model.root() {
         for &index in &root.children {
             blocks.push(block_render_node_to_value_controlled(
-                model, index, false, control,
+                model, index, control,
             )?);
         }
     }
@@ -2707,7 +2534,7 @@ pub(crate) fn render_model_to_compat_json_controlled(
     for index in 0..model.blocks_flat.len() {
         control.checkpoint()?;
         blocks_flat.push(block_render_node_to_value_controlled(
-            model, index, false, control,
+            model, index, control,
         )?);
     }
     let edges = model
@@ -2928,19 +2755,15 @@ mod tests {
     }
 
     #[test]
-    fn block_typed_serde_preflights_actual_nested_wire_depth() {
+    fn block_compatibility_projection_handles_deep_nested_wire() {
         let supported = parse_block_model_for_render(&deep_block_chain(61), &meta()).unwrap();
-        let wire = serde_json::to_value(&supported).expect("128 containers are supported");
-        let restored: BlockDiagramRenderModel = serde_json::from_value(wire.clone()).unwrap();
-        assert_eq!(serde_json::to_value(&restored).unwrap(), wire);
-        assert_eq!(restored.blocks_flat.len(), supported.blocks_flat.len());
+        let compatibility =
+            ManagedSemanticJson::from(render_model_to_compat_json(&supported, &meta()).unwrap());
+        let mut bytes = Vec::new();
+        compatibility.write_json(&mut bytes).unwrap();
+        assert!(!bytes.is_empty());
+
         let deep = parse_block_model_for_render(&deep_block_chain(62), &meta()).unwrap();
-        assert!(
-            serde_json::to_value(&deep)
-                .unwrap_err()
-                .to_string()
-                .contains("128-container")
-        );
         let compatibility =
             ManagedSemanticJson::from(render_model_to_compat_json(&deep, &meta()).unwrap());
         let mut bytes = Vec::new();
@@ -2974,63 +2797,6 @@ mod tests {
             measurements.push(bytes.len());
         }
         assert!(measurements[2] > 3 * measurements[1]);
-    }
-
-    #[test]
-    fn block_flat_complexity_matches_previous_typed_wire_accounting() {
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct LegacyNode {
-            id: String,
-            #[serde(
-                rename = "colorIndex",
-                default,
-                skip_serializing_if = "Option::is_none"
-            )]
-            color_index: Option<usize>,
-            label: String,
-            #[serde(rename = "type")]
-            block_type: String,
-            children: Vec<LegacyNode>,
-            columns: Option<i64>,
-            #[serde(rename = "widthInColumns")]
-            width_in_columns: Option<i64>,
-            width: Option<i64>,
-            classes: Vec<String>,
-            styles: Vec<String>,
-            directions: Vec<String>,
-        }
-        #[derive(serde::Serialize, serde::Deserialize)]
-        struct LegacyModel {
-            #[serde(rename = "blocksFlat")]
-            blocks_flat: Vec<LegacyNode>,
-            edges: Vec<BlockEdgeRenderModel>,
-            #[serde(
-                rename = "warningFacts",
-                default,
-                skip_serializing_if = "Vec::is_empty"
-            )]
-            warning_facts: Vec<DiagramWarningFact>,
-            #[serde(rename = "classes")]
-            class_defs: IndexMap<String, BlockClassDefRenderModel>,
-        }
-        for source in [
-            "block\nA\n",
-            "block\ncolumns 1\nblock:outer\nA[\"Alpha\"]:2\nA --> B\nC<[\"Route\"]>(left,down)\nend\nclassDef important fill:red,color:blue\nclass A important\nstyle B stroke-width:3px\n",
-            "block\ncolumns 1\nA:3\n",
-            "block\nblock:G\nA<[\"old\"]>(down):1\nend\nstyle A fill:red,stroke:blue\nclass A hot\nA<[\"middle\"]>(up):3\nA((\"new\")):4\n",
-            "block\nblock:G\ncolumns 2\nA\nend\nblock:G\ncolumns 3\nB\nend\n",
-        ] {
-            let model = parse_block_model_for_render(source, &meta()).unwrap();
-            let wire = serde_json::to_value(&model).unwrap();
-            let legacy: LegacyModel = serde_json::from_value(wire.clone()).unwrap();
-            assert_eq!(serde_json::to_value(&legacy).unwrap(), wire);
-            assert_eq!(
-                model.model_complexity(),
-                ModelComplexity::from_serializable(&legacy)
-            );
-            let restored: BlockDiagramRenderModel = serde_json::from_value(wire).unwrap();
-            assert_eq!(restored.blocks_flat.len(), model.blocks_flat.len());
-        }
     }
 
     fn blocks(model: &Value) -> Vec<Value> {

@@ -384,13 +384,13 @@ pub(crate) fn render_model_to_compat_json_controlled(
     out.insert("title".to_string(), json!(&model.title));
     out.insert("accTitle".to_string(), json!(&model.acc_title));
     out.insert("accDescr".to_string(), json!(&model.acc_descr));
+    out.insert("root".to_string(), root.into_unmanaged_value());
     out.insert("nodes".to_string(), Value::Array(nodes));
     out.insert("classes".to_string(), json!(&model.classes));
     out.insert(
         "config".to_string(),
         crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
-    out.insert("root".to_string(), root.into_unmanaged_value());
     let out = crate::ManagedSemanticJson::from_value(Value::Object(out));
     control.checkpoint()?;
     Ok(Ok(out.into_unmanaged_value()))
@@ -480,101 +480,6 @@ impl TreemapDiagramRenderModel {
         Ok(Ok(completed[root_id]
             .take()
             .expect("root projection completed")))
-    }
-
-    /// Projects the former typed wire shape into managed JSON for deep export.
-    pub fn to_compat_json(&self) -> Result<crate::ManagedSemanticJson> {
-        let root = self
-            .project_root_controlled(&crate::OperationControl::new())
-            .expect("a private parse control cannot be cancelled")
-            .map_err(|message| Error::diagram_parse_fallback("treemap", message))?;
-        let mut out = Map::new();
-        out.insert("accTitle".to_string(), json!(&self.acc_title));
-        out.insert("accDescr".to_string(), json!(&self.acc_descr));
-        out.insert("title".to_string(), json!(&self.title));
-        out.insert("classes".to_string(), json!(&self.classes));
-        out.insert("root".to_string(), root.into_unmanaged_value());
-        Ok(crate::ManagedSemanticJson::from_value(Value::Object(out)))
-    }
-}
-
-impl serde::Serialize for TreemapDiagramRenderModel {
-    fn serialize<S: serde::Serializer>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error> {
-        serde::Serialize::serialize(
-            &self.to_compat_json().map_err(serde::ser::Error::custom)?,
-            serializer,
-        )
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for TreemapDiagramRenderModel {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
-        #[derive(serde::Deserialize)]
-        struct Wire {
-            #[serde(rename = "accTitle")]
-            acc_title: Option<String>,
-            #[serde(rename = "accDescr")]
-            acc_descr: Option<String>,
-            title: Option<String>,
-            root: crate::ManagedSemanticJson,
-            #[serde(default)]
-            classes: std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
-        }
-        let wire = Wire::deserialize(deserializer)?;
-        let mut nodes = Vec::<TreemapNodeRenderModel>::new();
-        let mut stack = vec![(wire.root.as_value(), None::<usize>)];
-        while let Some((value, parent)) = stack.pop() {
-            let payload = value
-                .as_object()
-                .ok_or_else(|| serde::de::Error::custom("expected treemap node object"))?
-                .iter()
-                .filter(|(key, _)| key.as_str() != "children")
-                .map(|(key, value)| (key.clone(), crate::config::clone_value_nonrecursive(value)))
-                .collect();
-            let mut node: TreemapNodeRenderModel =
-                serde_json::from_value(Value::Object(payload)).map_err(serde::de::Error::custom)?;
-            let children = match value.get("children") {
-                Some(Value::Array(children)) => {
-                    node.children = Some(Vec::new());
-                    children.as_slice()
-                }
-                Some(Value::Null) | None => &[],
-                Some(_) => return Err(serde::de::Error::custom("expected treemap children array")),
-            };
-            let id = nodes.len();
-            nodes.push(node);
-            if let Some(parent) = parent {
-                nodes[parent]
-                    .children
-                    .as_mut()
-                    .expect("parent has children")
-                    .push(id);
-            }
-            for child in children.iter().rev() {
-                stack.push((child, Some(id)));
-            }
-        }
-        let mut root = nodes.remove(0);
-        for node in nodes.iter_mut().chain(std::iter::once(&mut root)) {
-            if let Some(children) = &mut node.children {
-                for child in children {
-                    *child -= 1;
-                }
-            }
-        }
-        Ok(Self {
-            acc_title: wire.acc_title,
-            acc_descr: wire.acc_descr,
-            title: wire.title,
-            root,
-            nodes,
-            classes: wire.classes,
-        })
     }
 }
 
@@ -1388,7 +1293,19 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions, RenderSemanticModel};
+    use crate::{
+        Engine, ManagedSemanticJson, MermaidConfig, ParseMetadata, ParseOptions,
+        RenderSemanticModel,
+    };
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "treemap".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
     use futures::executor::block_on;
     use serde_json::json;
 
@@ -1695,7 +1612,7 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
             nodes: arena.nodes,
             ..Default::default()
         };
-        let projected = model.to_compat_json().unwrap();
+        let projected = render_model_to_compat_json(&model, &meta()).unwrap();
         let root_value = projected["root"]["children"].as_array().unwrap();
         assert_eq!(
             root_value,
@@ -1805,9 +1722,9 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
 
     #[cfg(feature = "all-diagrams")]
     #[test]
-    fn treemap_deep_typed_clone_drop_export_child() {
+    fn treemap_deep_clone_drop_export_child() {
         run_lifecycle_child(
-            "diagrams::treemap::tests::treemap_deep_typed_clone_drop_export_child",
+            "diagrams::treemap::tests::treemap_deep_clone_drop_export_child",
             || {
                 let source = deep_treemap_chain(5_000);
                 let parsed = Engine::new()
@@ -1818,12 +1735,12 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                     panic!("typed treemap");
                 };
                 assert_eq!(model.nodes.len(), 5_001);
-                let json = model.to_compat_json().unwrap();
+                let json =
+                    ManagedSemanticJson::from(render_model_to_compat_json(model, &meta()).unwrap());
                 let mut output = Vec::new();
                 json.write_json(&mut output).unwrap();
                 assert_in_progress_export_deadline(&json);
                 assert!(output.windows(10).any(|bytes| bytes == b"\"value\":1}"));
-                assert!(serde_json::to_vec(model).is_err());
                 drop(json.clone());
                 drop(json);
                 drop(parsed.clone());
@@ -1848,17 +1765,18 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
                 source.push_str("\"sibling\": 2\n");
                 let model = parse_treemap_model_for_render(&source, &meta()).unwrap();
                 let control = crate::OperationControl::new();
-                // Root entry and two child slots, then all entries/completions of the first branch.
                 control.cancel_after_checkpoints(4 * DEPTH + 5);
                 assert!(matches!(
                     model.project_root_controlled(&control),
                     Err(crate::OperationCancelled { .. })
                 ));
-                assert!(model.to_compat_json().is_ok());
+                let projection =
+                    render_model_to_compat_json(&model, &meta()).map(ManagedSemanticJson::from);
+                assert!(projection.is_ok());
                 let mut invalid = model.clone();
                 let sibling = invalid.root.children.as_ref().unwrap()[1];
                 invalid.nodes[sibling].children = Some(vec![usize::MAX]);
-                assert!(invalid.to_compat_json().is_err());
+                assert!(render_model_to_compat_json(&invalid, &meta()).is_err());
                 drop(invalid);
                 drop(model);
             },
@@ -1866,22 +1784,18 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
     }
 
     #[test]
-    fn treemap_typed_wire_roundtrip_and_container_boundary() {
-        let expected = json!({"accTitle": null, "accDescr": null, "title": null,
-            "root": {"name": "", "children": [{"name": "A", "children": [{"name": "leaf", "value": 7}]}]}, "classes": {}});
-        let model: TreemapDiagramRenderModel = serde_json::from_value(expected.clone()).unwrap();
-        assert_eq!(model.nodes.len(), 2);
-        assert_eq!(serde_json::to_value(&model).unwrap(), expected);
-        let default = TreemapDiagramRenderModel::default();
-        assert_eq!(
-            serde_json::to_value(default).unwrap()["root"],
-            json!({"name": ""})
-        );
-        // Diagram object, synthetic root object, then one array/object pair for every node.
+    fn treemap_projection_handles_deep_canonical_records() {
         let boundary = parse_treemap_model_for_render(&deep_treemap_chain(62), &meta()).unwrap();
-        assert!(serde_json::to_vec(&boundary).is_ok());
-        let unsupported = parse_treemap_model_for_render(&deep_treemap_chain(63), &meta()).unwrap();
-        assert!(serde_json::to_vec(&unsupported).is_err());
+        let json =
+            ManagedSemanticJson::from(render_model_to_compat_json(&boundary, &meta()).unwrap());
+        let mut output = Vec::new();
+        json.write_json(&mut output).unwrap();
+        assert!(!output.is_empty());
+        let empty = TreemapDiagramRenderModel::default();
+        assert_eq!(
+            render_model_to_compat_json(&empty, &meta()).unwrap(),
+            json!({})
+        );
     }
 
     #[test]
@@ -1893,22 +1807,13 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
             },
             ..Default::default()
         };
-        assert!(model.to_compat_json().is_err());
+        assert!(render_model_to_compat_json(&model, &meta()).is_err());
         model.nodes.push(TreemapNodeRenderModel {
             name: "cycle".to_string(),
             children: Some(vec![0]),
             ..Default::default()
         });
-        assert!(model.to_compat_json().is_err());
-    }
-
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
-            diagram_type: "treemap".to_string(),
-            config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
-            title: None,
-        }
+        assert!(render_model_to_compat_json(&model, &meta()).is_err());
     }
 
     #[test]
@@ -1974,10 +1879,6 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         assert_eq!(compat["title"], json!(typed.title));
         assert_eq!(compat["accTitle"], json!(typed.acc_title));
         assert_eq!(compat["accDescr"], json!(typed.acc_descr));
-        assert_eq!(
-            compat["root"],
-            serde_json::to_value(&typed).unwrap()["root"]
-        );
         assert_eq!(compat["type"], json!("treemap"));
         assert!(compat["config"].is_object());
         assert_eq!(compat["accTitle"], Value::Null);

@@ -156,8 +156,8 @@ pub(crate) fn render_model_to_compat_json_controlled(
     out.insert("title".to_string(), json!(&model.title));
     out.insert("accTitle".to_string(), json!(&model.acc_title));
     out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("nodes".to_string(), Value::Array(nodes));
     out.insert("root".to_string(), root.into_unmanaged_value());
+    out.insert("nodes".to_string(), Value::Array(nodes));
     let out = crate::ManagedSemanticJson::from_value(Value::Object(out));
     control.checkpoint()?;
     Ok(Ok(out.into_unmanaged_value()))
@@ -220,87 +220,6 @@ impl IshikawaDiagramRenderModel {
         Ok(Ok(completed[root]
             .take()
             .expect("root projection completed")))
-    }
-
-    /// Projects the former typed wire shape into managed JSON for deep export.
-    pub fn to_compat_json(&self) -> Result<crate::ManagedSemanticJson> {
-        let root = self
-            .project_root_controlled(&crate::OperationControl::new())
-            .expect("a private parse control cannot be cancelled")
-            .map_err(|message| Error::diagram_parse_fallback("ishikawa", message))?;
-        let mut out = Map::new();
-        out.insert("accTitle".to_string(), json!(&self.acc_title));
-        out.insert("accDescr".to_string(), json!(&self.acc_descr));
-        out.insert("title".to_string(), json!(&self.title));
-        out.insert("root".to_string(), root.into_unmanaged_value());
-        Ok(crate::ManagedSemanticJson::from_value(Value::Object(out)))
-    }
-}
-
-impl serde::Serialize for IshikawaDiagramRenderModel {
-    fn serialize<S: serde::Serializer>(
-        &self,
-        serializer: S,
-    ) -> std::result::Result<S::Ok, S::Error> {
-        serde::Serialize::serialize(
-            &self.to_compat_json().map_err(serde::ser::Error::custom)?,
-            serializer,
-        )
-    }
-}
-
-impl<'de> serde::Deserialize<'de> for IshikawaDiagramRenderModel {
-    fn deserialize<D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> std::result::Result<Self, D::Error> {
-        #[derive(serde::Deserialize)]
-        struct Wire {
-            #[serde(default, rename = "accTitle")]
-            acc_title: Option<String>,
-            #[serde(default, rename = "accDescr")]
-            acc_descr: Option<String>,
-            #[serde(default)]
-            title: Option<String>,
-            root: Option<crate::ManagedSemanticJson>,
-        }
-        let wire = Wire::deserialize(deserializer)?;
-        let mut nodes = Vec::<IshikawaNodeRenderModel>::new();
-        let mut stack = wire
-            .root
-            .as_ref()
-            .map(|root| vec![(root.as_value(), None::<usize>)])
-            .unwrap_or_default();
-        while let Some((value, parent)) = stack.pop() {
-            let text = value
-                .get("text")
-                .and_then(Value::as_str)
-                .ok_or_else(|| serde::de::Error::custom("expected ishikawa text"))?;
-            let children = match value.get("children") {
-                Some(Value::Array(children)) => children.as_slice(),
-                None => &[],
-                Some(_) => {
-                    return Err(serde::de::Error::custom("expected ishikawa children array"));
-                }
-            };
-            let id = nodes.len();
-            nodes.push(IshikawaNodeRenderModel {
-                text: text.to_owned(),
-                children: Vec::new(),
-            });
-            if let Some(parent) = parent {
-                nodes[parent].children.push(id);
-            }
-            for child in children.iter().rev() {
-                stack.push((child, Some(id)));
-            }
-        }
-        Ok(Self {
-            acc_title: wire.acc_title,
-            acc_descr: wire.acc_descr,
-            title: wire.title,
-            root: (!nodes.is_empty()).then_some(0),
-            nodes,
-        })
     }
 }
 
@@ -581,8 +500,8 @@ mod tests {
     use super::*;
     use crate::{
         EditorExpectedSyntaxKind, EditorSemanticCompleteness, EditorSemanticKind,
-        EditorSemanticRole, Engine, MermaidConfig, ParseDiagnosticSpanKind, ParseMetadata,
-        SourceSpan,
+        EditorSemanticRole, Engine, ManagedSemanticJson, MermaidConfig, ParseDiagnosticSpanKind,
+        ParseMetadata, SourceSpan,
     };
 
     const DEEP_ISHIKAWA_DEPTH: usize = 1_500;
@@ -607,9 +526,9 @@ mod tests {
 
     #[cfg(feature = "all-diagrams")]
     #[test]
-    fn ishikawa_deep_typed_clone_drop_export_child() {
+    fn ishikawa_deep_clone_drop_export_child() {
         crate::diagrams::treemap::tests::run_lifecycle_child(
-            "diagrams::ishikawa::tests::ishikawa_deep_typed_clone_drop_export_child",
+            "diagrams::ishikawa::tests::ishikawa_deep_clone_drop_export_child",
             || {
                 let source = deep_ishikawa_source(5_000);
                 let parsed = Engine::new()
@@ -620,12 +539,12 @@ mod tests {
                     panic!("typed ishikawa");
                 };
                 assert_eq!(model.nodes.len(), 5_001);
-                let json = model.to_compat_json().unwrap();
+                let json =
+                    ManagedSemanticJson::from(render_model_to_compat_json(model, &meta()).unwrap());
                 let mut output = Vec::new();
                 json.write_json(&mut output).unwrap();
                 crate::diagrams::treemap::tests::assert_in_progress_export_deadline(&json);
                 assert!(output.windows(9).any(|bytes| bytes == b"Node 4999"));
-                assert!(serde_json::to_vec(model).is_err());
                 drop(json.clone());
                 drop(json);
                 drop(parsed.clone());
@@ -653,17 +572,18 @@ mod tests {
                 source.push_str("    Sibling\n");
                 let model = parse_ishikawa_model_for_render(&source, &meta()).unwrap();
                 let control = crate::OperationControl::new();
-                // Root and two child slots, followed by every first-branch entry and completion.
                 control.cancel_after_checkpoints(4 * DEPTH + 1);
                 assert!(matches!(
                     model.project_root_controlled(&control),
                     Err(crate::OperationCancelled { .. })
                 ));
-                assert!(model.to_compat_json().is_ok());
+                let projection =
+                    render_model_to_compat_json(&model, &meta()).map(ManagedSemanticJson::from);
+                assert!(projection.is_ok());
                 let mut invalid = model.clone();
                 let sibling = invalid.nodes[invalid.root.unwrap()].children[1];
                 invalid.nodes[sibling].children = vec![usize::MAX];
-                assert!(invalid.to_compat_json().is_err());
+                assert!(render_model_to_compat_json(&invalid, &meta()).is_err());
                 drop(invalid);
                 drop(model);
             },
@@ -671,23 +591,15 @@ mod tests {
     }
 
     #[test]
-    fn ishikawa_typed_wire_roundtrip_and_container_boundary() {
-        let expected = json!({"accTitle": null, "accDescr": null, "title": "Root",
-            "root": {"text": "Root", "children": [{"text": "first", "children": []}, {"text": "second", "children": []}]}});
-        let model: IshikawaDiagramRenderModel = serde_json::from_value(expected.clone()).unwrap();
-        assert_eq!(model.nodes.len(), 3);
-        assert_eq!(model.nodes[model.root.unwrap()].children, [1, 2]);
-        assert_eq!(serde_json::to_value(&model).unwrap(), expected);
-        assert_eq!(
-            serde_json::to_value(IshikawaDiagramRenderModel::default()).unwrap(),
-            json!({"accTitle": null, "accDescr": null, "title": null, "root": null})
-        );
-        // The deepest empty children array gives depths 127 and 129 respectively.
+    fn ishikawa_projection_handles_deep_canonical_records() {
         let boundary = parse_ishikawa_model_for_render(&deep_ishikawa_source(62), &meta()).unwrap();
-        assert!(serde_json::to_vec(&boundary).is_ok());
-        let unsupported =
-            parse_ishikawa_model_for_render(&deep_ishikawa_source(63), &meta()).unwrap();
-        assert!(serde_json::to_vec(&unsupported).is_err());
+        let json =
+            ManagedSemanticJson::from(render_model_to_compat_json(&boundary, &meta()).unwrap());
+        let mut output = Vec::new();
+        json.write_json(&mut output).unwrap();
+        assert!(!output.is_empty());
+        let empty = IshikawaDiagramRenderModel::default();
+        assert!(render_model_to_compat_json(&empty, &meta()).is_ok());
     }
 
     #[test]
@@ -696,12 +608,12 @@ mod tests {
             root: Some(0),
             ..Default::default()
         };
-        assert!(model.to_compat_json().is_err());
+        assert!(render_model_to_compat_json(&model, &meta()).is_err());
         model.nodes.push(IshikawaNodeRenderModel {
             text: "cycle".to_string(),
             children: vec![0],
         });
-        assert!(model.to_compat_json().is_err());
+        assert!(render_model_to_compat_json(&model, &meta()).is_err());
     }
 
     #[test]
@@ -799,10 +711,6 @@ Cause B
         assert_eq!(
             render_model_to_compat_json(&expected_model, &meta()).unwrap(),
             expected_json
-        );
-        assert_eq!(
-            json["root"],
-            serde_json::to_value(&expected_model).unwrap()["root"]
         );
         assert_eq!(json["title"].as_str(), expected_model.title.as_deref());
 

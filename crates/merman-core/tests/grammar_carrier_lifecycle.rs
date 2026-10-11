@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::{self, Write as _};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CASE_ENV: &str = "MERMAN_CORE_GRAMMAR_CARRIER_CASE";
 const SIZE_ENV: &str = "MERMAN_CORE_GRAMMAR_CARRIER_SIZE";
@@ -122,11 +122,20 @@ fn run_worker(case: &str, size: usize) {
 
 fn run_child(case: &str, size: usize) {
     let started = Instant::now();
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("diagnostic timestamp follows the Unix epoch")
+        .as_nanos();
     let directory = std::env::temp_dir().join(format!(
-        "merman-core-grammar-carrier-{}-{case}-{size}",
+        "merman-core-grammar-carrier-{}-{case}-{size}-{timestamp}",
         std::process::id()
     ));
-    fs::create_dir(&directory).expect("create carrier child diagnostic directory");
+    fs::create_dir(&directory).unwrap_or_else(|error| {
+        panic!(
+            "create carrier child diagnostic directory {}: {error}",
+            directory.display()
+        )
+    });
     let stdout_path = directory.join("stdout.txt");
     let stderr_path = directory.join("stderr.txt");
     let mut child = Command::new(std::env::current_exe().expect("current test executable"))

@@ -456,3 +456,30 @@ formatting, migration-example, canonical-growth, and 17-family CI comparison res
 applicable: the review fix changes only precedence for an already observed cancellation followed
 by writer I/O failure, and leaves successful output, grammars, comparison policies, and examples
 unchanged. No required implementation or validated review finding remains unresolved.
+
+
+## Follow-up scope and API review
+
+A second independent Codex review audited the complete implementation range
+`aa88d63e2..542c58038` for architecture, API contracts, correctness, simplicity, and test scope.
+The review found no semantic regression or over-broad shared abstraction. It did identify four
+owning typed-model serde adapters as unused Rust-wire compatibility code: State's importer and
+wire structs, Block's owning serde path, and Treemap/Ishikawa's nested-tree import/export paths.
+They were removed together with their round-trip tests. Mermaid compatibility projectors,
+canonical flat records, State document projection, and family-specific resource complexity
+calculators remain the only production paths.
+
+The review also found two ordering regressions in the new projectors. State now accumulates
+managed records in input order before assembling its JSON object; Treemap and Ishikawa insert
+`root` at the former field position. A public complexity count now saturates on a serializer that
+refuses the generic 128-container boundary instead of panicking; exact deep JSON counts use
+`from_json`. The grammar-carrier and Block lifecycle diagnostic directories now include epoch
+nanoseconds and report their actual path on creation failure, so retained Windows artifacts cannot
+collide on PID reuse.
+
+After this follow-up delta, `cargo nextest run --locked -j2 -p merman-core --all-features` passed
+1,856/1,856 tests in 74.493 seconds. The focused migration set passed 21/21 tests, including
+5,000-level Treemap/Ishikawa export and Block lifecycle cases. `cargo check --locked -p
+merman-core --all-features`, `cargo fmt --all --check`, and `git diff --check` also passed. The
+old typed-wire contract is intentionally removed; the migration guide now directs Rust consumers
+to canonical records and `compatibility_json()`.

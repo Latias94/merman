@@ -4,7 +4,7 @@ use merman_core::{Engine, ParseOptions, RenderSemanticModel};
 use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 const CASE_ENV: &str = "MERMAN_BLOCK_LIFECYCLE_CASE";
 const STACK_BYTES: usize = 2 * 1024 * 1024;
@@ -55,12 +55,6 @@ fn run_worker(case: &str) {
         let cloned = parsed.clone();
         println!("phase=clone status=done");
         drop(cloned);
-        assert!(
-            serde_json::to_value(model)
-                .unwrap_err()
-                .to_string()
-                .contains("128-container")
-        );
         println!("phase=debug status=begin");
         let debug = format!("{model:?}");
         assert!(debug.contains("leaf"));
@@ -96,11 +90,20 @@ fn block_lifecycle_child() {
 }
 
 fn run_child(case: &str) {
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("diagnostic timestamp follows the Unix epoch")
+        .as_nanos();
     let directory = std::env::temp_dir().join(format!(
-        "merman-block-lifecycle-{}-{case}",
+        "merman-block-lifecycle-{}-{case}-{timestamp}",
         std::process::id()
     ));
-    fs::create_dir_all(&directory).unwrap();
+    fs::create_dir(&directory).unwrap_or_else(|error| {
+        panic!(
+            "create Block lifecycle diagnostic directory {}: {error}",
+            directory.display()
+        )
+    });
     let stdout = directory.join("stdout.txt");
     let stderr = directory.join("stderr.txt");
     let mut child = Command::new(std::env::current_exe().unwrap())

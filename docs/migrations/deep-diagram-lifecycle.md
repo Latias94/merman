@@ -7,7 +7,7 @@ Block's nested compatibility views now observe later style, class, type, and lab
 the same canonical record, matching pinned Mermaid. The former Rust subtree copies incorrectly
 froze these fields when a parent completed. Repeated composite declarations keep their first
 children and columns, as Mermaid does. These are source-backed semantic corrections; model
-budget counters continue to measure the resulting typed wire with their established rules.
+budget counters retain their established accounting rules without exporting the former typed wire.
 
 ## Keep semantic JSON managed
 
@@ -48,7 +48,10 @@ ownership transfer is intentional.
 Generic `Serialize` on managed JSON supports at most 128 nested JSON containers. It checks the
 actual emitted container shape, including empty arrays and objects, before invoking the serializer.
 Deeper values return a serde error. This boundary is independent of Mermaid source admission,
-typed hierarchy depth, and model resource policies.
+typed hierarchy depth, and model resource policies. `ModelComplexity::from_serializable` treats a
+serializer that refuses this boundary as saturated complexity so resource checks reject it without
+panicking; call `ModelComplexity::from_json(managed.as_value())` when an exact deep JSON count is
+needed.
 
 Use `write_json` for compact output or `write_json_pretty` for serde-compatible indentation at
 greater depths. Their controlled counterparts return
@@ -71,23 +74,23 @@ State, Block, Treemap, and Ishikawa retain their hierarchy as flat records with 
 indices. A record clone no longer duplicates all descendants. Render adapters use these records
 directly; nested compatibility JSON is built when requested.
 
-| Model | Rust API migration | Nested typed JSON export |
-| --- | --- | --- |
-| State | `StateDiagramRenderModel.document` owns a `StateDocument`. A state's `doc` is `Option<StateDocumentId>`; use `model.document.get(id)` to borrow its statements. `root()`, `len()`, and `is_empty()` expose document metadata. IDs belong to their owning model. | `model.to_json()?` returns managed JSON. Owning model serde preserves the former wire shape. |
-| Block | `blocks_flat` stores each logical block once. `BlockNodeRenderModel.children` holds record indices; use `model.block(index)` and `model.root()`. | `model.to_json()?` preserves nested `blocksFlat` output, including required descendant copies. |
-| Treemap | `model.root` remains the synthetic root; its `children` and each node's `children` index `model.nodes`. | `model.to_compat_json()?` preserves the former nested typed wire shape. |
-| Ishikawa | `model.root` is `Option<usize>` indexing `model.nodes`; node `children` contains indices into the same vector. | `model.to_compat_json()?` preserves the former nested typed wire shape. |
+| Model | Rust API migration |
+| --- | --- |
+| State | `StateDiagramRenderModel.document` owns a `StateDocument`. A state's `doc` is `Option<StateDocumentId>`; use `model.document.get(id)` to borrow its statements. `root()`, `len()`, and `is_empty()` expose document metadata. IDs belong to their owning model. |
+| Block | `blocks_flat` stores each logical block once. `BlockNodeRenderModel.children` holds record indices; use `model.block(index)` and `model.root()`. |
+| Treemap | `model.root` remains the synthetic root; its `children` and each node's `children` index `model.nodes`. |
+| Ishikawa | `model.root` is `Option<usize>` indexing `model.nodes`; node `children` contains indices into the same vector. |
 
-The methods in the final column export the former **typed model** JSON. Use an Engine semantic
-parse or a semantic artifact's `compatibility_json()` for the full Mermaid projection, including
-its family-specific metadata and configuration.
+The four owning diagram models no longer implement `Serialize` or `Deserialize`. Their former
+typed-wire import and export paths, including State and Block `to_json` and Treemap and Ishikawa
+`to_compat_json`, are removed. Build or inspect the canonical records directly. Use an Engine
+semantic parse or a semantic artifact's `compatibility_json()` for Mermaid JSON, including its
+family-specific metadata and configuration, and keep that projection in managed ownership for
+deep export.
 
-Serialize the owning diagram model when nested documents are needed. State records no longer
-implement standalone serde because a document ID requires its owning document. Block records
-likewise require the owning model for their former nested wire representation. Standalone Treemap
-and Ishikawa node serde exposes the new record indices. Owning models retain shallow legacy JSON
-deserialization; importing State typed JSON does not recreate a root AST that the old wire never
-contained, but imported per-state document IDs remain readable.
+State and Block node records do not implement standalone serde because their document or child
+indices require an owning model. Standalone Treemap and Ishikawa node serde exposes their canonical
+record indices; it does not import or export the former nested typed wire.
 
 Flowchart, ER, C4, Class, and Sequence parser carriers also use flat ownership internally. Their
 returned flat public semantic models retain their established shape. Mindmap's typed model remains
