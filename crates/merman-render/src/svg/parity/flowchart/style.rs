@@ -248,13 +248,15 @@ impl FlowchartPreparedClassStyles {
         selected: &FxHashSet<&str>,
         work_meter: Option<&crate::resources::OperationWorkMeter>,
     ) -> std::result::Result<Self, crate::resources::OperationWorkError> {
+        let mut selected_definitions = selected
+            .iter()
+            .filter_map(|class_id| class_defs.get_full(*class_id))
+            .collect::<Vec<_>>();
+        selected_definitions.sort_unstable_by_key(|(ordinal, _, _)| *ordinal);
         let mut classes = IndexMap::new();
         #[cfg(test)]
         let mut parsed_declaration_count = 0usize;
-        for (class_id, declarations) in class_defs {
-            if !selected.contains(class_id.as_str()) {
-                continue;
-            }
+        for (_, class_id, declarations) in selected_definitions {
             let mut prepared = Vec::new();
             for raw_group in declarations {
                 charge_style_scan(work_meter, raw_group.len())?;
@@ -3112,10 +3114,27 @@ mod tests {
     #[test]
     fn generated_shape_evidence_uses_class_definition_order() {
         let mut class_defs = IndexMap::new();
+        class_defs.insert(
+            "unbound-first".to_string(),
+            vec!["opacity:var(--first)".to_string()],
+        );
         class_defs.insert("z".to_string(), vec!["opacity:0.5".to_string()]);
         class_defs.insert("a".to_string(), vec!["opacity:var(--alpha)".to_string()]);
-        let styles =
-            flowchart_compile_styles(&class_defs, &["a".to_string(), "z".to_string()], &[], &[]);
+        class_defs.insert(
+            "unbound-last".to_string(),
+            vec!["opacity:var(--last)".to_string()],
+        );
+        let styles = flowchart_compile_styles(
+            &class_defs,
+            &[
+                "missing".to_string(),
+                "a".to_string(),
+                "z".to_string(),
+                "a".to_string(),
+            ],
+            &[],
+            &[],
+        );
 
         let evidence = styles.shape_source_evidence(
             "A",
@@ -3134,6 +3153,35 @@ mod tests {
             evidence.residuals[0].provenance().origin(),
             crate::diagram_theme::SourceStyleOrigin::GeneratedClassCss
         );
+    }
+
+    #[test]
+    fn class_style_work_rejections_follow_definition_order() {
+        let class_defs = IndexMap::from([
+            ("z".to_string(), vec!["fill:red".to_string()]),
+            ("unbound".to_string(), vec!["x".repeat(1024)]),
+            ("a".to_string(), vec![format!("fill:{}", "x".repeat(128))]),
+        ]);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(crate::resources::ResourceLimitId::MaxLayoutWorkUnits, 7)
+                .expect("work limit"),
+        );
+
+        let error = FlowchartPreparedClassStyles::prepare(
+            &class_defs,
+            ["a", "missing", "z", "a"],
+            Some(&meter),
+        )
+        .expect_err("second selected definition must exceed the budget");
+
+        let crate::resources::OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("expected structured resource rejection");
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(error.actual, 11);
+        assert_eq!(error.max, 7);
+        assert_eq!(meter.used(), 7);
     }
 
     #[test]
