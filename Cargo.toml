@@ -18,6 +18,7 @@ members = [
     "crates/merman-layout-elk",
     "crates/merman-rustdoc",
     "crates/merman-render",
+    "crates/merman-unicode-linebreak",
     "crates/merman-export",
     "crates/merman-typst-plugin",
     "crates/merman-uniffi",
@@ -120,7 +121,7 @@ tiny-skia = "0.12"
 krilla = { version = "0.8", default-features = false }
 krilla-svg = { version = "0.8", default-features = false }
 unicode-width = { version = "0.2.2", default-features = false }
-unicode-linebreak = "0.1.5"
+unicode-linebreak = { package = "merman-unicode-linebreak", path = "crates/merman-unicode-linebreak", version = "0.8.0" }
 unicode-segmentation = { version = "1.13.3", default-features = false }
 unicode-general-category = "1.1.0"
 unicode-normalization = "0.1.25"

@@ -38,7 +38,7 @@ def required_legal_paths(package: dict[str, Any]) -> set[str]:
         required.update({"LICENSE-MIT", "LICENSE-APACHE"})
     elif license_expression == "EPL-2.0":
         required.add("LICENSES/EPL-2.0.txt")
-    elif license_expression == "MIT":
+    elif license_expression in {"MIT", "Apache-2.0"}:
         required.add("LICENSE")
     else:
         raise PackageLegalMaterialError(

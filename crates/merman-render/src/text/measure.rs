@@ -27,6 +27,9 @@ pub(crate) const MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX: f64 = 200.0;
 /// The default deterministic measurer provides portable, bounded heuristics without font assets.
 /// A host-provided measurer can instead use platform text APIs, a UI toolkit text system, or an
 /// optional font engine while preserving the rest of merman's parser/layout/render pipeline.
+/// HTML measurement requests preserve unselected U+00AD controls for shaping. They have zero
+/// glyph advance; deleting them before shaping can change adjacent presentation selectors and
+/// combining sequences. A selected discretionary break replaces only its final U+00AD with `-`.
 pub trait TextMeasurer {
     /// Reports whether the owning render operation has been cancelled.
     ///
@@ -63,6 +66,30 @@ pub trait TextMeasurer {
         _style: &TextStyle,
     ) -> Option<crate::environment::BuiltinSvgComputedLength> {
         None
+    }
+
+    /// Starts an exact streaming width probe for one decoded HTML text line.
+    ///
+    /// The crate-private state is available only to qualified built-in wrapping routes. External
+    /// custom and host-backed measurers retain the default `None`, so each complete candidate
+    /// remains an observable measurement request and may use non-additive text shaping.
+    #[doc(hidden)]
+    #[allow(private_interfaces)]
+    fn begin_html_line_width(
+        &self,
+        _style: &TextStyle,
+    ) -> Option<crate::environment::BuiltinHtmlLineWidth> {
+        None
+    }
+
+    /// Measures one decoded HTML text line without interpreting literal markup spellings.
+    ///
+    /// Callers have already normalized whitespace and selected discretionary glyphs. The default
+    /// preserves the existing complete wrapped-measurement contract for custom implementations.
+    #[doc(hidden)]
+    fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+            .width
     }
 
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics;

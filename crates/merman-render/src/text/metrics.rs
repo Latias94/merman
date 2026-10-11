@@ -1,6 +1,10 @@
 //! Flowchart-aware text metrics and Markdown measurement helpers.
 
-use super::line_break::html_break_spaces_segments;
+use super::html_wrap::html_line_text_with_break;
+use super::line_break::{
+    HtmlBreakKind, html_break_spaces_segments,
+    html_break_spaces_segments_with_metadata_and_checkpoints,
+};
 use super::{
     MermaidMarkdownWordType, TextMeasurer, TextMetrics, TextStyle, WrapMode, ceil_to_1_64_px,
     is_html_collapsible_ascii_whitespace, mermaid_markdown_to_lines,
@@ -156,6 +160,7 @@ struct InlineRunFragment {
 struct InlineBreakSegment {
     fragment_start: usize,
     fragment_end: usize,
+    end: HtmlBreakKind,
 }
 
 #[derive(Debug, Default)]
@@ -394,6 +399,7 @@ fn index_inline_run_breaks(
             segments: vec![InlineBreakSegment {
                 fragment_start: 0,
                 fragment_end: 0,
+                end: HtmlBreakKind::Mandatory,
             }],
             opaque_style_group_ends: Vec::new(),
         };
@@ -407,7 +413,13 @@ fn index_inline_run_breaks(
         text.push_str(&run.text);
     }
     stats.record_source_range(&text);
-    let break_segments = html_break_spaces_segments(&text);
+    let break_segments =
+        match html_break_spaces_segments_with_metadata_and_checkpoints(&text, &mut || {
+            Ok::<(), std::convert::Infallible>(())
+        }) {
+            Ok(segments) => segments,
+            Err(error) => match error {},
+        };
 
     let fragment_capacity = runs
         .len()
@@ -420,7 +432,7 @@ fn index_inline_run_breaks(
     let mut run_start = 0usize;
 
     for break_segment in break_segments {
-        let segment_end = segment_start + break_segment.len();
+        let segment_end = segment_start + break_segment.text.len();
         let fragment_start = fragments.len();
         while run_index < runs.len() && run_start < segment_end {
             let run = &runs[run_index];
@@ -453,6 +465,7 @@ fn index_inline_run_breaks(
         segments.push(InlineBreakSegment {
             fragment_start,
             fragment_end: fragments.len(),
+            end: break_segment.end,
         });
         stats.record_segment();
         segment_start = segment_end;
@@ -526,6 +539,29 @@ fn measure_inline_fragments_width_px<M: TextMeasurer + ?Sized>(
     style: &TextStyle,
     stats: &mut InlineHtmlPlanningStats,
 ) -> f64 {
+    measure_inline_fragments_with_break_width_px(
+        measurer,
+        runs,
+        breaks,
+        fragment_start,
+        fragment_end,
+        HtmlBreakKind::Ordinary,
+        style,
+        stats,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn measure_inline_fragments_with_break_width_px<M: TextMeasurer + ?Sized>(
+    measurer: &M,
+    runs: &[InlineTextRun],
+    breaks: &InlineBreakPlan,
+    fragment_start: usize,
+    fragment_end: usize,
+    selected_break: HtmlBreakKind,
+    style: &TextStyle,
+    stats: &mut InlineHtmlPlanningStats,
+) -> f64 {
     // Keep every request observable. `TextMeasurer` may route to a stateful or fallible host, so
     // this shared planner cannot reuse widths unless the complete operation owns a private
     // built-in measurement carrier.
@@ -538,10 +574,19 @@ fn measure_inline_fragments_width_px<M: TextMeasurer + ?Sized>(
         let end = breaks.opaque_style_group_ends[index].min(fragment_end);
         let last = breaks.fragments[end - 1];
         let text = &breaks.source[first.start..last.end];
-        stats.record_source_slice(text);
+        // The inserted glyph belongs to the run containing U+00AD. Measuring it together with
+        // that complete style group preserves shaping; a separately measured hyphen is not an
+        // additive substitute for the host's width of the resulting string.
+        let text = html_line_text_with_break(
+            text,
+            end == fragment_end && selected_break == HtmlBreakKind::SoftHyphen,
+        );
+        stats.record_source_slice(&text);
         let run_style = inline_text_style(style, first_run.bold, first_run.italic, first_run.code);
         stats.record_backend_request(text.len());
-        width += measure_inline_run_width_px(measurer, text, &run_style, WrapMode::HtmlLike, false);
+        width += measurer
+            .measure_wrapped(&text, &run_style, None, WrapMode::HtmlLike)
+            .width;
         index = end;
     }
     width
@@ -818,6 +863,30 @@ fn measure_opaque_inline_html_line_layout<M: TextMeasurer + ?Sized>(
     breaks: &InlineBreakPlan,
     stats: &mut InlineHtmlPlanningStats,
 ) -> InlineHtmlLineLayout {
+    if breaks
+        .segments
+        .iter()
+        .any(|segment| segment.end == HtmlBreakKind::SoftHyphen)
+    {
+        return measure_inline_soft_hyphen_line_layout(
+            breaks,
+            max_width,
+            natural_width,
+            stats,
+            |line, selected_break, stats| {
+                measure_inline_fragments_with_break_width_px(
+                    measurer,
+                    runs,
+                    breaks,
+                    line.fragment_start,
+                    line.fragment_end,
+                    selected_break,
+                    style,
+                    stats,
+                )
+            },
+        );
+    }
     let min_content_width = breaks
         .segments
         .iter()
@@ -919,6 +988,50 @@ fn measure_builtin_inline_html_line_layout(
 ) -> InlineHtmlLineLayout {
     let mut profiles = BuiltinInlineWidthProfiles::new(carrier);
     stats.record_builtin_profile_cache(std::mem::size_of::<BuiltinInlineWidthProfiles>());
+    if breaks
+        .segments
+        .iter()
+        .any(|segment| segment.end == HtmlBreakKind::SoftHyphen)
+    {
+        let mut measured_line = InlineLinePlan::default();
+        let mut current_width = BuiltinInlineLineWidth::default();
+        return measure_inline_soft_hyphen_line_layout(
+            breaks,
+            max_width,
+            natural_width,
+            stats,
+            |line, selected_break, stats| {
+                if measured_line.fragment_start != line.fragment_start
+                    || measured_line.fragment_end > line.fragment_end
+                {
+                    current_width = BuiltinInlineLineWidth::default();
+                    measured_line = InlineLinePlan {
+                        fragment_start: line.fragment_start,
+                        fragment_end: line.fragment_start,
+                    };
+                }
+                current_width.push_fragments(
+                    &mut profiles,
+                    runs,
+                    &breaks.source,
+                    &breaks.fragments[measured_line.fragment_end..line.fragment_end],
+                    style,
+                    stats,
+                );
+                measured_line = line;
+                if selected_break == HtmlBreakKind::SoftHyphen {
+                    let mut with_hyphen = current_width.clone();
+                    stats.record_builtin_checkpoint_copy();
+                    if let Some(group) = with_hyphen.last_group.as_mut() {
+                        group.push_text("-", stats);
+                    }
+                    with_hyphen.width_px()
+                } else {
+                    current_width.width_px()
+                }
+            },
+        );
+    }
     let mut min_content_width = 0.0_f64;
     for segment in &breaks.segments {
         let mut segment_width = BuiltinInlineLineWidth::default();
@@ -990,6 +1103,76 @@ fn measure_builtin_inline_html_line_layout(
         line_count += 1;
     }
 
+    InlineHtmlLineLayout {
+        natural_width,
+        wrapped_width,
+        min_content_width,
+        line_count: line_count.max(1),
+    }
+}
+
+fn measure_inline_soft_hyphen_line_layout(
+    breaks: &InlineBreakPlan,
+    max_width: Option<f64>,
+    natural_width: f64,
+    stats: &mut InlineHtmlPlanningStats,
+    mut measure: impl FnMut(InlineLinePlan, HtmlBreakKind, &mut InlineHtmlPlanningStats) -> f64,
+) -> InlineHtmlLineLayout {
+    // Min-content chooses every available discretionary break. Each selected U+00AD therefore
+    // contributes its conditional glyph even though the natural unbroken line hides it.
+    let min_content_width = breaks
+        .segments
+        .iter()
+        .map(|segment| measure(InlineLinePlan::from_segment(*segment), segment.end, stats))
+        .fold(0.0_f64, f64::max);
+    let Some(max_width) = max_width.filter(|width| width.is_finite() && *width > 0.0) else {
+        return InlineHtmlLineLayout {
+            natural_width,
+            wrapped_width: natural_width,
+            min_content_width,
+            line_count: 1,
+        };
+    };
+    // Table-cell sizing cannot shrink below min-content. Applying the same lower bound when
+    // selecting lines avoids an impossible break that would not fit its own conditional glyph.
+    let max_width = max_width.max(min_content_width);
+    if natural_width <= max_width {
+        return InlineHtmlLineLayout {
+            natural_width,
+            wrapped_width: natural_width,
+            min_content_width,
+            line_count: 1,
+        };
+    }
+
+    let mut current = InlineLinePlan::default();
+    let mut last_fitting_break: Option<(usize, InlineLinePlan, HtmlBreakKind)> = None;
+    let mut wrapped_width = 0.0_f64;
+    let mut line_count = 0usize;
+    let mut index = 0usize;
+    stats.record_line_plan(std::mem::size_of::<InlineLinePlan>());
+    while index < breaks.segments.len() {
+        let segment = breaks.segments[index];
+        current.append(segment, stats);
+        let candidate_width = measure(current, HtmlBreakKind::Ordinary, stats);
+        if candidate_width > max_width
+            && let Some((break_index, line, end)) = last_fitting_break.take()
+        {
+            wrapped_width = wrapped_width.max(measure(line, end, stats));
+            line_count += 1;
+            current = InlineLinePlan::default();
+            index = break_index + 1;
+            continue;
+        }
+        if index + 1 < breaks.segments.len() && measure(current, segment.end, stats) <= max_width {
+            last_fitting_break = Some((index, current, segment.end));
+        }
+        index += 1;
+    }
+    if !current.is_empty() {
+        wrapped_width = wrapped_width.max(measure(current, HtmlBreakKind::Ordinary, stats));
+        line_count += 1;
+    }
     InlineHtmlLineLayout {
         natural_width,
         wrapped_width,
@@ -1279,6 +1462,281 @@ mod inline_planning_tests {
         assert_eq!(stats.break_segments, actual_segments.len());
         assert!(stats.fragment_refs < runs.len() + actual_segments.len());
         assert_eq!(stats.run_visits, runs.len() * 2 + stats.fragment_refs);
+    }
+
+    #[derive(Default)]
+    struct SoftHyphenMeasurer {
+        calls: RefCell<Vec<RecordedMeasurementCall>>,
+        kern_hyphen: bool,
+    }
+
+    impl TextMeasurer for SoftHyphenMeasurer {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.calls.borrow_mut().push((
+                text.to_string(),
+                style.font_weight.clone(),
+                style.font_style.clone(),
+                style.font_family.clone(),
+            ));
+            let advance = if style_requests_bold_font_weight(style) {
+                20.0
+            } else {
+                10.0
+            };
+            let kerning = if self.kern_hyphen && text.len() > 1 && text.ends_with('-') {
+                5.0
+            } else {
+                0.0
+            };
+            TextMetrics {
+                width: text.chars().filter(|ch| *ch != '\u{00ad}').count() as f64 * advance
+                    - kerning,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn soft_hyphen_inline_min_content_includes_the_selected_glyph() {
+        let measurer = SoftHyphenMeasurer::default();
+        let style = TextStyle::default();
+        let runs = vec![run("alpha\u{00ad}beta", 0)];
+        let layout = measure_inline_html_line_layout(&measurer, &runs, &style, Some(50.0));
+        assert_eq!(layout.natural_width, 90.0);
+        assert_eq!(layout.min_content_width, 60.0);
+        assert_eq!(layout.wrapped_width, 60.0);
+        assert_eq!(layout.line_count, 2);
+
+        let unbroken = measure_inline_html_line_layout(&measurer, &runs, &style, None);
+        assert_eq!(unbroken.wrapped_width, 90.0);
+        assert_eq!(unbroken.line_count, 1);
+        let terminal = measure_inline_html_line_layout(
+            &measurer,
+            &[run("alpha\u{00ad}", 0)],
+            &style,
+            Some(50.0),
+        );
+        assert_eq!(terminal.natural_width, 50.0);
+        assert_eq!(terminal.min_content_width, 50.0);
+        assert_eq!(terminal.line_count, 1);
+    }
+
+    #[test]
+    fn soft_hyphen_inline_glyph_inherits_its_run_and_parent_style() {
+        let measurer = SoftHyphenMeasurer::default();
+        let mut style = TextStyle {
+            font_family: Some("inherited-family".to_string()),
+            ..TextStyle::default()
+        };
+        let runs = vec![run("al", 0), run("pha\u{00ad}", 1), run("beta", 2)];
+        let layout = measure_inline_html_line_layout(&measurer, &runs, &style, Some(100.0));
+        assert_eq!(layout.natural_width, 120.0);
+        assert_eq!(layout.min_content_width, 100.0);
+        assert_eq!(layout.wrapped_width, 100.0);
+        assert_eq!(layout.line_count, 2);
+        assert!(measurer.calls.borrow().contains(&(
+            "pha-".to_string(),
+            Some("700".to_string()),
+            None,
+            Some("inherited-family".to_string()),
+        )));
+
+        style.font_weight = Some("700".to_string());
+        let layout = measure_inline_html_line_layout(
+            &measurer,
+            &[run("alpha\u{00ad}beta", 0)],
+            &style,
+            Some(120.0),
+        );
+        assert_eq!(layout.min_content_width, 120.0);
+        assert_eq!(layout.wrapped_width, 120.0);
+        assert_eq!(layout.line_count, 2);
+    }
+
+    #[test]
+    fn soft_hyphen_inline_rewinds_to_an_earlier_fitting_break() {
+        let measurer = SoftHyphenMeasurer::default();
+        let layout = measure_inline_html_line_layout(
+            &measurer,
+            &[run("x alpha\u{00ad}beta", 0)],
+            &TextStyle::default(),
+            Some(70.0),
+        );
+        assert_eq!(layout.natural_width, 110.0);
+        assert_eq!(layout.min_content_width, 60.0);
+        assert_eq!(layout.wrapped_width, 60.0);
+        assert_eq!(layout.line_count, 3);
+    }
+
+    #[test]
+    fn soft_hyphen_inline_callback_shapes_the_complete_visible_style_group() {
+        let measurer = SoftHyphenMeasurer {
+            kern_hyphen: true,
+            ..Default::default()
+        };
+        let layout = measure_inline_html_line_layout(
+            &measurer,
+            &[run("al", 0), run("pha\u{00ad}beta", 0)],
+            &TextStyle::default(),
+            Some(55.0),
+        );
+        assert_eq!(layout.min_content_width, 55.0);
+        assert_eq!(layout.wrapped_width, 55.0);
+        assert_eq!(layout.line_count, 2);
+        let calls = measurer.calls.borrow();
+        assert!(calls.iter().any(|call| call.0 == "alpha-"));
+        assert!(calls.iter().all(|call| call.0 != "-"));
+    }
+
+    #[test]
+    fn soft_hyphen_inline_complete_word_fit_does_not_select_a_wider_hyphen() {
+        struct WideHyphenMeasurer;
+        impl TextMeasurer for WideHyphenMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+            }
+
+            fn measure_wrapped(
+                &self,
+                text: &str,
+                style: &TextStyle,
+                _max_width: Option<f64>,
+                _wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                TextMetrics {
+                    width: text
+                        .chars()
+                        .map(|ch| match ch {
+                            '\u{00ad}' => 0.0,
+                            '-' => 30.0,
+                            _ => 10.0,
+                        })
+                        .sum(),
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+        }
+        let layout = measure_inline_html_line_layout(
+            &WideHyphenMeasurer,
+            &[run("alpha\u{00ad}b", 0)],
+            &TextStyle::default(),
+            Some(60.0),
+        );
+        assert_eq!(layout.natural_width, 60.0);
+        assert_eq!(layout.wrapped_width, 60.0);
+        assert_eq!(layout.line_count, 1);
+    }
+
+    #[test]
+    fn soft_hyphen_inline_html_entity_preserves_conditional_styled_measurement() {
+        let measurer = SoftHyphenMeasurer::default();
+        let layout = measure_html_with_inline_styles(
+            &measurer,
+            "<strong>alpha&shy;</strong>beta",
+            &TextStyle::default(),
+            Some(120.0),
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(layout.width, 120.0);
+        assert_eq!(layout.line_count, 2);
+        assert!(
+            measurer
+                .calls
+                .borrow()
+                .iter()
+                .any(|call| { call.0 == "alpha-" && call.1.as_deref() == Some("700") })
+        );
+    }
+
+    #[test]
+    fn soft_hyphen_inline_stream_preserves_combining_boundaries_in_one_chunk() {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Wrap);
+        let carrier = inline_html_carrier(&measurer);
+        let style = TextStyle {
+            font_size: 10.0,
+            ..TextStyle::default()
+        };
+        let mut profiles = BuiltinInlineWidthProfiles::new(carrier);
+        let mut stats = InlineHtmlPlanningStats::default();
+        let mut group = BuiltinInlineGroupWidth::new(
+            &mut profiles,
+            InlineStyleKey::from_run(&run("", 1)),
+            &style,
+            &mut stats,
+        );
+        let text = format!("a{}", "\u{00ad}\u{0301}".repeat(8192));
+        group.push_text(&text, &mut stats);
+        assert_eq!(group.width.pushed_chunks, 1);
+        assert_eq!(group.width_px(), 4.3);
+
+        let mut stats = InlineHtmlPlanningStats::default();
+        let runs = vec![run(format!("W {text}"), 1)];
+        let layout = measure_inline_html_line_layout_with_carrier_and_stats(
+            &measurer,
+            carrier,
+            &runs,
+            &style,
+            Some(15.0),
+            &mut stats,
+        );
+        assert_eq!(layout.line_count, 2);
+        assert!((layout.natural_width - 16.1).abs() < 1.0e-12);
+        assert_eq!(stats.source_bytes, runs[0].text.len());
+        assert!(
+            stats.builtin_stream_bytes <= stats.source_bytes * 3,
+            "stats={stats:?}"
+        );
+    }
+
+    #[test]
+    fn soft_hyphen_inline_builtin_and_opaque_routes_choose_the_same_lines() {
+        let session = RenderEnvironment::deterministic()
+            .begin_session()
+            .expect("deterministic render session");
+        let builtin = session.text_measurer(TextMeasurementPhase::Wrap);
+        let deterministic = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("sans-serif".to_string()),
+            font_size: 16.0,
+            font_weight: None,
+            font_style: None,
+        };
+        for runs in [
+            vec![run("alpha\u{00ad}beta", 0)],
+            vec![run("x ", 2), run("alpha\u{00ad}", 1), run("beta", 0)],
+            vec![run("ab\u{00ad}cd\u{00ad}ef\u{00ad}gh", 0)],
+        ] {
+            for max_width in [20.0, 32.0, 48.0] {
+                let expected =
+                    measure_inline_html_line_layout(&deterministic, &runs, &style, Some(max_width));
+                let actual = measure_inline_html_line_layout_with_carrier(
+                    &builtin,
+                    inline_html_carrier(&builtin),
+                    &runs,
+                    &style,
+                    Some(max_width),
+                );
+                if expected.natural_width > max_width {
+                    assert_layout_eq(actual, expected);
+                } else {
+                    assert_eq!(actual.line_count, expected.line_count);
+                    assert_eq!(actual.wrapped_width, expected.wrapped_width);
+                }
+            }
+        }
     }
 
     #[test]
@@ -2563,12 +3021,8 @@ fn measure_html_with_inline_styles_with_carrier<M: TextMeasurer + ?Sized>(
 
     // Keep this request before all styled probes for arbitrary and host measurers. Their callbacks
     // are observable, including stateful return values and the exact position of a failure.
-    let base = measurer.measure_wrapped(
-        trim_html_collapsible_ascii_whitespace(&plain),
-        style,
-        max_width,
-        wrap_mode,
-    );
+    let base_text = trim_html_collapsible_ascii_whitespace(&plain);
+    let base = measurer.measure_wrapped(base_text, style, max_width, wrap_mode);
     let explicit_line_boxes = explicit_inline_html_line_boxes(&inline_runs_by_line, &image_on_line);
 
     let mut lines = normalized_preparsed_html_text_lines(&plain);

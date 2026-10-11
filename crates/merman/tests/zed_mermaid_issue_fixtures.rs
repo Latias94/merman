@@ -169,10 +169,26 @@ fn zed_issue_fixtures_render_typed_resvg_safe() {
             "{name}: output should not leak non-finite geometry"
         );
 
+        let document = roxmltree::Document::parse(&svg).expect("resvg-safe output should be XML");
+        let wrapped_labels: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+            .map(|group| {
+                let rows: Vec<_> = group
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .map(|node| node.text().unwrap_or(""))
+                    .collect();
+                (rows.concat(), rows.join(" "))
+            })
+            .collect();
         for label in *expected_labels {
             assert!(
-                svg.contains(label),
-                "{name}: expected rendered SVG to contain label {label:?}"
+                svg.contains(label)
+                    || wrapped_labels
+                        .iter()
+                        .any(|(joined, spaced)| joined == label || spaced == label),
+                "{name}: expected rendered SVG to retain label {label:?} across its line boxes"
             );
         }
     }
@@ -357,8 +373,13 @@ fn zed_deeply_nested_flowchart_respects_the_selected_resource_profile() {
 
 #[test]
 #[cfg(feature = "png")]
-fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
-    let source = deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2);
+fn zed_deeply_nested_flowchart_respects_default_raster_conversion_budget() {
+    // Semantic nesting does not imply equally deep SVG groups. Neo cluster shadows instead
+    // exceed the default aggregate filter budget during conversion preflight.
+    let source = format!(
+        "---\nconfig:\n  look: neo\n---\n{}",
+        deeply_nested_flowchart(MAX_DIAGRAM_NESTING_DEPTH + 2)
+    );
     let policy = RenderResourcePolicy::for_profile(RenderResourceProfile::UnboundedForTrustedInput);
     let error = Renderer::new()
         .with_resource_policy(*policy.input_policy())
@@ -377,14 +398,22 @@ fn zed_deeply_nested_flowchart_is_rejected_before_recursive_raster_backend() {
                 options: merman::svg::export::RasterOptions::default(),
             },
         ))
-        .expect_err("rasterization must reject a tree deeper than the backend capability");
+        .expect_err("conversion must reject excessive cluster filters before rasterization");
 
-    let message = error.to_string();
-    assert!(
-        message.contains(merman_render::resources::SVG_BACKEND_TREE_DEPTH_HARD_CAP_ID)
-            || message.contains("svg_fallback_selector_index"),
-        "{error}"
+    let merman::RenderError::ResourceLimitExceeded(limit) = error else {
+        panic!("expected a structured conversion resource error: {error}");
+    };
+    assert_eq!(
+        limit.id,
+        merman::svg::export::MAX_TOTAL_SVG_CONVERSION_FILTER_PRIMITIVES_RESOURCE_LIMIT_ID
     );
+    assert_eq!(limit.phase, "svg_conversion");
+    assert_eq!(
+        limit.maximum,
+        merman::svg::export::DEFAULT_MAX_TOTAL_FILTER_PRIMITIVES as u64
+    );
+    assert_eq!(limit.actual, limit.maximum + 1);
+    assert_eq!(limit.cause, merman::ResourceLimitCause::Ceiling);
 }
 
 #[test]

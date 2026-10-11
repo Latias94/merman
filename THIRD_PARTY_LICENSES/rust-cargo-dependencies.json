@@ -5,7 +5,7 @@
     "version": "0.9.1",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "eaa36281cd139be2af65494d4bd9e26c3a8db120021853930194eadfcfa48ab5",
+    "cargo_lock_sha256": "699d308e667380a97be345c81f8e33500fc51867884294ac8bb3701d3e715775",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -3194,16 +3194,6 @@
             "1Password"
           ],
           "repository": "https://github.com/1Password/sys-locale"
-        },
-        {
-          "name": "unicode-linebreak",
-          "version": "0.1.5",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0",
-          "authors": [
-            "Axel Forsman <axelsfor@gmail.com>"
-          ],
-          "repository": "https://github.com/axelf4/unicode-linebreak"
         },
         {
           "name": "zune-core",

@@ -1,0 +1,15 @@
+[package]
+name = "merman-unicode-linebreak"
+version.workspace = true
+edition = "2021"
+rust-version.workspace = true
+authors = ["Axel Forsman <axelsfor@gmail.com>", "Mingzhen Zhuang <superfrankie621@gmail.com>"]
+license = "Apache-2.0"
+repository.workspace = true
+homepage.workspace = true
+description = "Unicode line breaking with cancellable input iteration for Merman"
+readme = "README.md"
+include = ["src/**/*", "LICENSE", "README.md", "UPSTREAM_README.md", "UPSTREAM.json", "THIRD_PARTY_NOTICES.md", "THIRD_PARTY_LICENSES/**/*"]
+
+[lib]
+name = "unicode_linebreak"
