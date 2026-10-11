@@ -1,9 +1,11 @@
 use crate::cli::{ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
 use crate::input::InputLimit;
+#[cfg(feature = "svg")]
+use crate::io::read_named_bytes_file_controlled;
+use crate::io::read_named_text_file;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::io::read_named_text_file_controlled;
-use crate::io::{read_named_bytes_file, read_named_text_file};
 use crate::resources::ResolvedResourcePolicy;
 use merman::runtime::RuntimePolicy;
 use merman::{Engine, MermaidConfig, ParseOptions};
@@ -241,6 +243,7 @@ pub(crate) fn renderer_for(
         RendererInputs::from_cli(render)?,
         icon_registry,
         resources,
+        &merman::OperationControl::new(),
     )
 }
 
@@ -261,6 +264,7 @@ pub(crate) fn renderer_for_resolved(
         RendererInputs::from_resolved(render)?,
         icon_registry,
         resources,
+        control,
     )
 }
 
@@ -294,6 +298,7 @@ pub(crate) fn rustdoc_renderer_for_resolved(
         RendererInputs::from_resolved(render)?,
         None,
         resources,
+        control,
     )
 }
 
@@ -329,45 +334,42 @@ impl<'a> ThemeInput<'a> {
     fn compile(
         self,
         compiler: &DiagramThemeCompiler,
+        control: &merman::OperationControl,
     ) -> Result<merman::svg::DiagramTheme, CliError> {
-        if let Self::Preset(preset) = self {
-            return compiler
+        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        let theme = match self {
+            Self::Preset(preset) => compiler
                 .compile_preset(preset)
-                .map_err(|error| CliError::InvalidInput(format!("invalid theme preset: {error}")));
-        }
-
-        let max_bytes = compiler
-            .resource_policy()
-            .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
-            .unwrap_or(MAX_THEME_ENCODED_BYTES_HARD_CAP);
-        let (path, input_name) = match self {
-            Self::SelectionFile(path) => (path, "theme selection file"),
-            Self::DefinitionFile(path) => (path, "theme definition file"),
-            Self::Preset(_) => unreachable!("preset returned before file acquisition"),
-        };
-        let bytes = read_named_bytes_file(
-            path,
-            input_name,
-            InputLimit::new("max_theme_encoded_bytes", Some(max_bytes)),
-        )?;
-        match self {
-            Self::SelectionFile(_) => {
-                compile_theme_selection_json_with(compiler, &bytes).map_err(|error| {
-                    CliError::InvalidInput(format!(
-                        "invalid theme selection file: {}",
-                        error.message()
-                    ))
+                .map_err(|error| CliError::InvalidInput(format!("invalid theme preset: {error}"))),
+            Self::SelectionFile(path) | Self::DefinitionFile(path) => {
+                let definition = matches!(self, Self::DefinitionFile(_));
+                let input_name = if definition {
+                    "theme definition file"
+                } else {
+                    "theme selection file"
+                };
+                let max_bytes = compiler
+                    .resource_policy()
+                    .value(merman::svg::ThemeResourceLimitId::MaxThemeEncodedBytes)
+                    .unwrap_or(MAX_THEME_ENCODED_BYTES_HARD_CAP);
+                let bytes = read_named_bytes_file_controlled(
+                    path,
+                    input_name,
+                    InputLimit::new("max_theme_encoded_bytes", Some(max_bytes)),
+                    control,
+                )?;
+                let result = if definition {
+                    compile_theme_definition_json_with(compiler, &bytes)
+                } else {
+                    compile_theme_selection_json_with(compiler, &bytes)
+                };
+                result.map_err(|error| {
+                    CliError::InvalidInput(format!("invalid {input_name}: {}", error.message()))
                 })
             }
-            Self::DefinitionFile(_) => compile_theme_definition_json_with(compiler, &bytes)
-                .map_err(|error| {
-                    CliError::InvalidInput(format!(
-                        "invalid theme definition file: {}",
-                        error.message()
-                    ))
-                }),
-            Self::Preset(_) => unreachable!("preset returned before file compilation"),
-        }
+        };
+        crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        theme
     }
 }
 
@@ -424,6 +426,7 @@ fn renderer_from_config(
     render: RendererInputs<'_>,
     icon_registry: Option<IconRegistry>,
     resources: &ResolvedResourcePolicy,
+    control: &merman::OperationControl,
 ) -> Result<ConfiguredRenderer, CliError> {
     let theme_resources = ThemeResourcePolicy::for_profile(resources.profile());
     let mut environment = SvgEnvironment::deterministic()
@@ -454,7 +457,7 @@ fn renderer_from_config(
     let compiler = DiagramThemeCompiler::new().with_resource_policy(theme_resources);
     let selected_theme = render
         .theme
-        .map(|input| input.compile(&compiler))
+        .map(|input| input.compile(&compiler, control))
         .transpose()?;
     let renderer = merman::Renderer::new()
         .with_engine(runtime.apply_engine(Engine::new().with_site_config(site_config)))
@@ -556,6 +559,47 @@ mod tests {
             container_height: None,
             svg_id: None,
             hand_drawn_seed: None,
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_files_preserve_operation_cancellation_before_json_errors() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("theme.json");
+        std::fs::write(&path, vec![b'x'; crate::input::IO_CHUNK_BYTES * 2]).unwrap();
+        let cancelled = merman::OperationControl::new();
+        cancelled.cancel();
+        let expired = merman::OperationControl::new().with_deadline(std::time::Duration::ZERO);
+
+        for (control, reason) in [
+            (cancelled, merman::CancelReason::Requested),
+            (expired, merman::CancelReason::DeadlineExceeded),
+        ] {
+            for definition in [false, true] {
+                let mut render = resolved_render(None);
+                if definition {
+                    render.theme_definition = Some(path.clone());
+                } else {
+                    render.theme_file = Some(path.clone());
+                }
+                let error = renderer_for_resolved(
+                    &default_resolved_parse(),
+                    &render,
+                    None,
+                    &default_resources(),
+                    &control,
+                )
+                .err()
+                .expect("cancelled theme acquisition must fail");
+
+                assert!(
+                    matches!(error, CliError::Render(merman::RenderError::Cancelled(cancelled))
+                        if cancelled.phase == merman::OperationPhase::Admission
+                            && cancelled.reason == reason),
+                    "expected {reason} for theme definition={definition}, got {error}"
+                );
+            }
         }
     }
 
