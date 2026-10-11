@@ -27,7 +27,7 @@ The branch's claim that published Typst 0.3.0 used ABI 3 was incorrect.
 | UniFFI operation request record, `MermanOperationRequestV4` | V4 | Keep V4; this type name already occurs in the published API 6 source. |
 | UniFFI binding API, `merman-uniffi` | 6 | Consolidate 9 to 7. ASCII selection fields and theme errors ship together. Regenerate Swift/Python with the native library. |
 | Typst plugin ABI, `wasm-profiles.json` | 2 | Consolidate 4 to 3. Theme authoring and catalog exports are one unreleased change. |
-| Web/WASM transport API | 5 | Keep 5; it was already published. |
+| Web/WASM transport API | 5 | Advance once to 6 for the source theme branch's replacement of `presentationCatalog` with `themeCatalog` and its theme-authoring exports. |
 | Native C ABI | 3 | Keep 3; it was already published. |
 | Node transport / runtime catalog / binding result / operation metadata | 1 | Keep 1; no development-counter increase. |
 | Binding Options | 2 | Keep candidate 3 for the incompatible compiled-theme grammar. |
@@ -71,6 +71,12 @@ Future public version changes follow the release guide: compare with the last pu
 contract, consolidate one unreleased compatibility change once, and leave a new contract at 1.
 Source SHA, artifact digest and existing replay checks identify development iterations. Do not
 add another version registry or migration framework for this policy.
+
+The 2026-10-11 theme-branch follow-up supersedes the original decision to keep Web API 5.
+The exported WASM surface now removes the published `presentationCatalog` function. Reusing
+epoch 5 would let an old wrapper initialize the new module and fail only when calling that
+function. Epoch 6 is shared by the Rust producer and generated Web contract; initialization
+rejects mixed epochs. This changes no theme schema or independently versioned native transport.
 
 ## Preset revision follow-up
 

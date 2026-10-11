@@ -2,7 +2,7 @@
 // Sources: typed registries in merman-bindings-core. Do not edit directly.
 
 export const RUNTIME_CATALOG_SCHEMA_VERSION = 1 as const;
-export const WEB_TRANSPORT_API_VERSION = 5 as const;
+export const WEB_TRANSPORT_API_VERSION = 6 as const;
 export const BINDING_OPTIONS_SCHEMA_VERSION = 3 as const;
 export const TEXT_MEASUREMENT_PROTOCOL_VERSION = 1 as const;
 

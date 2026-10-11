@@ -197,8 +197,12 @@ contract.
 
 ## Deadlines and cancellation
 
-The current browser transport API is `5`, reported by `transportApiVersion()` and the runtime
-catalog. Transport-dispatched one-shot operations accept a transport-owned top-level `timeout_ms`
+The current source-branch browser transport API is `6`, reported by `transportApiVersion()` and
+the runtime catalog. API 6 replaces `presentationCatalog()` with `themeCatalog()` and adds the
+theme-authoring exports. Replace the package facade, generated glue, and WASM together;
+`initMerman()` rejects a different transport epoch before publishing the module.
+
+Transport-dispatched one-shot operations accept a transport-owned top-level `timeout_ms`
 field in their options JSON. Because this field is not part of the shared binding-options schema,
 pass it through the public functions' JSON-string form:
 

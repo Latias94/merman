@@ -1260,18 +1260,21 @@ test("older Web transport API loaders are rejected before publishing a module", 
   assert.throws(() => runtime.getMerman(), /not initialized/);
 });
 
-test("Web transport API version rejects an older published epoch", async () => {
+test("Web transport API rejects published API-5 presentation-catalog modules", async () => {
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
-      transportApiVersion: () => WEB_TRANSPORT_API_VERSION - 1,
+      transportApiVersion: () => 5,
+      presentationCatalog: () => ({}),
     }),
     coreTestImplementation,
   );
   await assert.rejects(
     () => runtime.initMerman(),
     new RegExp(
-      `Web transport API ${WEB_TRANSPORT_API_VERSION - 1} is incompatible with ${WEB_TRANSPORT_API_VERSION}`,
+      `Web transport API 5 is incompatible with ${WEB_TRANSPORT_API_VERSION}`,
     ),
   );
+  assert.equal(runtime.isMermanInitialized(), false);
+  assert.throws(() => runtime.getMerman(), /not initialized/);
 });

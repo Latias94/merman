@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { initMerman } from "../dist/runtime-core.js";
+import { initMerman, WEB_TRANSPORT_API_VERSION } from "../dist/runtime-core.js";
 import {
   describeThemeSupport,
   exportThemePreset,
@@ -17,7 +17,7 @@ test("theme authoring rejects non-finite numbers before they become Clear", asyn
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       materializeTheme(definition, options) {
         calls.push({ definition, options });
         return { schema_version: 1 };
@@ -91,7 +91,7 @@ test("ordinary SVG options reject non-finite numbers while preserving explicit n
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       renderSvg(source, options) {
         calls.push({ source, options });
         return "<svg/>";
@@ -137,7 +137,7 @@ test("exported recipes survive JSON storage and enter SVG options without unpack
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       exportThemePreset(presetId, options) {
         calls.push({ presetId, options });
         return structuredClone(recipe);
@@ -178,7 +178,7 @@ test("SVG results preserve opaque evidence and forward policy through one execut
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
       renderSvgResult(source, options) {
         calls.push({ source, options });
         return { svg: "<svg>用户</svg>", metadata: { version: 1, theme_execution_evidence: evidence } };

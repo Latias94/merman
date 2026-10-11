@@ -109,6 +109,11 @@ The refactor adds dedicated analysis and editor owners. Hosts retain document st
 
 These protocol versions are independent. An unchanged C ABI number does not make a changed JSON payload or generated binding record compatible.
 
+The source theme branch advances the inherited Web transport from API 5 to API 6: replace
+`presentationCatalog()` calls with `themeCatalog()` and deploy the matching package facade,
+generated glue, and WASM together. See the [current Web SDK](../../platforms/web/README.md)
+and [contract version audit](UNRELEASED_CONTRACT_VERSIONS.md) for this source-only transition.
+
 ### Apply the package-specific migration
 
 | Surface | Required action | Current guide |

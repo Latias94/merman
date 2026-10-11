@@ -15,7 +15,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { initMerman as initMermanCore } from "../dist/runtime-core.js";
+import { initMerman as initMermanCore, WEB_TRANSPORT_API_VERSION } from "../dist/runtime-core.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 import { packageEntrySource, replaceDirectory } from "./build-surface-packages.mjs";
 import {
@@ -148,7 +148,7 @@ describe("browser package assembly", () => {
       async default(input) {
         receivedInput = input;
       },
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
     };
     const runtime = bindSurfaceRuntime(
       async () => {
