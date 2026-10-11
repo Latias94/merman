@@ -467,7 +467,7 @@ fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
     text: &str,
     theme: &DiagramTheme,
     environment: &RenderEnvironment,
-) -> (String, String, usize, bool) {
+) -> (String, String) {
     let rendered =
         prepare_state_artifact_from_text_with_theme_in_environment(text, theme, environment)
             .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
@@ -476,17 +476,8 @@ fn render_state_public_and_native_svg_from_text_with_theme_in_environment(
     let rendered = rendered
         .finalize_resvg(&SvgPipeline::resvg_safe())
         .expect("seal themed State SVG");
-    let native_svg = merman_render::__private::native_export_svg(rendered.svg()).to_owned();
-    let prepared_label_count = merman_render::__private::prepared_text_label_count(rendered.svg());
-    let receipt_matches = merman_render::__private::prepared_text_terminal_receipt(rendered.svg())
-        .is_some_and(|receipt| receipt.artifact_matches(&native_svg));
-
-    (
-        public_svg,
-        native_svg,
-        prepared_label_count,
-        receipt_matches,
-    )
+    let native_svg = rendered.svg().as_str().to_owned();
+    (public_svg, native_svg)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -3095,7 +3086,7 @@ Second --> Third: second transition
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(styles))
         .expect("compile ordinal State transition-label backgrounds");
-    let (parity_svg, native_svg, _, _) =
+    let (parity_svg, native_svg) =
         render_state_public_and_native_svg_from_text_with_theme_in_environment(
             SOURCE,
             &theme,

@@ -769,7 +769,7 @@ fn kanban_task_label_foreground_survives_the_resvg_fallback_without_a_palette() 
     let native = rendered
         .finalize_resvg(&SvgPipeline::resvg_safe())
         .expect("finalize Kanban task-label foreground for resvg");
-    let native_svg = merman_render::__private::native_export_svg(native.svg());
+    let native_svg = native.svg().as_str();
     let document = roxmltree::Document::parse(native_svg).expect("valid native Kanban SVG");
     for expected in ["Task", "MC-2038", "Alice"] {
         let task_text = document

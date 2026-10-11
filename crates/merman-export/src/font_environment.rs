@@ -1,5 +1,5 @@
 use super::{ExportError, Result};
-use merman_render::__private::{PreparedTextLabelId, PreparedTextTerminalReceipt};
+use merman_render::__private::PreparedTextLabelId;
 use merman_render::diagram_theme::{FontCatalog, FontCatalogFingerprint, FontSource};
 use merman_render::svg::ResvgCompatibleSvg;
 use std::collections::HashSet;
@@ -110,26 +110,34 @@ impl ExportFontPlan {
     }
 
     /// Returns the number of renderer-owned prepared labels expected in this native artifact.
+    ///
+    /// The current system-font renderer produces no prepared labels, so this count is zero.
     pub const fn prepared_label_expected_count(self) -> usize {
         self.prepared_label_expected_count
     }
 
-    /// Returns the number of prepared labels whose terminal receipt matched the parsed artifact.
+    /// Returns the number of prepared labels verified in the parsed artifact.
+    ///
+    /// The current system-font renderer produces no prepared labels, so this count is zero.
     pub const fn prepared_label_verified_count(self) -> usize {
         self.prepared_label_verified_count
     }
 
-    /// Returns the bounded count of prepared-label receipt, token, text, or face mismatches.
+    /// Returns the count of unexpected or malformed reserved text tokens in the parsed artifact.
     pub const fn prepared_label_mismatch_count(self) -> usize {
         self.prepared_label_mismatch_count
     }
 
     /// Returns the number of prepared labels produced by a host-dependent backend.
+    ///
+    /// The current system-font renderer produces no prepared labels, so this count is zero.
     pub const fn prepared_label_host_dependent_count(self) -> usize {
         self.prepared_label_host_dependent_count
     }
 
-    /// Returns the number of matching native labels that still lack exact multi-face range proof.
+    /// Returns the number of prepared labels whose terminal proof is incomplete.
+    ///
+    /// The current system-font renderer produces no prepared labels, so this count is zero.
     pub const fn prepared_label_terminal_incomplete_count(self) -> usize {
         self.prepared_label_terminal_incomplete_count
     }
@@ -180,21 +188,8 @@ pub(crate) struct ExportFontPlanSeed {
 }
 
 impl ExportFontPlanSeed {
-    pub(crate) fn finish_with_tree(
-        &self,
-        source: &str,
-        tree: &usvg::Tree,
-        expected_label_count: usize,
-        receipt: Option<&PreparedTextTerminalReceipt>,
-    ) -> ExportFontPlan {
+    pub(crate) fn finish_with_tree(&self, tree: &usvg::Tree) -> ExportFontPlan {
         let evidence = FinalTreeFontEvidence::collect(tree, &self.system_fonts);
-        let prepared = verify_prepared_text_labels(
-            source,
-            expected_label_count,
-            receipt,
-            &evidence.prepared_labels,
-            evidence.invalid_prepared_token_count,
-        );
         let unresolved_glyph_fallback = self
             .recorder
             .unresolved_glyph_fallback
@@ -214,11 +209,12 @@ impl ExportFontPlanSeed {
                 .unresolved_font_request
                 .load(Ordering::Relaxed),
             unresolved_glyph_fallback,
-            prepared_label_expected_count: prepared.expected_count,
-            prepared_label_verified_count: prepared.verified_count,
-            prepared_label_mismatch_count: prepared.mismatch_count,
-            prepared_label_host_dependent_count: prepared.host_dependent_count,
-            prepared_label_terminal_incomplete_count: prepared.terminal_incomplete_count,
+            prepared_label_expected_count: 0,
+            prepared_label_verified_count: 0,
+            prepared_label_mismatch_count: evidence.prepared_labels.len()
+                + evidence.invalid_prepared_token_count,
+            prepared_label_host_dependent_count: 0,
+            prepared_label_terminal_incomplete_count: 0,
             unclassified_face_count: evidence.unclassified_face_count,
             notdef_glyph_count: evidence.notdef_glyph_count,
         }
@@ -300,70 +296,6 @@ impl FinalTreeFontEvidence {
                 }
             }
         }
-    }
-}
-
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-struct PreparedTextVerification {
-    expected_count: usize,
-    verified_count: usize,
-    mismatch_count: usize,
-    host_dependent_count: usize,
-    terminal_incomplete_count: usize,
-}
-
-fn verify_prepared_text_labels(
-    source: &str,
-    expected_label_count: usize,
-    receipt: Option<&PreparedTextTerminalReceipt>,
-    observed: &HashSet<PreparedTextLabelId>,
-    invalid_token_count: usize,
-) -> PreparedTextVerification {
-    if expected_label_count == 0 {
-        return PreparedTextVerification {
-            mismatch_count: receipt.map_or(0, |receipt| receipt.labels().len().max(1))
-                + observed.len()
-                + invalid_token_count,
-            ..PreparedTextVerification::default()
-        };
-    }
-    let Some(receipt) = receipt else {
-        return PreparedTextVerification {
-            expected_count: expected_label_count,
-            mismatch_count: expected_label_count.saturating_add(invalid_token_count),
-            ..PreparedTextVerification::default()
-        };
-    };
-    if !receipt.artifact_matches(source) || receipt.labels().len() != expected_label_count {
-        return PreparedTextVerification {
-            expected_count: expected_label_count,
-            mismatch_count: expected_label_count
-                .max(receipt.labels().len())
-                .saturating_add(invalid_token_count),
-            ..PreparedTextVerification::default()
-        };
-    }
-    // Embedded catalog preparation is unavailable. A retained label cannot match a system
-    // face; reject every expectation while preserving the bounded diagnostic counts.
-    let mut unique_ids = HashSet::with_capacity(receipt.labels().len());
-    let mut duplicate_ids = HashSet::new();
-    for label in receipt.labels() {
-        if !unique_ids.insert(label.id()) {
-            duplicate_ids.insert(label.id());
-        }
-    }
-    PreparedTextVerification {
-        expected_count: expected_label_count,
-        mismatch_count: invalid_token_count
-            .saturating_add(unique_ids.len())
-            .saturating_add(duplicate_ids.len())
-            .saturating_add(observed.difference(&unique_ids).count()),
-        host_dependent_count: receipt
-            .labels()
-            .iter()
-            .filter(|label| label.provenance().is_host_dependent())
-            .count(),
-        ..PreparedTextVerification::default()
     }
 }
 
@@ -711,13 +643,17 @@ mod tests {
             <text x="0" y="80" font-family="DejaVu Sans" font-weight="700">Browse Products</text>
         </svg>"#;
         let tree = usvg::Tree::from_str(source, &options).unwrap();
-        let plan = environment.plan.finish_with_tree(source, &tree, 0, None);
+        let plan = environment.plan.finish_with_tree(&tree);
         assert!(plan.used_system_fonts());
         assert!(plan.is_host_dependent());
         assert_eq!(plan.unclassified_face_count(), 0);
         assert_eq!(plan.notdef_glyph_count(), 0);
         assert!(!plan.unresolved_glyph_fallback());
         assert!(plan.prepared_text_evidence_matches());
+        assert_eq!(plan.prepared_label_expected_count(), 0);
+        assert_eq!(plan.prepared_label_verified_count(), 0);
+        assert_eq!(plan.prepared_label_host_dependent_count(), 0);
+        assert_eq!(plan.prepared_label_terminal_incomplete_count(), 0);
 
         let unadmitted = FinalTreeFontEvidence::collect(&tree, &usvg::fontdb::Database::new());
         assert!(!unadmitted.used_system_fonts);
@@ -725,15 +661,13 @@ mod tests {
 
         let missing_source = source.replace("Request Volume", "Request Volume&#x10ffff;");
         let missing_tree = usvg::Tree::from_str(&missing_source, &options).unwrap();
-        let missing = environment
-            .plan
-            .finish_with_tree(&missing_source, &missing_tree, 0, None);
+        let missing = environment.plan.finish_with_tree(&missing_tree);
         assert!(missing.notdef_glyph_count() > 0);
         assert!(missing.unresolved_glyph_fallback());
     }
 
     #[test]
-    fn native_tree_observes_reserved_label_ids_before_prepared_evidence_admission() {
+    fn native_tree_observes_reserved_and_malformed_label_ids() {
         let environment = fixture_font_environment();
         let options = usvg::Options {
             fontdb: Arc::clone(&environment.fontdb),
@@ -756,7 +690,7 @@ mod tests {
         );
         assert_eq!(evidence.invalid_prepared_token_count, 1);
 
-        let plan = environment.plan.finish_with_tree(source, &tree, 0, None);
+        let plan = environment.plan.finish_with_tree(&tree);
         assert_eq!(plan.prepared_label_mismatch_count(), 2);
         assert!(!plan.prepared_text_evidence_matches());
         assert!(!plan.prepared_text_terminal_proof_complete());
@@ -768,40 +702,21 @@ mod tests {
         let line_evidence = FinalTreeFontEvidence::collect(&line_tree, &environment.fontdb);
         assert_eq!(line_evidence.prepared_labels, evidence.prepared_labels);
         assert_eq!(line_evidence.invalid_prepared_token_count, 0);
-        let line_plan = environment
-            .plan
-            .finish_with_tree(line_only, &line_tree, 0, None);
+        let line_plan = environment.plan.finish_with_tree(&line_tree);
         assert_eq!(line_plan.prepared_label_mismatch_count(), 1);
         assert!(!line_plan.prepared_text_evidence_matches());
-    }
 
-    #[test]
-    fn system_font_export_rejects_reserved_labels_and_missing_prepared_evidence() {
-        let empty = HashSet::new();
-        assert_eq!(
-            verify_prepared_text_labels("", 0, None, &empty, 0),
-            PreparedTextVerification::default(),
-        );
-
-        let token = PreparedTextLabelId::from_svg_id("merman-prepared-flowchart-7").unwrap();
-        let line_token =
-            PreparedTextLabelId::from_svg_id("merman-prepared-flowchart-7-line-2").unwrap();
-        let observed = HashSet::from([token, line_token]);
-        assert_eq!(
-            observed.len(),
-            1,
-            "line tokens retain one semantic label identity"
-        );
-        for (expected, tokens, invalid, mismatches) in [
-            (0, &observed, 0, 1),
-            (0, &empty, 2, 2),
-            (0, &observed, 2, 3),
-            (2, &empty, 0, 2),
-        ] {
-            let result = verify_prepared_text_labels("", expected, None, tokens, invalid);
-            assert_eq!(result.expected_count, expected);
-            assert_eq!(result.verified_count, 0);
-            assert_eq!(result.mismatch_count, mismatches);
-        }
+        // Raw SVG admission and usvg's entity-decoded identities are distinct boundaries.
+        let entity_encoded = source.replace("merman-prepared", "merman&#x2d;prepared");
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let sealed = merman_render::svg::finalize_resvg_svg(&entity_encoded, &session).unwrap();
+        let decoded_tree = usvg::Tree::from_str(sealed.as_str(), &options).unwrap();
+        let decoded_plan = environment.plan.finish_with_tree(&decoded_tree);
+        assert_eq!(decoded_plan.prepared_label_expected_count(), 0);
+        assert_eq!(decoded_plan.prepared_label_mismatch_count(), 2);
+        assert!(!decoded_plan.prepared_text_evidence_matches());
+        assert!(!decoded_plan.prepared_text_terminal_proof_complete());
     }
 }

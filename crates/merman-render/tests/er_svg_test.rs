@@ -1206,7 +1206,7 @@ fn er_visible_text_and_relation_label_have_direct_terminal_receipts() {
         .expect("render HTML ER relationship label for resvg")
         .finalize_resvg(&SvgPipeline::resvg_safe())
         .expect("finalize HTML ER relationship label for resvg");
-    let native_svg = merman_render::__private::native_export_svg(resvg.svg());
+    let native_svg = resvg.svg().as_str();
     let native_document =
         roxmltree::Document::parse(native_svg).expect("valid native ER relationship label SVG");
     let relationship_label = native_document

@@ -292,11 +292,7 @@ pub mod __private {
         SvgStyleDeclarationObservation, SvgStyleRuleObservation, SvgStylesheetObservation,
     };
 
-    pub use crate::text::__private::{
-        PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
-        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance, PreparedTextTerminalFace,
-        PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
-    };
+    pub use crate::text::__private::PreparedTextLabelId;
 
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     pub use crate::architecture_text_receipt::{
@@ -513,35 +509,6 @@ pub mod __private {
         report: &crate::environment::RenderSessionReport,
     ) -> &crate::diagram_theme::ThemeResourcePolicy {
         report.effective_theme_resource_policy()
-    }
-
-    /// Returns the terminal SVG carrying renderer-owned prepared-label locators.
-    pub fn native_export_svg(svg: &crate::svg::ResvgCompatibleSvg) -> &str {
-        svg.native_export_svg()
-    }
-
-    /// Returns per-label native-export evidence retained by the sealed SVG.
-    pub fn prepared_text_label_ledger(
-        svg: &crate::svg::ResvgCompatibleSvg,
-    ) -> &[PreparedTextLabelLedgerEntry] {
-        svg.prepared_text_label_ledger()
-    }
-
-    /// Returns the renderer-owned terminal receipt bound to the exact native SVG artifact.
-    pub fn prepared_text_terminal_receipt(
-        svg: &crate::svg::ResvgCompatibleSvg,
-    ) -> Option<&PreparedTextTerminalReceipt> {
-        svg.prepared_text_terminal_receipt()
-    }
-
-    /// Returns the number of prepared labels retained by the sealed native artifact.
-    pub fn prepared_text_label_count(svg: &crate::svg::ResvgCompatibleSvg) -> usize {
-        svg.prepared_text_label_ledger().len()
-    }
-
-    /// Reports whether the terminal pipeline preserved prepared-label locators.
-    pub const fn prepared_text_evidence_valid(svg: &crate::svg::ResvgCompatibleSvg) -> bool {
-        svg.prepared_text_evidence_valid()
     }
 
     /// Bounded prepared-math projection used by document and target admission.

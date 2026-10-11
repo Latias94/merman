@@ -1,12 +1,10 @@
-//! Source-owned CSS font decisions and bounded text projection evidence.
+//! Source-owned CSS font decisions, reserved text tokens, and public layout reports.
 
 use crate::diagram_theme::{
-    FontAssetFingerprint, FontCatalogFingerprint, FontSource, FontStack, GenericFontFamily,
-    HostMeasurementFallback,
+    FontCatalogFingerprint, FontSource, FontStack, GenericFontFamily, HostMeasurementFallback,
 };
 use cssparser::Parser;
 use std::collections::BTreeMap;
-use std::fmt;
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -114,79 +112,10 @@ fn relative_font_weight(inherited: u16, bolder: bool) -> u16 {
     }
 }
 
-/// A half-open UTF-8 byte range in either projection coordinate space.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TextByteRange {
-    start: usize,
-    end: usize,
-}
-
-impl TextByteRange {
-    #[cfg(test)]
-    pub const fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
-
-    pub const fn start(self) -> usize {
-        self.start
-    }
-
-    pub const fn end(self) -> usize {
-        self.end
-    }
-}
-
-/// One ordered mapping atom between source and visible UTF-8 coordinates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SourceVisibleSpan {
-    source: TextByteRange,
-    visible: TextByteRange,
-}
-
-impl SourceVisibleSpan {
-    #[cfg(test)]
-    pub const fn new(source: TextByteRange, visible: TextByteRange) -> Self {
-        Self { source, visible }
-    }
-
-    pub const fn source(self) -> TextByteRange {
-        self.source
-    }
-
-    pub const fn visible(self) -> TextByteRange {
-        self.visible
-    }
-}
-
-/// Canonical identity of one prepared-label request within a catalog session.
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TextLayoutRequestDigest([u8; 32]);
-
-impl TextLayoutRequestDigest {
-    #[cfg(test)]
-    pub const fn from_bytes(bytes: [u8; 32]) -> Self {
-        Self(bytes)
-    }
-
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-}
-
-impl fmt::Debug for TextLayoutRequestDigest {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("TextLayoutRequestDigest(\"")?;
-        for byte in self.0 {
-            write!(formatter, "{byte:02x}")?;
-        }
-        formatter.write_str("\")")
-    }
-}
-
 pub(crate) const PREPARED_TEXT_LABEL_ID_PREFIX: &str = "merman-prepared-";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) enum PreparedTextLabelFamily {
+enum PreparedTextLabelFamily {
     Flowchart,
     Swimlane,
     State,
@@ -194,15 +123,6 @@ pub(crate) enum PreparedTextLabelFamily {
 }
 
 impl PreparedTextLabelFamily {
-    const fn id(self) -> &'static str {
-        match self {
-            Self::Flowchart => "flowchart",
-            Self::Swimlane => "swimlane",
-            Self::State => "state",
-            Self::Sequence => "sequence",
-        }
-    }
-
     fn from_id(id: &str) -> Option<Self> {
         match id {
             "flowchart" => Some(Self::Flowchart),
@@ -214,7 +134,7 @@ impl PreparedTextLabelFamily {
     }
 }
 
-/// Operation-local identity attached only to SVG text emitted from admitted prepared evidence.
+/// Canonical identity used to aggregate reserved SVG text tokens observed by native export.
 #[doc(hidden)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PreparedTextLabelId {
@@ -223,11 +143,6 @@ pub struct PreparedTextLabelId {
 }
 
 impl PreparedTextLabelId {
-    #[cfg(test)]
-    pub(crate) const fn new(family: PreparedTextLabelFamily, key: u32) -> Self {
-        Self { family, key }
-    }
-
     /// Parses a prepared SVG text id, aggregating an optional `-line-N` suffix to its base label.
     pub fn from_svg_id(svg_id: &str) -> Option<Self> {
         let body = svg_id.strip_prefix(PREPARED_TEXT_LABEL_ID_PREFIX)?;
@@ -250,37 +165,6 @@ impl PreparedTextLabelId {
     pub fn is_svg_id_candidate(svg_id: &str) -> bool {
         svg_id.starts_with(PREPARED_TEXT_LABEL_ID_PREFIX)
     }
-
-    /// Returns the stable family identifier embedded in the SVG token.
-    pub const fn family(self) -> &'static str {
-        self.family.id()
-    }
-
-    /// Returns the operation-local key assigned in fixed family/semantic order.
-    pub const fn key(self) -> u32 {
-        self.key
-    }
-
-    /// Returns the canonical SVG id for this prepared label.
-    pub fn as_svg_id(self) -> String {
-        self.to_string()
-    }
-
-    /// Returns a line-scoped SVG id that still parses back to this base label.
-    pub fn as_svg_line_id(self, line: u32) -> String {
-        format!("{self}-line-{line}")
-    }
-}
-
-impl fmt::Display for PreparedTextLabelId {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            formatter,
-            "{PREPARED_TEXT_LABEL_ID_PREFIX}{}-{}",
-            self.family.id(),
-            self.key
-        )
-    }
 }
 
 fn parse_canonical_u32(value: &str) -> Option<u32> {
@@ -288,170 +172,6 @@ fn parse_canonical_u32(value: &str) -> Option<u32> {
         return None;
     }
     value.parse().ok()
-}
-
-/// Stable catalog face key retained for one prepared-text run.
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PreparedTextFaceKey {
-    asset_fingerprint: FontAssetFingerprint,
-    face_index: u32,
-}
-
-impl PreparedTextFaceKey {
-    #[cfg(test)]
-    fn new(asset_fingerprint: FontAssetFingerprint, face_index: u32) -> Self {
-        Self {
-            asset_fingerprint,
-            face_index,
-        }
-    }
-
-    pub const fn asset_fingerprint(self) -> FontAssetFingerprint {
-        self.asset_fingerprint
-    }
-
-    pub const fn face_index(self) -> u32 {
-        self.face_index
-    }
-}
-
-/// Provenance of the backend that produced one admitted prepared label.
-#[doc(hidden)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-#[non_exhaustive]
-pub enum PreparedTextLabelProvenance {
-    Native,
-    HostDependent,
-}
-
-impl PreparedTextLabelProvenance {
-    pub const fn is_host_dependent(self) -> bool {
-        matches!(self, Self::HostDependent)
-    }
-}
-
-/// Face/source evidence retained for one contiguous prepared-text run.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreparedTextLabelEvidence {
-    source_range: TextByteRange,
-    visible_range: TextByteRange,
-    face_key: PreparedTextFaceKey,
-    font_source: FontSource,
-}
-
-impl PreparedTextLabelEvidence {
-    #[cfg(test)]
-    fn new(
-        source_range: TextByteRange,
-        visible_range: TextByteRange,
-        face_key: PreparedTextFaceKey,
-        font_source: FontSource,
-    ) -> Self {
-        Self {
-            source_range,
-            visible_range,
-            face_key,
-            font_source,
-        }
-    }
-
-    pub(crate) const fn source_range(&self) -> TextByteRange {
-        self.source_range
-    }
-
-    pub(crate) const fn visible_range(&self) -> TextByteRange {
-        self.visible_range
-    }
-
-    pub const fn face_key(&self) -> PreparedTextFaceKey {
-        self.face_key
-    }
-
-    pub const fn font_source(&self) -> FontSource {
-        self.font_source
-    }
-}
-
-/// Frozen per-label evidence consumed by native SVG/export admission.
-#[doc(hidden)]
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PreparedTextLabelLedgerEntry {
-    id: PreparedTextLabelId,
-    catalog_fingerprint: FontCatalogFingerprint,
-    request_digest: TextLayoutRequestDigest,
-    provenance: PreparedTextLabelProvenance,
-    projection_spans: Arc<[SourceVisibleSpan]>,
-    line_ranges: Arc<[TextByteRange]>,
-    line_texts: Arc<[Arc<str>]>,
-    runs: Arc<[PreparedTextLabelEvidence]>,
-}
-
-impl PreparedTextLabelLedgerEntry {
-    /// A valid host-dependent label for internal projection-boundary tests, without a font backend.
-    #[cfg(test)]
-    pub(crate) fn for_test(id: PreparedTextLabelId, text: &str) -> Self {
-        let range = TextByteRange::new(0, text.len());
-        Self {
-            id,
-            catalog_fingerprint: crate::diagram_theme::FontCatalog::system_fonts().fingerprint(),
-            request_digest: TextLayoutRequestDigest::from_bytes([1; 32]),
-            provenance: PreparedTextLabelProvenance::HostDependent,
-            projection_spans: vec![SourceVisibleSpan::new(range, range)].into(),
-            line_ranges: vec![range].into(),
-            line_texts: vec![Arc::from(text)].into(),
-            runs: vec![PreparedTextLabelEvidence::new(
-                range,
-                range,
-                PreparedTextFaceKey::new(FontAssetFingerprint::for_test([2; 32]), 0),
-                FontSource::System,
-            )]
-            .into(),
-        }
-    }
-
-    pub const fn id(&self) -> PreparedTextLabelId {
-        self.id
-    }
-
-    pub const fn catalog_fingerprint(&self) -> FontCatalogFingerprint {
-        self.catalog_fingerprint
-    }
-
-    pub(crate) const fn request_digest(&self) -> TextLayoutRequestDigest {
-        self.request_digest
-    }
-
-    pub const fn provenance(&self) -> PreparedTextLabelProvenance {
-        self.provenance
-    }
-
-    pub(crate) fn projection_spans(&self) -> &[SourceVisibleSpan] {
-        &self.projection_spans
-    }
-
-    pub(crate) fn line_ranges(&self) -> &[TextByteRange] {
-        &self.line_ranges
-    }
-
-    pub(crate) fn line_texts(&self) -> &[Arc<str>] {
-        &self.line_texts
-    }
-
-    pub fn evidence(&self) -> &[PreparedTextLabelEvidence] {
-        &self.runs
-    }
-
-    /// Returns the number of prepared output lines retained for native export verification.
-    pub fn line_count(&self) -> usize {
-        self.line_ranges.len()
-    }
-
-    /// Returns the admitted font sources actually used by this emitted label.
-    pub fn used_font_sources(&self) -> impl Iterator<Item = FontSource> + '_ {
-        self.runs.iter().map(PreparedTextLabelEvidence::font_source)
-    }
 }
 
 /// Frozen evidence retained in a render-session report.
@@ -541,18 +261,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn prepared_text_label_id_roundtrips_base_and_line_tokens() {
-        let id = PreparedTextLabelId::new(PreparedTextLabelFamily::State, 17);
-
-        assert_eq!(id.as_svg_id(), "merman-prepared-state-17");
-        assert_eq!(PreparedTextLabelId::from_svg_id(&id.as_svg_id()), Some(id));
+    fn reserved_text_label_parser_aggregates_canonical_line_tokens() {
+        let base = PreparedTextLabelId::from_svg_id("merman-prepared-state-17")
+            .expect("canonical base token");
         assert_eq!(
-            PreparedTextLabelId::from_svg_id(&id.as_svg_line_id(3)),
-            Some(id)
+            PreparedTextLabelId::from_svg_id("merman-prepared-state-17-line-3"),
+            Some(base)
         );
-        assert_eq!(id.family(), "state");
-        assert_eq!(id.key(), 17);
-
+        assert_ne!(
+            PreparedTextLabelId::from_svg_id("merman-prepared-sequence-17"),
+            Some(base)
+        );
         for invalid in [
             "merman-prepared-state-017",
             "merman-prepared-state-17-line-03",

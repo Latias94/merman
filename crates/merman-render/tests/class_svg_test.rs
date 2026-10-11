@@ -1966,7 +1966,7 @@ fn class_direct_node_surfaces_reach_html_and_native_terminals() {
     .expect("render directly themed HTML Class labels for resvg")
     .finalize_resvg(&SvgPipeline::resvg_safe())
     .expect("finalize directly themed HTML Class labels for resvg");
-    let native_svg = merman_render::__private::native_export_svg(resvg.svg());
+    let native_svg = resvg.svg().as_str();
     let native_document =
         roxmltree::Document::parse(native_svg).expect("valid native Class label SVG");
     let account_label = native_document
@@ -2240,7 +2240,7 @@ fn class_invalid_source_css_cannot_swallow_typed_node_paint_or_forge_its_receipt
         .finalize_resvg(&SvgPipeline::resvg_safe())
         .expect("finalize adversarial Class source CSS for ResvgSafe");
     {
-        let native_svg = merman_render::__private::native_export_svg(resvg.svg());
+        let native_svg = resvg.svg().as_str();
         let native_document =
             roxmltree::Document::parse(native_svg).expect("valid native Class SVG");
         assert!(

@@ -1,6 +1,5 @@
 mod create_text;
 mod deterministic;
-mod evidence;
 mod flowchart_parity;
 mod heuristic;
 mod icons;
@@ -11,7 +10,6 @@ mod measure;
 mod metrics;
 mod prepared;
 mod svg_metrics;
-mod terminal_receipt;
 mod types;
 mod visible_style;
 mod whitespace;
@@ -19,7 +17,6 @@ mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
 pub use deterministic::DeterministicTextMeasurer;
-pub(crate) use evidence::PreparedTextEvidenceLease;
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub use icons::replace_fontawesome_icons;
@@ -44,25 +41,14 @@ pub(crate) use metrics::{
     mermaid_markdown_to_wrapped_word_lines,
 };
 
-#[cfg(test)]
-pub(crate) use prepared::PreparedTextLabelFamily;
-pub(crate) use prepared::{
-    PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId, PreparedTextLabelLedgerEntry,
-};
+pub(crate) use prepared::{PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId};
 pub(crate) use prepared::{ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight};
-pub(crate) use terminal_receipt::PreparedTextTerminalReceipt;
 pub(crate) use visible_style::VisibleTextStyleFacts;
 
-/// Workspace-internal native-export evidence scheduled for replacement by a compact export plan.
+/// Workspace-internal reserved-token observation for native export.
 #[doc(hidden)]
 pub mod __private {
-    pub use super::prepared::{
-        PreparedTextFaceKey, PreparedTextLabelEvidence, PreparedTextLabelId,
-        PreparedTextLabelLedgerEntry, PreparedTextLabelProvenance,
-    };
-    pub use super::terminal_receipt::{
-        PreparedTextTerminalFace, PreparedTextTerminalLabelReceipt, PreparedTextTerminalReceipt,
-    };
+    pub use super::prepared::PreparedTextLabelId;
 }
 pub use prepared::{PreparedTextLayoutReport, TextLayoutFailure};
 pub(crate) use svg_metrics::{

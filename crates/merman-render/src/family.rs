@@ -48,7 +48,6 @@ use crate::svg::{
     SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution, SvgPostprocessMetadata,
     SvgRenderOptions,
 };
-use crate::text::PreparedTextEvidenceLease;
 #[cfg(feature = "diagram-wardley")]
 use crate::wardley::WardleyDiagramLayout;
 use crate::{Error, LayoutExecution, LayoutOptions, RenderCapability, Result};
@@ -3225,8 +3224,6 @@ impl GanttTimeAxisDiagnostics {
 /// ```
 pub struct RenderedFamilySvg {
     svg: String,
-    prepared_text_svg: Option<String>,
-    prepared_text_ledger: PreparedTextEvidenceLease,
     prepared_text_evidence_valid: bool,
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_evidence_valid: bool,
@@ -3325,40 +3322,21 @@ impl RenderedFamilySvg {
     ) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata()?;
-        let preserves_prepared_text = self.prepared_text_evidence_valid
-            && pipeline.preserves_prepared_text_evidence(output_metadata.family_id());
+        self.prepared_text_evidence_valid &=
+            pipeline.preserves_prepared_text_evidence(output_metadata.family_id());
         let requires_prepared_math_projection = pipeline.requires_prepared_math_projection();
         let preserves_prepared_math = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
         let supplies_prepared_math = self.prepared_math_evidence_valid
             && (preserves_prepared_math || requires_prepared_math_projection);
-        let source_svg = if preserves_prepared_text {
-            self.prepared_text_svg
-                .take()
-                .unwrap_or_else(|| std::mem::take(&mut self.svg))
-        } else {
-            self.prepared_text_svg = None;
-            self.prepared_text_evidence_valid = false;
-            self.prepared_text_ledger = PreparedTextEvidenceLease::default();
-            std::mem::take(&mut self.svg)
-        };
+        let source_svg = std::mem::take(&mut self.svg);
         let processed_svg = pipeline.process_owned_to_string_with_metadata_and_math_evidence(
             source_svg,
             &output_metadata,
             &self.session,
             supplies_prepared_math.then_some(&self.prepared_math_evidence),
         )?;
-        if preserves_prepared_text && !self.prepared_text_ledger.is_empty() {
-            let (public_svg, prepared_text_svg) = crate::svg::partition_prepared_text_label_ids(
-                processed_svg,
-                self.prepared_text_ledger.entries(),
-                SvgPostprocessExecution::new(&self.session),
-            )?;
-            self.svg = public_svg;
-            self.prepared_text_svg = prepared_text_svg;
-        } else {
-            self.svg = processed_svg;
-        }
+        self.svg = processed_svg;
         if !preserves_prepared_math {
             self.prepared_math_evidence_valid = false;
         }
@@ -3406,16 +3384,6 @@ impl RenderedFamilySvg {
         let output_metadata = self.output_metadata()?;
         let prepared_text_evidence_valid = self.prepared_text_evidence_valid
             && pipeline.preserves_prepared_text_evidence(output_metadata.family_id());
-        let source_svg = if prepared_text_evidence_valid {
-            self.prepared_text_svg.unwrap_or(self.svg)
-        } else {
-            self.svg
-        };
-        let prepared_text_ledger = if prepared_text_evidence_valid {
-            self.prepared_text_ledger
-        } else {
-            PreparedTextEvidenceLease::default()
-        };
         let prepared_math_evidence_valid = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
         if !self.prepared_math_evidence.is_empty() && !prepared_math_evidence_valid {
@@ -3430,10 +3398,9 @@ impl RenderedFamilySvg {
             PreparedMathEvidenceLease::default()
         };
         let svg = pipeline.process_owned_resvg_compatible_with_metadata_and_evidence(
-            source_svg,
+            self.svg,
             &output_metadata,
             &self.session,
-            prepared_text_ledger,
             prepared_text_evidence_valid,
             prepared_math_evidence,
             prepared_math_evidence_valid,
@@ -3514,8 +3481,6 @@ impl RenderedFamilySvg {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let artifact = StandaloneSvgArtifact::finalize_exact(
             self.svg,
-            self.prepared_text_svg,
-            self.prepared_text_ledger,
             self.prepared_text_evidence_valid,
             pipeline,
             &self.session,
@@ -3543,8 +3508,6 @@ impl RenderedFamilySvg {
     pub fn into_completion(self) -> FamilyRenderCompletion<String> {
         let Self {
             svg,
-            prepared_text_svg: _,
-            prepared_text_ledger: _,
             prepared_text_evidence_valid: _,
             prepared_math_evidence: _,
             prepared_math_evidence_valid: _,
@@ -3840,7 +3803,6 @@ impl FamilyRenderArtifact {
             )),
             _ => None,
         };
-        let prepared_text_ledger = PreparedTextEvidenceLease::default();
         let prepared_math_evidence = self.family.prepared_math_evidence();
         let Self {
             metadata,
@@ -3860,14 +3822,13 @@ impl FamilyRenderArtifact {
                 .style_plan
                 .reconcile_effect_evidence(emitted, expected);
         }
-        let (tokenized_svg, root_theme, preserves_typed_theme_evidence) = rendered.into_parts();
+        let (svg, root_theme, preserves_typed_theme_evidence) = rendered.into_parts();
         if !preserves_typed_theme_evidence {
             context.invalidate_for_output_mutation();
         }
         context.ensure_portable()?;
-        let (svg, prepared_text_svg) = crate::svg::partition_prepared_text_label_ids(
-            tokenized_svg,
-            prepared_text_ledger.entries(),
+        crate::svg::reject_reserved_prepared_text_tokens(
+            &svg,
             SvgPostprocessExecution::new(context.session()),
         )?;
         let (session, style_report) = context.into_session_and_style_report();
@@ -3887,8 +3848,6 @@ impl FamilyRenderArtifact {
 
         Ok(RenderedFamilySvg {
             svg,
-            prepared_text_svg,
-            prepared_text_ledger,
             prepared_text_evidence_valid: true,
             prepared_math_evidence,
             prepared_math_evidence_valid: true,

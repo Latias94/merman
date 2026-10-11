@@ -1,11 +1,8 @@
-use std::sync::Arc;
-
 use merman_core::OperationPhase;
 
 use crate::Result;
 use crate::diagram_theme::ThemePortabilityRequirement;
 use crate::environment::RenderSession;
-use crate::text::{PreparedTextEvidenceLease, PreparedTextTerminalReceipt};
 
 use super::{
     ResvgCompatibleSvg, SvgFinalizationReport, SvgPipeline, SvgPipelinePreset,
@@ -14,7 +11,7 @@ use super::{
 
 /// Terminal compatibility state for an exact standalone SVG artifact.
 ///
-/// This state describes the sealed native projection used for compatibility admission. It never
+/// This state describes the exact sealed SVG bytes used for compatibility admission. It never
 /// describes a separately normalized SVG draft.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StandaloneSvgTerminalStatus {
@@ -38,10 +35,9 @@ impl StandaloneSvgTerminalStatus {
 
 /// Renderer-owned terminal artifact for the standalone SVG target.
 ///
-/// The public SVG, optional prepared-text native projection, resource fingerprint, and terminal
-/// evidence are sealed together. Ordinary output retains resource accounting without claiming
-/// native compatibility. Strict non-resvg pipelines are observed in place, without normalizing
-/// either projection into different bytes.
+/// The exact SVG bytes, resource fingerprint, and terminal evidence are sealed together. Ordinary
+/// output retains resource accounting without claiming native compatibility. Strict non-resvg
+/// pipelines are observed in place, without normalizing the artifact into different bytes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StandaloneSvgArtifact {
     inner: StandaloneSvgArtifactKind,
@@ -58,9 +54,6 @@ enum StandaloneSvgArtifactKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct StandaloneSvg {
     svg: String,
-    prepared_text_svg: Option<Arc<str>>,
-    prepared_text_evidence: PreparedTextEvidenceLease,
-    prepared_text_terminal_receipt: Option<PreparedTextTerminalReceipt>,
     prepared_text_evidence_valid: bool,
     selected_pipeline: SvgPipelinePreset,
     terminal_status: StandaloneSvgTerminalStatus,
@@ -82,30 +75,13 @@ impl StandaloneSvgArtifact {
 
     pub(crate) fn finalize_exact(
         svg: String,
-        prepared_text_svg: Option<String>,
-        prepared_text_evidence: PreparedTextEvidenceLease,
         prepared_text_evidence_valid: bool,
         pipeline: &SvgPipeline,
         session: &RenderSession,
     ) -> Result<Self> {
         session.checkpoint(OperationPhase::Postprocess)?;
-        let prepared_text_svg = prepared_text_svg.map(Arc::from);
-        let prepared_text_terminal_receipt =
-            if prepared_text_evidence_valid && !prepared_text_evidence.is_empty() {
-                prepared_text_svg.as_deref().and_then(|tokenized_svg| {
-                    PreparedTextTerminalReceipt::from_ledger(
-                        tokenized_svg,
-                        prepared_text_evidence.entries(),
-                    )
-                })
-            } else {
-                None
-            };
-        let prepared_text_evidence_valid = prepared_text_evidence_valid
-            && (prepared_text_evidence.is_empty() || prepared_text_terminal_receipt.is_some());
-        let native_svg = prepared_text_svg.as_deref().unwrap_or(svg.as_str());
         let resource_fingerprint = resource_closure::fingerprint_svg_resources(
-            native_svg,
+            &svg,
             session.font_catalog().fingerprint().as_bytes(),
             session.font_source_policy(),
         );
@@ -114,13 +90,13 @@ impl StandaloneSvgArtifact {
             && pipeline.preset() != SvgPipelinePreset::ResvgSafe
         {
             final_validation::check_svg_resource_budget_with_execution(
-                native_svg,
+                &svg,
                 SvgPostprocessExecution::new(session),
             )?;
             (StandaloneSvgTerminalStatus::Unverified, None)
         } else {
             let validation = final_validation::validate_resvg_compatible_svg_with_checkpoint(
-                native_svg,
+                &svg,
                 session.resource_policy(),
                 &mut || session.checkpoint(OperationPhase::Postprocess),
             );
@@ -157,9 +133,6 @@ impl StandaloneSvgArtifact {
         Ok(Self {
             inner: StandaloneSvgArtifactKind::Standalone(StandaloneSvg {
                 svg,
-                prepared_text_svg,
-                prepared_text_evidence,
-                prepared_text_terminal_receipt,
                 prepared_text_evidence_valid,
                 selected_pipeline: pipeline.preset(),
                 terminal_status,
@@ -178,16 +151,9 @@ impl StandaloneSvgArtifact {
         }
     }
 
-    /// Returns the prepared-text identity projection used by native consumers.
-    ///
-    /// This may differ from [`Self::as_str`] only in renderer-owned prepared-label identifiers.
+    /// Returns the exact sealed SVG bytes used by native consumers.
     pub fn native_export_svg(&self) -> &str {
-        match &self.inner {
-            StandaloneSvgArtifactKind::ResvgCompatible(svg) => svg.native_export_svg(),
-            StandaloneSvgArtifactKind::Standalone(svg) => {
-                svg.prepared_text_svg.as_deref().unwrap_or(&svg.svg)
-            }
-        }
+        self.as_str()
     }
 
     pub const fn selected_pipeline(&self) -> SvgPipelinePreset {
@@ -354,8 +320,6 @@ mod tests {
         // records the implicit default as the parity preset without running a draft pipeline.
         let error = StandaloneSvgArtifact::finalize_exact(
             r#"<svg xmlns="http://www.w3.org/2000/svg"><g/><g/></svg>"#.to_owned(),
-            None,
-            PreparedTextEvidenceLease::default(),
             true,
             &SvgPipeline::parity(),
             &session,
@@ -373,15 +337,8 @@ mod tests {
         let processed = pipeline
             .process_owned_to_string(svg.to_owned(), &session)
             .expect("the explicit non-resvg pipeline should stay within the raw element limit");
-        let error = StandaloneSvgArtifact::finalize_exact(
-            processed,
-            None,
-            PreparedTextEvidenceLease::default(),
-            true,
-            &pipeline,
-            &session,
-        )
-        .unwrap_err();
+        let error = StandaloneSvgArtifact::finalize_exact(processed, true, &pipeline, &session)
+            .unwrap_err();
 
         assert_max_svg_elements(error);
     }
@@ -393,8 +350,6 @@ mod tests {
 
         let error = StandaloneSvgArtifact::finalize_exact(
             svg.to_owned(),
-            None,
-            PreparedTextEvidenceLease::default(),
             true,
             &SvgPipeline::parity(),
             &session,
@@ -411,8 +366,6 @@ mod tests {
 
         let error = StandaloneSvgArtifact::finalize_exact(
             svg.to_owned(),
-            None,
-            PreparedTextEvidenceLease::default(),
             true,
             &SvgPipeline::parity(),
             &session,
@@ -437,15 +390,9 @@ mod tests {
         }
         svg.push_str(r##"</defs><use href="#branch-19"/></svg>"##);
         let session = session_with_max_svg_elements(crate::resources::MAX_RESVG_TREE_NODES * 2);
-        let error = StandaloneSvgArtifact::finalize_exact(
-            svg,
-            None,
-            PreparedTextEvidenceLease::default(),
-            true,
-            &SvgPipeline::parity(),
-            &session,
-        )
-        .expect_err("a native ceiling must not hide a larger explicit resource budget");
+        let error =
+            StandaloneSvgArtifact::finalize_exact(svg, true, &SvgPipeline::parity(), &session)
+                .expect_err("a native ceiling must not hide a larger explicit resource budget");
         assert_max_svg_elements(error);
     }
 
@@ -459,8 +406,6 @@ mod tests {
             let session = session_with_max_svg_elements(64);
             let artifact = StandaloneSvgArtifact::finalize_exact(
                 svg.clone(),
-                None,
-                PreparedTextEvidenceLease::default(),
                 true,
                 &SvgPipeline::parity(),
                 &session,
@@ -503,8 +448,6 @@ mod tests {
                 .unwrap();
             let artifact = StandaloneSvgArtifact::finalize_exact(
                 svg.clone(),
-                None,
-                PreparedTextEvidenceLease::default(),
                 true,
                 &SvgPipeline::parity(),
                 &session,
@@ -532,35 +475,11 @@ mod tests {
 
         let error = StandaloneSvgArtifact::finalize_exact(
             svg.to_owned(),
-            None,
-            PreparedTextEvidenceLease::default(),
             true,
             &SvgPipeline::resvg_safe(),
             &session,
         )
         .expect_err("a resvg-safe artifact must fail closed on terminal validation errors");
-
-        assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
-    }
-
-    #[test]
-    fn native_prepared_text_projection_controls_resvg_admission() {
-        let session = crate::environment::RenderEnvironment::deterministic()
-            .with_resource_policy(RenderResourcePolicy::unbounded_for_trusted_input())
-            .begin_session()
-            .unwrap();
-        let public_svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><path d="M0 0h1v1z"/></svg>"#;
-        let native_svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject/></svg>"#;
-
-        let error = StandaloneSvgArtifact::finalize_exact(
-            public_svg.to_owned(),
-            Some(native_svg.to_owned()),
-            PreparedTextEvidenceLease::default(),
-            false,
-            &SvgPipeline::resvg_safe(),
-            &session,
-        )
-        .expect_err("resvg admission must validate the native prepared-text projection");
 
         assert!(matches!(error, crate::Error::SvgPostprocess { .. }));
     }

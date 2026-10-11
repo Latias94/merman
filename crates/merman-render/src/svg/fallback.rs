@@ -16,7 +16,7 @@ use crate::svg::pipeline::{
     extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
     find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
 };
-use crate::text::{PreparedTextLabelId, TextMeasurer};
+use crate::text::TextMeasurer;
 use std::convert::Infallible;
 use std::fmt::{self, Write};
 
@@ -270,10 +270,23 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         })
                         .transpose()?
                         .unwrap_or_default();
+                    // Preserve a reserved marker until terminal admission observes it, even
+                    // when resvg cleanup removes the original foreignObject.
+                    let reserved_text_attr = extract_exact_double_quoted_attr_with_checkpoints(
+                        tag,
+                        PREPARED_TEXT_LABEL_DATA_ATTR,
+                        checkpoint,
+                    )?
+                    .map(|value| {
+                        escape_xml_attr_with_checkpoints(value, checkpoint)
+                            .map(|value| format!(r#" {PREPARED_TEXT_LABEL_DATA_ATTR}="{value}""#))
+                    })
+                    .transpose()?
+                    .unwrap_or_default();
                     push_generated_fmt(
                         &mut overlays,
                         format_args!(
-                            r#"<g data-merman-foreignobject="fallback"{source}{occurrence} class="merman-foreignobject-fallback"{source_classes}>"#,
+                            r#"<g data-merman-foreignobject="fallback"{source}{occurrence} class="merman-foreignobject-fallback"{source_classes}{reserved_text_attr}>"#,
                             source = source_attr,
                             occurrence = occurrence_attr,
                             source_classes = source_classes_attr,
@@ -320,25 +333,14 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     }
 
                     let measure_style = typography.text_style();
-                    let prepared_label_id = extract_exact_double_quoted_attr_with_checkpoints(
-                        tag,
-                        PREPARED_TEXT_LABEL_DATA_ATTR,
+                    let wrap_width = foreign_object_html_soft_wrap_width(tag, inner, checkpoint)?;
+                    let lines = wrap_html_lines_to_width(
+                        raw_lines,
+                        wrap_width,
+                        text_measurer,
+                        &measure_style,
                         checkpoint,
-                    )?
-                    .and_then(PreparedTextLabelId::from_svg_id);
-                    let lines = if prepared_label_id.is_some() {
-                        raw_lines
-                    } else {
-                        let wrap_width =
-                            foreign_object_html_soft_wrap_width(tag, inner, checkpoint)?;
-                        wrap_html_lines_to_width(
-                            raw_lines,
-                            wrap_width,
-                            text_measurer,
-                            &measure_style,
-                            checkpoint,
-                        )?
-                    };
+                    )?;
                     let line_height = typography.line_height;
                     let n = lines.len() as f64;
                     let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
@@ -385,20 +387,10 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         checkpoint_loop(idx, checkpoint)?;
                         let y_line = y0 + (idx as f64) * line_height;
                         let text = escape_xml_text_with_checkpoints(line, checkpoint)?;
-                        let prepared_line_id_attr = prepared_label_id
-                            .zip(u32::try_from(idx).ok())
-                            .map(|(id, line)| id.as_svg_line_id(line))
-                            .map(|id| {
-                                escape_xml_attr_with_checkpoints(&id, checkpoint)
-                                    .map(|id| format!(r#" id="{id}""#))
-                            })
-                            .transpose()?
-                            .unwrap_or_default();
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
-                                r##"<text{} x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{} style="{}">{}</text>"##,
-                                prepared_line_id_attr,
+                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{} style="{}">{}</text>"##,
                                 text_x,
                                 y_line,
                                 escaped_fill,
