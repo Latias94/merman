@@ -8,7 +8,7 @@ The wrapper and Merman-authored code remain under the project license; each comp
 
 - ID: `typst-publish`
 - Description: The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
-- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
+- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
 
 ## Components
 
@@ -215,6 +215,18 @@ Merman's URL sanitization behavior is a source-backed Rust translation of saniti
 - License: `MIT`
 - Local evidence: `crates/merman-core/src/utils.rs`
 - Legal file: `THIRD_PARTY_LICENSES/sanitize-url/LICENSE`
+
+### unicode-linebreak
+
+merman-unicode-linebreak is an Apache-2.0 fork of unicode-linebreak 0.1.5, preserving its published Unicode 15.0 generated tables and extending character iteration for cooperative cancellation. UPSTREAM.json records the exact v0.1.5 Git revision and crates.io archive SHA-256 3b09c83c3c29d37506a3e260c08c03743a6bb66a9cd432c6934ab501a190571f.
+
+- Version: `0.1.5`
+- Source: https://github.com/axelf4/unicode-linebreak @ `829adeed3c07ed160c1c721b61806eb902a4c1f0`
+- Source path: `.`
+- Relationship: `copied`, `modified`
+- License: `Apache-2.0`
+- Local evidence: `crates/merman-unicode-linebreak`
+- Legal file: `THIRD_PARTY_LICENSES/unicode-linebreak/LICENSE`
 
 ### @upsetjs/venn.js
 

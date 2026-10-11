@@ -1,11 +1,12 @@
 //! Deterministic text measurement and wrapping fallback.
 
 use super::heuristic::append_text_width_em;
-use super::line_break::html_break_spaces_segments;
+use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
 use super::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
 };
+use std::convert::Infallible;
 use std::sync::Arc;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -35,6 +36,7 @@ struct LineWidthModel<'a> {
     font_size: f64,
     source: LineWidthSource<'a>,
     style: &'a TextStyle,
+    html_text: bool,
 }
 
 impl LineWidthModel<'_> {
@@ -67,7 +69,11 @@ impl LineWidthModel<'_> {
         match self.source {
             LineWidthSource::Heuristic => append_text_width_em(&mut width.heuristic_em, text),
             LineWidthSource::UniformAdvanceEm(_) => {
-                width.char_count = width.char_count.saturating_add(text.chars().count());
+                width.char_count = width.char_count.saturating_add(
+                    text.chars()
+                        .filter(|ch| !self.html_text || *ch != '\u{00ad}')
+                        .count(),
+                );
             }
             LineWidthSource::Callback(_) => unreachable!("callback widths use complete strings"),
         }
@@ -96,6 +102,8 @@ impl DeterministicTextMeasurer {
     /// Uses `width_px` to measure complete candidate strings while Merman retains its wrapping and
     /// line-height behavior. Vertical metrics and baseline offsets remain deterministic
     /// approximations; the callback does not provide glyph bounds or font ascent/descent.
+    /// HTML candidates retain unselected U+00AD controls for shaping. The callback must measure
+    /// their zero glyph advance without deleting the input controls before shaping.
     ///
     /// The callback must return a finite, non-negative width in CSS pixels. Use
     /// [`crate::environment::HostTextMeasurer`] when measurement can fail or vary by operation.
@@ -252,32 +260,23 @@ impl DeterministicTextMeasurer {
         token.split_at(split_at)
     }
 
-    fn wrap_line(
+    fn wrap_svg_line(
         line: &str,
         max_width_px: f64,
-        break_long_words: bool,
-        wrap_mode: WrapMode,
-        html_break_spaces_active: bool,
         width_model: LineWidthModel<'_>,
     ) -> Vec<String> {
         if !max_width_px.is_finite() || max_width_px <= 0.0 {
             return vec![line.to_string()];
         }
 
-        let tokens = match (wrap_mode, html_break_spaces_active) {
-            (WrapMode::HtmlLike, true) => html_break_spaces_segments(line)
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
-            _ => Self::split_line_to_words(line),
-        };
+        let tokens = Self::split_line_to_words(line);
         let mut tokens = std::collections::VecDeque::from(tokens);
         let mut out: Vec<String> = Vec::new();
         let mut cur = String::new();
         let mut cur_width = LineWidthAccumulator::default();
 
         while let Some(tok) = tokens.pop_front() {
-            if cur.is_empty() && tok == " " && !html_break_spaces_active {
+            if cur.is_empty() && tok == " " {
                 continue;
             }
 
@@ -291,44 +290,29 @@ impl DeterministicTextMeasurer {
             }
             cur.truncate(previous_len);
 
-            let current_line_has_content = if html_break_spaces_active {
-                !cur.is_empty()
-            } else {
-                Self::wrapped_line_has_visible_content(&cur)
-            };
-            if current_line_has_content {
-                out.push(if html_break_spaces_active {
-                    std::mem::take(&mut cur)
-                } else {
-                    let line = trim_end_html_collapsible_ascii_whitespace(&cur).to_string();
-                    cur.clear();
-                    line
-                });
+            if Self::wrapped_line_has_visible_content(&cur) {
+                let line = trim_end_html_collapsible_ascii_whitespace(&cur).to_string();
+                cur.clear();
+                out.push(line);
                 cur_width = LineWidthAccumulator::default();
                 tokens.push_front(tok);
                 continue;
             }
 
             // `tok` itself does not fit on an empty line.
-            if tok == " " && !html_break_spaces_active {
+            if tok == " " {
                 continue;
             }
-            if !break_long_words {
-                out.push(tok);
-            } else {
-                // Split at the largest grapheme boundary that fits. Zero-width graphemes do not
-                // consume line capacity, and an over-wide grapheme still advances the queue.
-                let (head, tail) = Self::split_token_to_width(&tok, max_width_px, width_model);
-                out.push(head.to_string());
-                if !tail.is_empty() {
-                    tokens.push_front(tail.to_string());
-                }
+            // Split at the largest grapheme boundary that fits. Zero-width graphemes do not
+            // consume line capacity, and an over-wide grapheme still advances the queue.
+            let (head, tail) = Self::split_token_to_width(&tok, max_width_px, width_model);
+            out.push(head.to_string());
+            if !tail.is_empty() {
+                tokens.push_front(tail.to_string());
             }
         }
 
-        if html_break_spaces_active && !cur.is_empty() {
-            out.push(cur);
-        } else if Self::wrapped_line_has_visible_content(&cur) {
+        if Self::wrapped_line_has_visible_content(&cur) {
             out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
         }
 
@@ -341,6 +325,32 @@ impl DeterministicTextMeasurer {
 }
 
 impl TextMeasurer for DeterministicTextMeasurer {
+    fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        let source = if self.char_width_factor == 0.0 {
+            LineWidthSource::Heuristic
+        } else {
+            LineWidthSource::UniformAdvanceEm(self.char_width_factor)
+        };
+        let model = LineWidthModel {
+            font_size: style.font_size.max(1.0),
+            source,
+            style,
+            html_text: true,
+        };
+        model.width_px(text).max(0.0)
+    }
+
+    #[allow(private_interfaces)]
+    fn begin_html_line_width(
+        &self,
+        style: &TextStyle,
+    ) -> Option<crate::environment::BuiltinHtmlLineWidth> {
+        Some(crate::environment::BuiltinHtmlLineWidth::deterministic(
+            style,
+            self.char_width_factor,
+        ))
+    }
+
     #[allow(private_interfaces)]
     fn begin_svg_text_computed_length(
         &self,
@@ -406,6 +416,10 @@ impl TextMeasurer for DeterministicTextMeasurer {
 }
 
 impl TextMeasurer for WidthCallbackTextMeasurer {
+    fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        (self.width_px)(text, style)
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.measure_wrapped(text, style, None, WrapMode::SvgLike)
     }
@@ -521,10 +535,9 @@ impl DeterministicTextMeasurer {
             font_size,
             source: width_source,
             style,
+            html_text: wrap_mode == WrapMode::HtmlLike,
         };
         let max_width = max_width.filter(|w| w.is_finite() && *w > 0.0);
-        let break_long_words = matches!(wrap_mode, WrapMode::SvgLike | WrapMode::SvgLikeSingleRun);
-
         let raw_lines = Self::normalized_text_lines(text);
         let raw_width = (wrap_mode == WrapMode::HtmlLike || max_width.is_none()).then(|| {
             raw_lines
@@ -534,28 +547,65 @@ impl DeterministicTextMeasurer {
         let html_break_spaces_active = wrap_mode == WrapMode::HtmlLike
             && max_width
                 .is_some_and(|max_width| raw_width.is_some_and(|raw_width| raw_width > max_width));
-        let mut lines = Vec::new();
-        for line in raw_lines {
-            if let Some(w) = max_width {
-                lines.extend(Self::wrap_line(
-                    &line,
-                    w,
-                    break_long_words,
-                    wrap_mode,
-                    html_break_spaces_active,
-                    width_model,
-                ));
-            } else {
-                lines.push(line);
+        let (mut width, line_count) = if wrap_mode == WrapMode::HtmlLike
+            && let Some(max_width) = max_width
+        {
+            let mut width = 0.0_f64;
+            let mut line_count = 0;
+            for line in raw_lines {
+                let line = if html_break_spaces_active {
+                    line.as_str()
+                } else {
+                    // Mermaid enables break-spaces only after the natural HTML width exceeds
+                    // its container. Before that switch, keep the previous wrapper's edge-space
+                    // trimming while retaining interior spaces and non-breaking separators.
+                    trim_html_collapsible_ascii_whitespace(&line)
+                };
+                let normalized = NormalizedHtmlText::single_mode(line, HtmlWhiteSpace::BreakSpaces);
+                let builtin = match width_source {
+                    LineWidthSource::Heuristic => Some(
+                        crate::environment::BuiltinHtmlLineWidth::deterministic(style, 0.0),
+                    ),
+                    LineWidthSource::UniformAdvanceEm(factor) => Some(
+                        crate::environment::BuiltinHtmlLineWidth::deterministic(style, factor),
+                    ),
+                    LineWidthSource::Callback(_) => None,
+                };
+                let mut measure = |text: &str| Ok::<f64, Infallible>(width_model.width_px(text));
+                let mut checkpoint = || Ok::<(), Infallible>(());
+                let planned = match plan_html_lines(
+                    &normalized,
+                    Some(max_width),
+                    builtin,
+                    &mut measure,
+                    &mut checkpoint,
+                ) {
+                    Ok(planned) => planned,
+                    Err(never) => match never {},
+                };
+                for line in planned {
+                    width = width.max(line.width);
+                    line_count += 1;
+                }
             }
-        }
-
-        let mut width = if max_width.is_none() {
-            raw_width.expect("unwrapped measurement computes raw width")
+            (width, line_count)
         } else {
-            lines
-                .iter()
-                .fold(0.0_f64, |width, line| width.max(width_model.width_px(line)))
+            let mut lines = Vec::new();
+            for line in raw_lines {
+                if let Some(max_width) = max_width {
+                    lines.extend(Self::wrap_svg_line(&line, max_width, width_model));
+                } else {
+                    lines.push(line);
+                }
+            }
+            let width = if max_width.is_none() {
+                raw_width.expect("unwrapped measurement computes raw width")
+            } else {
+                lines
+                    .iter()
+                    .fold(0.0_f64, |width, line| width.max(width_model.width_px(line)))
+            };
+            (width, lines.len())
         };
         if html_break_spaces_active && let Some(max_width) = max_width {
             // Mermaid switches overflowing HTML labels to a fixed-width table. Breakable text
@@ -563,11 +613,11 @@ impl DeterministicTextMeasurer {
             // expand it through its min-content width.
             width = width.max(max_width);
         }
-        let height = lines.len() as f64 * font_size * line_height_factor;
+        let height = line_count as f64 * font_size * line_height_factor;
         let metrics = TextMetrics {
             width,
             height,
-            line_count: lines.len(),
+            line_count,
         };
         let raw_width_px = if wrap_mode == WrapMode::HtmlLike {
             Some(raw_width.expect("HTML measurement computes raw width"))
@@ -611,6 +661,7 @@ mod tests {
                 font_size: 10.0,
                 source: LineWidthSource::Heuristic,
                 style: &TextStyle::default(),
+                html_text: false,
             },
         );
         assert_eq!(head, "W\u{0301}");
@@ -656,6 +707,7 @@ mod tests {
             font_size: 16.0,
             source: LineWidthSource::Heuristic,
             style: &style,
+            html_text: false,
         };
 
         for (text, first, second) in [
@@ -722,6 +774,138 @@ mod tests {
             measurer.measure_wrapped("a  b", &style, Some(7.0), WrapMode::HtmlLike);
         assert_eq!(preserved_spaces.line_count, 3);
         assert!(preserved_spaces.width > 7.0, "{preserved_spaces:?}");
+    }
+
+    #[test]
+    fn html_soft_hyphen_is_hidden_until_selected_and_contributes_its_visible_width() {
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..DeterministicTextMeasurer::default()
+        };
+        let style = TextStyle {
+            font_size: 10.0,
+            ..TextStyle::default()
+        };
+        let text = "alpha\u{00ad}beta";
+
+        let natural = measurer.measure_wrapped(text, &style, None, WrapMode::HtmlLike);
+        assert_eq!(natural.width, 90.0);
+        assert_eq!(natural.line_count, 1);
+        let fitted = measurer.measure_wrapped(text, &style, Some(90.0), WrapMode::HtmlLike);
+        assert_eq!(fitted.width, 90.0);
+        assert_eq!(fitted.line_count, 1);
+
+        let wrapped = measurer.measure_wrapped(text, &style, Some(60.0), WrapMode::HtmlLike);
+        assert_eq!(wrapped.line_count, 2);
+        assert_eq!(wrapped.width, 60.0);
+        let (wrapped, raw_width) =
+            measurer.measure_wrapped_with_raw_width(text, &style, Some(50.0), WrapMode::HtmlLike);
+        assert_eq!(wrapped.line_count, 2);
+        assert_eq!(
+            wrapped.width, 60.0,
+            "the selected hyphen contributes min-content width"
+        );
+        assert_eq!(raw_width, Some(90.0));
+    }
+
+    #[test]
+    fn html_inactive_break_spaces_trims_only_collapsible_edges_and_keeps_raw_width() {
+        let measurer = DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..DeterministicTextMeasurer::default()
+        };
+        let style = TextStyle {
+            font_size: 10.0,
+            ..TextStyle::default()
+        };
+        let text = " A  B\u{00a0} ";
+        let natural = measurer.measure_wrapped(text, &style, None, WrapMode::HtmlLike);
+        assert_eq!(natural.width, 70.0);
+        let (fitted, raw) =
+            measurer.measure_wrapped_with_raw_width(text, &style, Some(70.0), WrapMode::HtmlLike);
+        assert_eq!(fitted.width, 50.0);
+        assert_eq!(fitted.line_count, 1);
+        assert_eq!(raw, Some(70.0));
+
+        let (active, raw) =
+            measurer.measure_wrapped_with_raw_width(text, &style, Some(60.0), WrapMode::HtmlLike);
+        assert_eq!(active.line_count, 2);
+        assert_eq!(active.width, 60.0);
+        assert_eq!(raw, Some(70.0));
+    }
+
+    #[test]
+    fn html_soft_hyphen_callback_preserves_shaping_controls_in_complete_candidates() {
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&calls);
+        let measurer = DeterministicTextMeasurer::default().with_width_callback(move |text, _| {
+            recorded.lock().unwrap().push(text.to_string());
+            match text {
+                "f\u{00ad}fi" => 18.0,
+                "f-" => 16.0,
+                "fi" => 11.0,
+                _ => text.chars().filter(|ch| *ch != '\u{00ad}').count() as f64 * 10.0,
+            }
+        });
+        let style = TextStyle::default();
+        let text = "f\u{00ad}fi";
+
+        let natural = measurer.measure_wrapped(text, &style, None, WrapMode::HtmlLike);
+        assert_eq!(natural.width, 18.0);
+        assert_eq!(&*calls.lock().unwrap(), &["f\u{00ad}fi"]);
+        calls.lock().unwrap().clear();
+
+        let wrapped = measurer.measure_wrapped(text, &style, Some(16.0), WrapMode::HtmlLike);
+        assert_eq!(wrapped.line_count, 2);
+        assert_eq!(wrapped.width, 16.0);
+        let calls = calls.lock().unwrap();
+        assert!(calls.iter().any(|candidate| candidate == "f\u{00ad}fi"));
+        assert!(calls.iter().any(|candidate| candidate == "f-"));
+        assert!(calls.iter().any(|candidate| candidate == "fi"));
+    }
+
+    #[test]
+    fn decoded_html_line_width_keeps_literal_markup_and_matches_streamed_candidates() {
+        let style = TextStyle {
+            font_size: 10.0,
+            ..TextStyle::default()
+        };
+        for char_width_factor in [0.0, 1.0] {
+            let measurer = DeterministicTextMeasurer {
+                char_width_factor,
+                ..DeterministicTextMeasurer::default()
+            };
+            let text = "left<br>👩‍🔬A\u{301}right";
+            let expected = measurer.measure_html_line_width_px(text, &style);
+            let mut streamed = measurer
+                .begin_html_line_width(&style)
+                .expect("built-in line width");
+            for part in ["left<", "br>", "👩", "\u{200d}", "🔬A", "\u{301}right"] {
+                streamed.push_text(part);
+            }
+            assert_eq!(streamed.width_px().to_bits(), expected.to_bits());
+            assert!(
+                expected
+                    > measurer
+                        .measure_wrapped(text, &style, None, WrapMode::HtmlLike)
+                        .width
+            );
+            assert_eq!(
+                measurer
+                    .measure_html_line_width_px("a\u{00ad}b", &style)
+                    .to_bits(),
+                measurer.measure_html_line_width_px("ab", &style).to_bits()
+            );
+        }
+
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let recorded = Arc::clone(&calls);
+        let callback = DeterministicTextMeasurer::default().with_width_callback(move |text, _| {
+            recorded.lock().unwrap().push(text.to_string());
+            23.5
+        });
+        assert_eq!(callback.measure_html_line_width_px("a<br>b", &style), 23.5);
+        assert_eq!(&*calls.lock().unwrap(), &["a<br>b"]);
     }
 
     #[test]

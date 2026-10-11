@@ -169,10 +169,26 @@ fn zed_issue_fixtures_render_typed_resvg_safe() {
             "{name}: output should not leak non-finite geometry"
         );
 
+        let document = roxmltree::Document::parse(&svg).expect("resvg-safe output should be XML");
+        let wrapped_labels: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+            .map(|group| {
+                let rows: Vec<_> = group
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .map(|node| node.text().unwrap_or(""))
+                    .collect();
+                (rows.concat(), rows.join(" "))
+            })
+            .collect();
         for label in *expected_labels {
             assert!(
-                svg.contains(label),
-                "{name}: expected rendered SVG to contain label {label:?}"
+                svg.contains(label)
+                    || wrapped_labels
+                        .iter()
+                        .any(|(joined, spaced)| joined == label || spaced == label),
+                "{name}: expected rendered SVG to retain label {label:?} across its line boxes"
             );
         }
     }

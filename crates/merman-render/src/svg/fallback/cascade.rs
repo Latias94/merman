@@ -1,9 +1,10 @@
 use super::css::StyleDeclarationScanner;
+use super::html::HtmlTextFragment;
 use crate::svg::pipeline::{
     SvgTagScanner, checkpoint_loop, end_tag_name, find_tag_end_with_checkpoints,
     find_with_checkpoints, start_tag_name, trim_with_checkpoints,
 };
-use crate::text::TextStyle;
+use crate::text::{HtmlWhiteSpace, TextStyle};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
     QualifiedRuleParser, StyleSheetParser, Token,
@@ -73,6 +74,7 @@ pub(super) struct ResolvedStyle {
     pub(super) font_family: String,
     pub(super) font_weight: Option<String>,
     pub(super) font_style: Option<String>,
+    pub(super) white_space: HtmlWhiteSpace,
     line_height: LineHeight,
     pub(super) fill: String,
     color: Option<String>,
@@ -106,6 +108,12 @@ pub(super) struct ResolvedFallbackTypography {
     pub(super) line_height: f64,
     pub(super) fill: String,
     pub(super) label_background: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub(super) struct ResolvedForeignObject {
+    pub(super) typography: ResolvedFallbackTypography,
+    pub(super) fragments: Vec<HtmlTextFragment>,
 }
 
 impl ResolvedFallbackTypography {
@@ -580,6 +588,7 @@ impl CascadeIndex {
             "font-family",
             "font-weight",
             "font-style",
+            "white-space",
             "line-height",
             "fill",
             "color",
@@ -745,6 +754,12 @@ impl CascadeIndex {
             &parent.line_height,
             root_font_size,
         );
+        let white_space = resolve_white_space(
+            specified
+                .get("white-space")
+                .map(|value| value.value.as_str()),
+            parent.white_space,
+        );
         let fill = resolve_inherited_text_value(
             specified.get("fill").map(|value| value.value.as_str()),
             &parent.fill,
@@ -773,6 +788,7 @@ impl CascadeIndex {
             font_family,
             font_weight,
             font_style,
+            white_space,
             line_height,
             fill,
             color,
@@ -788,40 +804,84 @@ impl CascadeIndex {
         html: &str,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
         selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
-    ) -> Result<ResolvedFallbackTypography, E> {
-        let base_depth = svg_ancestors.len().saturating_add(1);
-        if !self
+    ) -> Result<ResolvedForeignObject, E> {
+        let next_depth = svg_ancestors.len().saturating_add(1);
+        let mut path = Vec::new();
+        if self
             .budget
-            .check_ancestry_depth(base_depth, selector_limit)?
+            .check_ancestry_depth(next_depth, selector_limit)?
         {
-            return Ok(default_fallback_typography());
+            path.extend_from_slice(svg_ancestors);
+            path.push(Self::source_element(
+                foreign_object_tag,
+                Namespace::Svg,
+                checkpoint,
+            )?);
         }
-        let foreign_object = Self::source_element(foreign_object_tag, Namespace::Svg, checkpoint)?;
-        let mut base_path = svg_ancestors.to_vec();
-        base_path.push(foreign_object);
-        let mut html_stack = Vec::new();
-        let mut first_style = None;
-        let mut all_same_style = true;
-        let mut common_path = None;
+        let base_depth = path.len();
+        let mut node_path = (0..base_depth).collect::<Vec<_>>();
+        let mut next_node_id = base_depth;
+        let mut previous_text_node_path = None;
+        let mut computed_styles = Vec::with_capacity(base_depth);
+        let mut root_font_size = DEFAULT_FONT_SIZE;
+        // Resolve each source node once. Text leaves and background ownership share this
+        // cache rather than charging selector work for the same ancestry repeatedly.
+        for index in 0..base_depth {
+            checkpoint_loop(index, checkpoint)?;
+            let style = self.resolve_path(
+                &path[..=index],
+                computed_styles.last(),
+                root_font_size,
+                checkpoint,
+                selector_limit,
+            )?;
+            if index == 0 {
+                root_font_size = style.font_size;
+            }
+            computed_styles.push(style);
+            if self.budget.matching_exhausted {
+                break;
+            }
+        }
+        let base_style = computed_styles
+            .last()
+            .cloned()
+            .unwrap_or_else(default_style);
+        let mut observed = TextTypographyObserver::default();
+        let mut fragments = Vec::new();
         let mut cursor = 0usize;
         let mut iteration = 0usize;
         while let Some(relative) = find_with_checkpoints(&html[cursor..], "<", checkpoint)? {
             checkpoint_loop(iteration, checkpoint)?;
             iteration = iteration.saturating_add(1);
             let start = cursor + relative;
-            if html_text_is_visible(&html[cursor..start]) {
-                self.observe_text_path(
-                    join_path(&base_path, &html_stack),
-                    &mut first_style,
-                    &mut all_same_style,
-                    &mut common_path,
-                    checkpoint,
-                    selector_limit,
-                )?;
-                if self.budget.matching_exhausted {
-                    return Ok(default_fallback_typography());
+            let text = &html[cursor..start];
+            if !text.is_empty() {
+                fragments.push(HtmlTextFragment::Text {
+                    text: text.to_string(),
+                    boundary_white_space: text_fragment_boundary_white_space(
+                        &mut previous_text_node_path,
+                        &node_path,
+                        if self.budget.matching_exhausted {
+                            &[]
+                        } else {
+                            &computed_styles
+                        },
+                    ),
+                    white_space: if self.budget.matching_exhausted {
+                        HtmlWhiteSpace::default()
+                    } else {
+                        computed_styles
+                            .last()
+                            .map(|style| style.white_space)
+                            .unwrap_or_default()
+                    },
+                });
+                if html_text_is_visible(text) && !self.budget.matching_exhausted {
+                    observed.observe(&path, &computed_styles);
                 }
             }
+            cursor = start;
             let Some(end) = find_tag_end_with_checkpoints(html, start, checkpoint)? else {
                 break;
             };
@@ -832,92 +892,130 @@ impl CascadeIndex {
                 continue;
             }
             if let Some(name) = end_tag_name(tag) {
-                if html_stack
-                    .last()
-                    .is_some_and(|element| element.local_name.eq_ignore_ascii_case(name))
+                if name.eq_ignore_ascii_case("br") {
+                    fragments.push(HtmlTextFragment::HardBreak);
+                    previous_text_node_path = None;
+                }
+                if !self.budget.matching_exhausted
+                    && path.len() > base_depth
+                    && path
+                        .last()
+                        .is_some_and(|element| element.local_name.eq_ignore_ascii_case(name))
                 {
-                    html_stack.pop();
+                    path.pop();
+                    computed_styles.pop();
+                    node_path.pop();
                 }
                 cursor = end;
                 continue;
             }
-            if start_tag_name(tag).is_some() {
-                let next_depth = base_path
-                    .len()
-                    .checked_add(html_stack.len())
-                    .and_then(|depth| depth.checked_add(1))
-                    .unwrap_or(usize::MAX);
-                if !self
-                    .budget
-                    .check_ancestry_depth(next_depth, selector_limit)?
-                {
-                    return Ok(default_fallback_typography());
+            if let Some(name) = start_tag_name(tag) {
+                if name.eq_ignore_ascii_case("br") {
+                    fragments.push(HtmlTextFragment::HardBreak);
+                    previous_text_node_path = None;
                 }
-                let element = Self::source_element(tag, Namespace::Xhtml, checkpoint)?;
-                html_stack.push(element);
-                if is_void_html_element(
-                    html_stack
-                        .last()
-                        .expect("element was pushed")
-                        .local_name
-                        .as_str(),
-                ) || tag.trim_end().ends_with("/>")
-                {
-                    html_stack.pop();
+                if !self.budget.matching_exhausted {
+                    let next_depth = path.len().saturating_add(1);
+                    if self
+                        .budget
+                        .check_ancestry_depth(next_depth, selector_limit)?
+                    {
+                        let element = Self::source_element(tag, Namespace::Xhtml, checkpoint)?;
+                        if !is_void_html_element(&element.local_name)
+                            && !tag.trim_end().ends_with("/>")
+                        {
+                            path.push(element);
+                            node_path.push(next_node_id);
+                            next_node_id = next_node_id.saturating_add(1);
+                            let style = self.resolve_path(
+                                &path,
+                                computed_styles.last(),
+                                root_font_size,
+                                checkpoint,
+                                selector_limit,
+                            )?;
+                            computed_styles.push(style);
+                        }
+                    }
                 }
             }
             cursor = end;
         }
-        if html_text_is_visible(&html[cursor..]) {
-            self.observe_text_path(
-                join_path(&base_path, &html_stack),
-                &mut first_style,
-                &mut all_same_style,
-                &mut common_path,
-                checkpoint,
-                selector_limit,
-            )?;
-            if self.budget.matching_exhausted {
-                return Ok(default_fallback_typography());
+        let text = &html[cursor..];
+        if !text.is_empty() {
+            fragments.push(HtmlTextFragment::Text {
+                text: text.to_string(),
+                boundary_white_space: text_fragment_boundary_white_space(
+                    &mut previous_text_node_path,
+                    &node_path,
+                    if self.budget.matching_exhausted {
+                        &[]
+                    } else {
+                        &computed_styles
+                    },
+                ),
+                white_space: if self.budget.matching_exhausted {
+                    HtmlWhiteSpace::default()
+                } else {
+                    computed_styles
+                        .last()
+                        .map(|style| style.white_space)
+                        .unwrap_or_default()
+                },
+            });
+            if html_text_is_visible(text) && !self.budget.matching_exhausted {
+                observed.observe(&path, &computed_styles);
             }
         }
-        if first_style.is_none() {
-            self.observe_text_path(
-                base_path.clone(),
-                &mut first_style,
-                &mut all_same_style,
-                &mut common_path,
-                checkpoint,
-                selector_limit,
-            )?;
-            if self.budget.matching_exhausted {
-                return Ok(default_fallback_typography());
+        if self.budget.matching_exhausted {
+            // Best-effort callers still need every text leaf and explicit line break when
+            // style matching is capped. Do not grow an unbounded source stack after the cap.
+            for (index, fragment) in fragments.iter_mut().enumerate() {
+                checkpoint_loop(index, checkpoint)?;
+                if let HtmlTextFragment::Text {
+                    white_space,
+                    boundary_white_space,
+                    ..
+                } = fragment
+                {
+                    *white_space = HtmlWhiteSpace::default();
+                    if let Some((_, boundary_white_space)) = boundary_white_space {
+                        *boundary_white_space = HtmlWhiteSpace::default();
+                    }
+                }
             }
+            checkpoint()?;
+            return Ok(ResolvedForeignObject {
+                typography: default_fallback_typography(),
+                fragments,
+            });
         }
-
-        let common_path = common_path.unwrap_or_else(|| base_path.clone());
-        let style = if all_same_style {
-            first_style.expect("at least one text style")
+        let style = if observed.differing_styles {
+            observed
+                .common_styles
+                .last()
+                .cloned()
+                .unwrap_or_else(default_style)
         } else {
-            self.resolve_full_path(&common_path, checkpoint, selector_limit)?
+            observed.first_style.unwrap_or(base_style)
         };
         let mut label_background = None;
         let mut background_color_specified = false;
         let mut label_background_marker = false;
-        for depth in base_path.len()..common_path.len() {
-            let element = &common_path[depth];
+        for (element, background_style) in observed
+            .common_path
+            .iter()
+            .zip(&observed.common_styles)
+            .skip(base_depth)
+        {
             label_background_marker |= element.classes.contains("labelBkg");
-            let background_style =
-                self.resolve_full_path(&common_path[..=depth], checkpoint, selector_limit)?;
             if background_style.background_color_specified {
                 background_color_specified = true;
-                match background_style.background_color {
+                match &background_style.background_color {
                     Some(color) if !color.eq_ignore_ascii_case("transparent") => {
-                        label_background = Some(color);
+                        label_background = Some(color.clone());
                     }
-                    // `transparent`, `initial`, and `unset` are specified values that
-                    // clear an earlier owner background; they must not leave a stale
-                    // parent rectangle visible in the generated fallback.
+                    // Specified transparent/initial/unset values clear an earlier owner.
                     Some(_) | None => label_background = None,
                 }
             }
@@ -925,67 +1023,11 @@ impl CascadeIndex {
         if label_background.is_none() && label_background_marker && !background_color_specified {
             label_background = Some("rgba(232, 232, 232, 0.5)".to_string());
         }
-        if self.budget.matching_exhausted {
-            return Ok(default_fallback_typography());
-        }
         checkpoint()?;
-        Ok(fallback_typography(style, label_background))
-    }
-
-    fn observe_text_path<E>(
-        &mut self,
-        path: Vec<SourceElement>,
-        first_style: &mut Option<ResolvedStyle>,
-        all_same_style: &mut bool,
-        common_path: &mut Option<Vec<SourceElement>>,
-        checkpoint: &mut impl FnMut() -> Result<(), E>,
-        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
-    ) -> Result<(), E> {
-        let style = self.resolve_full_path(&path, checkpoint, selector_limit)?;
-        if let Some(first_style) = first_style.as_ref() {
-            if !same_effective_typography(first_style, &style) {
-                *all_same_style = false;
-            }
-        } else {
-            *first_style = Some(style);
-        }
-        if let Some(common) = common_path.as_mut() {
-            let common_len = common
-                .iter()
-                .zip(path.iter())
-                .take_while(|(left, right)| *left == *right)
-                .count();
-            common.truncate(common_len);
-        } else {
-            *common_path = Some(path);
-        }
-        Ok(())
-    }
-
-    fn resolve_full_path<E>(
-        &mut self,
-        path: &[SourceElement],
-        checkpoint: &mut impl FnMut() -> Result<(), E>,
-        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
-    ) -> Result<ResolvedStyle, E> {
-        let mut computed = None;
-        let mut root_font_size = DEFAULT_FONT_SIZE;
-        for (index, _) in path.iter().enumerate() {
-            checkpoint_loop(index, checkpoint)?;
-            let style = self.resolve_path(
-                &path[..=index],
-                computed.as_ref(),
-                root_font_size,
-                checkpoint,
-                selector_limit,
-            )?;
-            if index == 0 {
-                root_font_size = style.font_size;
-            }
-            computed = Some(style);
-        }
-        checkpoint()?;
-        Ok(computed.unwrap_or_else(default_style))
+        Ok(ResolvedForeignObject {
+            typography: fallback_typography(style, label_background),
+            fragments,
+        })
     }
 }
 
@@ -1145,11 +1187,59 @@ fn source_selector_weight(
     weight
 }
 
-fn join_path(base_path: &[SourceElement], html_stack: &[SourceElement]) -> Vec<SourceElement> {
-    let mut path = Vec::with_capacity(base_path.len().saturating_add(html_stack.len()));
-    path.extend_from_slice(base_path);
-    path.extend_from_slice(html_stack);
-    path
+#[derive(Default)]
+struct TextTypographyObserver {
+    first_style: Option<ResolvedStyle>,
+    differing_styles: bool,
+    common_path: Vec<SourceElement>,
+    common_styles: Vec<ResolvedStyle>,
+}
+
+fn text_fragment_boundary_white_space(
+    previous_node_path: &mut Option<Vec<usize>>,
+    node_path: &[usize],
+    computed_styles: &[ResolvedStyle],
+) -> Option<(usize, HtmlWhiteSpace)> {
+    let boundary = previous_node_path.as_ref().map(|previous_node_path| {
+        let common_depth = previous_node_path
+            .iter()
+            .zip(node_path)
+            .take_while(|(previous, current)| previous == current)
+            .count();
+        let white_space = common_depth
+            .checked_sub(1)
+            .and_then(|index| computed_styles.get(index))
+            .map(|style| style.white_space)
+            .unwrap_or_default();
+        (common_depth, white_space)
+    });
+    let previous_node_path = previous_node_path.get_or_insert_with(Vec::new);
+    previous_node_path.clear();
+    previous_node_path.extend_from_slice(node_path);
+    boundary
+}
+
+impl TextTypographyObserver {
+    fn observe(&mut self, path: &[SourceElement], computed_styles: &[ResolvedStyle]) {
+        let Some(style) = computed_styles.last() else {
+            return;
+        };
+        if let Some(first_style) = self.first_style.as_ref() {
+            self.differing_styles |= !same_effective_typography(first_style, style);
+            let common_len = self
+                .common_path
+                .iter()
+                .zip(path)
+                .take_while(|(left, right)| *left == *right)
+                .count();
+            self.common_path.truncate(common_len);
+            self.common_styles.truncate(common_len);
+        } else {
+            self.first_style = Some(style.clone());
+            self.common_path = path.to_vec();
+            self.common_styles = computed_styles.to_vec();
+        }
+    }
 }
 
 fn html_text_is_visible(text: &str) -> bool {
@@ -1238,6 +1328,7 @@ fn default_style() -> ResolvedStyle {
         font_family: DEFAULT_FONT_FAMILY.to_string(),
         font_weight: None,
         font_style: None,
+        white_space: HtmlWhiteSpace::default(),
         line_height: LineHeight::Normal,
         fill: DEFAULT_FILL.to_string(),
         color: None,
@@ -1274,6 +1365,7 @@ fn is_supported_property(property: &str) -> bool {
             | "font-family"
             | "font-weight"
             | "font-style"
+            | "white-space"
             | "line-height"
             | "fill"
             | "color"
@@ -1333,6 +1425,7 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
         "fill" => is_admitted_paint(&lower),
         "color" | "background-color" => lower != "none" && is_admitted_paint(&lower),
         "font-family" => is_admitted_font_family(value),
+        "white-space" => HtmlWhiteSpace::from_css_value(&lower).is_some(),
         _ => false,
     }
 }
@@ -2584,6 +2677,15 @@ fn resolve_optional_text_value(value: Option<&str>, parent: Option<&str>) -> Opt
     }
 }
 
+fn resolve_white_space(value: Option<&str>, parent: HtmlWhiteSpace) -> HtmlWhiteSpace {
+    let Some(value) = value else { return parent };
+    match value.trim().to_ascii_lowercase().as_str() {
+        "inherit" | "unset" => parent,
+        "initial" => HtmlWhiteSpace::default(),
+        value => HtmlWhiteSpace::from_css_value(value).unwrap_or(parent),
+    }
+}
+
 fn resolve_optional_color(value: Option<&str>, parent: Option<&str>) -> Option<String> {
     let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
         return parent.map(str::to_owned);
@@ -2672,6 +2774,212 @@ fn bounded_positive(value: f64) -> Option<f64> {
 mod tests {
     use super::*;
     use std::convert::Infallible;
+
+    #[test]
+    fn text_fragment_boundaries_use_the_nearest_common_ancestor_white_space() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        let mut cascade =
+            CascadeIndex::new("<svg/>", &mut checkpoint, &mut selector_limit).unwrap();
+        let resolved = cascade
+            .resolve_foreign_object(
+                &[],
+                "<foreignObject/>",
+                "<div style='white-space:normal'><span style='white-space:nowrap'>中文</span><!-- adjacent --><span style='white-space:normal'>中文</span><br/>中</div><div style='white-space:nowrap'><span style='white-space:normal'>文</span><span style='white-space:normal'>文</span></div>",
+                &mut checkpoint,
+                &mut selector_limit,
+            )
+            .unwrap();
+        let boundaries = resolved
+            .fragments
+            .iter()
+            .filter_map(|fragment| match fragment {
+                HtmlTextFragment::Text {
+                    white_space,
+                    boundary_white_space,
+                    ..
+                } => Some((*white_space, *boundary_white_space)),
+                HtmlTextFragment::HardBreak => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            boundaries,
+            vec![
+                (HtmlWhiteSpace::Nowrap, None),
+                (HtmlWhiteSpace::Normal, Some((2, HtmlWhiteSpace::Normal))),
+                (HtmlWhiteSpace::Normal, None),
+                (HtmlWhiteSpace::Normal, Some((1, HtmlWhiteSpace::Normal))),
+                (HtmlWhiteSpace::Normal, Some((2, HtmlWhiteSpace::Nowrap))),
+            ]
+        );
+    }
+
+    #[test]
+    fn collapsed_text_leaves_keep_each_boundary_common_ancestor_depth() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        for (parent_mode, child_mode) in [
+            (HtmlWhiteSpace::Normal, HtmlWhiteSpace::Nowrap),
+            (HtmlWhiteSpace::Nowrap, HtmlWhiteSpace::Normal),
+        ] {
+            let mut cascade =
+                CascadeIndex::new("<svg/>", &mut checkpoint, &mut selector_limit).unwrap();
+            let (parent_css, child_css) = if parent_mode == HtmlWhiteSpace::Normal {
+                ("normal", "nowrap")
+            } else {
+                ("nowrap", "normal")
+            };
+            let html = format!(
+                "<div style='white-space:{parent_css}'><span style='white-space:{child_css}'>中 <i> </i><b> </b><em> </em></span><span style='white-space:normal'>文</span></div>"
+            );
+            let resolved = cascade
+                .resolve_foreign_object(
+                    &[],
+                    "<foreignObject/>",
+                    &html,
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+            let boundaries = resolved
+                .fragments
+                .iter()
+                .filter_map(|fragment| match fragment {
+                    HtmlTextFragment::Text {
+                        boundary_white_space,
+                        ..
+                    } => Some(*boundary_white_space),
+                    HtmlTextFragment::HardBreak => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(
+                boundaries,
+                vec![
+                    None,
+                    Some((3, child_mode)),
+                    Some((3, child_mode)),
+                    Some((3, child_mode)),
+                    Some((2, parent_mode)),
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn white_space_cascade_respects_importance_inheritance_and_initial_values() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        let mut cascade = CascadeIndex::new(
+            "<svg><style>.outer{white-space:break-spaces}.collapse{white-space:normal!important}</style></svg>",
+            &mut checkpoint,
+            &mut selector_limit,
+        )
+        .unwrap();
+        let resolved = cascade
+            .resolve_foreign_object(
+                &[],
+                "<foreignObject/>",
+                "<div class='outer'>  <span class='collapse' style='white-space:pre-wrap'>a   b</span><span style='white-space:inherit'> z </span><span style='white-space:unset'>u</span><span style='white-space:initial'>i</span><span style='white-space:pre;white-space:invalid'>p</span><BR data-x='1'/> \n</div>",
+                &mut checkpoint,
+                &mut selector_limit,
+            )
+            .unwrap();
+        let text = resolved
+            .fragments
+            .iter()
+            .filter_map(|fragment| match fragment {
+                HtmlTextFragment::Text {
+                    text, white_space, ..
+                } => Some((text.as_str(), *white_space)),
+                HtmlTextFragment::HardBreak => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            text,
+            vec![
+                ("  ", HtmlWhiteSpace::BreakSpaces),
+                ("a   b", HtmlWhiteSpace::Normal),
+                (" z ", HtmlWhiteSpace::BreakSpaces),
+                ("u", HtmlWhiteSpace::BreakSpaces),
+                ("i", HtmlWhiteSpace::Normal),
+                ("p", HtmlWhiteSpace::Pre),
+                (" \n", HtmlWhiteSpace::BreakSpaces),
+            ]
+        );
+        assert_eq!(
+            resolved
+                .fragments
+                .iter()
+                .filter(|fragment| matches!(fragment, HtmlTextFragment::HardBreak))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn repeated_text_leaves_do_not_recharge_their_computed_ancestry() {
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |_, _| Err("selector budget exceeded");
+        let mut cascade =
+            CascadeIndex::new("<svg/>", &mut checkpoint, &mut selector_limit).unwrap();
+        let foreign_object =
+            CascadeIndex::source_element("<foreignObject/>", Namespace::Svg, &mut checkpoint)
+                .unwrap();
+        let div = CascadeIndex::source_element("<div>", Namespace::Xhtml, &mut checkpoint).unwrap();
+        cascade.budget.match_work =
+            MAX_SELECTOR_MATCH_WORK - foreign_object.selector_weight - div.selector_weight;
+        let html = format!("<div>{}</div>", "a<br/>".repeat(128));
+        let resolved = cascade
+            .resolve_foreign_object(
+                &[],
+                "<foreignObject/>",
+                &html,
+                &mut checkpoint,
+                &mut selector_limit,
+            )
+            .unwrap();
+        assert_eq!(resolved.fragments.len(), 256);
+        assert_eq!(cascade.budget.match_work, MAX_SELECTOR_MATCH_WORK);
+    }
+
+    #[test]
+    fn best_effort_ancestry_limit_keeps_whitespace_and_explicit_breaks() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut observed_limit = None;
+        let mut selector_limit = |actual, maximum| {
+            observed_limit = Some((actual, maximum));
+            Ok::<(), Infallible>(())
+        };
+        let mut cascade =
+            CascadeIndex::new("<svg/>", &mut checkpoint, &mut selector_limit).unwrap();
+        let ancestor =
+            CascadeIndex::source_element("<g/>", Namespace::Svg, &mut checkpoint).unwrap();
+        let ancestors = vec![ancestor; MAX_SELECTOR_ANCESTRY_DEPTH];
+        let resolved = cascade
+            .resolve_foreign_object(
+                &ancestors,
+                "<foreignObject/>",
+                "<div style='white-space:pre'>  a <br class='break'/> </div>",
+                &mut checkpoint,
+                &mut selector_limit,
+            )
+            .unwrap();
+        assert_eq!(
+            observed_limit,
+            Some((MAX_SELECTOR_ANCESTRY_DEPTH + 1, MAX_SELECTOR_ANCESTRY_DEPTH))
+        );
+        assert_eq!(resolved.fragments.len(), 3);
+        assert!(matches!(
+            &resolved.fragments[0],
+            HtmlTextFragment::Text { text, white_space: HtmlWhiteSpace::Normal, .. } if text == "  a "
+        ));
+        assert!(matches!(resolved.fragments[1], HtmlTextFragment::HardBreak));
+        assert!(matches!(
+            &resolved.fragments[2],
+            HtmlTextFragment::Text { text, white_space: HtmlWhiteSpace::Normal, .. } if text == " "
+        ));
+        assert_eq!(resolved.typography.font_size, DEFAULT_FONT_SIZE);
+    }
 
     #[test]
     fn selector_match_work_budget_accepts_the_boundary_and_rejects_the_next_unit() {
