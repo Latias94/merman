@@ -108,6 +108,7 @@ struct PacketRoleReceipt {
     expected_count: usize,
     dom_valid: bool,
     occurrence_count: usize,
+    collect_ordinal_occurrences: bool,
 }
 
 impl Default for PacketRoleReceipt {
@@ -116,6 +117,7 @@ impl Default for PacketRoleReceipt {
             expected_count: 0,
             dom_valid: true,
             occurrence_count: 0,
+            collect_ordinal_occurrences: false,
         }
     }
 }
@@ -164,7 +166,7 @@ pub(crate) struct PacketSurfaceReceipt {
     field_label_count: usize,
     title_count: usize,
     text_roles: BTreeMap<PacketTextRole, PacketRoleReceipt>,
-    text_occurrences: Vec<PacketTextRole>,
+    ordinal_text_occurrences: Vec<PacketTextRole>,
     role_schema_valid: bool,
     css_emission: Option<PacketCssEmissionReceipt>,
     css_emission_unique: bool,
@@ -174,6 +176,7 @@ impl PacketSurfaceReceipt {
     pub(super) fn new(
         expected_counts: [(PacketTextRole, usize); 4],
         expected_font_family_css: &str,
+        winner_resolver: Option<&PacketTerminalWinnerResolver>,
     ) -> Self {
         let mut receipt = Self {
             expected_font_family_css: expected_font_family_css.into(),
@@ -182,7 +185,7 @@ impl PacketSurfaceReceipt {
             field_label_count: 0,
             title_count: 0,
             text_roles: BTreeMap::new(),
-            text_occurrences: Vec::new(),
+            ordinal_text_occurrences: Vec::new(),
             role_schema_valid: true,
             css_emission: None,
             css_emission_unique: true,
@@ -192,6 +195,12 @@ impl PacketSurfaceReceipt {
                 role,
                 PacketRoleReceipt {
                     expected_count,
+                    collect_ordinal_occurrences: winner_resolver.is_some_and(|resolver| {
+                        resolver
+                            .targets
+                            .get(&role.target())
+                            .is_some_and(|plan| plan.has_ordinal_rules)
+                    }),
                     ..PacketRoleReceipt::default()
                 },
             );
@@ -245,7 +254,9 @@ impl PacketSurfaceReceipt {
         let role_receipt = self.text_roles.entry(role).or_default();
         role_receipt.dom_valid &= emitted_class == role.class_attribute();
         role_receipt.occurrence_count = role_receipt.occurrence_count.saturating_add(1);
-        self.text_occurrences.push(role);
+        if role_receipt.collect_ordinal_occurrences {
+            self.ordinal_text_occurrences.push(role);
+        }
     }
 
     pub(super) fn occurrence_count(&self, target: ThemeTarget) -> usize {
@@ -410,23 +421,24 @@ impl PacketTerminalWinnerResolver {
         ownership: PacketTextColorOwnership,
         work_meter: &OperationWorkMeter,
     ) -> Result<PacketTerminalWinnerLedger, OperationWorkError> {
-        // The writer supplies the actual role order so ordinal resolution uses the same
-        // one-based occurrence domain as the terminal SVG. Static winners are reused; only
-        // targets with ordinal candidates perform metered per-occurrence resolution.
         let mut ledger = PacketTerminalWinnerLedger::default();
+        for (role, role_receipt) in &receipt.text_roles {
+            let Some(plan) = self.targets.get(&role.target()) else {
+                continue;
+            };
+            if !plan.has_ordinal_rules && role_receipt.occurrence_count != 0 {
+                ledger.record_winners(plan.static_winners.iter().copied(), ownership.owns(*role));
+            }
+        }
+
+        // Only ordinal targets retain writer order, keeping their one-based occurrence
+        // domains and metered resolution unchanged while static roles use actual counts.
         let mut target_ordinals = BTreeMap::<ThemeTarget, usize>::new();
-        for role in receipt.text_occurrences.iter().copied() {
+        for role in receipt.ordinal_text_occurrences.iter().copied() {
             let target = role.target();
             let ordinal = target_ordinals.entry(target).or_default();
             *ordinal = ordinal.saturating_add(1);
-            let Some(plan) = self.targets.get(&target) else {
-                continue;
-            };
             let fill_owned_by_config = ownership.owns(role);
-            if !plan.has_ordinal_rules {
-                ledger.record_winners(plan.static_winners.iter().copied(), fill_owned_by_config);
-                continue;
-            }
 
             let style = if target == ThemeTarget::PacketFieldLabel {
                 self.theme.text_style_with_work_meter(
@@ -468,6 +480,100 @@ pub(super) struct PacketTerminalEvidence {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch,
+    };
+
+    #[test]
+    fn packet_terminal_winners_preserve_actual_roles_and_ordinal_writer_order() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::PacketFieldLabel,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456").expect("valid Packet field fill"),
+                            ),
+                        ))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::PacketByteLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid("#abcdef")
+                                        .expect("valid Packet ordinal byte fill"),
+                                ),
+                            )
+                            .with_ordinal(OrdinalSelector::exact(2).expect("valid byte ordinal")),
+                        ),
+                ),
+            )
+            .expect("compile mixed Packet terminal theme")
+            .resolve(DiagramFamilyId::PACKET);
+        let resolver = PacketTerminalWinnerResolver::new(
+            &theme,
+            &theme.style(ThemeTarget::PacketByteLabel, ThemeVariant::Default, None),
+            &theme.text_style(ThemeTarget::PacketFieldLabel, ThemeVariant::Default, None),
+            &theme.style(ThemeTarget::Title, ThemeVariant::Default, None),
+        );
+        let complete_roles = &[
+            PacketTextRole::ByteEnd,
+            PacketTextRole::Label,
+            PacketTextRole::ByteStart,
+        ][..];
+        for (roles, config, static_won, ordinal_won) in [
+            (complete_roles, serde_json::json!({}), true, true),
+            (
+                complete_roles,
+                serde_json::json!({"packet": {"startByteColor": "#654321"}}),
+                true,
+                false,
+            ),
+            (
+                complete_roles,
+                serde_json::json!({"packet": {"endByteColor": "#654321"}}),
+                true,
+                true,
+            ),
+            (&complete_roles[..2], serde_json::json!({}), true, false),
+            (&complete_roles[..0], serde_json::json!({}), false, false),
+        ] {
+            let mut receipt = PacketSurfaceReceipt::new(
+                [
+                    (PacketTextRole::ByteStart, 1),
+                    (PacketTextRole::ByteEnd, 1),
+                    (PacketTextRole::Label, 1),
+                    (PacketTextRole::Title, 0),
+                ],
+                "monospace",
+                Some(&resolver),
+            );
+            for role in roles {
+                receipt.record_text_occurrence(*role, role.class_attribute());
+            }
+            let work_meter = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let metadata = merman_core::Engine::new()
+                .with_site_config(MermaidConfig::from_value(config))
+                .parse_metadata_sync("packet\n0-7: Header")
+                .expect("parse Packet terminal ownership");
+            let ownership = PacketTextColorOwnership::from_config(&metadata.effective_config);
+            let winners = resolver
+                .resolve(&receipt, ownership, &work_meter)
+                .expect("resolve mixed Packet terminal winners");
+            assert_eq!(
+                winners.route_won(0, ResolvedStyleProperty::Fill),
+                static_won
+            );
+            assert_eq!(
+                winners.route_won(1, ResolvedStyleProperty::Fill),
+                ordinal_won
+            );
+        }
+    }
 
     fn receipt_for_byte_labels() -> PacketSurfaceReceipt {
         PacketSurfaceReceipt::new(
@@ -478,6 +584,7 @@ mod tests {
                 (PacketTextRole::Title, 0),
             ],
             "monospace",
+            None,
         )
     }
 
@@ -627,6 +734,7 @@ mod tests {
                 (PacketTextRole::Title, 0),
             ],
             "monospace",
+            None,
         );
         complete_css_emission(
             &mut wrong_dom_role,
@@ -654,6 +762,7 @@ mod tests {
                 (PacketTextRole::Title, 1),
             ],
             "monospace",
+            None,
         );
         complete_css_emission(
             &mut receipt,

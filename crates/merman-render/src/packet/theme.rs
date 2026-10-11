@@ -294,7 +294,11 @@ impl PacketTypographyThemePlan {
         &self,
         expected_counts: [(PacketTextRole, usize); 4],
     ) -> PacketSurfaceReceipt {
-        PacketSurfaceReceipt::new(expected_counts, &self.font_family_css)
+        PacketSurfaceReceipt::new(
+            expected_counts,
+            &self.font_family_css,
+            self.terminal_winner_resolver.as_ref(),
+        )
     }
 
     pub(crate) fn record_terminal(

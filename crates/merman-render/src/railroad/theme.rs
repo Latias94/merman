@@ -14,13 +14,6 @@ use crate::family::{
     resolve_direct_static_fill, unsupported_residual_for_facet,
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum RailroadTypographyOutcome {
-    Inactive,
-    Typed,
-    ConfigOwned,
-}
-
 #[derive(Debug)]
 struct RailroadUnsupportedRoute {
     key: FamilyThemeMechanismKey,
@@ -405,7 +398,6 @@ fn stylesheet_rule_body<'a>(stylesheet: &'a str, selector: &str) -> Option<&'a s
 pub(crate) struct RailroadTypographyThemePlan {
     style: RailroadStyle,
     evidence: FamilyThemeEvidence,
-    outcome: RailroadTypographyOutcome,
     unsupported_properties: BTreeSet<ThemeTypographyProperty>,
     typed_font_stack_requested: bool,
     typed_font_size_requested: bool,
@@ -433,7 +425,6 @@ impl RailroadTypographyThemePlan {
             return Self {
                 style,
                 evidence: FamilyThemeEvidence::default(),
-                outcome: RailroadTypographyOutcome::Inactive,
                 unsupported_properties: BTreeSet::new(),
                 typed_font_stack_requested: false,
                 typed_font_size_requested: false,
@@ -632,20 +623,9 @@ impl RailroadTypographyThemePlan {
             style.font_size = f64::from(theme.typography().font_size_px());
         }
 
-        let requested_typed_typography = typed_font_stack || typed_font_size;
-        let applied_typed_typography = typed_font_stack_applied || typed_font_size_applied;
-        let outcome = if applied_typed_typography {
-            RailroadTypographyOutcome::Typed
-        } else if requested_typed_typography {
-            RailroadTypographyOutcome::ConfigOwned
-        } else {
-            RailroadTypographyOutcome::Inactive
-        };
-
         Self {
             style,
             evidence: FamilyThemeEvidence::from_theme(Some(theme)),
-            outcome,
             unsupported_properties,
             typed_font_stack_requested: typed_font_stack,
             typed_font_size_requested: typed_font_size,
@@ -746,24 +726,12 @@ impl RailroadTypographyThemePlan {
                 continue;
             }
             let key = FamilyThemeMechanismKey::Typography(property);
-            match self.outcome {
-                RailroadTypographyOutcome::ConfigOwned if !active => {
-                    evidence.mark_not_applicable(key)
-                }
-                RailroadTypographyOutcome::Typed | RailroadTypographyOutcome::ConfigOwned
-                    if receipt.typography_stylesheet_verified() && active =>
-                {
-                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-                }
-                RailroadTypographyOutcome::Typed | RailroadTypographyOutcome::ConfigOwned
-                    if !active =>
-                {
-                    evidence.mark_not_applicable(key);
-                }
-                RailroadTypographyOutcome::Typed | RailroadTypographyOutcome::ConfigOwned => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-                }
-                RailroadTypographyOutcome::Inactive => {}
+            if !active {
+                evidence.mark_not_applicable(key);
+            } else if receipt.typography_stylesheet_verified() {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
         }
         for property in &self.unsupported_properties {
