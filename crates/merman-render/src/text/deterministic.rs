@@ -2,13 +2,13 @@
 
 use super::heuristic::append_text_width_em;
 use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
+use super::wrap::split_graphemes_to_width;
 use super::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
 };
 use std::convert::Infallible;
 use std::sync::Arc;
-use unicode_segmentation::UnicodeSegmentation;
 
 type TextWidthPxFn = Arc<dyn Fn(&str, &TextStyle) -> f64 + Send + Sync>;
 
@@ -387,34 +387,13 @@ impl DeterministicTextMeasurer {
         max_width_px: f64,
         width_model: &mut W,
     ) -> Result<(&'t str, &'t str), W::Error> {
-        let mut split_at = 0;
         let mut width = LineWidthAccumulator::default();
-        let mut width_px = 0.0;
-        let mut has_positive_advance = false;
-
-        for (index, grapheme) in token.grapheme_indices(true) {
-            let candidate_end = index + grapheme.len();
-            let (candidate, candidate_width_px) =
-                width_model.candidate_width_px(width, &token[..candidate_end], grapheme)?;
-            if has_positive_advance
-                && candidate_width_px > width_px
-                && candidate_width_px > max_width_px
-            {
-                break;
-            }
-
-            split_at = candidate_end;
-            width = candidate;
-            width_px = candidate_width_px;
-            has_positive_advance |= candidate_width_px > 0.0;
-        }
-
-        // A visible grapheme wider than the whole line must still make progress. Leading
-        // zero-width graphemes stay attached to it instead of becoming an orphan line.
-        if split_at == 0 {
-            split_at = token.graphemes(true).next().map_or(0, str::len);
-        }
-        Ok(token.split_at(split_at))
+        split_graphemes_to_width(token, max_width_px, |candidate, grapheme| {
+            let (candidate_width, candidate_width_px) =
+                width_model.candidate_width_px(width, candidate, grapheme)?;
+            width = candidate_width;
+            Ok(candidate_width_px)
+        })
     }
 
     fn wrap_line<W: LineWidthProvider>(

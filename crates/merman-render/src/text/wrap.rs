@@ -50,6 +50,39 @@ pub fn round_to_1_64_px_ties_to_even(v: f64) -> f64 {
     if out == -0.0 { 0.0 } else { out }
 }
 
+/// Splits at a grapheme boundary using complete candidates and their newly appended graphemes.
+pub(super) fn split_graphemes_to_width<'t, E>(
+    token: &'t str,
+    max_width_px: f64,
+    mut measure_candidate: impl FnMut(&str, &str) -> Result<f64, E>,
+) -> Result<(&'t str, &'t str), E> {
+    let mut split_at = 0;
+    let mut width_px = 0.0;
+    let mut has_positive_advance = false;
+
+    for (index, grapheme) in token.grapheme_indices(true) {
+        let candidate_end = index + grapheme.len();
+        let candidate_width_px = measure_candidate(&token[..candidate_end], grapheme)?;
+        if has_positive_advance
+            && candidate_width_px > width_px
+            && candidate_width_px > max_width_px
+        {
+            break;
+        }
+
+        split_at = candidate_end;
+        width_px = candidate_width_px;
+        has_positive_advance |= candidate_width_px > 0.0;
+    }
+
+    // A visible grapheme wider than the whole line must still make progress. Leading
+    // zero-width graphemes stay attached to it instead of becoming an orphan line.
+    if split_at == 0 {
+        split_at = token.graphemes(true).next().map_or(0, str::len);
+    }
+    Ok(token.split_at(split_at))
+}
+
 /// Wraps SVG-like text into lines using the provided [`TextMeasurer`] for width decisions.
 ///
 /// This mirrors Mermaid's `wrapLabel(...)` behavior at a high level (greedy word wrapping), but
@@ -106,28 +139,12 @@ pub fn wrap_text_lines_measurer(
                 continue;
             }
 
-            // Keep combining marks and emoji sequences intact, including leading zero-width
-            // graphemes that must stay with the first visible grapheme even if it is over-wide.
-            let mut split_at = 0;
-            let mut width_px = 0.0;
-            let mut has_positive_advance = false;
-            for (index, grapheme) in tok.grapheme_indices(true) {
-                let candidate_end = index + grapheme.len();
-                let candidate_width_px = measurer.measure(&tok[..candidate_end], style).width;
-                if has_positive_advance
-                    && candidate_width_px > width_px
-                    && candidate_width_px > max_width_px
-                {
-                    break;
-                }
-                split_at = candidate_end;
-                width_px = candidate_width_px;
-                has_positive_advance |= candidate_width_px > 0.0;
-            }
-            if split_at == 0 {
-                split_at = tok.graphemes(true).next().map_or(0, str::len);
-            }
-            let (head, tail) = tok.split_at(split_at);
+            let (head, tail) = match split_graphemes_to_width(&tok, max_width_px, |candidate, _| {
+                Ok::<_, std::convert::Infallible>(measurer.measure(candidate, style).width)
+            }) {
+                Ok(parts) => parts,
+                Err(error) => match error {},
+            };
             out.push(head.to_string());
             if !tail.is_empty() {
                 tokens.push_front(tail.to_string());
@@ -337,10 +354,43 @@ pub(crate) fn wrap_label_like_mermaid_lines_with_checkpoint(
 
 #[cfg(test)]
 mod tests {
-    use super::wrap_text_lines_measurer;
+    use super::{split_graphemes_to_width, wrap_text_lines_measurer};
     use crate::text::{
         DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode, try_measure_wrapped_text,
     };
+
+    #[test]
+    fn grapheme_splitting_keeps_non_increasing_overwide_candidates() {
+        let mut widths = [0.0, 8.0, 8.0, 7.0, 9.0].into_iter();
+        let parts = split_graphemes_to_width("\u{0301}Wabc", 1.0, |_, _| {
+            Ok::<_, ()>(widths.next().unwrap())
+        })
+        .unwrap();
+        assert_eq!(parts, ("\u{0301}Wab", "c"));
+    }
+
+    #[test]
+    fn grapheme_splitting_stops_on_measurement_errors() {
+        let mut probes = Vec::new();
+        let result =
+            split_graphemes_to_width("\u{0301}👩‍🔬WZ", 1.0, |candidate, grapheme| {
+                probes.push((candidate.to_string(), grapheme.to_string()));
+                match grapheme {
+                    "\u{0301}" => Ok(0.0),
+                    "👩‍🔬" => Ok(8.0),
+                    _ => Err("canceled"),
+                }
+            });
+        assert_eq!(result, Err("canceled"));
+        assert_eq!(
+            probes,
+            [
+                ("\u{0301}".to_string(), "\u{0301}".to_string()),
+                ("\u{0301}👩‍🔬".to_string(), "👩‍🔬".to_string()),
+                ("\u{0301}👩‍🔬W".to_string(), "W".to_string()),
+            ],
+        );
+    }
 
     #[test]
     fn emitted_long_tokens_match_shared_grapheme_wrapping() {
