@@ -2,6 +2,35 @@ use merman_core::{Engine, MermaidConfig};
 use serde_json::json;
 
 #[test]
+fn site_theme_color_limit_uses_ecmascript_whitespace() {
+    for value in [
+        "\u{0085}65",
+        "65\u{0085}",
+        "\u{0085}Infinity",
+        "Infinity\u{0085}",
+        "\u{feff}2\u{feff}",
+    ] {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "dark",
+            "themeVariables": { "THEME_COLOR_LIMIT": value }
+        })));
+        engine
+            .parse_metadata_sync("flowchart TD\nA-->B")
+            .unwrap_or_else(|error| panic!("Mermaid accepts {value:?}: {error}"));
+    }
+
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
+        "theme": "dark",
+        "themeVariables": { "THEME_COLOR_LIMIT": "\u{feff}65\u{feff}" }
+    })));
+    assert!(matches!(
+        engine.parse_metadata_sync("flowchart TD\nA-->B"),
+        Err(merman_core::Error::ThemeEvaluationLimit(error))
+            if error.limit == "THEME_COLOR_LIMIT" && error.max == 64
+    ));
+}
+
+#[test]
 fn diagram_appearance_uses_raw_user_variables_without_leaking_between_operations() {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(json!({
         "theme": "dark",

@@ -427,8 +427,7 @@ pub(super) fn theme_color_iteration_count_for_value(
 }
 
 fn parse_theme_color_limit_string(value: &str) -> f64 {
-    let value =
-        value.trim_matches(|character: char| character.is_whitespace() || character == '\u{feff}');
+    let value = value.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
     if value.is_empty() {
         return 0.0;
     }
