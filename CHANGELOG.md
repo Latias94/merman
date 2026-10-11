@@ -6,8 +6,14 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Changed
+
+- Semantic and layout JSON now use `ManagedSemanticJson` with iterative clone, drop, equality, and deep JSON writers. State, Block, Treemap, and Ishikawa retain flat canonical records; direct Rust consumers must migrate document/child references. Mermaid-compatible JSON shapes remain unchanged. See the [migration guide](docs/migrations/deep-diagram-lifecycle.md).
+
 ### Fixed
 
+- Deep parser fragments and semantic projections dispose safely after success, malformed input, cancellation, and resource rejection. Flowchart/ER/Class/Sequence grammar carriers avoid repeated ancestor movement; C4 boundary fragments use flat ownership. Railroad counts postfix wrappers against its existing construction-depth boundary.
+- Block nested metadata and repeated composite declarations follow pinned Mermaid: later style/class updates reach existing children, while redeclarations retain the first child list and columns.
 - Core SVG and native CLI SVG output no longer add an implicit white canvas, matching Mermaid core. Use `SvgOutputPolicy.root_background_color` or CLI `--background white` when an opaque canvas is required. The `mmdc` command retains its white default; diagram-owned edge-label colors and opacity are unchanged.
 
 ## [0.8.0] - 2026-10-06

@@ -941,7 +941,7 @@ fn assert_combined_projections_match_standalone(
     assert_eq!(standalone.meta.diagram_type, family);
     assert_eq!(combined.metadata().diagram_type, family);
 
-    let mut standalone_model = standalone.model;
+    let mut standalone_model = standalone.model.into_unmanaged_value();
     let mut combined_model = combined
         .outcome()
         .parsed_model()
@@ -953,6 +953,7 @@ fn assert_combined_projections_match_standalone(
             .and_then(|model| model.remove(field))
             .unwrap_or_else(|| panic!("{family} standalone JSON omitted volatile field {field}"));
         let combined_value = combined_model
+            .as_value_mut()
             .as_object_mut()
             .and_then(|model| model.remove(field))
             .unwrap_or_else(|| panic!("{family} combined JSON omitted volatile field {field}"));
@@ -1014,7 +1015,7 @@ fn every_combined_catalog_variant_matches_its_standalone_semantic_and_editor_pro
         assert_eq!(standalone.meta.diagram_type, row.variant_id);
         assert_eq!(combined.metadata().diagram_type, row.variant_id);
 
-        let mut standalone_model = standalone.model;
+        let mut standalone_model = standalone.model.into_unmanaged_value();
         let mut combined_model = combined
             .outcome()
             .parsed_model()
@@ -1025,6 +1026,7 @@ fn every_combined_catalog_variant_matches_its_standalone_semantic_and_editor_pro
                 .as_object_mut()
                 .and_then(|model| model.remove("diagramId"));
             let combined_id = combined_model
+                .as_value_mut()
                 .as_object_mut()
                 .and_then(|model| model.remove("diagramId"));
             assert!(

@@ -63,7 +63,10 @@ pub(crate) fn suppressed_error_diagram(
     let mut model = render_model_to_compat_json(&typed, &meta)
         .expect("Error typed model must remain JSON-serializable");
     common_db::apply_common_db_sanitization(&mut model, &meta.effective_config);
-    ParsedDiagram { meta, model }
+    ParsedDiagram {
+        meta,
+        model: model.into(),
+    }
 }
 
 pub(crate) fn suppressed_error_render_diagram(

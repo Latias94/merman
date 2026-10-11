@@ -6,14 +6,19 @@ use crate::diagrams::scan::{
 
 mod ast;
 mod db;
+#[cfg(test)]
+#[path = "tests.rs"]
+mod lifecycle_tests;
 mod parse;
 mod render_model;
 
-pub(crate) use render_model::render_model_to_compat_json;
 pub use render_model::{
     StateDiagramRenderEdge, StateDiagramRenderLink, StateDiagramRenderLinks,
     StateDiagramRenderModel, StateDiagramRenderNode, StateDiagramRenderNote,
     StateDiagramRenderRelation, StateDiagramRenderState, StateDiagramRenderStyleClass,
+};
+pub(crate) use render_model::{
+    render_model_to_compat_json, render_model_to_compat_json_controlled,
 };
 
 pub(crate) use parse::{parse_state, parse_state_model_for_render_controlled};
@@ -22,7 +27,10 @@ pub(crate) use parse::parse_state_json_and_editor_facts;
 #[cfg(test)]
 pub(crate) use parse::{reset_state_syntax_construction_count, state_syntax_construction_count};
 
-pub(crate) use ast::{ClickStmt, Note, RelationStmt, StateStmt, Stmt};
+pub use ast::{
+    StateDocument, StateDocumentId, StateStatement, StateStatementClick, StateStatementNote,
+    StateStatementRelation, StateStatementState,
+};
 
 include_checked_in_lalrpop_parser!(
     #[allow(clippy::empty_line_after_outer_attr, clippy::filter_map_identity)]

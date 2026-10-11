@@ -1,6 +1,8 @@
 // Class diagram minimal grammar (phase 1).
 
-grammar;
+grammar(arena: &mut ActionArena, control: &crate::OperationControl);
+
+use crate::diagrams::class::ast::{ActionArena, ActionList, ClassIdList};
 
 use crate::diagrams::class::{
   Action, Relation, Tok, LINE_DOTTED, LINE_SOLID, REL_AGGREGATION, REL_COMPOSITION, REL_DEPENDENCY,
@@ -67,26 +69,18 @@ extern {
   }
 }
 
-pub Actions: Vec<Action> = {
+pub Actions: ActionList = {
   <_n:Newlines> "classDiagram" <_n1:Newlines1> <s:Statements> => s
 };
 
-Statements: Vec<Action> = {
-  => Vec::new(),
-  <s:Statement> <rest:StatementRest> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  }
+Statements: ActionList = {
+  => ActionList::default(),
+  <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
 };
 
-StatementRest: Vec<Action> = {
-  <_n:Newlines1> <s:Statement> <rest:StatementRest> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  },
-  Newlines => Vec::new(),
+StatementRest: ActionList = {
+  <_n:Newlines1> <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
+  Newlines => ActionList::default(),
 };
 
 Newlines: () = {
@@ -98,22 +92,22 @@ Newlines1: () = {
   Newline Newlines => (),
 };
 
-Statement: Vec<Action> = {
-  <d:Direction> => vec![Action::SetDirection(d)],
-  <t:AccTitle> => vec![Action::SetAccTitle(t)],
-  <t:AccDescr> => vec![Action::SetAccDescr(t)],
-  <t:AccDescrMultiline> => vec![Action::SetAccDescr(t)],
+Statement: ActionList = {
+  <d:Direction> =>? arena.push_actions(vec![Action::SetDirection(d)], control),
+  <t:AccTitle> =>? arena.push_actions(vec![Action::SetAccTitle(t)], control),
+  <t:AccDescr> =>? arena.push_actions(vec![Action::SetAccDescr(t)], control),
+  <t:AccDescrMultiline> =>? arena.push_actions(vec![Action::SetAccDescr(t)], control),
 
-  <c:ClassStatement> => c,
-  <m:MemberStatement> => vec![m],
-  <a:AnnotationStatement> => vec![a],
-  <r:RelationStatement> => vec![Action::AddRelation { data: r }],
-  <r:RelationStatement> <lab:Label> => vec![Action::AddRelation { data: { let mut rr = r; rr.title = Some(lab); rr } }],
-  <n:NoteStatement> => vec![n],
-  <c:CssClassStatement> => vec![c],
-  <s:StyleStatement> => vec![s],
-  <d:ClassDefStatement> => vec![d],
-  <c:ClickStatement> => c,
+  <c:ClassStatement> =>? arena.push_actions(c, control),
+  <m:MemberStatement> =>? arena.push_actions(vec![m], control),
+  <a:AnnotationStatement> =>? arena.push_actions(vec![a], control),
+  <r:RelationStatement> =>? arena.push_actions(vec![Action::AddRelation { data: r }], control),
+  <r:RelationStatement> <lab:Label> =>? arena.push_actions(vec![Action::AddRelation { data: { let mut rr = r; rr.title = Some(lab); rr } }], control),
+  <n:NoteStatement> =>? arena.push_actions(vec![n], control),
+  <c:CssClassStatement> =>? arena.push_actions(vec![c], control),
+  <s:StyleStatement> =>? arena.push_actions(vec![s], control),
+  <d:ClassDefStatement> =>? arena.push_actions(vec![d], control),
+  <c:ClickStatement> =>? arena.push_actions(c, control),
   <ns:NamespaceStatement> => ns,
 };
 
@@ -264,43 +258,27 @@ ClickStatement: Vec<Action> = {
   ],
 };
 
-NamespaceStatement: Vec<Action> = {
-  "namespace" <ns:Name> <label:ClassLabel?> StructStart <_n:Newlines> <classes:NamespaceClasses> StructStop => {
-    let mut v = vec![Action::AddNamespace { id: ns.clone(), label }];
-    let (mut class_actions, class_ids) = classes;
-    v.append(&mut class_actions);
-    v.push(Action::AddClassesToNamespace { namespace: ns, class_ids });
-    v.push(Action::PopNamespace);
-    v
-  }
+NamespaceStatement: ActionList = {
+  "namespace" <ns:Name> <label:ClassLabel?> StructStart <_n:Newlines> <classes:NamespaceClasses> StructStop =>? arena.namespace(ns, label, classes, control),
 };
 
-NamespaceClasses: (Vec<Action>, Vec<String>) = {
-  => (Vec::new(), Vec::new()),
-  <c:NamespaceClassItem> <rest:NamespaceClassesRest> => {
-    let mut actions = c.0;
-    let mut ids = c.1;
-    actions.extend(rest.0);
-    ids.extend(rest.1);
-    (actions, ids)
-  }
+NamespaceClasses: (ActionList, ClassIdList) = {
+  => (ActionList::default(), ClassIdList::default()),
+  <c:NamespaceClassItem> <rest:NamespaceClassesRest> =>? arena.concat_namespace_items(c, rest, control),
 };
 
-NamespaceClassesRest: (Vec<Action>, Vec<String>) = {
-  <_n:Newlines1> <c:NamespaceClassItem> <rest:NamespaceClassesRest> => {
-    let mut actions = c.0;
-    let mut ids = c.1;
-    actions.extend(rest.0);
-    ids.extend(rest.1);
-    (actions, ids)
+NamespaceClassesRest: (ActionList, ClassIdList) = {
+  <_n:Newlines1> <c:NamespaceClassItem> <rest:NamespaceClassesRest> =>? arena.concat_namespace_items(c, rest, control),
+  Newlines => (ActionList::default(), ClassIdList::default()),
+};
+
+NamespaceClassItem: (ActionList, ClassIdList) = {
+  <c:ClassStatementWithId> =>? {
+    let actions = arena.push_actions(c.1, control)?;
+    Ok((actions, arena.push_class_id(c.0, control)?))
   },
-  Newlines => (Vec::new(), Vec::new()),
-};
-
-NamespaceClassItem: (Vec<Action>, Vec<String>) = {
-  <c:ClassStatementWithId> => (c.1, vec![c.0]),
-  <n:NoteStatement> => (vec![n], Vec::new()),
-  <ns:NamespaceStatement> => (ns, Vec::new()),
+  <n:NoteStatement> =>? Ok((arena.push_actions(vec![n], control)?, ClassIdList::default())),
+  <ns:NamespaceStatement> => (ns, ClassIdList::default()),
 };
 
 RelationStatement: crate::diagrams::class::RelationData = {

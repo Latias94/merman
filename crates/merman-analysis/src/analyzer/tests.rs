@@ -156,7 +156,9 @@ fn malformed_flowchart_parser(
     control: &merman_core::OperationControl,
 ) -> merman_core::OperationControlResult<merman_core::Result<serde_json::Value>> {
     control.checkpoint()?;
-    Ok(Ok(malformed_flowchart_parsed_diagram().model))
+    Ok(Ok(malformed_flowchart_parsed_diagram()
+        .model
+        .into_unmanaged_value()))
 }
 
 fn cancelling_flowchart_parser(
@@ -1092,7 +1094,8 @@ fn malformed_flowchart_parsed_diagram() -> ParsedDiagram {
             "nodes": [
                 { "id": 1 }
             ]
-        }),
+        })
+        .into(),
     }
 }
 

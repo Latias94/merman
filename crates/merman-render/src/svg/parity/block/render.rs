@@ -193,58 +193,24 @@ pub(crate) fn render_block_diagram_svg_model(
         block_type: String,
         classes: Vec<String>,
         styles: Vec<String>,
-        directions: Vec<String>,
     }
 
-    fn collect_nodes(
-        root: &crate::block::BlockNode,
-        out: &mut std::collections::HashMap<String, RenderNode>,
-    ) {
-        let mut stack = vec![root];
-        while let Some(n) = stack.pop() {
-            if let Some(existing) = out.get_mut(&n.id) {
-                if n.color_index.is_some() {
-                    existing.color_index = n.color_index;
-                }
-                if !n.label.is_empty() {
-                    existing.label = n.label.clone();
-                }
-                if !n.block_type.is_empty() && n.block_type != "na" {
-                    existing.block_type = n.block_type.clone();
-                }
-                if !n.classes.is_empty() {
-                    existing.classes = n.classes.clone();
-                }
-                if !n.styles.is_empty() {
-                    existing.styles = n.styles.clone();
-                }
-                if !n.directions.is_empty() {
-                    existing.directions = n.directions.clone();
-                }
-            } else {
-                out.insert(
-                    n.id.clone(),
-                    RenderNode {
-                        color_index: n.color_index,
-                        label: n.label.clone(),
-                        block_type: n.block_type.clone(),
-                        classes: n.classes.clone(),
-                        styles: n.styles.clone(),
-                        directions: n.directions.clone(),
-                    },
-                );
-            }
-            for child in n.children.iter().rev() {
-                stack.push(child);
-            }
-        }
-    }
-
-    let mut nodes_by_id: std::collections::HashMap<String, RenderNode> =
-        std::collections::HashMap::new();
-    for n in &model.blocks_flat {
-        collect_nodes(n, &mut nodes_by_id);
-    }
+    let nodes_by_id = model
+        .blocks_flat
+        .iter()
+        .map(|node| {
+            (
+                node.id.clone(),
+                RenderNode {
+                    color_index: node.color_index,
+                    label: node.label.clone(),
+                    block_type: node.block_type.clone(),
+                    classes: node.classes.clone(),
+                    styles: node.styles.clone(),
+                },
+            )
+        })
+        .collect::<std::collections::HashMap<_, _>>();
     let shape_geometries_by_id: std::collections::HashMap<_, _> = layout
         .shape_geometries
         .iter()
@@ -1003,14 +969,19 @@ mod tests {
             shape_geometries: Vec::new(),
             bounds: None,
         };
-        let model: merman_core::diagrams::block::BlockDiagramRenderModel =
-            serde_json::from_value(serde_json::json!({
-                "blocksFlat": [{ "id": "node" }]
-            }))
-            .expect("valid Block render model");
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "block\nnode\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .expect("parse Block render model")
+            .expect("Block input is detected");
+        let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+            panic!("expected Block render model");
+        };
 
         let error =
-            render_block_diagram_svg_model(&layout, &model, &serde_json::json!({}), &options)
+            render_block_diagram_svg_model(&layout, model, &serde_json::json!({}), &options)
                 .expect_err("diagram-id projection must stop before missing geometry validation");
         let Error::ResourceLimitExceeded(details) = error else {
             panic!("expected SVG byte resource rejection");

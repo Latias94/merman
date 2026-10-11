@@ -258,14 +258,14 @@ impl SvgOutput {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, PartialEq)]
 pub struct SvgLayoutOutput {
-    layout: serde_json::Value,
+    layout: merman_core::ManagedSemanticJson,
     gantt_time_axis: Option<merman_render::family::GanttTimeAxisDiagnostics>,
 }
 
 #[cfg(feature = "svg")]
 impl SvgLayoutOutput {
     fn new(
-        layout: serde_json::Value,
+        layout: merman_core::ManagedSemanticJson,
         gantt_time_axis: Option<merman_render::family::GanttTimeAxisDiagnostics>,
     ) -> Self {
         Self {
@@ -274,7 +274,7 @@ impl SvgLayoutOutput {
         }
     }
 
-    pub fn layout(&self) -> &serde_json::Value {
+    pub fn layout(&self) -> &merman_core::ManagedSemanticJson {
         &self.layout
     }
 
@@ -287,7 +287,7 @@ impl SvgLayoutOutput {
     pub fn into_parts(
         self,
     ) -> (
-        serde_json::Value,
+        merman_core::ManagedSemanticJson,
         Option<merman_render::family::GanttTimeAxisDiagnostics>,
     ) {
         (self.layout, self.gantt_time_axis)
@@ -883,7 +883,7 @@ impl Renderer {
 
 impl SemanticArtifact {
     /// Returns Mermaid's compatibility semantic JSON projection without exposing family internals.
-    pub fn compatibility_json(&self) -> Result<serde_json::Value, RenderError> {
+    pub fn compatibility_json(&self) -> Result<merman_core::ManagedSemanticJson, RenderError> {
         self.parsed()
             .model()
             .compatibility_json_controlled(self.parsed().metadata(), self.control())

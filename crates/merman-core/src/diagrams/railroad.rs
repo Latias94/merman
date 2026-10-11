@@ -777,6 +777,27 @@ struct RailroadParser<'a> {
     trace: RailroadParserTrace,
 }
 
+/// Tracks owned AST depth independently from parser/group depth. A leaf has depth zero,
+/// preserving the established boundary of 256 enclosing nodes.
+struct RailroadConstructedNode {
+    node: RailroadAstNode,
+    depth: usize,
+}
+
+impl RailroadConstructedNode {
+    fn leaf(node: RailroadAstNode) -> Self {
+        Self { node, depth: 0 }
+    }
+
+    fn span(&self) -> SourceSpan {
+        self.node.span()
+    }
+
+    fn selection(&self) -> SourceSpan {
+        self.node.selection()
+    }
+}
+
 #[derive(Clone, Copy)]
 enum RailroadIrExpressionFrameKind {
     Optional,
@@ -806,7 +827,7 @@ struct RailroadIrExpressionFrame {
     kind: RailroadIrExpressionFrameKind,
     start: usize,
     nesting_depth: usize,
-    elements: Vec<RailroadAstNode>,
+    elements: Vec<RailroadConstructedNode>,
 }
 
 #[derive(Clone, Copy)]
@@ -839,9 +860,9 @@ impl RailroadEbnfFrameKind {
 
 enum RailroadEbnfFrameState {
     ExpectPrimary,
-    Pending(RailroadAstNode),
+    Pending(RailroadConstructedNode),
     ExpectExceptionRhs {
-        left: RailroadAstNode,
+        left: RailroadConstructedNode,
         dash_span: SourceSpan,
     },
 }
@@ -849,8 +870,8 @@ enum RailroadEbnfFrameState {
 struct RailroadEbnfFrame {
     kind: RailroadEbnfFrameKind,
     nesting_depth: usize,
-    alternatives: Vec<Vec<RailroadAstNode>>,
-    sequence: Vec<RailroadAstNode>,
+    alternatives: Vec<Vec<RailroadConstructedNode>>,
+    sequence: Vec<RailroadConstructedNode>,
     state: RailroadEbnfFrameState,
 }
 
@@ -882,8 +903,8 @@ impl RailroadAbnfFrameKind {
 struct RailroadAbnfFrame {
     kind: RailroadAbnfFrameKind,
     nesting_depth: usize,
-    alternatives: Vec<Vec<RailroadAstNode>>,
-    sequence: Vec<RailroadAstNode>,
+    alternatives: Vec<Vec<RailroadConstructedNode>>,
+    sequence: Vec<RailroadConstructedNode>,
     pending_repeat: Option<SpannedText>,
 }
 
@@ -912,8 +933,8 @@ impl RailroadPegFrameKind {
 struct RailroadPegFrame {
     kind: RailroadPegFrameKind,
     nesting_depth: usize,
-    alternatives: Vec<Vec<RailroadAstNode>>,
-    sequence: Vec<RailroadAstNode>,
+    alternatives: Vec<Vec<RailroadConstructedNode>>,
+    sequence: Vec<RailroadConstructedNode>,
     pending_prefix: Option<(char, SourceSpan)>,
 }
 
@@ -1079,12 +1100,12 @@ impl<'a> RailroadParser<'a> {
 
         Ok(RailroadRuleModel {
             name: name.text,
-            definition,
+            definition: definition.node,
             name_span: name.selection,
         })
     }
 
-    fn parse_ir_expression(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+    fn parse_ir_expression(&mut self, nesting_depth: usize) -> Result<RailroadConstructedNode> {
         let mut frames: Vec<RailroadIrExpressionFrame> = Vec::new();
         let mut pending = None;
 
@@ -1121,31 +1142,33 @@ impl<'a> RailroadParser<'a> {
                 "terminal" => {
                     let value = self.expect_string("expected string argument for terminal")?;
                     self.expect_symbol(')', "expected ')' after terminal argument")?;
-                    pending = Some(RailroadAstNode::Terminal {
+                    pending = Some(RailroadConstructedNode::leaf(RailroadAstNode::Terminal {
                         value: value.text,
                         span: value.span,
                         selection: value.selection,
-                    });
+                    }));
                     None
                 }
                 "nonterminal" => {
                     let name = self.expect_string("expected string argument for nonterminal")?;
                     self.expect_symbol(')', "expected ')' after nonterminal argument")?;
-                    pending = Some(RailroadAstNode::NonTerminal {
-                        name: name.text,
-                        span: name.span,
-                        selection: name.selection,
-                    });
+                    pending = Some(RailroadConstructedNode::leaf(
+                        RailroadAstNode::NonTerminal {
+                            name: name.text,
+                            span: name.span,
+                            selection: name.selection,
+                        },
+                    ));
                     None
                 }
                 "special" => {
                     let text = self.expect_string("expected string argument for special")?;
                     self.expect_symbol(')', "expected ')' after special argument")?;
-                    pending = Some(RailroadAstNode::Special {
+                    pending = Some(RailroadConstructedNode::leaf(RailroadAstNode::Special {
                         text: text.text,
                         span: text.span,
                         selection: text.selection,
-                    });
+                    }));
                     None
                 }
                 _ => {
@@ -1176,52 +1199,50 @@ impl<'a> RailroadParser<'a> {
     fn finish_ir_expression_frame(
         &mut self,
         mut frame: RailroadIrExpressionFrame,
-    ) -> Result<RailroadAstNode> {
+    ) -> Result<RailroadConstructedNode> {
         let end = self.expect_symbol(
             ')',
             format!("expected ')' after {} arguments", frame.kind.name()),
         )?;
         let span = SourceSpan::new(frame.start, end.span.end);
-        match frame.kind {
-            RailroadIrExpressionFrameKind::Optional => Ok(RailroadAstNode::Optional {
-                element: Box::new(
-                    frame
-                        .elements
-                        .pop()
-                        .expect("optional Railroad IR frame has one argument"),
-                ),
-                span,
-            }),
-            RailroadIrExpressionFrameKind::OneOrMore => Ok(RailroadAstNode::Repetition {
-                element: Box::new(
-                    frame
-                        .elements
-                        .pop()
-                        .expect("oneOrMore Railroad IR frame has one argument"),
-                ),
+        if matches!(frame.kind, RailroadIrExpressionFrameKind::Sequence) {
+            return self.collapse_sequence(frame.elements, span);
+        }
+        if matches!(frame.kind, RailroadIrExpressionFrameKind::Choice) {
+            return self.collapse_choice(frame.elements, span);
+        }
+        let depth = self.next_constructed_depth(frame.elements.iter().map(|node| node.depth))?;
+        let element = Box::new(
+            frame
+                .elements
+                .pop()
+                .expect("unary Railroad IR frame has one argument")
+                .node,
+        );
+        let node = match frame.kind {
+            RailroadIrExpressionFrameKind::Optional => RailroadAstNode::Optional { element, span },
+            RailroadIrExpressionFrameKind::OneOrMore => RailroadAstNode::Repetition {
+                element,
                 min: RailroadRepeatBound::ONE,
                 max: RailroadRepeatBound::INFINITY,
                 separator: None,
                 span,
-            }),
-            RailroadIrExpressionFrameKind::ZeroOrMore => Ok(RailroadAstNode::Repetition {
-                element: Box::new(
-                    frame
-                        .elements
-                        .pop()
-                        .expect("zeroOrMore Railroad IR frame has one argument"),
-                ),
+            },
+            RailroadIrExpressionFrameKind::ZeroOrMore => RailroadAstNode::Repetition {
+                element,
                 min: RailroadRepeatBound::ZERO,
                 max: RailroadRepeatBound::INFINITY,
                 separator: None,
                 span,
-            }),
-            RailroadIrExpressionFrameKind::Sequence => Ok(collapse_sequence(frame.elements, span)),
-            RailroadIrExpressionFrameKind::Choice => Ok(collapse_choice(frame.elements, span)),
-        }
+            },
+            RailroadIrExpressionFrameKind::Sequence | RailroadIrExpressionFrameKind::Choice => {
+                unreachable!("variadic Railroad IR frames collapse before unary wrapping")
+            }
+        };
+        Ok(RailroadConstructedNode { node, depth })
     }
 
-    fn parse_ebnf_choice(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+    fn parse_ebnf_choice(&mut self, nesting_depth: usize) -> Result<RailroadConstructedNode> {
         let mut frames = vec![RailroadEbnfFrame {
             kind: RailroadEbnfFrameKind::Root,
             nesting_depth,
@@ -1236,7 +1257,7 @@ impl<'a> RailroadParser<'a> {
                 let frame = frames
                     .last_mut()
                     .expect("Railroad EBNF parent frame exists for completed group");
-                Self::accept_ebnf_primary(frame, node);
+                self.accept_ebnf_primary(frame, node)?;
                 continue;
             }
 
@@ -1249,13 +1270,26 @@ impl<'a> RailroadParser<'a> {
             );
 
             if state_is_pending {
+                let wrapped_depth =
+                    if self.check_symbol('?') || self.check_symbol('*') || self.check_symbol('+') {
+                        let frame = frames.last().expect("Railroad EBNF frame exists");
+                        let RailroadEbnfFrameState::Pending(node) = &frame.state else {
+                            unreachable!("pending Railroad EBNF state was checked above")
+                        };
+                        self.next_constructed_depth([node.depth])?
+                    } else {
+                        0
+                    };
                 if self.take_symbol('?') {
                     let end = self.previous_end();
                     let frame = frames.last_mut().expect("Railroad EBNF frame exists");
                     let node = Self::take_ebnf_pending(frame)?;
-                    frame.state = RailroadEbnfFrameState::Pending(RailroadAstNode::Optional {
-                        span: SourceSpan::new(node.span().start, end),
-                        element: Box::new(node),
+                    frame.state = RailroadEbnfFrameState::Pending(RailroadConstructedNode {
+                        depth: wrapped_depth,
+                        node: RailroadAstNode::Optional {
+                            span: SourceSpan::new(node.span().start, end),
+                            element: Box::new(node.node),
+                        },
                     });
                     continue;
                 }
@@ -1263,12 +1297,15 @@ impl<'a> RailroadParser<'a> {
                     let end = self.previous_end();
                     let frame = frames.last_mut().expect("Railroad EBNF frame exists");
                     let node = Self::take_ebnf_pending(frame)?;
-                    frame.state = RailroadEbnfFrameState::Pending(RailroadAstNode::Repetition {
-                        span: SourceSpan::new(node.span().start, end),
-                        element: Box::new(node),
-                        min: RailroadRepeatBound::ZERO,
-                        max: RailroadRepeatBound::INFINITY,
-                        separator: None,
+                    frame.state = RailroadEbnfFrameState::Pending(RailroadConstructedNode {
+                        depth: wrapped_depth,
+                        node: RailroadAstNode::Repetition {
+                            span: SourceSpan::new(node.span().start, end),
+                            element: Box::new(node.node),
+                            min: RailroadRepeatBound::ZERO,
+                            max: RailroadRepeatBound::INFINITY,
+                            separator: None,
+                        },
                     });
                     continue;
                 }
@@ -1276,12 +1313,15 @@ impl<'a> RailroadParser<'a> {
                     let end = self.previous_end();
                     let frame = frames.last_mut().expect("Railroad EBNF frame exists");
                     let node = Self::take_ebnf_pending(frame)?;
-                    frame.state = RailroadEbnfFrameState::Pending(RailroadAstNode::Repetition {
-                        span: SourceSpan::new(node.span().start, end),
-                        element: Box::new(node),
-                        min: RailroadRepeatBound::ONE,
-                        max: RailroadRepeatBound::INFINITY,
-                        separator: None,
+                    frame.state = RailroadEbnfFrameState::Pending(RailroadConstructedNode {
+                        depth: wrapped_depth,
+                        node: RailroadAstNode::Repetition {
+                            span: SourceSpan::new(node.span().start, end),
+                            element: Box::new(node.node),
+                            min: RailroadRepeatBound::ONE,
+                            max: RailroadRepeatBound::INFINITY,
+                            separator: None,
+                        },
                     });
                     continue;
                 }
@@ -1401,36 +1441,45 @@ impl<'a> RailroadParser<'a> {
                 return Err(self.error_at_current("expected EBNF expression"));
             };
             let frame = frames.last_mut().expect("Railroad EBNF frame exists");
-            Self::accept_ebnf_primary(frame, node);
+            self.accept_ebnf_primary(frame, RailroadConstructedNode::leaf(node))?;
         }
     }
 
-    fn accept_ebnf_primary(frame: &mut RailroadEbnfFrame, node: RailroadAstNode) {
+    fn accept_ebnf_primary(
+        &self,
+        frame: &mut RailroadEbnfFrame,
+        node: RailroadConstructedNode,
+    ) -> Result<()> {
         let state = std::mem::replace(&mut frame.state, RailroadEbnfFrameState::ExpectPrimary);
         frame.state = match state {
             RailroadEbnfFrameState::ExpectPrimary => RailroadEbnfFrameState::Pending(node),
             RailroadEbnfFrameState::ExpectExceptionRhs { left, dash_span } => {
+                let depth = self.next_constructed_depth([left.depth, node.depth])?;
                 let span = SourceSpan::new(left.span().start, node.span().end);
-                RailroadEbnfFrameState::Pending(RailroadAstNode::Sequence {
-                    elements: vec![
-                        left,
-                        RailroadAstNode::Terminal {
-                            value: "-".to_string(),
-                            span: dash_span,
-                            selection: dash_span,
-                        },
-                        node,
-                    ],
-                    span,
+                RailroadEbnfFrameState::Pending(RailroadConstructedNode {
+                    depth,
+                    node: RailroadAstNode::Sequence {
+                        elements: vec![
+                            left.node,
+                            RailroadAstNode::Terminal {
+                                value: "-".to_string(),
+                                span: dash_span,
+                                selection: dash_span,
+                            },
+                            node.node,
+                        ],
+                        span,
+                    },
                 })
             }
             RailroadEbnfFrameState::Pending(_) => {
                 unreachable!("Railroad EBNF accepts a primary only after committing the prior term")
             }
         };
+        Ok(())
     }
 
-    fn take_ebnf_pending(frame: &mut RailroadEbnfFrame) -> Result<RailroadAstNode> {
+    fn take_ebnf_pending(frame: &mut RailroadEbnfFrame) -> Result<RailroadConstructedNode> {
         match std::mem::replace(&mut frame.state, RailroadEbnfFrameState::ExpectPrimary) {
             RailroadEbnfFrameState::Pending(node) => Ok(node),
             RailroadEbnfFrameState::ExpectPrimary
@@ -1447,16 +1496,16 @@ impl<'a> RailroadParser<'a> {
         &mut self,
         mut frame: RailroadEbnfFrame,
         closing_span: Option<SourceSpan>,
-    ) -> Result<RailroadAstNode> {
+    ) -> Result<RailroadConstructedNode> {
         let node = Self::take_ebnf_pending(&mut frame)?;
         frame.sequence.push(node);
         frame.alternatives.push(std::mem::take(&mut frame.sequence));
         let alternatives = frame
             .alternatives
             .into_iter()
-            .map(collapse_nonempty_sequence)
-            .collect::<Vec<_>>();
-        let element = collapse_nonempty_choice(alternatives);
+            .map(|sequence| self.collapse_nonempty_sequence(sequence))
+            .collect::<Result<Vec<_>>>()?;
+        let element = self.collapse_nonempty_choice(alternatives)?;
 
         match frame.kind {
             RailroadEbnfFrameKind::Root => Ok(element),
@@ -1466,25 +1515,33 @@ impl<'a> RailroadParser<'a> {
             }
             RailroadEbnfFrameKind::Optional { start } => {
                 let end = closing_span.expect("EBNF optional group has a closing span");
-                Ok(RailroadAstNode::Optional {
-                    element: Box::new(element),
-                    span: SourceSpan::new(start, end.end),
+                let depth = self.next_constructed_depth([element.depth])?;
+                Ok(RailroadConstructedNode {
+                    depth,
+                    node: RailroadAstNode::Optional {
+                        element: Box::new(element.node),
+                        span: SourceSpan::new(start, end.end),
+                    },
                 })
             }
             RailroadEbnfFrameKind::Repetition { start } => {
                 let end = closing_span.expect("EBNF repetition has a closing span");
-                Ok(RailroadAstNode::Repetition {
-                    element: Box::new(element),
-                    min: RailroadRepeatBound::ZERO,
-                    max: RailroadRepeatBound::INFINITY,
-                    separator: None,
-                    span: SourceSpan::new(start, end.end),
+                let depth = self.next_constructed_depth([element.depth])?;
+                Ok(RailroadConstructedNode {
+                    depth,
+                    node: RailroadAstNode::Repetition {
+                        element: Box::new(element.node),
+                        min: RailroadRepeatBound::ZERO,
+                        max: RailroadRepeatBound::INFINITY,
+                        separator: None,
+                        span: SourceSpan::new(start, end.end),
+                    },
                 })
             }
         }
     }
 
-    fn parse_abnf_alternation(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+    fn parse_abnf_alternation(&mut self, nesting_depth: usize) -> Result<RailroadConstructedNode> {
         let mut frames = vec![RailroadAbnfFrame {
             kind: RailroadAbnfFrameKind::Root,
             nesting_depth,
@@ -1606,14 +1663,14 @@ impl<'a> RailroadParser<'a> {
             };
             let frame = frames.last_mut().expect("Railroad ABNF frame exists");
             frame.pending_repeat = repeat;
-            self.append_abnf_element(frame, primary)?;
+            self.append_abnf_element(frame, RailroadConstructedNode::leaf(primary))?;
         }
     }
 
     fn append_abnf_element(
         &self,
         frame: &mut RailroadAbnfFrame,
-        primary: RailroadAstNode,
+        primary: RailroadConstructedNode,
     ) -> Result<()> {
         let repeat = frame.pending_repeat.take();
         let element = self.apply_abnf_repeat(repeat, primary)?;
@@ -1624,26 +1681,33 @@ impl<'a> RailroadParser<'a> {
     fn apply_abnf_repeat(
         &self,
         repeat: Option<SpannedText>,
-        primary: RailroadAstNode,
-    ) -> Result<RailroadAstNode> {
+        primary: RailroadConstructedNode,
+    ) -> Result<RailroadConstructedNode> {
         let Some(repeat) = repeat else {
             return Ok(primary);
         };
         let (min, max) = parse_abnf_repeat_bounds(&repeat.text)
             .ok_or_else(|| self.error_at_span(repeat.span, "invalid ABNF repetition bound"))?;
         let span = SourceSpan::new(repeat.span.start, primary.span().end);
+        let depth = self.next_constructed_depth([primary.depth])?;
         if min.is_zero() && max.is_one() {
-            return Ok(RailroadAstNode::Optional {
-                element: Box::new(primary),
-                span,
+            return Ok(RailroadConstructedNode {
+                depth,
+                node: RailroadAstNode::Optional {
+                    element: Box::new(primary.node),
+                    span,
+                },
             });
         }
-        Ok(RailroadAstNode::Repetition {
-            element: Box::new(primary),
-            min,
-            max,
-            separator: None,
-            span,
+        Ok(RailroadConstructedNode {
+            depth,
+            node: RailroadAstNode::Repetition {
+                element: Box::new(primary.node),
+                min,
+                max,
+                separator: None,
+                span,
+            },
         })
     }
 
@@ -1651,14 +1715,14 @@ impl<'a> RailroadParser<'a> {
         &mut self,
         mut frame: RailroadAbnfFrame,
         closing_span: Option<SourceSpan>,
-    ) -> Result<RailroadAstNode> {
+    ) -> Result<RailroadConstructedNode> {
         frame.alternatives.push(std::mem::take(&mut frame.sequence));
         let alternatives = frame
             .alternatives
             .into_iter()
-            .map(collapse_nonempty_sequence)
-            .collect::<Vec<_>>();
-        let element = collapse_nonempty_choice(alternatives);
+            .map(|sequence| self.collapse_nonempty_sequence(sequence))
+            .collect::<Result<Vec<_>>>()?;
+        let element = self.collapse_nonempty_choice(alternatives)?;
 
         match frame.kind {
             RailroadAbnfFrameKind::Root => Ok(element),
@@ -1668,15 +1732,22 @@ impl<'a> RailroadParser<'a> {
             }
             RailroadAbnfFrameKind::Optional { start } => {
                 let end = closing_span.expect("ABNF optional group has a closing span");
-                Ok(RailroadAstNode::Optional {
-                    element: Box::new(element),
-                    span: SourceSpan::new(start, end.end),
+                let depth = self.next_constructed_depth([element.depth])?;
+                Ok(RailroadConstructedNode {
+                    depth,
+                    node: RailroadAstNode::Optional {
+                        element: Box::new(element.node),
+                        span: SourceSpan::new(start, end.end),
+                    },
                 })
             }
         }
     }
 
-    fn parse_peg_ordered_choice(&mut self, nesting_depth: usize) -> Result<RailroadAstNode> {
+    fn parse_peg_ordered_choice(
+        &mut self,
+        nesting_depth: usize,
+    ) -> Result<RailroadConstructedNode> {
         let mut frames = vec![RailroadPegFrame {
             kind: RailroadPegFrameKind::Root,
             nesting_depth,
@@ -1691,7 +1762,7 @@ impl<'a> RailroadParser<'a> {
                 let frame = frames
                     .last_mut()
                     .expect("Railroad PEG parent frame exists for completed group");
-                self.append_peg_element(frame, node);
+                self.append_peg_element(frame, node)?;
                 continue;
             }
 
@@ -1791,77 +1862,99 @@ impl<'a> RailroadParser<'a> {
             };
             let frame = frames.last_mut().expect("Railroad PEG frame exists");
             frame.pending_prefix = prefix;
-            self.append_peg_element(frame, primary);
+            self.append_peg_element(frame, RailroadConstructedNode::leaf(primary))?;
         }
     }
 
-    fn append_peg_element(&mut self, frame: &mut RailroadPegFrame, primary: RailroadAstNode) {
-        let suffix = self.apply_peg_suffix(primary);
+    fn append_peg_element(
+        &mut self,
+        frame: &mut RailroadPegFrame,
+        primary: RailroadConstructedNode,
+    ) -> Result<()> {
+        let suffix = self.apply_peg_suffix(primary)?;
         let element = self.apply_peg_prefix(frame.pending_prefix.take(), suffix);
         frame.sequence.push(element);
+        Ok(())
     }
 
-    fn apply_peg_suffix(&mut self, primary: RailroadAstNode) -> RailroadAstNode {
+    fn apply_peg_suffix(
+        &mut self,
+        primary: RailroadConstructedNode,
+    ) -> Result<RailroadConstructedNode> {
+        let depth = if self.check_symbol('?') || self.check_symbol('*') || self.check_symbol('+') {
+            self.next_constructed_depth([primary.depth])?
+        } else {
+            return Ok(primary);
+        };
         if self.take_symbol('?') {
-            return RailroadAstNode::Optional {
-                span: SourceSpan::new(primary.span().start, self.previous_end()),
-                element: Box::new(primary),
-            };
+            return Ok(RailroadConstructedNode {
+                depth,
+                node: RailroadAstNode::Optional {
+                    span: SourceSpan::new(primary.span().start, self.previous_end()),
+                    element: Box::new(primary.node),
+                },
+            });
         }
         if self.take_symbol('*') {
-            return RailroadAstNode::Repetition {
-                span: SourceSpan::new(primary.span().start, self.previous_end()),
-                element: Box::new(primary),
-                min: RailroadRepeatBound::ZERO,
-                max: RailroadRepeatBound::INFINITY,
-                separator: None,
-            };
+            return Ok(RailroadConstructedNode {
+                depth,
+                node: RailroadAstNode::Repetition {
+                    span: SourceSpan::new(primary.span().start, self.previous_end()),
+                    element: Box::new(primary.node),
+                    min: RailroadRepeatBound::ZERO,
+                    max: RailroadRepeatBound::INFINITY,
+                    separator: None,
+                },
+            });
         }
         if self.take_symbol('+') {
-            return RailroadAstNode::Repetition {
-                span: SourceSpan::new(primary.span().start, self.previous_end()),
-                element: Box::new(primary),
-                min: RailroadRepeatBound::ONE,
-                max: RailroadRepeatBound::INFINITY,
-                separator: None,
-            };
+            return Ok(RailroadConstructedNode {
+                depth,
+                node: RailroadAstNode::Repetition {
+                    span: SourceSpan::new(primary.span().start, self.previous_end()),
+                    element: Box::new(primary.node),
+                    min: RailroadRepeatBound::ONE,
+                    max: RailroadRepeatBound::INFINITY,
+                    separator: None,
+                },
+            });
         }
-        primary
+        unreachable!("a supported Railroad PEG suffix was checked before wrapping")
     }
 
     fn apply_peg_prefix(
         &mut self,
         prefix: Option<(char, SourceSpan)>,
-        suffix: RailroadAstNode,
-    ) -> RailroadAstNode {
+        suffix: RailroadConstructedNode,
+    ) -> RailroadConstructedNode {
         let Some((operator, span)) = prefix else {
             return suffix;
         };
-        let label = format!("{operator}{}", node_to_label(&suffix));
+        let label = format!("{operator}{}", node_to_label(&suffix.node));
         let predicate_span = SourceSpan::new(span.start, suffix.span().end);
         self.trace.peg_predicates.push(RailroadPegPredicateTrace {
             span: predicate_span,
-            inner: suffix.clone(),
+            inner: suffix.node.clone(),
         });
-        RailroadAstNode::Special {
+        RailroadConstructedNode::leaf(RailroadAstNode::Special {
             text: label,
             span: predicate_span,
             selection: SourceSpan::new(span.start, suffix.selection().end),
-        }
+        })
     }
 
     fn finish_peg_frame(
         &mut self,
         mut frame: RailroadPegFrame,
         closing_span: Option<SourceSpan>,
-    ) -> Result<RailroadAstNode> {
+    ) -> Result<RailroadConstructedNode> {
         frame.alternatives.push(std::mem::take(&mut frame.sequence));
         let alternatives = frame
             .alternatives
             .into_iter()
-            .map(collapse_nonempty_sequence)
-            .collect::<Vec<_>>();
-        let element = collapse_nonempty_choice(alternatives);
+            .map(|sequence| self.collapse_nonempty_sequence(sequence))
+            .collect::<Result<Vec<_>>>()?;
+        let element = self.collapse_nonempty_choice(alternatives)?;
 
         match frame.kind {
             RailroadPegFrameKind::Root => Ok(element),
@@ -1951,6 +2044,82 @@ impl<'a> RailroadParser<'a> {
         let next = nesting_depth.saturating_add(1);
         self.ensure_nesting_depth(next)?;
         Ok(next)
+    }
+
+    fn next_constructed_depth(&self, depths: impl IntoIterator<Item = usize>) -> Result<usize> {
+        let next = depths.into_iter().max().unwrap_or(0).saturating_add(1);
+        self.ensure_nesting_depth(next)?;
+        Ok(next)
+    }
+
+    fn collapse_sequence(
+        &self,
+        elements: Vec<RailroadConstructedNode>,
+        span: SourceSpan,
+    ) -> Result<RailroadConstructedNode> {
+        if elements.len() == 1 {
+            return Ok(elements.into_iter().next().expect("one element"));
+        }
+        let depth = self.next_constructed_depth(elements.iter().map(|node| node.depth))?;
+        Ok(RailroadConstructedNode {
+            depth,
+            node: RailroadAstNode::Sequence {
+                elements: elements.into_iter().map(|node| node.node).collect(),
+                span,
+            },
+        })
+    }
+
+    fn collapse_choice(
+        &self,
+        alternatives: Vec<RailroadConstructedNode>,
+        span: SourceSpan,
+    ) -> Result<RailroadConstructedNode> {
+        if alternatives.len() == 1 {
+            return Ok(alternatives.into_iter().next().expect("one alternative"));
+        }
+        let depth = self.next_constructed_depth(alternatives.iter().map(|node| node.depth))?;
+        Ok(RailroadConstructedNode {
+            depth,
+            node: RailroadAstNode::Choice {
+                alternatives: alternatives.into_iter().map(|node| node.node).collect(),
+                span,
+            },
+        })
+    }
+
+    fn collapse_nonempty_sequence(
+        &self,
+        elements: Vec<RailroadConstructedNode>,
+    ) -> Result<RailroadConstructedNode> {
+        let start = elements
+            .first()
+            .expect("Railroad sequence has an element")
+            .span()
+            .start;
+        let end = elements
+            .last()
+            .expect("Railroad sequence has an element")
+            .span()
+            .end;
+        self.collapse_sequence(elements, SourceSpan::new(start, end))
+    }
+
+    fn collapse_nonempty_choice(
+        &self,
+        alternatives: Vec<RailroadConstructedNode>,
+    ) -> Result<RailroadConstructedNode> {
+        let start = alternatives
+            .first()
+            .expect("Railroad choice has an alternative")
+            .span()
+            .start;
+        let end = alternatives
+            .last()
+            .expect("Railroad choice has an alternative")
+            .span()
+            .end;
+        self.collapse_choice(alternatives, SourceSpan::new(start, end))
     }
 
     fn take_ident(&mut self) -> Option<SpannedText> {
@@ -3009,52 +3178,8 @@ fn parse_abnf_repeat_bounds(repeat: &str) -> Option<(RailroadRepeatBound, Railro
     Some((exact, exact))
 }
 
-fn collapse_sequence(elements: Vec<RailroadAstNode>, span: SourceSpan) -> RailroadAstNode {
-    if elements.len() == 1 {
-        elements.into_iter().next().expect("one element")
-    } else {
-        RailroadAstNode::Sequence { elements, span }
-    }
-}
-
-fn collapse_choice(alternatives: Vec<RailroadAstNode>, span: SourceSpan) -> RailroadAstNode {
-    if alternatives.len() == 1 {
-        alternatives.into_iter().next().expect("one alternative")
-    } else {
-        RailroadAstNode::Choice { alternatives, span }
-    }
-}
-
-fn collapse_nonempty_sequence(elements: Vec<RailroadAstNode>) -> RailroadAstNode {
-    let start = elements
-        .first()
-        .expect("Railroad sequence frame has at least one element")
-        .span()
-        .start;
-    let end = elements
-        .last()
-        .expect("Railroad sequence frame has at least one element")
-        .span()
-        .end;
-    collapse_sequence(elements, SourceSpan::new(start, end))
-}
-
-fn collapse_nonempty_choice(alternatives: Vec<RailroadAstNode>) -> RailroadAstNode {
-    let start = alternatives
-        .first()
-        .expect("Railroad choice frame has at least one alternative")
-        .span()
-        .start;
-    let end = alternatives
-        .last()
-        .expect("Railroad choice frame has at least one alternative")
-        .span()
-        .end;
-    collapse_choice(alternatives, SourceSpan::new(start, end))
-}
-
-fn with_outer_span(mut node: RailroadAstNode, span: SourceSpan) -> RailroadAstNode {
-    match &mut node {
+fn with_outer_span(mut node: RailroadConstructedNode, span: SourceSpan) -> RailroadConstructedNode {
+    match &mut node.node {
         RailroadAstNode::Terminal { span: inner, .. }
         | RailroadAstNode::NonTerminal { span: inner, .. }
         | RailroadAstNode::Sequence { span: inner, .. }
@@ -3614,6 +3739,51 @@ mod tests {
                 "{} did not retain the rule after the bounded parse failure",
                 dialect.diagram_type()
             );
+        }
+    }
+
+    #[test]
+    fn railroad_cancellation_disposes_a_completed_boundary_rule_for_every_dialect() {
+        for dialect in [
+            RailroadDialect::Ir,
+            RailroadDialect::Ebnf,
+            RailroadDialect::Abnf,
+            RailroadDialect::Peg,
+        ] {
+            let source = nested_rule_source(dialect, MAX_DIAGRAM_NESTING_DEPTH);
+            let tokens = Lexer::new(&source, dialect, dialect.diagram_type())
+                .tokenize_recovering(&OperationControl::new())
+                .unwrap();
+            assert!(tokens.first_error.is_none());
+            // The lexer visits every token once, then checks EOF and its final outcome.
+            // The next three checkpoints enter construction, enter parsing, and admit entry.
+            // Cancellation at the next rule checkpoint owns the completed maximum-depth rule.
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(tokens.tokens.len() + 5);
+            assert!(
+                construct_railroad_semantic_source(&source, &meta(dialect), dialect, &control)
+                    .is_err()
+            );
+            let after = parse_railroad_semantic_source(
+                &format!(
+                    "{}\nafter {} {} ;\n",
+                    dialect.header(),
+                    if dialect == RailroadDialect::Peg {
+                        "<-"
+                    } else {
+                        "="
+                    },
+                    if dialect == RailroadDialect::Ir {
+                        "terminal(\"ok\")"
+                    } else {
+                        "\"ok\""
+                    }
+                ),
+                &meta(dialect),
+                dialect,
+            )
+            .unwrap();
+            assert_eq!(after.model.rules.len(), 1);
         }
     }
 

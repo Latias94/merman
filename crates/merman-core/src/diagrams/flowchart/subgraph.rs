@@ -1,6 +1,6 @@
 use super::{
-    FlowSubGraph, Stmt, SubgraphBlock, TitleKind, is_ecmascript_trim_char,
-    strip_wrapping_backticks, trim_flowdb_label_text, unquote,
+    FlowSubGraph, FlowchartAst, StatementEvent, Stmt, SubgraphBlock, TitleKind,
+    is_ecmascript_trim_char, strip_wrapping_backticks, trim_flowdb_label_text, unquote,
 };
 use crate::{OperationControl, OperationControlResult};
 use std::collections::{HashMap, HashSet};
@@ -11,18 +11,13 @@ enum StatementItem {
     Dir(String),
 }
 
-struct EvalFrame<'a> {
-    statements: &'a [Stmt],
-    index: usize,
-    subgraph: Option<&'a SubgraphBlock>,
-    items: Vec<StatementItem>,
-}
-
 pub(super) struct SubgraphBuilder {
     sub_count: usize,
     pub(super) subgraphs: Vec<FlowSubGraph>,
     pub(super) declaration_owners: Vec<usize>,
     subgraph_index: HashMap<String, usize>,
+    // Exactly the retained membership union, never candidate members or group IDs.
+    claimed_members: HashSet<String>,
     inherit_dir: bool,
     global_dir: Option<String>,
 }
@@ -34,6 +29,7 @@ impl SubgraphBuilder {
             subgraphs: Vec::new(),
             declaration_owners: Vec::new(),
             subgraph_index: HashMap::new(),
+            claimed_members: HashSet::new(),
             inherit_dir,
             global_dir,
         }
@@ -41,82 +37,32 @@ impl SubgraphBuilder {
 
     pub(super) fn visit_statements(
         &mut self,
-        statements: &[Stmt],
+        ast: &FlowchartAst,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        let _ = self.eval_statements(statements, control)?;
-        Ok(())
-    }
-
-    fn eval_statements(
-        &mut self,
-        statements: &[Stmt],
-        control: &OperationControl,
-    ) -> OperationControlResult<Vec<StatementItem>> {
-        enum EvalStep<'a> {
-            Statement(&'a Stmt),
-            Finish,
-        }
-
-        let mut stack = vec![EvalFrame {
-            statements,
-            index: 0,
-            subgraph: None,
-            items: Vec::new(),
-        }];
-        let mut root_items = Vec::new();
-        let mut visited = 0usize;
-
-        while !stack.is_empty() {
+        let mut stack: Vec<Vec<StatementItem>> = Vec::new();
+        for (visited, event) in ast.walk().enumerate() {
             if visited.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            visited = visited.saturating_add(1);
-            let step = {
-                let Some(frame) = stack.last_mut() else {
-                    return Ok(root_items);
-                };
-                if frame.index >= frame.statements.len() {
-                    EvalStep::Finish
-                } else {
-                    let stmt = &frame.statements[frame.index];
-                    frame.index += 1;
-                    EvalStep::Statement(stmt)
-                }
-            };
-
-            match step {
-                EvalStep::Statement(Stmt::Subgraph(sg)) => stack.push(EvalFrame {
-                    statements: &sg.statements,
-                    index: 0,
-                    subgraph: Some(sg),
-                    items: Vec::new(),
-                }),
-                EvalStep::Statement(stmt) => {
-                    if let Some(frame) = stack.last_mut()
-                        && frame.subgraph.is_some()
-                    {
-                        push_statement_items(&mut frame.items, stmt, control)?;
+            match event {
+                StatementEvent::Enter(Stmt::Subgraph(_)) => stack.push(Vec::new()),
+                StatementEvent::Enter(stmt) => {
+                    if let Some(items) = stack.last_mut() {
+                        push_statement_items(items, stmt, control)?;
                     }
                 }
-                EvalStep::Finish => {
-                    let Some(frame) = stack.pop() else {
-                        return Ok(root_items);
-                    };
-                    if let Some(sg) = frame.subgraph {
-                        let id = self.eval_subgraph_from_items(sg, frame.items, control)?;
-                        if let Some(parent) = stack.last_mut() {
-                            parent.items.push(StatementItem::Id(id));
-                        }
-                    } else {
-                        root_items = frame.items;
+                StatementEvent::Exit(subgraph) => {
+                    let items = stack.pop().unwrap_or_default();
+                    let id = self.eval_subgraph_from_items(subgraph, items, control)?;
+                    if let Some(parent) = stack.last_mut() {
+                        parent.push(StatementItem::Id(id));
                     }
                 }
             }
         }
-
         control.checkpoint()?;
-        Ok(root_items)
+        Ok(())
     }
 
     fn eval_subgraph_from_items(
@@ -197,39 +143,16 @@ impl SubgraphBuilder {
 
         self.sub_count += 1;
 
-        let mut nested_members = HashSet::new();
-        for (subgraph_index, subgraph) in self.subgraphs.iter().enumerate() {
-            if subgraph_index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            for (member_index, member) in subgraph.nodes.iter().enumerate() {
-                if member_index % 128 == 0 {
-                    control.checkpoint()?;
-                }
-                nested_members.insert(member.as_str());
-            }
-        }
-        let mut retained_members = Vec::with_capacity(members.len());
-        for (index, member) in members.into_iter().enumerate() {
-            if index % 128 == 0 {
-                control.checkpoint()?;
-            }
-            if member != id && !nested_members.contains(member.as_str()) {
-                retained_members.push(member);
-            }
-        }
-
         // Mermaid 12.1 keeps the first completed declaration as the single group owner.
         // Replay still visits every declaration, so retain its canonical owner separately.
         let owner = if let Some(&index) = self.subgraph_index.get(&id) {
-            self.subgraphs[index].nodes.extend(retained_members);
             index
         } else {
             let index = self.subgraphs.len();
             self.subgraph_index.insert(id.clone(), index);
             self.subgraphs.push(FlowSubGraph {
                 id: id.clone(),
-                nodes: retained_members,
+                nodes: Vec::new(),
                 title,
                 classes: Vec::new(),
                 styles: Vec::new(),
@@ -240,6 +163,16 @@ impl SubgraphBuilder {
             });
             index
         };
+        for (index, member) in members.into_iter().enumerate() {
+            if index % 128 == 0 {
+                control.checkpoint()?;
+            }
+            if member != id && !self.claimed_members.contains(member.as_str()) {
+                // Update both indexes together, including on an interrupted completion.
+                self.subgraphs[owner].nodes.push(member.clone());
+                self.claimed_members.insert(member);
+            }
+        }
         self.declaration_owners.push(owner);
 
         Ok(id)
@@ -329,4 +262,77 @@ fn parse_subgraph_title(raw_title: &str, id_equals_title: bool) -> (String, Titl
         trim_flowdb_label_text(&unquoted).to_string(),
         TitleKind::Text,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{MermaidConfig, ParseMetadata};
+
+    #[test]
+    fn flowchart_claimed_members_equal_completed_canonical_membership() {
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let control = OperationControl::new();
+        let mut builder = SubgraphBuilder::new(false, Some("TB".to_string()));
+        for body in [
+            "subgraph X\nX\nend\n",
+            "subgraph owner\nX & A\nend\n",
+            "subgraph X\nB\nend\n",
+            "subgraph sibling\nX & A & B & C\nend\n",
+        ] {
+            let ast =
+                super::super::parse_flowchart_ast(&format!("flowchart TB\n{body}"), &meta).unwrap();
+            builder.visit_statements(&ast, &control).unwrap();
+            let retained = builder
+                .subgraphs
+                .iter()
+                .flat_map(|subgraph| subgraph.nodes.iter().cloned())
+                .collect::<HashSet<_>>();
+            assert_eq!(builder.claimed_members, retained);
+        }
+        assert_eq!(builder.subgraphs.len(), 3);
+        assert_eq!(builder.declaration_owners, [0, 1, 0, 2]);
+        assert_eq!(builder.subgraphs[0].nodes, ["B"]);
+        assert_eq!(builder.subgraphs[1].nodes, ["X", "A"]);
+        assert_eq!(builder.subgraphs[2].nodes, ["C"]);
+    }
+
+    #[test]
+    fn flowchart_interrupted_membership_completion_keeps_only_retained_claims() {
+        let meta = ParseMetadata {
+            diagram_type: "flowchart-v2".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        };
+        let nodes = (0..256)
+            .map(|index| format!("n{index}"))
+            .collect::<Vec<_>>()
+            .join(" & ");
+        let source = format!("flowchart TB\nsubgraph group\n{nodes}\nend\n");
+        let ast = super::super::parse_flowchart_ast(&source, &meta).unwrap();
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(6);
+        let mut builder = SubgraphBuilder::new(false, Some("TB".to_string()));
+        assert!(matches!(
+            builder.visit_statements(&ast, &control),
+            Err(crate::OperationCancelled { .. })
+        ));
+        assert_eq!(builder.subgraphs.len(), 1);
+        assert_eq!(builder.subgraphs[0].nodes.len(), 128);
+        assert!(builder.declaration_owners.is_empty());
+        assert_eq!(
+            builder.claimed_members,
+            builder.subgraphs[0]
+                .nodes
+                .iter()
+                .cloned()
+                .collect::<HashSet<_>>()
+        );
+    }
 }

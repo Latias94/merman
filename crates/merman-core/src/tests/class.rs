@@ -3,6 +3,83 @@ use futures::executor::block_on;
 use serde_json::json;
 
 #[test]
+fn class_namespace_carriers_preserve_entry_completion_and_source_order() {
+    let source = concat!(
+        "classDiagram\n",
+        "namespace Outer {\n",
+        "class Before\n",
+        "namespace Inner {\n",
+        "class Nested\n",
+        "note for Nested \"inside\"\n",
+        "}\n",
+        "class After\n",
+        "note \"outer\"\n",
+        "}\n",
+        "class Outside\n",
+    );
+    let parsed = Engine::new()
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let classes = &parsed.model["classes"];
+    for id in ["Before", "After"] {
+        assert_eq!(classes[id]["parent"], "Outer");
+    }
+    assert_eq!(classes["Nested"]["parent"], "Outer.Inner");
+    assert_eq!(classes["Outside"]["parent"], json!(null));
+    assert_eq!(
+        parsed.model["namespaces"]["Outer"]["classIds"],
+        json!(["Before", "After"])
+    );
+    assert_eq!(
+        parsed.model["namespaces"]["Outer.Inner"]["classIds"],
+        json!(["Nested"])
+    );
+    assert_eq!(parsed.model["notes"][0]["parent"], "Outer.Inner");
+    assert_eq!(parsed.model["notes"][1]["parent"], "Outer");
+    assert_eq!(parsed.model["notes"][0]["text"], "inside");
+    assert_eq!(parsed.model["notes"][1]["text"], "outer");
+}
+
+#[test]
+fn class_namespace_carrier_failures_preserve_eof_and_first_error_recovery() {
+    let engine = Engine::new();
+    let incomplete = "classDiagram\nnamespace Outer {\nnamespace Inner {\nclass Leaf\n}\n";
+    let unexpected = "classDiagram\n}\nnamespace Later {\nclass Leaf\n";
+    for (source, span, kind) in [
+        (
+            incomplete,
+            SourceSpan::new(incomplete.len(), incomplete.len()),
+            ParseDiagnosticSpanKind::InsertionPoint,
+        ),
+        (
+            unexpected,
+            SourceSpan::new("classDiagram\n".len(), "classDiagram\n}".len()),
+            ParseDiagnosticSpanKind::Exact,
+        ),
+    ] {
+        let error = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect_err("malformed Class namespace is rejected");
+        let Error::DiagramParse { diagnostic, .. } = error else {
+            panic!("Class grammar failure must remain a parse error");
+        };
+        assert_eq!(diagnostic.span(), Some(span));
+        assert_eq!(diagnostic.span_kind(), kind);
+        let facts = engine
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", source)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+        assert!(facts.symbols.iter().any(|symbol| symbol.name == "Leaf"));
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.kind == EditorSemanticDiagnosticKind::ParserRecovery
+                && diagnostic.span == Some(span)
+        }));
+    }
+}
+
+#[test]
 fn parse_diagram_class_text_label_member_annotation_and_css_classes() {
     let engine = Engine::new();
     let text = r#"classDiagram

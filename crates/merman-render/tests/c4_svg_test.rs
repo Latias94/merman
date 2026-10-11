@@ -157,6 +157,9 @@ Boundary(outer, "Outer Boundary") {
   }
   System(outer_after, "Outer After")
 }
+Boundary(sibling, "Sibling Boundary") {
+  System(sibling_shape, "Sibling Shape")
+}
 System(root_after, "Root After")
 Rel(inner_shape, root_before, "Leaves subtree")
 "#,
@@ -177,6 +180,8 @@ Rel(inner_shape, root_before, "Leaves subtree")
                     | "Inner Shape"
                     | "Inner Boundary"
                     | "Outer Boundary"
+                    | "Sibling Shape"
+                    | "Sibling Boundary"
                     | "Leaves subtree"
             )
         })
@@ -192,6 +197,8 @@ Rel(inner_shape, root_before, "Leaves subtree")
             "Inner Shape",
             "Inner Boundary",
             "Outer Boundary",
+            "Sibling Shape",
+            "Sibling Boundary",
             "Leaves subtree",
         ]
     );

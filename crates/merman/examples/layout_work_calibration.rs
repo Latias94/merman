@@ -554,7 +554,8 @@ fn run_single_probe(
             let started = Instant::now();
             match renderer.render_layout_from_semantic(semantic) {
                 Ok(Some(layout)) => {
-                    let bytes = serde_json::to_vec(layout.layout())?;
+                    let mut bytes = Vec::new();
+                    layout.layout().write_json(&mut bytes)?;
                     SingleProbeOutcome::AcceptedLayout {
                         elapsed_ns: elapsed_ns(started),
                         layout_json_sha256: sha256_hex(&bytes),

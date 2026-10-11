@@ -1,10 +1,10 @@
-use crate::Result;
 use crate::model::{
     Bounds, IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaDiagramLayout,
     IshikawaHeadLayout, IshikawaLabelBoxLayout, IshikawaLineLayout, IshikawaPairLayout,
     IshikawaSubGroupLayout, IshikawaTextLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
+use crate::{Error, Result};
 use merman_core::diagrams::ishikawa::{
     IshikawaDiagramRenderModel, IshikawaNodeRenderModel as IshikawaNode,
 };
@@ -29,7 +29,7 @@ pub(crate) fn layout_ishikawa_diagram_typed(
     measurer: &dyn TextMeasurer,
 ) -> Result<IshikawaDiagramLayout> {
     let cfg = IshikawaConfigView::new(effective_config).layout_settings();
-    let Some(root) = model.root.as_ref() else {
+    let Some(root_id) = model.root else {
         return Ok(IshikawaDiagramLayout {
             bounds: Some(Bounds {
                 min_x: 0.0,
@@ -50,9 +50,16 @@ pub(crate) fn layout_ishikawa_diagram_typed(
         });
     };
 
+    let root = model
+        .nodes
+        .get(root_id)
+        .ok_or_else(|| Error::InvalidModel {
+            message: "ishikawa root ID is out of range".to_string(),
+        })?;
     let mut ctx = LayoutCtx {
         cfg: cfg.clone(),
         measurer,
+        records: &model.nodes,
         bounds: BoundsAcc::new(),
         head: None,
         spine: None,
@@ -79,8 +86,10 @@ pub(crate) fn layout_ishikawa_diagram_typed(
     }
 
     spine_x -= 20.0;
-    let upper_stats = side_stats(causes.iter().step_by(2));
-    let lower_stats = side_stats(causes.iter().skip(1).step_by(2));
+    let mut seen = vec![false; model.nodes.len()];
+    seen[root_id] = true;
+    let upper_stats = side_stats(&model.nodes, causes.iter().step_by(2), &mut seen)?;
+    let lower_stats = side_stats(&model.nodes, causes.iter().skip(1).step_by(2), &mut seen)?;
     let descendant_total = upper_stats.total + lower_stats.total;
 
     let mut upper_len = SPINE_BASE_LENGTH;
@@ -106,7 +115,7 @@ pub(crate) fn layout_ishikawa_diagram_typed(
         let mut pair_min_text_x = f64::INFINITY;
         let upper = draw_branch(
             &mut ctx,
-            upper_cause,
+            &model.nodes[*upper_cause],
             spine_x,
             spine_y,
             -1.0,
@@ -116,7 +125,7 @@ pub(crate) fn layout_ishikawa_diagram_typed(
         let lower = causes_pair.get(1).map(|cause| {
             draw_branch(
                 &mut ctx,
-                cause,
+                &model.nodes[*cause],
                 spine_x,
                 spine_y,
                 1.0,
@@ -149,28 +158,43 @@ struct SideStats {
     max: usize,
 }
 
-fn side_stats<'a>(nodes: impl Iterator<Item = &'a IshikawaNode>) -> SideStats {
-    nodes.fold(SideStats { total: 0, max: 0 }, |mut stats, node| {
-        let descendants = count_descendants(node);
+fn side_stats<'a>(
+    records: &[IshikawaNode],
+    mut nodes: impl Iterator<Item = &'a usize>,
+    seen: &mut [bool],
+) -> Result<SideStats> {
+    nodes.try_fold(SideStats { total: 0, max: 0 }, |mut stats, &id| {
+        let descendants = count_descendants(records, id, seen)?;
         stats.total += descendants;
         stats.max = stats.max.max(descendants);
-        stats
+        Ok(stats)
     })
 }
 
-fn count_descendants(node: &IshikawaNode) -> usize {
+fn count_descendants(records: &[IshikawaNode], root: usize, seen: &mut [bool]) -> Result<usize> {
     let mut count = 0usize;
-    let mut stack: Vec<&IshikawaNode> = node.children.iter().collect();
-    while let Some(child) = stack.pop() {
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        let Some(node) = records.get(id) else {
+            return Err(Error::InvalidModel {
+                message: "ishikawa child ID is out of range".to_string(),
+            });
+        };
+        if std::mem::replace(&mut seen[id], true) {
+            return Err(Error::InvalidModel {
+                message: "cyclic or repeated ishikawa child relationship".to_string(),
+            });
+        }
         count += 1;
-        stack.extend(child.children.iter());
+        stack.extend(node.children.iter().copied());
     }
-    count
+    Ok(count.saturating_sub(1))
 }
 
 struct LayoutCtx<'a> {
     cfg: IshikawaLayoutSettings,
     measurer: &'a dyn TextMeasurer,
+    records: &'a [IshikawaNode],
     bounds: BoundsAcc,
     head: Option<IshikawaHeadLayout>,
     spine: Option<IshikawaLineLayout>,
@@ -262,6 +286,7 @@ fn draw_branch(
     length: f64,
     pair_min_text_x: &mut f64,
 ) -> IshikawaBranchLayout {
+    let records = ctx.records;
     let children = node.children.as_slice();
     let line_len = length * if children.is_empty() { 0.2 } else { 1.0 };
     let dx = -COS_A * line_len;
@@ -290,7 +315,7 @@ fn draw_branch(
         };
     }
 
-    let flattened = flatten_tree(children, direction);
+    let flattened = flatten_tree(records, children, direction);
     let entry_count = flattened.entries.len();
     let mut ys = vec![start_y; entry_count];
     for (slot, entry_idx) in flattened.y_order.iter().enumerate() {
@@ -433,7 +458,7 @@ struct LabelEntry {
     child_count: usize,
 }
 
-fn flatten_tree(children: &[IshikawaNode], direction: f64) -> FlattenedTree {
+fn flatten_tree(records: &[IshikawaNode], children: &[usize], direction: f64) -> FlattenedTree {
     enum Action<'a> {
         Visit {
             node: &'a IshikawaNode,
@@ -445,23 +470,24 @@ fn flatten_tree(children: &[IshikawaNode], direction: f64) -> FlattenedTree {
 
     fn push_nodes<'a>(
         stack: &mut Vec<Action<'a>>,
-        nodes: &'a [IshikawaNode],
+        records: &'a [IshikawaNode],
+        nodes: &[usize],
         parent_index: isize,
         depth: usize,
         direction: f64,
     ) {
         if direction < 0.0 {
-            for node in nodes {
+            for &id in nodes {
                 stack.push(Action::Visit {
-                    node,
+                    node: &records[id],
                     parent_index,
                     depth,
                 });
             }
         } else {
-            for node in nodes.iter().rev() {
+            for &id in nodes.iter().rev() {
                 stack.push(Action::Visit {
-                    node,
+                    node: &records[id],
                     parent_index,
                     depth,
                 });
@@ -474,7 +500,7 @@ fn flatten_tree(children: &[IshikawaNode], direction: f64) -> FlattenedTree {
         y_order: Vec::new(),
     };
     let mut stack = Vec::new();
-    push_nodes(&mut stack, children, -1, 2, direction);
+    push_nodes(&mut stack, records, children, -1, 2, direction);
 
     while let Some(action) = stack.pop() {
         match action {
@@ -496,6 +522,7 @@ fn flatten_tree(children: &[IshikawaNode], direction: f64) -> FlattenedTree {
                     if child_count > 0 {
                         push_nodes(
                             &mut stack,
+                            records,
                             &node.children,
                             idx as isize,
                             depth + 1,
@@ -507,6 +534,7 @@ fn flatten_tree(children: &[IshikawaNode], direction: f64) -> FlattenedTree {
                     if child_count > 0 {
                         push_nodes(
                             &mut stack,
+                            records,
                             &node.children,
                             idx as isize,
                             depth + 1,

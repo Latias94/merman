@@ -278,7 +278,10 @@ fn fixtures_match_golden_snapshots() {
         .unwrap_or_else(|e| panic!("parse failed for {}: {e}", mmd_path.display()))
         .unwrap_or_else(|| panic!("no diagram detected in {}", mmd_path.display()));
 
-        let snapshot = snapshot_value(&parsed.meta.diagram_type, parsed.model);
+        let snapshot = snapshot_value(
+            &parsed.meta.diagram_type,
+            parsed.model.into_unmanaged_value(),
+        );
         let golden_path = mmd_path.with_extension("golden.json");
         let golden_text = std::fs::read_to_string(&golden_path).unwrap_or_else(|_| {
             panic!(

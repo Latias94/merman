@@ -1,4 +1,5 @@
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use std::io::Write as _;
 
 const SOURCE: &str = "flowchart TD\n  A[Parse] --> B[Layout]\n  B --> C[Geometry]\n";
 
@@ -13,6 +14,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("no Mermaid diagram detected".into());
     };
 
-    println!("{}", serde_json::to_string_pretty(layout.layout())?);
+    let mut stdout = std::io::stdout().lock();
+    layout.layout().write_json_pretty(&mut stdout)?;
+    writeln!(stdout)?;
     Ok(())
 }

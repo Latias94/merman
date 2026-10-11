@@ -1,6 +1,7 @@
 use crate::{
-    EditorSemanticFacts, Error, MermaidConfig, OperationControl, OperationControlResult,
-    OperationPhase, ParseMetadata, Result, editor::SourceSpan, preprocess::SourceConfigEvidence,
+    EditorSemanticFacts, Error, ManagedSemanticJson, MermaidConfig, OperationControl,
+    OperationControlResult, OperationPhase, ParseMetadata, Result, editor::SourceSpan,
+    preprocess::SourceConfigEvidence,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -191,7 +192,7 @@ pub struct ParsedDiagram {
     /// Diagram type and effective configuration extracted during preprocessing.
     pub meta: ParseMetadata,
     /// Semantic JSON model matching Mermaid's parser/database output shape where possible.
-    pub model: Value,
+    pub model: ManagedSemanticJson,
 }
 
 /// Parser-backed editor facts produced by a diagram parse operation.
@@ -206,7 +207,7 @@ pub enum ParsedEditorFacts {
 pub enum DiagramParseOutcome {
     Parsed {
         /// Mermaid-compatible semantic JSON retained for existing projections.
-        model: Value,
+        model: ManagedSemanticJson,
         /// Parser-owned warning facts after preprocessing spans have been remapped once.
         warning_facts: Vec<DiagramWarningFact>,
     },
@@ -217,7 +218,7 @@ pub enum DiagramParseOutcome {
 
 impl DiagramParseOutcome {
     /// Returns the semantic model when family construction succeeded.
-    pub fn parsed_model(&self) -> Option<&Value> {
+    pub fn parsed_model(&self) -> Option<&ManagedSemanticJson> {
         match self {
             Self::Parsed { model, .. } => Some(model),
             Self::Failed(_) | Self::Panicked(_) => None,
@@ -385,24 +386,27 @@ pub enum CustomJsonProvenance {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CustomJsonRenderModel {
     model_name: String,
-    value: Value,
+    value: ManagedSemanticJson,
     provenance: CustomJsonProvenance,
 }
 
 impl CustomJsonRenderModel {
     /// Creates the result of a custom render-model registry parser.
-    pub fn new(model_name: impl Into<String>, value: Value) -> Self {
+    pub fn new(model_name: impl Into<String>, value: impl Into<ManagedSemanticJson>) -> Self {
         Self {
             model_name: model_name.into(),
-            value,
+            value: value.into(),
             provenance: CustomJsonProvenance::RenderRegistryOverlay,
         }
     }
 
-    pub(crate) fn from_semantic_registry(model_name: impl Into<String>, value: Value) -> Self {
+    pub(crate) fn from_semantic_registry(
+        model_name: impl Into<String>,
+        value: impl Into<ManagedSemanticJson>,
+    ) -> Self {
         Self {
             model_name: model_name.into(),
-            value,
+            value: value.into(),
             provenance: CustomJsonProvenance::SemanticRegistryOverlay,
         }
     }
@@ -417,9 +421,19 @@ impl CustomJsonRenderModel {
         &self.value
     }
 
-    /// Consumes the wrapper and returns the custom JSON payload.
-    pub fn into_value(self) -> Value {
+    /// Borrows the managed payload for iterative cloning and export.
+    pub fn json(&self) -> &ManagedSemanticJson {
+        &self.value
+    }
+
+    /// Consumes the adapter while retaining managed ownership.
+    pub fn into_json(self) -> ManagedSemanticJson {
         self.value
+    }
+
+    /// Extracts raw JSON; subsequent deep lifecycle operations are the caller's responsibility.
+    pub fn into_unmanaged_value(self) -> Value {
+        self.value.into_unmanaged_value()
     }
 
     /// Returns which custom registry path produced the model.
@@ -611,13 +625,13 @@ mod builtin_render_semantic_private {
 /// This trait is sealed because built-in family membership is defined by the pinned Mermaid
 /// catalog. Consumers can use it generically but cannot manufacture a new built-in family.
 pub trait BuiltinRenderSemantic: builtin_render_semantic_private::Sealed {
-    fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value>;
+    fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson>;
 
     fn compatibility_json_controlled(
         &self,
         meta: &ParseMetadata,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<Value>> {
+    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
         control.checkpoint()?;
         let projected = self.compatibility_json(meta);
         control.checkpoint()?;
@@ -630,8 +644,8 @@ macro_rules! impl_builtin_render_semantic {
         impl builtin_render_semantic_private::Sealed for $model {}
 
         impl BuiltinRenderSemantic for $model {
-            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value> {
-                $project(self, meta)
+            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
+                $project(self, meta).map(ManagedSemanticJson::from)
             }
         }
     };
@@ -641,6 +655,11 @@ macro_rules! impl_builtin_render_semantic {
     feature = "diagram-mindmap",
     feature = "diagram-architecture",
     feature = "diagram-gantt",
+    feature = "diagram-block",
+    feature = "diagram-state",
+    feature = "diagram-treemap",
+    feature = "diagram-ishikawa",
+    feature = "diagram-zenuml",
     feature = "diagram-wardley"
 ))]
 macro_rules! impl_builtin_render_semantic_controlled {
@@ -648,16 +667,17 @@ macro_rules! impl_builtin_render_semantic_controlled {
         impl builtin_render_semantic_private::Sealed for $model {}
 
         impl BuiltinRenderSemantic for $model {
-            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value> {
-                $project(self, meta)
+            fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
+                $project(self, meta).map(ManagedSemanticJson::from)
             }
 
             fn compatibility_json_controlled(
                 &self,
                 meta: &ParseMetadata,
                 control: &OperationControl,
-            ) -> OperationControlResult<Result<Value>> {
+            ) -> OperationControlResult<Result<ManagedSemanticJson>> {
                 $controlled_project(self, meta, control)
+                    .map(|result| result.map(ManagedSemanticJson::from))
             }
         }
     };
@@ -674,9 +694,10 @@ impl_builtin_render_semantic_controlled!(
     crate::diagrams::mindmap::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-state")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::state::StateDiagramRenderModel,
-    crate::diagrams::state::render_model_to_compat_json
+    crate::diagrams::state::render_model_to_compat_json,
+    crate::diagrams::state::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-sequence")]
 impl_builtin_render_semantic!(
@@ -684,9 +705,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::sequence::render_model_to_compat_json
 );
 #[cfg(feature = "diagram-zenuml")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::zenuml::ZenumlDiagramRenderModel,
-    crate::diagrams::zenuml::render_model_to_compat_json
+    crate::diagrams::zenuml::render_model_to_compat_json,
+    crate::diagrams::zenuml::render_model_to_compat_json_controlled
 );
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl_builtin_render_semantic!(
@@ -771,14 +793,16 @@ impl_builtin_render_semantic!(
     crate::diagrams::info::render_model_to_compat_json
 );
 #[cfg(feature = "diagram-treemap")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::treemap::TreemapDiagramRenderModel,
-    crate::diagrams::treemap::render_model_to_compat_json
+    crate::diagrams::treemap::render_model_to_compat_json,
+    crate::diagrams::treemap::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-block")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::block::BlockDiagramRenderModel,
-    crate::diagrams::block::render_model_to_compat_json
+    crate::diagrams::block::render_model_to_compat_json,
+    crate::diagrams::block::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-er")]
 impl_builtin_render_semantic!(
@@ -806,9 +830,10 @@ impl_builtin_render_semantic!(
     crate::diagrams::tree_view::render_model_to_compat_json
 );
 #[cfg(feature = "diagram-ishikawa")]
-impl_builtin_render_semantic!(
+impl_builtin_render_semantic_controlled!(
     crate::diagrams::ishikawa::IshikawaDiagramRenderModel,
-    crate::diagrams::ishikawa::render_model_to_compat_json
+    crate::diagrams::ishikawa::render_model_to_compat_json,
+    crate::diagrams::ishikawa::render_model_to_compat_json_controlled
 );
 #[cfg(feature = "diagram-event-modeling")]
 impl_builtin_render_semantic!(
@@ -843,7 +868,7 @@ impl RenderSemanticModel {
         match self {
             Self::Error(_) => {}
             Self::CustomJson(v) => {
-                crate::common_db::apply_common_db_sanitization(&mut v.value, config);
+                crate::common_db::apply_common_db_sanitization(v.value.as_value_mut(), config);
             }
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(_) => {}
@@ -933,7 +958,7 @@ impl RenderSemanticModel {
     ) {
         match self {
             Self::CustomJson(v) => {
-                Self::remap_json_warning_fact_spans(&mut v.value, &mut remap);
+                Self::remap_json_warning_fact_spans(v.value.as_value_mut(), &mut remap);
             }
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow(v) => Self::remap_warning_fact_slice(&mut v.warning_facts, &mut remap),
@@ -963,14 +988,16 @@ impl RenderSemanticModel {
         let Some(warning_facts_value) = model.get_mut("warningFacts") else {
             return;
         };
-        let Ok(mut warning_facts) =
-            serde_json::from_value::<Vec<DiagramWarningFact>>(warning_facts_value.clone())
+        let Ok(mut warning_facts) = Vec::<DiagramWarningFact>::deserialize(&*warning_facts_value)
         else {
             return;
         };
 
         Self::remap_warning_fact_slice(&mut warning_facts, remap);
-        *warning_facts_value = serde_json::json!(warning_facts);
+        crate::config::replace_value_nonrecursive(
+            warning_facts_value,
+            serde_json::json!(warning_facts),
+        );
     }
 
     /// Returns a stable family label for diagnostics and timing output.
@@ -1051,7 +1078,7 @@ impl RenderSemanticModel {
     ///
     /// Built-in families delegate to their own lossless projector. This never reparses source;
     /// custom adapters retain their explicitly named JSON boundary.
-    pub fn compatibility_json(&self, meta: &ParseMetadata) -> Result<Value> {
+    pub fn compatibility_json(&self, meta: &ParseMetadata) -> Result<ManagedSemanticJson> {
         let control = OperationControl::new();
         self.compatibility_json_controlled(meta, &control)
             .expect("a private operation control cannot be cancelled")
@@ -1062,15 +1089,12 @@ impl RenderSemanticModel {
         &self,
         meta: &ParseMetadata,
         control: &OperationControl,
-    ) -> OperationControlResult<Result<Value>> {
+    ) -> OperationControlResult<Result<ManagedSemanticJson>> {
         let control = control.for_phase(OperationPhase::Semantic);
         control.checkpoint()?;
         let projected = match self {
             Self::Error(model) => model.compatibility_json_controlled(meta, &control),
-            Self::CustomJson(model) => {
-                crate::config::clone_value_nonrecursive_with_control(model.value(), &control)
-                    .map(Ok)
-            }
+            Self::CustomJson(model) => model.json().clone_controlled(&control).map(Ok),
             #[cfg(feature = "diagram-mindmap")]
             Self::Mindmap(model) => model.compatibility_json_controlled(meta, &control),
             #[cfg(feature = "diagram-state")]
@@ -1330,7 +1354,7 @@ pub(crate) fn parse_or_unsupported_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<Value>> {
+) -> OperationControlResult<Result<ManagedSemanticJson>> {
     control.checkpoint()?;
     let Some(parser) = registry.resolve(diagram_type) else {
         return Ok(Err(Error::UnsupportedDiagram {
@@ -1340,7 +1364,8 @@ pub(crate) fn parse_or_unsupported_controlled(
     let result = match parser {
         ResolvedSemanticParser::BuiltIn(parser) => parser(code, meta),
         ResolvedSemanticParser::Custom(parser) => parser(code, meta, control)?,
-    };
+    }
+    .map(ManagedSemanticJson::from);
     control.checkpoint()?;
     Ok(result)
 }

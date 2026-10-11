@@ -750,3 +750,59 @@ fn er_elk_neo_hops_update_solid_and_dashed_masks_from_final_path_length() {
         }
     }
 }
+
+#[test]
+fn er_svg_nested_relationships_and_empty_groups_keep_dom_order() {
+    let source = concat!(
+        "erDiagram\n",
+        "subgraph Outer [Outer Domain]\n",
+        "PRE\n",
+        "subgraph Inner [Inner Domain]\n",
+        "A ||--|| B : inner_relation\n",
+        "end\n",
+        "PRE ||--|| C : outer_relation\n",
+        "subgraph Empty [Empty Domain]\nend\n",
+        "end\n",
+        "B ||--|| D : cross_relation\n",
+    );
+    let svg = render_er_svg_from_text(source, &SvgRenderOptions::default());
+    let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+    for id in ["merman-Outer", "merman-Inner", "merman-Empty"] {
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("id") == Some(id)),
+            "missing {id}"
+        );
+    }
+    let nodes = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("nodes"))
+        .expect("entity nodes");
+    let ids = nodes
+        .children()
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids,
+        [
+            "merman-entity-PRE-0",
+            "merman-entity-A-1",
+            "merman-entity-B-2",
+            "merman-entity-C-3",
+            "merman-entity-D-4",
+        ]
+    );
+    let labels = edge_labels_group(&svg);
+    let inner = labels.find("inner_relation").unwrap();
+    let outer = labels.find("outer_relation").unwrap();
+    let cross = labels.find("cross_relation").unwrap();
+    assert!(inner < outer && outer < cross);
+    assert_eq!(
+        document
+            .descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .count(),
+        3
+    );
+}

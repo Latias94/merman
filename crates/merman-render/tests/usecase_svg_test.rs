@@ -19,7 +19,7 @@ json Data@{"second":2,"first":{"z":0,"a":1}}
 Data -- Login
 "#;
 
-fn render(source: &str, layout: &str) -> (serde_json::Value, String) {
+fn render(source: &str, layout: &str) -> (merman_core::ManagedSemanticJson, String) {
     render_config(
         source,
         json!({
@@ -28,7 +28,10 @@ fn render(source: &str, layout: &str) -> (serde_json::Value, String) {
     )
 }
 
-fn render_config(source: &str, config: serde_json::Value) -> (serde_json::Value, String) {
+fn render_config(
+    source: &str,
+    config: serde_json::Value,
+) -> (merman_core::ManagedSemanticJson, String) {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())

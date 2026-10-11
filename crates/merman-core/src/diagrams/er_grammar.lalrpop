@@ -1,8 +1,8 @@
-// ER diagram grammar, based on Mermaid 11.17.2 `erDiagram.jison`.
+// ER diagram grammar, based on pinned Mermaid 12.1.0 `erDiagram.jison`.
 
-grammar;
+grammar(arena: &mut ErActionArena);
 
-use crate::diagrams::er::{Action, Attribute, RelSpec, SpannedDirection, SpannedIdList, Tok};
+use crate::diagrams::er::{Action, Attribute, ErActionArena, ErActionList, RelSpec, SpannedDirection, SpannedIdList, Tok};
 
 extern {
   type Location = usize;
@@ -53,7 +53,7 @@ extern {
   }
 }
 
-pub Actions: Vec<Action> = {
+pub Actions: ErActionList = {
   <_n:Newlines> "erDiagram" <_n1:Newlines> <s:Statements> => s
 };
 
@@ -66,24 +66,20 @@ Newlines1: () = {
   Newline <_n:Newlines> => ()
 };
 
-Statements: Vec<Action> = {
-  => Vec::new(),
-  <s:Statement> <_n:Newlines> <rest:Statements> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  },
+Statements: ErActionList = {
+  => ErActionList::default(),
+  <s:Statement> <_n:Newlines> <rest:Statements> => arena.append(s, rest),
 };
 
-Statement: Vec<Action> = {
-  <v:RelationshipStatement> => v,
-  <v:EntityStatement> => v,
-  <a:AccStatement> => vec![a],
-  <a:DirectionStatement> => vec![a],
-  <a:ClassDefStatement> => vec![a],
-  <a:ClassStatement> => vec![a],
-  <a:StyleStatement> => vec![a],
-  <a:SubgraphStatement> => vec![a],
+Statement: ErActionList = {
+  <v:RelationshipStatement> => arena.actions(v),
+  <v:EntityStatement> => arena.actions(v),
+  <a:AccStatement> => arena.push(a),
+  <a:DirectionStatement> => arena.push(a),
+  <a:ClassDefStatement> => arena.push(a),
+  <a:ClassStatement> => arena.push(a),
+  <a:StyleStatement> => arena.push(a),
+  <a:SubgraphStatement> => arena.push(a),
 };
 
 SubgraphStatement: Action = {
@@ -93,13 +89,9 @@ SubgraphStatement: Action = {
   },
 };
 
-SubgraphBody: Vec<Action> = {
-  "end" => Vec::new(),
-  <s:Statement> <_n:Newlines> <rest:SubgraphBody> => {
-    let mut v = s;
-    v.extend(rest);
-    v
-  },
+SubgraphBody: ErActionList = {
+  "end" => ErActionList::default(),
+  <s:Statement> <_n:Newlines> <rest:SubgraphBody> => arena.append(s, rest),
 };
 
 SubgraphHeader: (String, String, String) = {

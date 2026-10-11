@@ -13,11 +13,6 @@
 pub mod baseline;
 pub mod common;
 pub mod common_db;
-#[cfg(any(
-    feature = "diagram-mindmap",
-    feature = "diagram-state",
-    feature = "diagram-usecase"
-))]
 mod compatibility_json;
 pub mod config;
 pub mod detect;
@@ -54,6 +49,7 @@ pub mod time;
 pub mod utils;
 mod yaml_config;
 
+pub use compatibility_json::ManagedSemanticJson;
 pub use config::MermaidConfig;
 pub use detect::{Detector, DetectorRegistry};
 pub use diagram::{

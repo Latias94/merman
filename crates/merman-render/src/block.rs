@@ -20,7 +20,7 @@ pub(crate) type BlockNode = merman_core::diagrams::block::BlockNodeRenderModel;
 struct SizedBlock {
     id: String,
     block_type: String,
-    children: Vec<SizedBlock>,
+    children: Vec<usize>,
     columns: i64,
     width_in_columns: i64,
     width: f64,
@@ -502,7 +502,6 @@ fn to_sized_block_shallow(
     padding: f64,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
-    children: Vec<SizedBlock>,
 ) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
     let width_in_columns = node.width_in_columns.unwrap_or(1).max(1);
@@ -539,7 +538,7 @@ fn to_sized_block_shallow(
     SizedBlock {
         id: node.id.clone(),
         block_type: node.block_type.clone(),
-        children,
+        children: node.children.clone(),
         columns,
         width_in_columns,
         width,
@@ -551,230 +550,155 @@ fn to_sized_block_shallow(
     }
 }
 
-fn to_sized_block(
-    node: &BlockNode,
-    padding: f64,
-    measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
-) -> SizedBlock {
-    let mut stack: Vec<(&BlockNode, bool)> = vec![(node, false)];
-    let mut completed: HashMap<*const BlockNode, SizedBlock> = HashMap::new();
-
-    while let Some((block, visited)) = stack.pop() {
-        if visited {
-            let children = block
-                .children
-                .iter()
-                .filter_map(|child| completed.remove(&(child as *const BlockNode)))
-                .collect();
-            completed.insert(
-                block as *const BlockNode,
-                to_sized_block_shallow(block, padding, measurer, text_style, children),
-            );
-        } else {
-            stack.push((block, true));
-            for child in block.children.iter().rev() {
-                stack.push((child, false));
-            }
-        }
-    }
-
-    completed
-        .remove(&(node as *const BlockNode))
-        .unwrap_or_else(|| to_sized_block_shallow(node, padding, measurer, text_style, Vec::new()))
-}
-
-fn get_max_child_size(block: &SizedBlock) -> (f64, f64) {
-    let mut max_width = 0.0;
-    let mut max_height = 0.0;
-    for child in &block.children {
+fn get_max_child_size(block: &SizedBlock, records: &[SizedBlock]) -> (f64, f64) {
+    let mut max_width: f64 = 0.0;
+    let mut max_height: f64 = 0.0;
+    for &index in &block.children {
+        let child = &records[index];
         if child.block_type == "space" {
             continue;
         }
-        let normalized_width = child.width / (child.width_in_columns as f64);
-        if normalized_width > max_width {
-            max_width = normalized_width;
-        }
-        if child.height > max_height {
-            max_height = child.height;
-        }
+        max_width = max_width.max(child.width / child.width_in_columns as f64);
+        max_height = max_height.max(child.height);
     }
     (max_width, max_height)
 }
 
-fn block_ref_at_path<'a>(root: &'a SizedBlock, path: &[usize]) -> &'a SizedBlock {
-    let mut block = root;
-    for &index in path {
-        block = &block.children[index];
-    }
-    block
-}
-
-fn block_mut_at_path<'a>(root: &'a mut SizedBlock, path: &[usize]) -> &'a mut SizedBlock {
-    let mut block = root;
-    for &index in path {
-        block = &mut block.children[index];
-    }
-    block
-}
-
-fn set_block_sizes_shallow(block: &mut SizedBlock, padding: f64) {
-    if block.width <= 0.0 {
-        block.width = 0.0;
-        block.height = 0.0;
-        block.x = 0.0;
-        block.y = 0.0;
-    }
-
-    if block.children.is_empty() {
-        return;
-    }
-
-    let (mut max_width, mut max_height) = get_max_child_size(block);
-
-    for child in &mut block.children {
-        child.width = max_width * (child.width_in_columns as f64)
-            + padding * ((child.width_in_columns as f64) - 1.0);
-        child.height = max_height;
-        child.x = 0.0;
-        child.y = 0.0;
-    }
-
-    for child in &mut block.children {
-        child.x = 0.0;
-        child.y = 0.0;
-    }
-
-    let (x_size, y_size) = block_grid_size(block);
-
-    let mut width = (x_size as f64) * (max_width + padding) + padding;
-    let height = (y_size as f64) * (max_height + padding) + padding;
-
-    if width < block.width {
-        width = block.width;
-        let num = if block.columns > 0 {
-            (block.children.len() as i64).min(block.columns)
-        } else {
-            block.children.len() as i64
-        };
-        if num > 0 {
-            let child_width = (width - (num as f64) * padding - padding) / (num as f64);
-            for child in &mut block.children {
-                child.width = child_width;
-            }
-        }
-    }
-
-    block.width = width;
-    block.height = height;
-    block.x = 0.0;
-    block.y = 0.0;
-
-    // Keep behavior consistent with Mermaid even when all children were `space`.
-    max_width = max_width.max(0.0);
-    max_height = max_height.max(0.0);
-    let _ = (max_width, max_height);
-}
-
-fn block_grid_size(block: &SizedBlock) -> (i64, i64) {
-    let columns = block.columns;
-    let mut num_items = 0i64;
-    for child in &block.children {
-        num_items += child.width_in_columns.max(1);
-    }
-
+fn block_grid_size(block: &SizedBlock, records: &[SizedBlock]) -> (i64, i64) {
+    let num_items = block
+        .children
+        .iter()
+        .map(|&index| records[index].width_in_columns.max(1))
+        .sum::<i64>();
     let mut x_size = block.children.len() as i64;
-    if columns > 0 && columns < num_items {
-        x_size = columns;
+    if block.columns > 0 && block.columns < num_items {
+        x_size = block.columns;
     }
     let y_size = ((num_items as f64) / (x_size.max(1) as f64)).ceil() as i64;
     (x_size, y_size)
 }
 
-fn reconcile_block_with_parent_size(block: &mut SizedBlock, padding: f64) {
+fn set_block_sizes_shallow(index: usize, records: &mut [SizedBlock], padding: f64) {
+    if records[index].width <= 0.0 {
+        let block = &mut records[index];
+        block.width = 0.0;
+        block.height = 0.0;
+        block.x = 0.0;
+        block.y = 0.0;
+    }
+    let block = &records[index];
     if block.children.is_empty() {
         return;
     }
+    let (max_width, max_height) = get_max_child_size(block, records);
+    let children = block.children.clone();
+    for &child in &children {
+        let child = &mut records[child];
+        child.width = max_width * child.width_in_columns as f64
+            + padding * (child.width_in_columns as f64 - 1.0);
+        child.height = max_height;
+        child.x = 0.0;
+        child.y = 0.0;
+    }
+    let block = &records[index];
+    let (x_size, y_size) = block_grid_size(block, records);
+    let mut width = x_size as f64 * (max_width + padding) + padding;
+    let height = y_size as f64 * (max_height + padding) + padding;
+    if width < block.width {
+        width = block.width;
+        let num = if block.columns > 0 {
+            (children.len() as i64).min(block.columns)
+        } else {
+            children.len() as i64
+        };
+        if num > 0 {
+            let child_width = (width - num as f64 * padding - padding) / num as f64;
+            for &child in &children {
+                records[child].width = child_width;
+            }
+        }
+    }
+    let block = &mut records[index];
+    block.width = width;
+    block.height = height;
+    block.x = 0.0;
+    block.y = 0.0;
+}
 
+fn reconcile_block_with_parent_size(index: usize, records: &mut [SizedBlock], padding: f64) {
+    let block = &records[index];
+    if block.children.is_empty() {
+        return;
+    }
+    let children = block.children.clone();
     let inherited_width = block.width;
     let inherited_height = block.height;
     let column_span = block.width_in_columns.max(1) as f64;
     let sibling_width = (inherited_width - padding * (column_span - 1.0)) / column_span;
-
-    let (max_width, max_height) = get_max_child_size(block);
-    let (x_size, y_size) = block_grid_size(block);
-    let mut width = (x_size as f64) * (max_width + padding) + padding;
-    let mut height = (y_size as f64) * (max_height + padding) + padding;
-
+    let (max_width, max_height) = get_max_child_size(block, records);
+    let (x_size, y_size) = block_grid_size(block, records);
+    let columns = block.columns;
+    let mut width = x_size as f64 * (max_width + padding) + padding;
+    let mut height = y_size as f64 * (max_height + padding) + padding;
     if width < sibling_width {
         width = sibling_width;
         height = inherited_height;
-        let child_width = (sibling_width - (x_size as f64) * padding - padding) / (x_size as f64);
-        let child_height =
-            (inherited_height - (y_size as f64) * padding - padding) / (y_size as f64);
-        for child in &mut block.children {
+        let child_width = (sibling_width - x_size as f64 * padding - padding) / x_size as f64;
+        let child_height = (inherited_height - y_size as f64 * padding - padding) / y_size as f64;
+        for &child in &children {
+            let child = &mut records[child];
             child.width = child_width;
             child.height = child_height;
             child.x = 0.0;
             child.y = 0.0;
         }
     }
-
     if width < inherited_width {
         width = inherited_width;
-        let num = if block.columns > 0 {
-            (block.children.len() as i64).min(block.columns)
+        let num = if columns > 0 {
+            (children.len() as i64).min(columns)
         } else {
-            block.children.len() as i64
+            children.len() as i64
         };
         if num > 0 {
-            let child_width = (width - (num as f64) * padding - padding) / (num as f64);
-            for child in &mut block.children {
-                child.width = child_width;
+            let child_width = (width - num as f64 * padding - padding) / num as f64;
+            for &child in &children {
+                records[child].width = child_width;
             }
         }
     }
-
+    let block = &mut records[index];
     block.width = width;
     block.height = height;
     block.x = 0.0;
     block.y = 0.0;
 }
 
-fn set_block_sizes(block: &mut SizedBlock, padding: f64) {
-    let mut stack: Vec<(Vec<usize>, bool)> = vec![(Vec::new(), false)];
-    while let Some((path, visited)) = stack.pop() {
-        if visited {
-            let block = block_mut_at_path(block, &path);
-            set_block_sizes_shallow(block, padding);
-            continue;
-        }
-
-        let child_count = block_ref_at_path(block, &path).children.len();
-        stack.push((path.clone(), true));
-        for index in (0..child_count).rev() {
-            let mut child_path = path.clone();
-            child_path.push(index);
-            stack.push((child_path, false));
+fn set_block_sizes(root: usize, records: &mut [SizedBlock], padding: f64) {
+    let mut stack = vec![(root, false)];
+    while let Some((index, complete)) = stack.pop() {
+        if complete {
+            set_block_sizes_shallow(index, records, padding);
+        } else {
+            stack.push((index, true));
+            stack.extend(
+                records[index]
+                    .children
+                    .iter()
+                    .rev()
+                    .map(|&child| (child, false)),
+            );
         }
     }
-
-    let mut stack: Vec<Vec<usize>> = (0..block.children.len())
+    let mut stack = records[root]
+        .children
+        .iter()
         .rev()
-        .map(|index| vec![index])
-        .collect();
-    while let Some(path) = stack.pop() {
-        let child_count = {
-            let block = block_mut_at_path(block, &path);
-            reconcile_block_with_parent_size(block, padding);
-            block.children.len()
-        };
-
-        for index in (0..child_count).rev() {
-            let mut child_path = path.clone();
-            child_path.push(index);
-            stack.push(child_path);
-        }
+        .copied()
+        .collect::<Vec<_>>();
+    while let Some(index) = stack.pop() {
+        reconcile_block_with_parent_size(index, records, padding);
+        stack.extend(records[index].children.iter().rev().copied());
     }
 }
 
@@ -786,13 +710,30 @@ fn invalid_block_columns_error() -> Error {
     }
 }
 
-fn validate_block_columns(root: &BlockNode) -> Result<()> {
-    let mut stack = vec![root];
-    while let Some(block) = stack.pop() {
+fn validate_block_columns(root: usize, records: &[BlockNode]) -> Result<()> {
+    let mut stack = vec![(root, false)];
+    let mut active = vec![false; records.len()];
+    while let Some((index, complete)) = stack.pop() {
+        let Some(block) = records.get(index) else {
+            return Err(Error::InvalidModel {
+                message: format!("invalid Block child index {index}"),
+            });
+        };
+        if complete {
+            active[index] = false;
+            continue;
+        }
+        if active[index] {
+            return Err(Error::InvalidModel {
+                message: "cyclic Block child indices".to_string(),
+            });
+        }
         if block.columns == Some(0) {
             return Err(invalid_block_columns_error());
         }
-        stack.extend(block.children.iter());
+        active[index] = true;
+        stack.push((index, true));
+        stack.extend(block.children.iter().rev().map(|&child| (child, false)));
     }
     Ok(())
 }
@@ -810,110 +751,90 @@ fn calculate_block_position(columns: i64, position: i64) -> Result<(i64, i64)> {
     Ok((position % columns, position / columns))
 }
 
-fn layout_blocks(block: &mut SizedBlock, padding: f64) -> Result<()> {
-    let mut stack: Vec<Vec<usize>> = vec![Vec::new()];
-    while let Some(path) = stack.pop() {
-        let child_count = {
-            let block = block_mut_at_path(block, &path);
-            if block.children.is_empty() {
-                0
-            } else {
-                let columns = block.columns;
-                let mut row_heights = BTreeMap::<i64, f64>::new();
-                let mut height_column_pos = 0i64;
-                for child in &block.children {
-                    let (_, row) = calculate_block_position(columns, height_column_pos)?;
-                    row_heights
-                        .entry(row)
-                        .and_modify(|height| *height = height.max(child.height))
-                        .or_insert(child.height);
-
-                    let mut columns_filled = child.width_in_columns.max(1);
-                    if columns > 0 {
-                        let remaining = columns - (height_column_pos % columns);
-                        columns_filled = columns_filled.min(remaining.max(1));
-                    }
-                    height_column_pos += columns_filled;
-                }
-
-                let mut row_offsets = BTreeMap::<i64, f64>::new();
-                let mut offset = 0.0;
-                for (&row, &height) in &row_heights {
-                    row_offsets.insert(row, offset);
-                    offset += height + padding;
-                }
-
-                let mut column_pos = 0i64;
-
-                // JS truthiness: treat `0` as falsy (Mermaid uses `block?.size?.x ? ... : -padding`).
-                let mut starting_pos_x = if block.x != 0.0 {
-                    block.x + (-block.width / 2.0)
-                } else {
-                    -padding
-                };
-                let mut row_pos = 0i64;
-
-                for child in &mut block.children {
-                    let (px, py) = calculate_block_position(columns, column_pos)?;
-
-                    if py != row_pos {
-                        row_pos = py;
-                        starting_pos_x = if block.x != 0.0 {
-                            block.x + (-block.width / 2.0)
-                        } else {
-                            -padding
-                        };
-                    }
-
-                    let half_width = child.width / 2.0;
-                    child.x = starting_pos_x + padding + half_width;
-                    starting_pos_x = child.x + half_width;
-
-                    let row_offset = row_offsets.get(&py).copied().unwrap_or_default();
-                    let row_height = row_heights.get(&py).copied().unwrap_or(child.height);
-                    child.y =
-                        block.y - block.height / 2.0 + row_offset + row_height / 2.0 + padding;
-
-                    let mut columns_filled = child.width_in_columns.max(1);
-                    if columns > 0 {
-                        let rem = columns - (column_pos % columns);
-                        columns_filled = columns_filled.min(rem.max(1));
-                    }
-                    column_pos += columns_filled;
-
-                    let _ = px;
-                }
-                block.children.len()
-            }
-        };
-
-        for index in (0..child_count).rev() {
-            let mut child_path = path.clone();
-            child_path.push(index);
-            stack.push(child_path);
+fn layout_blocks(root: usize, records: &mut [SizedBlock], padding: f64) -> Result<()> {
+    let mut stack = vec![root];
+    while let Some(index) = stack.pop() {
+        let block = &records[index];
+        if block.children.is_empty() {
+            continue;
         }
+        let children = block.children.clone();
+        let columns = block.columns;
+        let parent_x = block.x;
+        let parent_y = block.y;
+        let parent_width = block.width;
+        let parent_height = block.height;
+        let mut row_heights = BTreeMap::<i64, f64>::new();
+        let mut height_column_pos = 0i64;
+        for &index in &children {
+            let child = &records[index];
+            let (_, row) = calculate_block_position(columns, height_column_pos)?;
+            row_heights
+                .entry(row)
+                .and_modify(|height| *height = height.max(child.height))
+                .or_insert(child.height);
+            let mut columns_filled = child.width_in_columns.max(1);
+            if columns > 0 {
+                columns_filled = columns_filled.min((columns - height_column_pos % columns).max(1));
+            }
+            height_column_pos += columns_filled;
+        }
+        let mut row_offsets = BTreeMap::<i64, f64>::new();
+        let mut offset = 0.0;
+        for (&row, &height) in &row_heights {
+            row_offsets.insert(row, offset);
+            offset += height + padding;
+        }
+        let mut column_pos = 0i64;
+        let row_start = if parent_x != 0.0 {
+            parent_x - parent_width / 2.0
+        } else {
+            -padding
+        };
+        let mut starting_pos_x = row_start;
+        let mut row_pos = 0i64;
+        for &index in &children {
+            let child = &mut records[index];
+            let (_, py) = calculate_block_position(columns, column_pos)?;
+            if py != row_pos {
+                row_pos = py;
+                starting_pos_x = row_start;
+            }
+            let half_width = child.width / 2.0;
+            child.x = starting_pos_x + padding + half_width;
+            starting_pos_x = child.x + half_width;
+            let row_offset = row_offsets.get(&py).copied().unwrap_or_default();
+            let row_height = row_heights.get(&py).copied().unwrap_or(child.height);
+            child.y = parent_y - parent_height / 2.0 + row_offset + row_height / 2.0 + padding;
+            let mut columns_filled = child.width_in_columns.max(1);
+            if columns > 0 {
+                columns_filled = columns_filled.min((columns - column_pos % columns).max(1));
+            }
+            column_pos += columns_filled;
+        }
+        stack.extend(children.into_iter().rev());
     }
     Ok(())
 }
 
-fn find_bounds(block: &SizedBlock, b: &mut Bounds) {
-    let mut stack = vec![block];
-    while let Some(block) = stack.pop() {
+fn find_bounds(root: usize, records: &[SizedBlock], bounds: &mut Bounds) {
+    let mut stack = vec![root];
+    while let Some(index) = stack.pop() {
+        let block = &records[index];
         if block.id != "root" {
-            b.min_x = b.min_x.min(block.x - block.width / 2.0);
-            b.min_y = b.min_y.min(block.y - block.height / 2.0);
-            b.max_x = b.max_x.max(block.x + block.width / 2.0);
-            b.max_y = b.max_y.max(block.y + block.height / 2.0);
+            bounds.min_x = bounds.min_x.min(block.x - block.width / 2.0);
+            bounds.min_y = bounds.min_y.min(block.y - block.height / 2.0);
+            bounds.max_x = bounds.max_x.max(block.x + block.width / 2.0);
+            bounds.max_y = bounds.max_y.max(block.y + block.height / 2.0);
         }
-        for child in block.children.iter().rev() {
-            stack.push(child);
-        }
+        stack.extend(block.children.iter().rev().copied());
     }
 }
 
-fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
-    let mut stack = vec![block];
-    while let Some(block) = stack.pop() {
+fn collect_nodes(root: usize, records: &[SizedBlock], out: &mut Vec<LayoutNode>) {
+    let mut stack = vec![root];
+    while let Some(index) = stack.pop() {
+        let block = &records[index];
         if block.id != "root" && block.block_type != "space" {
             out.push(LayoutNode {
                 id: block.id.clone(),
@@ -926,9 +847,7 @@ fn collect_nodes(block: &SizedBlock, out: &mut Vec<LayoutNode>) {
                 label_height: Some(block.label_height.max(0.0)),
             });
         }
-        for child in block.children.iter().rev() {
-            stack.push(child);
-        }
+        stack.extend(block.children.iter().rev().copied());
     }
 }
 
@@ -939,29 +858,15 @@ struct BlockShapeSource {
     width_in_columns: i64,
 }
 
-fn collect_shape_sources(root: &BlockNode, out: &mut HashMap<String, BlockShapeSource>) {
-    let mut stack = vec![root];
-    while let Some(block) = stack.pop() {
-        let source = out
-            .entry(block.id.clone())
-            .or_insert_with(|| BlockShapeSource {
-                block_type: block.block_type.clone(),
-                directions: block.directions.clone(),
-                width_in_columns: block.width_in_columns.unwrap_or(1).max(1),
-            });
-        if !block.block_type.is_empty() && block.block_type != "na" {
-            source.block_type = block.block_type.clone();
-        }
-        if !block.directions.is_empty() {
-            source.directions = block.directions.clone();
-        }
-        if let Some(width_in_columns) = block.width_in_columns {
-            source.width_in_columns = width_in_columns.max(1);
-        }
-        for child in block.children.iter().rev() {
-            stack.push(child);
-        }
-    }
+fn collect_shape_source(block: &BlockNode, out: &mut HashMap<String, BlockShapeSource>) {
+    out.insert(
+        block.id.clone(),
+        BlockShapeSource {
+            block_type: block.block_type.clone(),
+            directions: block.directions.clone(),
+            width_in_columns: block.width_in_columns.unwrap_or(1).max(1),
+        },
+    );
 }
 
 pub(crate) fn layout_block_diagram_typed(
@@ -977,23 +882,27 @@ pub(crate) fn layout_block_diagram_typed(
     let root = model
         .blocks_flat
         .iter()
-        .find(|b| b.id == "root" && b.block_type == "composite")
+        .position(|b| b.id == "root" && b.block_type == "composite")
         .ok_or_else(|| Error::InvalidModel {
             message: "missing block root composite".to_string(),
         })?;
 
-    validate_block_columns(root)?;
+    validate_block_columns(root, &model.blocks_flat)?;
 
-    let mut root = to_sized_block(root, padding, measurer, &text_style);
-    set_block_sizes(&mut root, padding);
-    layout_blocks(&mut root, padding)?;
+    let mut records = model
+        .blocks_flat
+        .iter()
+        .map(|block| to_sized_block_shallow(block, padding, measurer, &text_style))
+        .collect::<Vec<_>>();
+    set_block_sizes(root, &mut records, padding);
+    layout_blocks(root, &mut records, padding)?;
 
     let mut nodes: Vec<LayoutNode> = Vec::new();
-    collect_nodes(&root, &mut nodes);
+    collect_nodes(root, &records, &mut nodes);
 
     let mut shape_sources = HashMap::new();
     for block in &model.blocks_flat {
-        collect_shape_sources(block, &mut shape_sources);
+        collect_shape_source(block, &mut shape_sources);
     }
     let mut shape_geometries = Vec::with_capacity(nodes.len());
     for node in &nodes {
@@ -1021,7 +930,7 @@ pub(crate) fn layout_block_diagram_typed(
         max_x: 0.0,
         max_y: 0.0,
     };
-    find_bounds(&root, &mut bounds);
+    find_bounds(root, &records, &mut bounds);
     let bounds = if nodes.is_empty() { None } else { Some(bounds) };
 
     let nodes_by_id: HashMap<String, LayoutNode> =
@@ -1119,53 +1028,54 @@ mod tests {
 
     #[test]
     fn max_child_width_is_normalized_by_each_child_column_span() {
-        let mut parent = sized_block("parent", 0.0, 0.0, 9);
-        parent.children = vec![
+        let mut records = vec![
+            sized_block("parent", 0.0, 0.0, 9),
             sized_block("three-columns", 180.0, 30.0, 3),
             sized_block("one-column", 80.0, 20.0, 1),
         ];
-
-        let (width, height) = super::get_max_child_size(&parent);
-
+        records[0].children = vec![1, 2];
+        let (width, height) = super::get_max_child_size(&records[0], &records);
         assert_eq!(width, 80.0);
         assert_eq!(height, 30.0);
     }
 
     #[test]
     fn multi_column_composite_keeps_intrinsic_height_when_only_total_width_grows() {
-        let mut composite = sized_block("composite", 0.0, 0.0, 3);
-        composite.children = (0..7)
-            .map(|index| sized_block(&format!("leaf-{index}"), 18.0, 32.0, 1))
-            .collect();
-
-        let mut root = sized_block("root", 0.0, 0.0, 1);
-        root.columns = 3;
-        root.children = vec![sized_block("tall", 150.0, 88.0, 3), composite];
-
-        super::set_block_sizes(&mut root, 8.0);
-
-        let composite = &root.children[1];
-        assert_eq!(composite.height, 48.0);
-        assert!(composite.children.iter().all(|child| child.height == 32.0));
+        let mut records = vec![
+            sized_block("root", 0.0, 0.0, 1),
+            sized_block("tall", 150.0, 88.0, 3),
+            sized_block("composite", 0.0, 0.0, 3),
+        ];
+        records.extend((0..7).map(|index| sized_block(&format!("leaf-{index}"), 18.0, 32.0, 1)));
+        records[0].columns = 3;
+        records[0].children = vec![1, 2];
+        records[2].children = (3..10).collect();
+        super::set_block_sizes(0, &mut records, 8.0);
+        assert_eq!(records[2].height, 48.0);
+        assert!(
+            records[2]
+                .children
+                .iter()
+                .all(|&child| records[child].height == 32.0)
+        );
     }
 
     #[test]
     fn heterogeneous_block_rows_use_accumulated_row_heights() {
-        let mut root = sized_block("root", 239.0, 296.0, 1);
-        root.columns = 3;
-        root.children = vec![
+        let mut records = vec![
+            sized_block("root", 239.0, 296.0, 1),
             sized_block("a", 223.0, 88.0, 3),
             sized_block("group1", 150.0, 88.0, 2),
             sized_block("g", 71.0, 88.0, 1),
             sized_block("group2", 223.0, 48.0, 3),
         ];
-
-        super::layout_blocks(&mut root, 8.0).expect("valid block layout");
-
-        assert_eq!(root.children[0].y, -96.0);
-        assert_eq!(root.children[1].y, 0.0);
-        assert_eq!(root.children[2].y, 0.0);
-        assert_eq!(root.children[3].y, 76.0);
+        records[0].columns = 3;
+        records[0].children = vec![1, 2, 3, 4];
+        super::layout_blocks(0, &mut records, 8.0).expect("valid block layout");
+        assert_eq!(records[1].y, -96.0);
+        assert_eq!(records[2].y, 0.0);
+        assert_eq!(records[3].y, 0.0);
+        assert_eq!(records[4].y, 76.0);
     }
 
     #[test]
