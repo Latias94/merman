@@ -134,6 +134,9 @@ fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
                     let Some(fill) = path.fill() else {
                         continue;
                     };
+                    if fill.opacity().get() == 0.0 {
+                        continue;
+                    }
                     if let usvg::Paint::Color(color) = fill.paint() {
                         return Some((color.red, color.green, color.blue));
                     }
@@ -359,6 +362,86 @@ fn filtered_html_fallback_does_not_assume_unknown_css_is_absent() {
         let fallback = text.parent_element().unwrap();
         assert_eq!(fallback.parent_element().unwrap(), xml.root_element());
         assert_eq!(fallback.attribute("transform"), Some("translate(100,200)"));
+    }
+}
+
+#[test]
+#[cfg(feature = "png")]
+fn class_native_label_paint_reaches_usvg_and_png() {
+    use merman::svg::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
+        ThemeStylePatch, ThemeTarget,
+    };
+
+    let renderer = Renderer::new();
+    for (body, label, target) in [
+        (
+            "namespace Internal {\nclass A\n}\nstyle A color:#000000\n",
+            "Internal",
+            ThemeTarget::Title,
+        ),
+        (
+            "class A\nstyle A color:#000000\nA --() IService\n",
+            "IService",
+            ThemeTarget::NodeLabel,
+        ),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n---\nclassDiagram\n{body}"
+        );
+        for (paint, expected_fill) in [
+            (CanvasPaint::solid("#ff0000").unwrap(), Some((255, 0, 0))),
+            (CanvasPaint::Transparent, None),
+        ] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(target, ThemeStylePatch::default().with_fill(paint)),
+                    )),
+                )
+                .unwrap();
+            let RenderOutput::Svg(Some(svg)) = renderer
+                .render(
+                    RenderRequest::svg(&source, OperationControl::new(), SvgRequest::default())
+                        .with_theme(theme.clone()),
+                )
+                .unwrap()
+            else {
+                panic!("Class native label must produce SVG");
+            };
+            assert_eq!(
+                usvg_fallback_text_fill(svg.svg(), label),
+                expected_fill,
+                "native {label} fill"
+            );
+
+            let RenderOutput::Png(Some(png)) = renderer
+                .render(
+                    RenderRequest::png(
+                        &source,
+                        OperationControl::new(),
+                        merman::PngRequest {
+                            svg: SvgRequest::default(),
+                            options: merman::svg::export::RasterOptions::default(),
+                        },
+                    )
+                    .with_theme(theme),
+                )
+                .unwrap()
+            else {
+                panic!("Class native label must produce PNG");
+            };
+            let mut reader = png::Decoder::new(std::io::Cursor::new(png.bytes()))
+                .read_info()
+                .unwrap();
+            let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+            let info = reader.next_frame(&mut pixels).unwrap();
+            assert_eq!(info.color_type, png::ColorType::Rgba);
+            let has_red = pixels[..info.buffer_size()]
+                .chunks_exact(4)
+                .any(|pixel| pixel[3] > 0 && pixel[0] > 128 && pixel[1] < 64 && pixel[2] < 64);
+            assert_eq!(has_red, expected_fill.is_some(), "native {label} pixels");
+        }
     }
 }
 
