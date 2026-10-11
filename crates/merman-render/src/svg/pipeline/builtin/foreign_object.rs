@@ -784,10 +784,10 @@ mod tests {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
 <text class="task">Make tea</text>
 <g transform="translate(0,0)">
-  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
+  <foreignObject width="200" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
 </g>
 <g transform="translate(0,40)">
-  <foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Only fallback</p></div></foreignObject>
+  <foreignObject width="200" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Only fallback</p></div></foreignObject>
 </g>
 </svg>"##;
 

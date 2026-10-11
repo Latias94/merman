@@ -62,11 +62,6 @@ impl RoutedLabelPlacement {
         Self { x, y, width }
     }
 
-    #[cfg(test)]
-    pub(in crate::graph) fn canvas_extent(self) -> (usize, usize) {
-        self.canvas_extent_for_lines(1)
-    }
-
     pub(in crate::graph) fn canvas_extent_for_lines(self, line_count: usize) -> (usize, usize) {
         (self.x + self.width, self.y + line_count.max(1))
     }

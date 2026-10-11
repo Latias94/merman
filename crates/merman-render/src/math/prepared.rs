@@ -104,6 +104,7 @@ pub(crate) struct PrepareMathLabelRequest<'a> {
     foreground: &'a str,
     text_measurer: Option<&'a dyn TextMeasurer>,
     max_width_px: Option<f64>,
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     wrap_mode: WrapMode,
     shell: MathLabelShell,
     occurrence_id: Option<&'a super::PreparedMathOccurrenceId>,
@@ -117,7 +118,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
         style: &'a TextStyle,
         foreground: &'a str,
         max_width_px: Option<f64>,
-        wrap_mode: WrapMode,
+        _wrap_mode: WrapMode,
     ) -> Self {
         Self {
             text,
@@ -126,7 +127,8 @@ impl<'a> PrepareMathLabelRequest<'a> {
             foreground,
             text_measurer: None,
             max_width_px,
-            wrap_mode,
+            #[cfg(any(test, merman_internal_theme_acceptance))]
+            wrap_mode: _wrap_mode,
             shell: MathLabelShell::Flowchart,
             occurrence_id: None,
             owner_retained_bytes: 0,
@@ -164,6 +166,7 @@ impl<'a> PrepareMathLabelRequest<'a> {
             foreground,
             text_measurer: None,
             max_width_px: None,
+            #[cfg(any(test, merman_internal_theme_acceptance))]
             wrap_mode: WrapMode::HtmlLike,
             shell: MathLabelShell::Sequence,
             occurrence_id: None,

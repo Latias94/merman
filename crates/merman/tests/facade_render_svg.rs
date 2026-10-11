@@ -149,3 +149,108 @@ fn width_callback_controls_emitted_svg_rows_and_node_bounds() {
         }
     }
 }
+
+#[test]
+fn resvg_safe_keeps_long_path_rows_inside_measured_flowchart_nodes() {
+    use merman::svg::{
+        DeterministicTextMeasurer, MeasurementProfileId, SvgPipeline, TextMeasurementPolicy,
+        TextMeasurementProfile, TextMeasurementProfileIdentity,
+    };
+
+    let measurer = DeterministicTextMeasurer::default()
+        .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.html-path-width").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let policy = TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer));
+    let source = r#"%%{init: {"layout":"dagre","look":"classic","flowchart":{"wrappingWidth":200}}}%%
+flowchart TD
+  A["docs/plans/2026-10-11-release-checklist.final.md"] --> B[Short]
+  A --> C["src/components/navigation/sidebar-tree.tsx"]
+"#;
+    let render_pipeline = |pipeline| {
+        let request = SvgRequest {
+            environment: merman::SvgEnvironment::deterministic()
+                .with_text_measurement_policy(policy.clone()),
+            pipeline: Some(pipeline),
+            ..Default::default()
+        };
+        let output = Renderer::new()
+            .render(RenderRequest::svg(source, OperationControl::new(), request))
+            .expect("long path diagram renders");
+        let RenderOutput::Svg(Some(svg)) = output else {
+            panic!("expected SVG output");
+        };
+        svg
+    };
+    let parity = render_pipeline(SvgPipeline::parity());
+    let parity_document = roxmltree::Document::parse(parity.svg()).expect("valid parity SVG");
+    let svg = render_pipeline(SvgPipeline::resvg_safe());
+    let document = roxmltree::Document::parse(svg.svg()).expect("valid resvg-safe SVG");
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
+    for expected_rows in [
+        vec!["docs/plans/2026-10-11-", "release-", "checklist.final.md"],
+        vec!["Short"],
+        vec!["src/components/navigation/sidebar-", "tree.tsx"],
+    ] {
+        let label = expected_rows.concat();
+        let source_label = parity_document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("foreignObject")
+                    && node
+                        .descendants()
+                        .filter(|child| child.is_text())
+                        .filter_map(|child| child.text())
+                        .collect::<String>()
+                        == label
+            })
+            .expect("source HTML label");
+        let source_node = source_label
+            .ancestors()
+            .find(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|class| class == "node"))
+            })
+            .expect("source flowchart node");
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == source_node.attribute("id"))
+            .expect("converted flowchart node");
+        let fallback = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-merman-foreignobject") == Some("fallback")
+                    && node
+                        .descendants()
+                        .filter(|child| child.has_tag_name("text"))
+                        .filter_map(|child| child.text())
+                        .collect::<String>()
+                        == label
+            })
+            .expect("fallback preserves the label");
+        let rows: Vec<_> = fallback
+            .descendants()
+            .filter(|child| child.has_tag_name("text"))
+            .map(|child| child.text().unwrap_or(""))
+            .collect();
+        assert_eq!(rows, expected_rows);
+        let rectangle = node
+            .children()
+            .find(|child| child.has_tag_name("rect"))
+            .expect("node rectangle");
+        let width: f64 = rectangle.attribute("width").unwrap().parse().unwrap();
+        let height: f64 = rectangle.attribute("height").unwrap().parse().unwrap();
+        assert!(
+            rows.iter()
+                .all(|row| row.chars().count() as f64 * 10.0 < width)
+        );
+        assert!(rows.len() as f64 * 24.0 < height);
+    }
+}

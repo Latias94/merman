@@ -6,8 +6,8 @@ use super::BlockNode;
 
 /// Effective source fields shared by geometry, theme ownership and SVG emission.
 ///
-/// Mermaid's render model can repeat a node in the tree and in `blocks_flat`.
-/// Traverse each tree in source order; later non-empty fields replace earlier fields.
+/// Flat records preserve Mermaid database insertion order.
+/// Later non-empty fields replace earlier fields for repeated node IDs.
 #[derive(Debug)]
 pub(crate) struct BlockNodeSource<'a> {
     pub(crate) color_index: Option<usize>,
@@ -61,16 +61,11 @@ pub(crate) fn resolve_block_node_sources(
     model: &BlockDiagramRenderModel,
 ) -> HashMap<&str, BlockNodeSource<'_>> {
     let mut sources = HashMap::new();
-    let mut stack = Vec::new();
-    for root in &model.blocks_flat {
-        stack.push(root);
-        while let Some(node) = stack.pop() {
-            sources
-                .entry(node.id.as_str())
-                .and_modify(|source: &mut BlockNodeSource<'_>| source.merge(node))
-                .or_insert_with(|| BlockNodeSource::new(node));
-            stack.extend(node.children.iter().rev());
-        }
+    for node in &model.blocks_flat {
+        sources
+            .entry(node.id.as_str())
+            .and_modify(|source: &mut BlockNodeSource<'_>| source.merge(node))
+            .or_insert_with(|| BlockNodeSource::new(node));
     }
     sources
 }
@@ -80,22 +75,39 @@ mod tests {
     use super::*;
 
     #[test]
-    fn repeated_nodes_merge_fields_in_depth_first_source_order() {
-        let model = serde_json::from_value(serde_json::json!({"blocksFlat": [
-            {"id": "root", "type": "composite", "children": [
-                {"id": "A", "type": "square", "label": "First",
-                 "classes": ["first"], "styles": ["color:red"],
-                 "directions": ["left"], "widthInColumns": 3},
-                {"id": "branch", "children": [
-                    {"id": "A", "type": "circle", "label": "Nested",
-                     "classes": ["nested"], "widthInColumns": 2}
-                ]}
-            ]},
-            {"id": "A", "type": "na", "label": "Last", "styles": ["color:blue"],
-             "directions": ["right"], "widthInColumns": 0},
-            {"id": "A", "type": "", "label": "", "classes": [], "styles": []}
-        ]}))
-        .unwrap();
+    fn repeated_nodes_merge_fields_in_database_insertion_order() {
+        let mut model = BlockDiagramRenderModel::default();
+        let mut root = BlockNode::default();
+        root.id = "root".to_string();
+        root.block_type = "composite".to_string();
+        root.children = vec![1, 2];
+        let mut first = BlockNode::default();
+        first.id = "A".to_string();
+        first.block_type = "square".to_string();
+        first.label = "First".to_string();
+        first.classes = vec!["first".to_string()];
+        first.styles = vec!["color:red".to_string()];
+        first.directions = vec!["left".to_string()];
+        first.width_in_columns = Some(3);
+        let mut branch = BlockNode::default();
+        branch.id = "branch".to_string();
+        branch.children = vec![3];
+        let mut nested = BlockNode::default();
+        nested.id = "A".to_string();
+        nested.block_type = "circle".to_string();
+        nested.label = "Nested".to_string();
+        nested.classes = vec!["nested".to_string()];
+        nested.width_in_columns = Some(2);
+        let mut last = BlockNode::default();
+        last.id = "A".to_string();
+        last.block_type = "na".to_string();
+        last.label = "Last".to_string();
+        last.styles = vec!["color:blue".to_string()];
+        last.directions = vec!["right".to_string()];
+        last.width_in_columns = Some(0);
+        let mut empty = BlockNode::default();
+        empty.id = "A".to_string();
+        model.blocks_flat = vec![root, first, branch, nested, last, empty];
         let sources = resolve_block_node_sources(&model);
         let node = &sources["A"];
         assert_eq!(node.label, "Last");

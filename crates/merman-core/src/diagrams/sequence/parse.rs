@@ -11,6 +11,7 @@ use std::collections::{HashMap, hash_map::Entry};
 
 use super::SequenceDiagramRenderModel;
 use super::Tok;
+use super::ast::{ActionArena, Actions};
 use super::db::{SequenceDb, is_css_color_value, split_box_color_and_title};
 use super::lexer::Lexer;
 use super::sequence_grammar;
@@ -67,18 +68,21 @@ impl SequenceSyntax {
         control: &OperationControl,
     ) -> OperationControlResult<(
         EditorSemanticFacts,
-        std::result::Result<Vec<super::Action>, SequenceGrammarError>,
+        std::result::Result<Actions, SequenceGrammarError>,
     )> {
         let Self { events } = self;
         let editor_facts = collect_sequence_editor_facts_from_events(&events, code, control)?;
         control.checkpoint()?;
         let mut emitted = 0usize;
         let controlled_events = events.into_iter().take_while(|_| {
-            let active = !emitted.is_multiple_of(128) || !control.is_cancelled();
+            let active = !emitted.is_multiple_of(128) || control.checkpoint().is_ok();
             emitted = emitted.saturating_add(1);
             active
         });
-        let actions = sequence_grammar::ActionsParser::new().parse(controlled_events);
+        let mut arena = ActionArena::default();
+        let actions = sequence_grammar::ActionsParser::new()
+            .parse(&mut arena, control, controlled_events)
+            .map(|list| arena.into_actions(list));
         control.checkpoint()?;
         Ok((editor_facts, actions))
     }
@@ -233,7 +237,7 @@ fn construct_sequence_semantic_source(
 }
 
 fn build_sequence_db(
-    actions: Vec<super::Action>,
+    actions: Actions,
     wrap_enabled: Option<bool>,
     control: &OperationControl,
 ) -> OperationControlResult<std::result::Result<SequenceDb, String>> {
@@ -705,6 +709,7 @@ fn sequence_box_name_and_selection(
 mod tests {
     use super::*;
     use crate::{EditorSemanticRole, MermaidConfig};
+    use std::fmt::Write as _;
 
     fn meta() -> ParseMetadata {
         ParseMetadata {
@@ -721,6 +726,107 @@ mod tests {
             source,
             &meta(),
         )
+    }
+
+    fn carrier_actions(source: &str, expected: (usize, usize)) -> Actions {
+        let control = OperationControl::new();
+        let mut arena = ActionArena::default();
+        let root = sequence_grammar::ActionsParser::new()
+            .parse(&mut arena, &control, Lexer::new(source))
+            .expect("Sequence grammar accepts carrier workload");
+        assert_eq!(arena.carrier_counts(), expected);
+        println!(
+            "source_bytes={} action_records={} action_links={}",
+            source.len(),
+            expected.0,
+            expected.1,
+        );
+        arena.into_actions(root)
+    }
+
+    #[test]
+    fn grammar_carriers_attach_each_event_once_at_increasing_width_and_depth() {
+        for size in [8, 128, 1_024] {
+            let flat = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(size));
+            assert_eq!(
+                carrier_actions(&flat, (size * 3, size * 3 - 1)).count(),
+                size * 3
+            );
+
+            let mut nested = String::from("sequenceDiagram\n");
+            for index in 0..size {
+                writeln!(nested, "loop L{index}").unwrap();
+            }
+            nested.push_str("A->>B: message\n");
+            nested.push_str(&"end\n".repeat(size));
+            assert_eq!(
+                carrier_actions(&nested, (size * 2 + 3, size * 2 + 2)).count(),
+                size * 2 + 3
+            );
+
+            let mut boxed = String::from("sequenceDiagram\nbox Team\n");
+            for index in 0..size {
+                writeln!(boxed, "participant P{index}").unwrap();
+            }
+            boxed.push_str("end\n");
+            assert_eq!(
+                carrier_actions(&boxed, (size + 2, size + 1)).count(),
+                size + 2
+            );
+
+            let mut branched = String::from("sequenceDiagram\nalt Start\nA->>B: first\n");
+            for index in 0..size {
+                writeln!(branched, "else E{index}\nA->>B: branch").unwrap();
+            }
+            branched.push_str("end\n");
+            assert_eq!(
+                carrier_actions(&branched, (size * 4 + 5, size * 4 + 4)).count(),
+                size * 4 + 5
+            );
+        }
+    }
+
+    #[test]
+    fn grammar_carrier_reductions_observe_cancellation() {
+        let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(1_024));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let mut arena = ActionArena::default();
+        let error = sequence_grammar::ActionsParser::new()
+            .parse(&mut arena, &control, Lexer::new(&source))
+            .err()
+            .expect("construction checkpoint interrupts reductions");
+        assert!(matches!(error, lalrpop_util::ParseError::User { .. }));
+        assert!(arena.carrier_counts().0 < 1_024 * 3);
+        assert_eq!(
+            control.checkpoint().unwrap_err().reason,
+            crate::CancelReason::Requested
+        );
+    }
+
+    #[test]
+    fn cancelled_token_delivery_returns_terminal_before_grammar_eof() {
+        let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
+        let control = OperationControl::new();
+        let syntax = SequenceSyntax::lex(&source, &control).unwrap();
+        control.cancel_after_checkpoints(syntax.events.len().div_ceil(128) + 2);
+        let error = syntax
+            .into_editor_facts_and_actions(&source, &control)
+            .err()
+            .expect("cancelled delivery returns the outer terminal");
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+    }
+
+    #[test]
+    fn cancelled_replay_releases_remaining_flat_events() {
+        let source = format!("sequenceDiagram\n{}", "A->>B: message\n".repeat(256));
+        let actions = carrier_actions(&source, (256 * 3, 256 * 3 - 1));
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(16);
+        let Err(error) = build_sequence_db(actions, None, &control) else {
+            panic!("replay returns cancellation through the outer result");
+        };
+        assert_eq!(error.reason, crate::CancelReason::Requested);
     }
 
     #[test]

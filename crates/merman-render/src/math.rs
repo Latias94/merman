@@ -60,6 +60,7 @@ pub(crate) trait MathRenderer: std::fmt::Debug {
     ///
     /// Sequence uses a bare `foreignObject` with `width: fit-content` rather than Flowchart's
     /// HTML-label shell, so math backends may support a slightly different surface here.
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     fn render_sequence_html_label(&self, text: &str, config: &MermaidConfig) -> Option<String> {
         self.render_html_label(text, config)
     }
@@ -412,6 +413,7 @@ impl MathRenderer for RatexMathRenderer {
         Self::render_katex_like_label(text)
     }
 
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     fn render_sequence_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
         Self::render_katex_like_label(text)
     }

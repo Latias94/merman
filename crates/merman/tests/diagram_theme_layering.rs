@@ -23,7 +23,7 @@ fn effective_config(
     source: &str,
     request: SvgRequest,
     theme: Option<DiagramTheme>,
-) -> Value {
+) -> merman_core::ManagedSemanticJson {
     let request = RenderRequest::layout_json(source, OperationControl::new(), request);
     let request = match theme {
         Some(theme) => request.with_theme(theme),
@@ -35,7 +35,7 @@ fn effective_config(
     let RenderOutput::LayoutJson(Some(output)) = output else {
         panic!("expected layout JSON for a detected diagram");
     };
-    output.layout()["meta"]["effective_config"].clone()
+    merman_core::ManagedSemanticJson::from(&output.layout()["meta"]["effective_config"])
 }
 
 fn capability_plan(

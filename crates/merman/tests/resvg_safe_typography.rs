@@ -479,3 +479,29 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
         assert_eq!(report.native_filter_receipt(), Some(receipt));
     }
 }
+
+#[test]
+fn discretionary_hyphen_survives_usvg_glyph_conversion() {
+    fn first_text_glyph_width(group: &usvg::Group) -> Option<f32> {
+        group.children().iter().find_map(|node| match node {
+            usvg::Node::Group(group) => first_text_glyph_width(group),
+            usvg::Node::Text(text) => Some(text.flattened().bounding_box().width()),
+            usvg::Node::Path(_) | usvg::Node::Image(_) => None,
+        })
+    }
+    let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, _| {
+        text.chars().filter(|ch| *ch != '\u{00ad}').count() as f64 * 10.0
+    });
+    let source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"120\" height=\"48\"><foreignObject width=\"60\" height=\"48\"><div style=\"white-space:break-spaces;width:60px\">alpha\u{00ad}beta</div></foreignObject></svg>";
+    let svg = foreign_object_label_fallback_svg_text(source, measurer.as_ref());
+    assert!(svg.contains(">alpha-</text>"), "{svg}");
+    let options = usvg_options_with_system_sans_serif();
+    let with_hyphen = usvg::Tree::from_str(&svg, &options).unwrap();
+    let without_hyphen =
+        usvg::Tree::from_str(&svg.replace(">alpha-</text>", ">alpha</text>"), &options).unwrap();
+    assert!(
+        first_text_glyph_width(with_hyphen.root()).unwrap()
+            > first_text_glyph_width(without_hyphen.root()).unwrap(),
+        "the selected hyphen must extend the actual glyph outline in the consumer"
+    );
+}

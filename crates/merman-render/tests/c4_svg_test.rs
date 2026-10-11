@@ -14,7 +14,6 @@ use merman_render::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
-use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 
 fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment) -> String {
     try_render_c4_svg_with_environment(source, environment).expect("render C4 SVG")
@@ -231,25 +230,6 @@ fn c4_effective_property(node: roxmltree::Node<'_, '_>, property: &str) -> Optio
         })
     });
     from_style.or_else(|| node.attribute(property).map(str::to_owned))
-}
-
-#[derive(Debug)]
-struct C4TypeWidthProbe;
-
-impl TextMeasurer for C4TypeWidthProbe {
-    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
-        let width = match text {
-            "«person»" => 151.0,
-            "«system»" => 252.0,
-            "«external_person»" => 399.0,
-            _ => 80.0,
-        };
-        TextMetrics {
-            width,
-            height: style.font_size.max(1.0),
-            line_count: 1,
-        }
-    }
 }
 
 fn deep_c4_boundary_chain(depth: usize) -> String {
@@ -1411,6 +1391,9 @@ Boundary(outer, "Outer Boundary") {
   }
   System(outer_after, "Outer After")
 }
+Boundary(sibling, "Sibling Boundary") {
+  System(sibling_shape, "Sibling Shape")
+}
 System(root_after, "Root After")
 Rel(inner_shape, root_before, "Leaves subtree")
 "#,
@@ -1431,6 +1414,8 @@ Rel(inner_shape, root_before, "Leaves subtree")
                     | "Inner Shape"
                     | "Inner Boundary"
                     | "Outer Boundary"
+                    | "Sibling Shape"
+                    | "Sibling Boundary"
                     | "Leaves subtree"
             )
         })
@@ -1446,6 +1431,8 @@ Rel(inner_shape, root_before, "Leaves subtree")
             "Inner Shape",
             "Inner Boundary",
             "Outer Boundary",
+            "Sibling Shape",
+            "Sibling Boundary",
             "Leaves subtree",
         ]
     );

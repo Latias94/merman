@@ -31,6 +31,28 @@ class PackageLegalMaterialTests(unittest.TestCase):
         with self.assertRaisesRegex(verify.PackageLegalMaterialError, "LICENSE-APACHE"):
             verify.verify_package_listing(self.package(), {"LICENSE-MIT"})
 
+    def test_apache_only_package_requires_its_upstream_license_text(self) -> None:
+        package = self.package("Apache-2.0")
+        self.assertEqual(verify.required_legal_paths(package), {"LICENSE"})
+        verify.verify_package_listing(package, {"LICENSE", "src/lib.rs"})
+
+    def test_apache_only_package_cannot_omit_its_license_text(self) -> None:
+        with self.assertRaisesRegex(
+            verify.PackageLegalMaterialError, "package omits legal files: LICENSE$"
+        ):
+            verify.verify_package_listing(self.package("Apache-2.0"), {"src/lib.rs"})
+
+    def test_unknown_or_missing_license_expressions_are_rejected(self) -> None:
+        for expression in (None, "", "BSD-3-Clause", "Apache-2.0 OR MIT"):
+            with self.subTest(expression=expression):
+                package = self.package()
+                package["license"] = expression
+                with self.assertRaisesRegex(
+                    verify.PackageLegalMaterialError,
+                    "unsupported or missing license expression",
+                ):
+                    verify.required_legal_paths(package)
+
     def test_third_party_bundle_is_required_when_present(self) -> None:
         (self.root / "THIRD_PARTY_NOTICES.md").write_text("notice\n", encoding="utf-8")
         licenses = self.root / "THIRD_PARTY_LICENSES/demo"

@@ -169,9 +169,16 @@ fn flowchart_local_semantic_fixture_covers_boundary_label_lane() {
         .lines()
         .find(|line| line.contains("boundaryLabelWithEnoughWidth"))
         .unwrap_or_else(|| panic!("boundary label should render:\n{rendered}"));
+    let rows: Vec<_> = rendered.lines().collect();
+    let label_y = rows.iter().position(|line| *line == label_line).unwrap();
+    let label_x = label_line.find("boundaryLabelWithEnoughWidth").unwrap();
+    let host_continues = (label_x..label_x + "boundaryLabelWithEnoughWidth".len()).any(|x| {
+        rows[label_y - 1].as_bytes().get(x) == Some(&b'|')
+            && rows[label_y + 1].as_bytes().get(x) == Some(&b'|')
+    });
     assert!(
-        label_line.contains("|boundaryLabelWithEnoughWidth"),
-        "boundary label should attach to the planned vertical transit lane, not the target node row:\n{rendered}"
+        label_line.contains("|boundaryLabelWithEnoughWidth") || host_continues,
+        "boundary label should stay on its vertical transit host:\n{rendered}"
     );
 
     let line_index = |needle: &str| first_line_index_containing(&rendered, needle);

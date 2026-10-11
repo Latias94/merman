@@ -2,9 +2,7 @@ use crate::config::json_f64;
 use crate::model::{TreemapDiagramLayout, TreemapLeafLayout, TreemapSectionLayout};
 use crate::resources::OperationWorkMeter;
 use crate::{Error, Result};
-use merman_core::diagrams::treemap::{
-    TreemapDiagramRenderModel, TreemapNodeRenderModel as TreemapNode,
-};
+use merman_core::diagrams::treemap::TreemapDiagramRenderModel;
 use serde_json::Value;
 
 pub(crate) const TREEMAP_SECTION_INNER_PADDING_PX: f64 = 10.0;
@@ -40,12 +38,11 @@ struct HierNode {
 
 fn push_node(
     nodes: &mut Vec<HierNode>,
-    node: &TreemapNode,
-    parent: Option<usize>,
-    depth: usize,
+    model: &TreemapDiagramRenderModel,
     work_meter: &OperationWorkMeter,
 ) -> Result<()> {
-    let mut stack = vec![(node, parent, depth)];
+    let mut stack = vec![(&model.root, None, 0usize)];
+    let mut seen = vec![false; model.nodes.len()];
     while let Some((current, parent_idx, current_depth)) = stack.pop() {
         let children = current.children.as_deref().unwrap_or(&[]);
         work_meter.charge(
@@ -78,11 +75,22 @@ fn push_node(
             parent_node.children.push(idx);
         }
 
-        for child in children.iter().rev() {
-            stack.push((child, Some(idx), current_depth.saturating_add(1)));
+        if let Some(children) = current.children.as_ref() {
+            for &child in children.iter().rev() {
+                let Some(node) = model.nodes.get(child) else {
+                    return Err(Error::InvalidModel {
+                        message: "treemap child ID is out of range".to_string(),
+                    });
+                };
+                if std::mem::replace(&mut seen[child], true) {
+                    return Err(Error::InvalidModel {
+                        message: "cyclic or repeated treemap child relationship".to_string(),
+                    });
+                }
+                stack.push((node, Some(idx), current_depth.saturating_add(1)));
+            }
         }
     }
-
     Ok(())
 }
 
@@ -569,7 +577,7 @@ pub(crate) fn layout_treemap_diagram_typed_with_work_meter(
     };
 
     let mut nodes: Vec<HierNode> = Vec::new();
-    push_node(&mut nodes, &model.root, None, 0, work_meter)?;
+    push_node(&mut nodes, model, work_meter)?;
     if nodes.is_empty() {
         return Err(Error::InvalidModel {
             message: "treemap root produced no nodes".to_string(),
@@ -674,31 +682,33 @@ mod tests {
         TreemapDiagramRenderModel {
             root: TreemapNodeRenderModel {
                 name: "root".to_string(),
-                children: Some(vec![TreemapNodeRenderModel {
-                    name: "Section".to_string(),
-                    children: Some(vec![
-                        TreemapNodeRenderModel {
-                            name: "Alpha".to_string(),
-                            value: Some(serde_json::json!(3)),
-                            ..TreemapNodeRenderModel::default()
-                        },
-                        TreemapNodeRenderModel {
-                            name: "Beta".to_string(),
-                            value: Some(serde_json::json!(2)),
-                            ..TreemapNodeRenderModel::default()
-                        },
-                    ]),
-                    ..TreemapNodeRenderModel::default()
-                }]),
+                children: Some(vec![0]),
                 ..TreemapNodeRenderModel::default()
             },
+            nodes: vec![
+                TreemapNodeRenderModel {
+                    name: "Section".to_string(),
+                    children: Some(vec![1, 2]),
+                    ..TreemapNodeRenderModel::default()
+                },
+                TreemapNodeRenderModel {
+                    name: "Alpha".to_string(),
+                    value: Some(serde_json::json!(3)),
+                    ..TreemapNodeRenderModel::default()
+                },
+                TreemapNodeRenderModel {
+                    name: "Beta".to_string(),
+                    value: Some(serde_json::json!(2)),
+                    ..TreemapNodeRenderModel::default()
+                },
+            ],
             ..TreemapDiagramRenderModel::default()
         }
     }
 
     fn shared_class_fixture(styles: Vec<String>) -> TreemapDiagramRenderModel {
         let mut model = work_budget_fixture();
-        model.root.children.as_mut().unwrap()[0].class_selector = Some("important".to_string());
+        model.nodes[0].class_selector = Some("important".to_string());
         model.classes.insert(
             "important".to_string(),
             TreemapClassDefRenderModel {

@@ -1904,7 +1904,7 @@ fn materialize_source_selected_theme(
         .as_value()
         .get("themeVariables")
         .filter(|value| is_js_truthy(value))
-        .map(crate::config::clone_value_nonrecursive)
+        .map(crate::compatibility_json::clone_value_nonrecursive)
         .unwrap_or_else(|| Value::Object(Map::new()));
     let mut raw_theme_variables = MermaidConfig::from_value(initial_theme_variables);
     if let Some(source_theme_variables) = source_config.as_value().get("themeVariables") {
@@ -1912,7 +1912,7 @@ fn materialize_source_selected_theme(
     }
     effective_config.set_value_preserving_theme_compatibility(
         "themeVariables",
-        crate::config::clone_value_nonrecursive(raw_theme_variables.as_value()),
+        crate::compatibility_json::clone_value_nonrecursive(raw_theme_variables.as_value()),
     );
     apply_theme_defaults(&mut effective_config)?;
     Ok(Some(effective_config))

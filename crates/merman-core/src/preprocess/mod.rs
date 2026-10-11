@@ -1165,7 +1165,7 @@ fn process_frontmatter_controlled(
         }
     };
     if let Err(cancelled) = control.checkpoint() {
-        crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
+        crate::compatibility_json::drop_value_nonrecursive(Value::Object(parsed_obj));
         return Err(cancelled);
     }
 
@@ -1202,7 +1202,7 @@ fn process_frontmatter_controlled(
     let fields = if capture_mode.collects() && has_config && rewrite_safe {
         Some(MermaidConfig::from_value(Value::Object(parsed_obj)))
     } else {
-        crate::config::drop_value_nonrecursive(Value::Object(parsed_obj));
+        crate::compatibility_json::drop_value_nonrecursive(Value::Object(parsed_obj));
         None
     };
     control.checkpoint()?;
@@ -1398,7 +1398,7 @@ fn frontmatter_fields_from_yaml_value(
     match parsed {
         Value::Object(map) => Ok(map),
         other => {
-            crate::config::drop_value_nonrecursive(other);
+            crate::compatibility_json::drop_value_nonrecursive(other);
             Ok(Map::new())
         }
     }
@@ -1633,14 +1633,17 @@ fn merge_top_level_frontmatter_diagram_configs(
         if let Some(value) = parsed_obj.get(fact.source) {
             config.set_value(
                 fact.namespace,
-                crate::config::clone_value_nonrecursive(value),
+                crate::compatibility_json::clone_value_nonrecursive(value),
             );
         }
     }
 
     for &key in crate::family::frontmatter_config_namespaces() {
         if let Some(value) = parsed_obj.get(key) {
-            config.set_value(key, crate::config::clone_value_nonrecursive(value));
+            config.set_value(
+                key,
+                crate::compatibility_json::clone_value_nonrecursive(value),
+            );
         }
     }
 }
@@ -1860,7 +1863,7 @@ fn detect_init_controlled(
         }
 
         let mut args = match &d.args {
-            Some(v) => crate::config::clone_value_nonrecursive(v),
+            Some(v) => crate::compatibility_json::clone_value_nonrecursive(v),
             None => Value::Object(Default::default()),
         };
         let mut diagram_specific = args
@@ -1889,10 +1892,10 @@ fn detect_init_controlled(
                 if let Value::Object(obj) = &mut args
                     && let Some(old) = obj.insert(key, diagram_specific_value)
                 {
-                    crate::config::drop_value_nonrecursive(old);
+                    crate::compatibility_json::drop_value_nonrecursive(old);
                 }
             } else {
-                crate::config::drop_value_nonrecursive(diagram_specific_value);
+                crate::compatibility_json::drop_value_nonrecursive(diagram_specific_value);
             }
         }
         crate::config::mirror_legacy_font_family_into_theme_variables_value(&mut args);
@@ -2201,7 +2204,7 @@ fn sanitize_directive_controlled(
         match current {
             Value::Object(map) => {
                 if let Some(old) = map.remove("secure") {
-                    crate::config::drop_value_nonrecursive(old);
+                    crate::compatibility_json::drop_value_nonrecursive(old);
                 }
 
                 let blocked_keys = map
@@ -2216,7 +2219,7 @@ fn sanitize_directive_controlled(
                     .collect::<Vec<_>>();
                 for key in blocked_keys {
                     if let Some(old) = map.remove(&key) {
-                        crate::config::drop_value_nonrecursive(old);
+                        crate::compatibility_json::drop_value_nonrecursive(old);
                     }
                 }
 
@@ -2324,7 +2327,7 @@ fn sanitize_directive_dictionary(value: &mut Value, kind: DirectiveDictionaryKin
 
             for key in blocked_keys {
                 if let Some(old) = map.remove(&key) {
-                    crate::config::drop_value_nonrecursive(old);
+                    crate::compatibility_json::drop_value_nonrecursive(old);
                 }
             }
             true
@@ -2332,7 +2335,7 @@ fn sanitize_directive_dictionary(value: &mut Value, kind: DirectiveDictionaryKin
         Value::Array(values) => {
             for value in values.iter_mut().filter(|value| !is_valid_value(value)) {
                 let old = std::mem::replace(value, Value::Null);
-                crate::config::drop_value_nonrecursive(old);
+                crate::compatibility_json::drop_value_nonrecursive(old);
             }
             true
         }
@@ -2612,7 +2615,7 @@ fn parse_directive_config_value_controlled(
     };
     if let Err(cancelled) = control.checkpoint() {
         if let Some(value) = captured.value {
-            crate::config::drop_value_nonrecursive(value);
+            crate::compatibility_json::drop_value_nonrecursive(value);
         }
         return Err(cancelled);
     }
@@ -3494,7 +3497,7 @@ A["<span title="😀">Label</span>"]
                     deep_directive_leaf(&value, DEPTH).and_then(Value::as_str),
                     Some("")
                 );
-                crate::config::drop_value_nonrecursive(value);
+                crate::compatibility_json::drop_value_nonrecursive(value);
             })
             .expect("spawn deep directive sanitizer test");
         handle

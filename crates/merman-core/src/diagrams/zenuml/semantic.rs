@@ -122,7 +122,8 @@ impl SemanticBuilder {
             owner: None,
             return_to: starter_name.as_ref().map(|starter| starter.value.clone()),
         };
-        let statements = self.resolve_statements(&self.syntax.statements.clone(), &context)?;
+        let syntax_statements = std::mem::take(&mut self.syntax.statements);
+        let statements = self.resolve_statements(&syntax_statements, &context)?;
 
         let needs_default_starter = (self.ownable_statement_count == 0
             && self.participants.is_empty())
@@ -283,23 +284,148 @@ impl SemanticBuilder {
         statements: &[StatementSyntax],
         context: &ResolveContext,
     ) -> OperationControlResult<Vec<ZenumlStatement>> {
-        let mut resolved = Vec::with_capacity(statements.len());
-        for (index, statement) in statements.iter().enumerate() {
-            if index % 128 == 0 {
-                self.control.checkpoint()?;
-            }
-            resolved.push(self.resolve_statement(statement, context)?);
+        enum Task<'a> {
+            Statements(&'a [StatementSyntax], ResolveContext),
+            Statement(&'a StatementSyntax, ResolveContext, usize),
+            Section(&'a FragmentSectionSyntax, ResolveContext),
+            FinishStatements(usize),
+            FinishStatement(ZenumlStatement, usize),
+            FinishSection(&'a FragmentSectionSyntax),
         }
-        Ok(resolved)
+        enum Completed {
+            Statements(Vec<ZenumlStatement>),
+            Statement(ZenumlStatement),
+            Section(ZenumlFragmentSection),
+        }
+
+        // Enter statements and sections in source order; finish their owning records after
+        // their children. Participant collection and generated IDs therefore retain preorder.
+        let mut tasks = vec![Task::Statements(statements, context.clone())];
+        let mut completed = Vec::new();
+        while let Some(task) = tasks.pop() {
+            match task {
+                Task::Statements(statements, context) => {
+                    tasks.push(Task::FinishStatements(statements.len()));
+                    tasks.extend(
+                        statements
+                            .iter()
+                            .enumerate()
+                            .rev()
+                            .map(|(index, statement)| {
+                                Task::Statement(statement, context.clone(), index)
+                            }),
+                    );
+                }
+                Task::Statement(statement, context, index) => {
+                    if index % 128 == 0 {
+                        self.control.checkpoint()?;
+                    }
+                    let (resolved, nested_context) =
+                        self.resolve_statement_head(statement, &context);
+                    match &statement.kind {
+                        StatementKindSyntax::Message(message) => {
+                            tasks.push(Task::FinishStatement(resolved, 1));
+                            tasks.push(Task::Statements(
+                                &message.body,
+                                nested_context.expect("message has its own resolve context"),
+                            ));
+                        }
+                        StatementKindSyntax::Creation(creation) => {
+                            tasks.push(Task::FinishStatement(resolved, 1));
+                            tasks.push(Task::Statements(
+                                &creation.body,
+                                nested_context.expect("creation has its own resolve context"),
+                            ));
+                        }
+                        StatementKindSyntax::Fragment(fragment) => {
+                            tasks.push(Task::FinishStatement(resolved, fragment.sections.len()));
+                            tasks.extend(
+                                fragment
+                                    .sections
+                                    .iter()
+                                    .rev()
+                                    .map(|section| Task::Section(section, context.clone())),
+                            );
+                        }
+                        _ => tasks.push(Task::FinishStatement(resolved, 0)),
+                    }
+                }
+                Task::Section(section, context) => {
+                    self.control.checkpoint()?;
+                    if let Some(label) = &section.label {
+                        self.push_payload(
+                            label,
+                            "zenuml fragment section",
+                            EditorSemanticKind::String,
+                        );
+                    }
+                    tasks.push(Task::FinishSection(section));
+                    tasks.push(Task::Statements(&section.statements, context));
+                }
+                Task::FinishStatements(count) => {
+                    let mut resolved = Vec::with_capacity(count);
+                    for _ in 0..count {
+                        let Some(Completed::Statement(statement)) = completed.pop() else {
+                            unreachable!("statement list finishes after all of its statements")
+                        };
+                        resolved.push(statement);
+                    }
+                    resolved.reverse();
+                    completed.push(Completed::Statements(resolved));
+                }
+                Task::FinishStatement(mut statement, count) => {
+                    match &mut statement.kind {
+                        ZenumlStatementKind::Message { body, .. }
+                        | ZenumlStatementKind::Creation { body, .. } => {
+                            let Some(Completed::Statements(statements)) = completed.pop() else {
+                                unreachable!("message and creation finish after their body")
+                            };
+                            *body = statements;
+                        }
+                        ZenumlStatementKind::Fragment { sections, .. } => {
+                            for _ in 0..count {
+                                let Some(Completed::Section(section)) = completed.pop() else {
+                                    unreachable!("fragment finishes after all of its sections")
+                                };
+                                sections.push(section);
+                            }
+                            sections.reverse();
+                        }
+                        _ => {}
+                    }
+                    self.control.checkpoint()?;
+                    completed.push(Completed::Statement(statement));
+                }
+                Task::FinishSection(section) => {
+                    let Some(Completed::Statements(statements)) = completed.pop() else {
+                        unreachable!("fragment section finishes after its statements")
+                    };
+                    completed.push(Completed::Section(ZenumlFragmentSection {
+                        label: section.label.as_ref().map(|label| label.value.clone()),
+                        statements,
+                        body_comment: section
+                            .body_comment
+                            .as_ref()
+                            .map(|comment| comment.value.clone()),
+                        span: section.span,
+                    }));
+                }
+            }
+        }
+        let Some(Completed::Statements(statements)) = completed.pop() else {
+            unreachable!("root statement list is completed last")
+        };
+        Ok(statements)
     }
 
-    fn resolve_statement(
+    fn resolve_statement_head(
         &mut self,
         statement: &StatementSyntax,
         context: &ResolveContext,
-    ) -> OperationControlResult<ZenumlStatement> {
+    ) -> (ZenumlStatement, Option<ResolveContext>) {
         let id = format!("zenuml-statement-{}", self.generated_statement_id);
         self.generated_statement_id += 1;
+        let mut body_context = None;
         let kind = match &statement.kind {
             StatementKindSyntax::Message(message) => {
                 let explicit_from = message.from.as_ref().map(|value| value.value.clone());
@@ -341,7 +467,7 @@ impl SemanticBuilder {
                     owner: resolved_to.clone().or_else(|| context.owner.clone()),
                     return_to: explicit_from.clone().or_else(|| context.origin.clone()),
                 };
-                let body = self.resolve_statements(&message.body, &nested_context)?;
+                body_context = Some(nested_context);
                 ZenumlStatementKind::Message {
                     explicit_from,
                     resolved_from,
@@ -352,7 +478,7 @@ impl SemanticBuilder {
                         MessageStyleSyntax::Synchronous => ZenumlMessageStyle::Synchronous,
                         MessageStyleSyntax::Asynchronous => ZenumlMessageStyle::Asynchronous,
                     },
-                    body,
+                    body: Vec::new(),
                     body_comment: message
                         .body_comment
                         .as_ref()
@@ -399,7 +525,7 @@ impl SemanticBuilder {
                     owner: Some(resolved_to.clone()),
                     return_to: resolved_from.clone(),
                 };
-                let body = self.resolve_statements(&creation.body, &nested_context)?;
+                body_context = Some(nested_context);
                 let parameters = creation
                     .parameters
                     .as_ref()
@@ -418,7 +544,7 @@ impl SemanticBuilder {
                     } else {
                         format!("«{parameters}»")
                     },
-                    body,
+                    body: Vec::new(),
                     body_comment: creation
                         .body_comment
                         .as_ref()
@@ -480,33 +606,10 @@ impl SemanticBuilder {
                         EditorSemanticKind::String,
                     );
                 }
-                let sections = fragment
-                    .sections
-                    .iter()
-                    .map(|section| -> OperationControlResult<ZenumlFragmentSection> {
-                        self.control.checkpoint()?;
-                        if let Some(label) = &section.label {
-                            self.push_payload(
-                                label,
-                                "zenuml fragment section",
-                                EditorSemanticKind::String,
-                            );
-                        }
-                        Ok(ZenumlFragmentSection {
-                            label: section.label.as_ref().map(|label| label.value.clone()),
-                            statements: self.resolve_statements(&section.statements, context)?,
-                            body_comment: section
-                                .body_comment
-                                .as_ref()
-                                .map(|comment| comment.value.clone()),
-                            span: section.span,
-                        })
-                    })
-                    .collect::<OperationControlResult<Vec<_>>>()?;
                 ZenumlStatementKind::Fragment {
                     fragment_kind,
                     label: fragment.label.as_ref().map(|label| label.value.clone()),
-                    sections,
+                    sections: Vec::new(),
                 }
             }
             StatementKindSyntax::Reference(reference) => {
@@ -536,16 +639,18 @@ impl SemanticBuilder {
                 }
             }
         };
-        self.control.checkpoint()?;
-        Ok(ZenumlStatement {
-            id,
-            comment: statement
-                .comment
-                .as_ref()
-                .map(|comment| comment.value.clone()),
-            span: statement.span,
-            kind,
-        })
+        (
+            ZenumlStatement {
+                id,
+                comment: statement
+                    .comment
+                    .as_ref()
+                    .map(|comment| comment.value.clone()),
+                span: statement.span,
+                kind,
+            },
+            body_context,
+        )
     }
 
     fn reference_participant(&mut self, value: &SpannedText, starter: bool, detail: &str) {
@@ -719,6 +824,122 @@ mod tests {
             (resolved_from.as_deref(), resolved_to.as_deref()),
             (Some("A"), Some("B"))
         );
+    }
+
+    #[test]
+    fn iterative_resolution_preserves_section_order_and_nested_contexts() {
+        let source = concat!(
+            "zenuml\n@Starter(Client)\n",
+            "A.outer() {\n",
+            "if(ok) { B.first() { return ready } } else { made = new C { local() return done } }\n",
+            "A.tail()\n}\nAfter.last()\n",
+        );
+        let tokens = super::super::lexer::lex(source);
+        let parsed = super::super::parser::parse(source, &tokens);
+        assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
+        let built = build(parsed);
+        assert_eq!(
+            built
+                .model
+                .participants
+                .iter()
+                .map(|participant| participant.name.as_str())
+                .collect::<Vec<_>>(),
+            ["Client", "A", "B", "made:C", "After"]
+        );
+        let ZenumlStatementKind::Message { body, .. } = &built.model.statements[0].kind else {
+            panic!("outer message")
+        };
+        assert_eq!(built.model.statements[0].id, "zenuml-statement-0");
+        assert_eq!(built.model.statements[1].id, "zenuml-statement-8");
+        let ZenumlStatementKind::Fragment {
+            label, sections, ..
+        } = &body[0].kind
+        else {
+            panic!("alternative")
+        };
+        assert_eq!(body[0].id, "zenuml-statement-1");
+        assert_eq!(label.as_deref(), Some("ok"));
+        assert_eq!(
+            sections
+                .iter()
+                .map(|section| section.label.as_deref())
+                .collect::<Vec<_>>(),
+            [Some("ok"), Some("else")]
+        );
+        let ZenumlStatementKind::Message {
+            resolved_from,
+            resolved_to,
+            body: first_body,
+            ..
+        } = &sections[0].statements[0].kind
+        else {
+            panic!("first branch message")
+        };
+        assert_eq!(
+            (resolved_from.as_deref(), resolved_to.as_deref()),
+            (Some("A"), Some("B"))
+        );
+        let ZenumlStatementKind::Return {
+            resolved_from,
+            resolved_to,
+            label,
+            ..
+        } = &first_body[0].kind
+        else {
+            panic!("nested return")
+        };
+        assert_eq!(
+            (
+                resolved_from.as_deref(),
+                resolved_to.as_deref(),
+                label.as_str()
+            ),
+            (Some("B"), Some("A"), "ready")
+        );
+        let ZenumlStatementKind::Creation {
+            resolved_from,
+            resolved_to,
+            body: created_body,
+            label,
+            ..
+        } = &sections[1].statements[0].kind
+        else {
+            panic!("second branch creation")
+        };
+        assert_eq!(
+            (
+                resolved_from.as_deref(),
+                resolved_to.as_str(),
+                label.as_str()
+            ),
+            (Some("A"), "made:C", "«create»")
+        );
+        let ZenumlStatementKind::Message {
+            resolved_from,
+            resolved_to,
+            ..
+        } = &created_body[0].kind
+        else {
+            panic!("created owner local message")
+        };
+        assert_eq!(
+            (resolved_from.as_deref(), resolved_to.as_deref()),
+            (Some("made:C"), Some("made:C"))
+        );
+        let ZenumlStatementKind::Return {
+            resolved_from,
+            resolved_to,
+            ..
+        } = &created_body[1].kind
+        else {
+            panic!("created owner return")
+        };
+        assert_eq!(
+            (resolved_from.as_deref(), resolved_to.as_deref()),
+            (Some("made:C"), Some("A"))
+        );
+        assert_eq!(body[1].id, "zenuml-statement-7");
     }
 
     #[test]

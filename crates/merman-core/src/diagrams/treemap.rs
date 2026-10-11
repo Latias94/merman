@@ -12,7 +12,7 @@ use serde_json::{Map, Value, json};
 pub struct TreemapNodeRenderModel {
     pub name: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub children: Option<Vec<TreemapNodeRenderModel>>,
+    pub children: Option<Vec<usize>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub value: Option<Value>,
     #[serde(
@@ -29,15 +29,14 @@ pub struct TreemapNodeRenderModel {
     pub css_compiled_styles: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct TreemapDiagramRenderModel {
-    #[serde(rename = "accTitle")]
     pub acc_title: Option<String>,
-    #[serde(rename = "accDescr")]
     pub acc_descr: Option<String>,
     pub title: Option<String>,
     pub root: TreemapNodeRenderModel,
-    #[serde(default)]
+    /// Flat records; child IDs are indices into this vector.
+    pub nodes: Vec<TreemapNodeRenderModel>,
     pub classes: std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
 }
 
@@ -95,20 +94,12 @@ type StyleClassDef = TreemapClassDefRenderModel;
 const TREEMAP_COMPATIBILITY_OUTPUT_BUDGET_BYTES: usize = 8 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
-struct NodeRecord {
-    name: String,
-    value: Option<Value>,
-    class_selector: Option<String>,
-    children: Option<Vec<usize>>,
-}
-
-#[derive(Debug, Clone)]
 struct Arena {
-    nodes: Vec<NodeRecord>,
+    nodes: Vec<TreemapNodeRenderModel>,
 }
 
 impl Arena {
-    fn push(&mut self, node: NodeRecord) -> usize {
+    fn push(&mut self, node: TreemapNodeRenderModel) -> usize {
         let idx = self.nodes.len();
         self.nodes.push(node);
         idx
@@ -171,28 +162,26 @@ impl TreemapParseOutcome {
                 parsed.editor_facts,
             )),
             None => {
-                let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
-                let model = source.render_model_controlled(control)?;
+                let mut source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
+                let editor_facts = std::mem::take(&mut source.editor_facts);
+                let model = source.into_render_model_controlled(control)?;
                 match treemap_compatibility_output_preflight(&model, meta, control)? {
-                    Ok(()) => Ok((source, model)),
-                    Err(error) => Err(family::CombinedSemanticFailure::new(
-                        error,
-                        source.editor_facts,
-                    )),
+                    Ok(()) => Ok((model, editor_facts)),
+                    Err(error) => Err(family::CombinedSemanticFailure::new(error, editor_facts)),
                 }
             }
         };
         let combined = family::CombinedSemanticParse::from_construction_controlled(
             construction,
             control,
-            |(source, model)| {
+            |(model, editor_facts)| {
                 render_model_to_compat_json_unchecked(&model, meta, control)
-                    .map(|model| (model, source.editor_facts))
+                    .map(|model| (model, editor_facts))
             },
             family::CombinedSemanticFailure::into_parts,
-        );
+        )?;
         control.checkpoint()?;
-        combined
+        Ok(combined)
     }
 }
 
@@ -310,7 +299,9 @@ fn push_treemap_row_editor_facts(facts: &mut EditorSemanticFacts, row: &TreemapR
 }
 
 pub(crate) fn parse_treemap(code: &str, meta: &ParseMetadata) -> Result<Value> {
-    let model = parse_treemap_semantic_source(code, meta)?.render_model();
+    let model = parse_treemap_semantic_source(code, meta)?
+        .into_render_model_controlled(&crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled");
     render_model_to_compat_json(&model, meta)
 }
 
@@ -331,7 +322,9 @@ pub(crate) fn parse_treemap_model_for_render(
     code: &str,
     meta: &ParseMetadata,
 ) -> Result<TreemapDiagramRenderModel> {
-    Ok(parse_treemap_semantic_source(code, meta)?.render_model())
+    Ok(parse_treemap_semantic_source(code, meta)?
+        .into_render_model_controlled(&crate::OperationControl::new())
+        .expect("a private parse control cannot be cancelled"))
 }
 
 pub(crate) fn parse_treemap_model_for_render_controlled(
@@ -345,31 +338,29 @@ pub(crate) fn parse_treemap_model_for_render_controlled(
         Err(error) => return Ok(Err(error)),
     };
     let source = treemap_semantic_source_from_parsed_controlled(parsed, control)?;
-    let model = source.render_model_controlled(control)?;
-    Ok(Ok(model))
+    control.checkpoint()?;
+    Ok(Ok(source.into_render_model_controlled(control)?))
 }
 
 pub(crate) fn render_model_to_compat_json(
     model: &TreemapDiagramRenderModel,
     meta: &ParseMetadata,
 ) -> Result<Value> {
-    let control = crate::OperationControl::new();
-    render_model_to_compat_json_controlled(model, meta, &control)
+    render_model_to_compat_json_controlled(model, meta, &crate::OperationControl::new())
         .expect("a private compatibility projection control cannot be cancelled")
+        .map(crate::ManagedSemanticJson::into_unmanaged_value)
 }
 
 pub(crate) fn render_model_to_compat_json_controlled(
     model: &TreemapDiagramRenderModel,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<Value>> {
+) -> crate::OperationControlResult<Result<crate::ManagedSemanticJson>> {
     control.checkpoint()?;
-    let preflight = treemap_compatibility_output_preflight(model, meta, control)?;
-    match preflight {
+    match treemap_compatibility_output_preflight(model, meta, control)? {
         Ok(()) => {}
         Err(error) => return Ok(Err(error)),
     }
-    control.checkpoint()?;
     render_model_to_compat_json_unchecked(model, meta, control)
 }
 
@@ -377,33 +368,66 @@ fn render_model_to_compat_json_unchecked(
     model: &TreemapDiagramRenderModel,
     meta: &ParseMetadata,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<Value>> {
+) -> crate::OperationControlResult<Result<crate::ManagedSemanticJson>> {
     control.checkpoint()?;
     if model.root.children.is_none() {
-        return Ok(Ok(json!({})));
+        return Ok(Ok(crate::ManagedSemanticJson::from_value(json!({}))));
     }
-
-    let nodes = flatten_render_nodes(&model.root, &model.classes, control)?;
-    control.checkpoint()?;
-    let root = render_node_to_value(&model.root, &model.classes, control)?;
-    control.checkpoint()?;
+    let root = match model.project_root_controlled(control)? {
+        Ok(root) => root,
+        Err(message) => return Ok(Err(treemap_error(meta, message, None))),
+    };
+    let mut nodes =
+        crate::ManagedSemanticJson::from_value(Value::Array(Vec::with_capacity(model.nodes.len())));
+    let mut stack = model
+        .root
+        .children
+        .as_deref()
+        .unwrap_or_default()
+        .iter()
+        .rev()
+        .map(|&id| (id, 0_i64))
+        .collect::<Vec<_>>();
+    while let Some((id, level)) = stack.pop() {
+        control.checkpoint()?;
+        let node = &model.nodes[id];
+        let mut value = render_node_to_json_controlled(node, &model.classes, control)?;
+        value
+            .as_value_mut()
+            .as_object_mut()
+            .expect("node projection is an object")
+            .insert("level".to_string(), Value::Number(level.into()));
+        nodes
+            .as_value_mut()
+            .as_array_mut()
+            .expect("flat node projection is an array")
+            .push(value.into_unmanaged_value());
+        if let Some(children) = &node.children {
+            for &child in children.iter().rev() {
+                control.checkpoint()?;
+                stack.push((child, level.saturating_add(1)));
+            }
+        }
+    }
     let classes = render_classes_to_value(&model.classes, control)?;
-    control.checkpoint()?;
-    let config = crate::config::clone_value_nonrecursive_with_control(
-        meta.effective_config.as_value(),
-        control,
-    )?;
-
+    let config = crate::ManagedSemanticJson::from_value(
+        crate::compatibility_json::clone_value_nonrecursive_with_control(
+            meta.effective_config.as_value(),
+            control,
+        )?,
+    );
     let mut out = Map::new();
     out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
     out.insert("title".to_string(), json!(&model.title));
     out.insert("accTitle".to_string(), json!(&model.acc_title));
     out.insert("accDescr".to_string(), json!(&model.acc_descr));
-    out.insert("root".to_string(), root);
-    out.insert("nodes".to_string(), Value::Array(nodes));
+    out.insert("root".to_string(), root.into_unmanaged_value());
+    out.insert("nodes".to_string(), nodes.into_unmanaged_value());
     out.insert("classes".to_string(), classes);
-    out.insert("config".to_string(), config);
-    Ok(Ok(Value::Object(out)))
+    out.insert("config".to_string(), config.into_unmanaged_value());
+    let out = crate::ManagedSemanticJson::from_value(Value::Object(out));
+    control.checkpoint()?;
+    Ok(Ok(out))
 }
 
 /// Estimates the complete compatibility JSON shape before allocating its output `Value` tree.
@@ -421,6 +445,9 @@ fn treemap_compatibility_output_preflight(
         return Ok(Ok(()));
     }
 
+    if let Err(message) = model.validate_child_relationships_controlled(control)? {
+        return Ok(Err(treemap_error(meta, message, None)));
+    }
     let class_style_bytes = estimate_class_style_arrays(&model.classes, control)?;
     let estimated_bytes =
         estimate_compatibility_json_bytes(model, meta, &class_style_bytes, control)?;
@@ -460,11 +487,11 @@ fn estimate_compatibility_json_bytes(
     ));
     total = total.saturating_add(json_field_bytes(
         "root",
-        estimate_nested_node_tree_bytes(&model.root, class_style_bytes, control)?,
+        estimate_nested_node_tree_bytes(model, class_style_bytes, control)?,
     ));
     total = total.saturating_add(json_field_bytes(
         "nodes",
-        estimate_flat_node_array_bytes(&model.root, class_style_bytes, control)?,
+        estimate_flat_node_array_bytes(model, class_style_bytes, control)?,
     ));
     total = total.saturating_add(json_field_bytes(
         "classes",
@@ -479,12 +506,12 @@ fn estimate_compatibility_json_bytes(
 }
 
 fn estimate_nested_node_tree_bytes(
-    root: &TreemapNodeRenderModel,
+    model: &TreemapDiagramRenderModel,
     class_style_bytes: &std::collections::HashMap<&str, usize>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<usize> {
     let mut total = 0usize;
-    let mut stack = vec![root];
+    let mut stack = vec![&model.root];
     let mut visited = 0usize;
     while let Some(node) = stack.pop() {
         if visited.is_multiple_of(128) {
@@ -499,7 +526,7 @@ fn estimate_nested_node_tree_bytes(
             control,
         )?);
         if let Some(children) = node.children.as_ref() {
-            stack.extend(children.iter().rev());
+            stack.extend(children.iter().rev().map(|&id| &model.nodes[id]));
         }
     }
     control.checkpoint()?;
@@ -507,16 +534,16 @@ fn estimate_nested_node_tree_bytes(
 }
 
 fn estimate_flat_node_array_bytes(
-    root: &TreemapNodeRenderModel,
+    model: &TreemapDiagramRenderModel,
     class_style_bytes: &std::collections::HashMap<&str, usize>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<usize> {
-    let children = root.children.as_deref().unwrap_or_default();
+    let children = model.root.children.as_deref().unwrap_or_default();
     let mut total = 2usize; // array brackets; commas are added per emitted item
     let mut stack = children
         .iter()
         .rev()
-        .map(|node| (node, 0usize))
+        .map(|&id| (&model.nodes[id], 0usize))
         .collect::<Vec<_>>();
     let mut visited = 0usize;
     while let Some((node, level)) = stack.pop() {
@@ -539,7 +566,7 @@ fn estimate_flat_node_array_bytes(
                 children
                     .iter()
                     .rev()
-                    .map(|child| (child, level.saturating_add(1))),
+                    .map(|&id| (&model.nodes[id], level.saturating_add(1))),
             );
         }
     }
@@ -826,32 +853,29 @@ fn treemap_compatibility_output_budget_error(
     )
 }
 
-fn render_node_to_map(
+fn render_node_to_json_controlled(
     node: &TreemapNodeRenderModel,
-    children: Option<Vec<Value>>,
     classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Map<String, Value>> {
+) -> crate::OperationControlResult<crate::ManagedSemanticJson> {
     control.checkpoint()?;
-    let mut out = Map::new();
-    out.insert("name".to_string(), Value::String(node.name.clone()));
-    if let Some(children) = children {
-        out.insert("children".to_string(), Value::Array(children));
-    }
+    let mut out = crate::ManagedSemanticJson::from_value(Value::Object(Map::new()));
+    let fields = out.as_value_mut().as_object_mut().expect("node object");
+    fields.insert("name".to_string(), Value::String(node.name.clone()));
     if let Some(value) = &node.value {
-        out.insert(
+        fields.insert(
             "value".to_string(),
-            crate::config::clone_value_nonrecursive_with_control(value, control)?,
+            crate::compatibility_json::clone_value_nonrecursive_with_control(value, control)?,
         );
     }
     if let Some(class_selector) = &node.class_selector {
-        out.insert(
+        fields.insert(
             "classSelector".to_string(),
             Value::String(class_selector.clone()),
         );
     }
     if let Some(styles) = &node.css_compiled_styles {
-        out.insert(
+        fields.insert(
             "cssCompiledStyles".to_string(),
             Value::Array(clone_string_array_with_control(styles, control)?),
         );
@@ -860,7 +884,7 @@ fn render_node_to_map(
     {
         let styles = join_styles_with_control(&class_def.styles, control)?;
         if !styles.is_empty() {
-            out.insert(
+            fields.insert(
                 "cssCompiledStyles".to_string(),
                 Value::Array(vec![Value::String(styles)]),
             );
@@ -869,94 +893,96 @@ fn render_node_to_map(
     Ok(out)
 }
 
-fn render_node_to_value(
-    root: &TreemapNodeRenderModel,
-    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Value> {
-    let mut completed: std::collections::HashMap<*const TreemapNodeRenderModel, Value> =
-        std::collections::HashMap::new();
-    let mut stack = vec![(root, false)];
-    let mut visited = 0usize;
-
-    while let Some((node, children_visited)) = stack.pop() {
-        if visited.is_multiple_of(128) {
+impl TreemapDiagramRenderModel {
+    fn validate_child_relationships_controlled(
+        &self,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<std::result::Result<(), &'static str>> {
+        let mut seen = vec![false; self.nodes.len()];
+        let mut stack = vec![&self.root];
+        while let Some(node) = stack.pop() {
             control.checkpoint()?;
-        }
-        visited = visited.saturating_add(1);
-        if children_visited {
-            let children = node.children.as_ref().map(|children| {
-                let mut values = Vec::with_capacity(children.len());
-                for (index, child) in children.iter().enumerate() {
-                    if index.is_multiple_of(128) {
-                        control.checkpoint()?;
-                    }
-                    if let Some(value) = completed.remove(&(child as *const TreemapNodeRenderModel))
-                    {
-                        values.push(value);
-                    }
-                }
-                Ok::<_, crate::OperationCancelled>(values)
-            });
-            let children = match children {
-                Some(children) => Some(children?),
-                None => None,
-            };
-            completed.insert(
-                node as *const TreemapNodeRenderModel,
-                Value::Object(render_node_to_map(node, children, classes, control)?),
-            );
-        } else {
-            stack.push((node, true));
             if let Some(children) = &node.children {
-                for child in children.iter().rev() {
-                    stack.push((child, false));
+                for &child in children.iter().rev() {
+                    control.checkpoint()?;
+                    let Some(record) = self.nodes.get(child) else {
+                        return Ok(Err("treemap child ID is out of range"));
+                    };
+                    if std::mem::replace(&mut seen[child], true) {
+                        return Ok(Err("cyclic or repeated treemap child relationship"));
+                    }
+                    stack.push(record);
                 }
             }
         }
+        Ok(Ok(()))
     }
 
-    match completed.remove(&(root as *const TreemapNodeRenderModel)) {
-        Some(value) => Ok(value),
-        None => Ok(Value::Object(render_node_to_map(
-            root, None, classes, control,
-        )?)),
-    }
-}
-
-fn flatten_render_nodes(
-    root: &TreemapNodeRenderModel,
-    classes: &std::collections::BTreeMap<String, TreemapClassDefRenderModel>,
-    control: &crate::OperationControl,
-) -> crate::OperationControlResult<Vec<Value>> {
-    let mut out = Vec::new();
-    let mut stack = root
-        .children
-        .as_deref()
-        .unwrap_or_default()
-        .iter()
-        .rev()
-        .map(|node| (node, 0_i64))
-        .collect::<Vec<_>>();
-    let mut visited = 0usize;
-
-    while let Some((node, level)) = stack.pop() {
-        if visited.is_multiple_of(128) {
+    fn project_root_controlled(
+        &self,
+        control: &crate::OperationControl,
+    ) -> crate::OperationControlResult<std::result::Result<crate::ManagedSemanticJson, &'static str>>
+    {
+        let root_id = self.nodes.len();
+        let mut completed = vec![None::<crate::ManagedSemanticJson>; root_id + 1];
+        let mut seen = vec![false; root_id + 1];
+        let mut stack = vec![(root_id, false)];
+        while let Some((id, expanded)) = stack.pop() {
             control.checkpoint()?;
-        }
-        visited = visited.saturating_add(1);
-        let mut value = render_node_to_map(node, None, classes, control)?;
-        value.insert("level".to_string(), Value::Number(level.into()));
-        out.push(Value::Object(value));
-
-        if let Some(children) = &node.children {
-            for child in children.iter().rev() {
-                stack.push((child, level.saturating_add(1)));
+            let node = if id == root_id {
+                &self.root
+            } else {
+                &self.nodes[id]
+            };
+            if expanded {
+                let mut projected = render_node_to_json_controlled(node, &self.classes, control)?;
+                let mut children = node.children.as_ref().map(|_| Vec::new());
+                if let Some(ids) = &node.children {
+                    for &child in ids {
+                        control.checkpoint()?;
+                        let Some(value) = completed[child].take() else {
+                            return Ok(Err("invalid treemap child relationship"));
+                        };
+                        children.as_mut().expect("children slot exists").push(value);
+                    }
+                }
+                if let Some(children) = children {
+                    projected
+                        .as_value_mut()
+                        .as_object_mut()
+                        .expect("node projection is an object")
+                        .insert(
+                            "children".to_string(),
+                            Value::Array(
+                                children
+                                    .into_iter()
+                                    .map(crate::ManagedSemanticJson::into_unmanaged_value)
+                                    .collect(),
+                            ),
+                        );
+                }
+                completed[id] = Some(projected);
+            } else {
+                if std::mem::replace(&mut seen[id], true) {
+                    return Ok(Err("cyclic or repeated treemap child relationship"));
+                }
+                stack.push((id, true));
+                if let Some(children) = &node.children {
+                    for &child in children.iter().rev() {
+                        control.checkpoint()?;
+                        if child >= root_id {
+                            return Ok(Err("treemap child ID is out of range"));
+                        }
+                        stack.push((child, false));
+                    }
+                }
             }
         }
+        control.checkpoint()?;
+        Ok(Ok(completed[root_id]
+            .take()
+            .expect("root projection completed")))
     }
-    control.checkpoint()?;
-    Ok(out)
 }
 
 fn render_classes_to_value(
@@ -1019,73 +1045,31 @@ fn join_styles_with_control(
 }
 
 impl TreemapSemanticSource {
-    fn render_model(&self) -> TreemapDiagramRenderModel {
-        self.render_model_with_control(None)
-            .expect("an uncontrolled Treemap render-model conversion cannot be cancelled")
-    }
-
-    fn render_model_controlled(
-        &self,
+    fn into_render_model_controlled(
+        self,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
-        self.render_model_with_control(Some(control))
-    }
-
-    fn render_model_with_control(
-        &self,
-        control: Option<&crate::OperationControl>,
-    ) -> crate::OperationControlResult<TreemapDiagramRenderModel> {
-        if let Some(control) = control {
-            control.checkpoint()?;
-        }
         if !self.present {
             return Ok(TreemapDiagramRenderModel::default());
         }
-
-        let mut workspace: Vec<Option<TreemapNodeRenderModel>> = vec![None; self.arena.nodes.len()];
-        let root_children =
-            render_nodes_from_arena(&self.arena, &self.roots, &mut workspace, control)?;
-        let classes = clone_class_defs(&self.class_defs, control)?;
-
-        if let Some(control) = control {
+        let mut classes = std::collections::BTreeMap::new();
+        for (id, class) in self.class_defs {
             control.checkpoint()?;
+            classes.insert(id, class);
         }
-
+        control.checkpoint()?;
         Ok(TreemapDiagramRenderModel {
-            title: self.title.clone(),
-            acc_title: self.acc_title.clone(),
-            acc_descr: self.acc_descr.clone(),
+            title: self.title,
+            acc_title: self.acc_title,
+            acc_descr: self.acc_descr,
             root: TreemapNodeRenderModel {
-                name: String::new(),
-                children: Some(root_children),
-                value: None,
-                class_selector: None,
-                css_compiled_styles: None,
+                children: Some(self.roots),
+                ..Default::default()
             },
+            nodes: self.arena.nodes,
             classes,
         })
     }
-}
-
-fn render_nodes_from_arena(
-    arena: &Arena,
-    roots: &[usize],
-    workspace: &mut [Option<TreemapNodeRenderModel>],
-    control: Option<&crate::OperationControl>,
-) -> crate::OperationControlResult<Vec<TreemapNodeRenderModel>> {
-    let mut rendered_roots = Vec::with_capacity(roots.len());
-    for (root_index, &root) in roots.iter().enumerate() {
-        if root_index.is_multiple_of(128)
-            && let Some(control) = control
-        {
-            control.checkpoint()?;
-        }
-        rendered_roots.push(node_to_render_model(arena, root, workspace, control)?);
-    }
-    if let Some(control) = control {
-        control.checkpoint()?;
-    }
-    Ok(rendered_roots)
 }
 
 fn parse_treemap_semantic_source(
@@ -1380,10 +1364,11 @@ fn build_hierarchy_controlled(
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        let mut node = NodeRecord {
+        let mut node = TreemapNodeRenderModel {
             name: item.name.clone(),
             value: None,
             class_selector: item.class_selector.clone(),
+            css_compiled_styles: None,
             children: match item.item_type {
                 ItemType::Leaf => None,
                 ItemType::Section => Some(Vec::new()),
@@ -1396,6 +1381,7 @@ fn build_hierarchy_controlled(
         let idx = arena.push(node);
 
         while stack.last().is_some_and(|(_, lvl)| *lvl >= item.level) {
+            control.checkpoint()?;
             stack.pop();
         }
 
@@ -1418,124 +1404,6 @@ fn build_hierarchy_controlled(
 
     control.checkpoint()?;
     Ok((arena, roots))
-}
-
-#[cfg(test)]
-fn node_to_value(arena: &Arena, idx: usize) -> Value {
-    let mut values: Vec<Option<Value>> = vec![None; arena.nodes.len()];
-    let mut stack = vec![(idx, false)];
-
-    while let Some((node_idx, visited)) = stack.pop() {
-        let Some(node) = arena.nodes.get(node_idx) else {
-            continue;
-        };
-
-        if visited {
-            let mut obj = Map::new();
-            obj.insert("name".to_string(), Value::String(node.name.clone()));
-            if let Some(v) = &node.value {
-                obj.insert("value".to_string(), v.clone());
-            }
-            if let Some(cls) = &node.class_selector {
-                obj.insert("classSelector".to_string(), Value::String(cls.clone()));
-            }
-            if let Some(children) = &node.children {
-                obj.insert(
-                    "children".to_string(),
-                    Value::Array(
-                        children
-                            .iter()
-                            .filter_map(|&child_idx| {
-                                values.get_mut(child_idx).and_then(Option::take)
-                            })
-                            .collect(),
-                    ),
-                );
-            }
-            values[node_idx] = Some(Value::Object(obj));
-        } else {
-            stack.push((node_idx, true));
-            if let Some(children) = &node.children {
-                for &child_idx in children.iter().rev() {
-                    stack.push((child_idx, false));
-                }
-            }
-        }
-    }
-
-    values
-        .get_mut(idx)
-        .and_then(Option::take)
-        .unwrap_or_else(|| json!({ "name": "" }))
-}
-
-fn node_to_render_model(
-    arena: &Arena,
-    idx: usize,
-    models: &mut [Option<TreemapNodeRenderModel>],
-    control: Option<&crate::OperationControl>,
-) -> crate::OperationControlResult<TreemapNodeRenderModel> {
-    let mut stack = vec![(idx, false)];
-    let mut steps = 0usize;
-
-    while let Some((node_idx, visited)) = stack.pop() {
-        if steps.is_multiple_of(128)
-            && let Some(control) = control
-        {
-            control.checkpoint()?;
-        }
-        steps = steps.saturating_add(1);
-        let Some(node) = arena.nodes.get(node_idx) else {
-            continue;
-        };
-
-        if visited {
-            let children = node.children.as_ref().map(|children| {
-                children
-                    .iter()
-                    .filter_map(|&child_idx| models.get_mut(child_idx).and_then(Option::take))
-                    .collect()
-            });
-            models[node_idx] = Some(TreemapNodeRenderModel {
-                name: node.name.clone(),
-                children,
-                value: node.value.clone(),
-                class_selector: node.class_selector.clone(),
-                css_compiled_styles: None,
-            });
-        } else {
-            stack.push((node_idx, true));
-            if let Some(children) = &node.children {
-                for &child_idx in children.iter().rev() {
-                    stack.push((child_idx, false));
-                }
-            }
-        }
-    }
-
-    Ok(models
-        .get_mut(idx)
-        .and_then(Option::take)
-        .unwrap_or_default())
-}
-
-fn clone_class_defs(
-    class_defs: &std::collections::HashMap<String, StyleClassDef>,
-    control: Option<&crate::OperationControl>,
-) -> crate::OperationControlResult<std::collections::BTreeMap<String, StyleClassDef>> {
-    let mut classes = std::collections::BTreeMap::new();
-    for (index, (id, class_def)) in class_defs.iter().enumerate() {
-        if index.is_multiple_of(128)
-            && let Some(control) = control
-        {
-            control.checkpoint()?;
-        }
-        classes.insert(id.clone(), class_def.clone());
-    }
-    if let Some(control) = control {
-        control.checkpoint()?;
-    }
-    Ok(classes)
 }
 
 fn add_class(
@@ -1959,13 +1827,25 @@ impl<'a> Parser<'a> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
-    use crate::{Engine, ParseOptions, RenderSemanticModel};
+    use crate::{
+        Engine, ManagedSemanticJson, MermaidConfig, ParseMetadata, ParseOptions,
+        RenderSemanticModel,
+    };
+
+    fn meta() -> ParseMetadata {
+        ParseMetadata {
+            diagram_type: "treemap".to_string(),
+            config: MermaidConfig::empty_object(),
+            effective_config: MermaidConfig::empty_object(),
+            title: None,
+        }
+    }
     use futures::executor::block_on;
     use serde_json::json;
 
-    fn parse(text: &str) -> Value {
+    fn parse(text: &str) -> crate::ManagedSemanticJson {
         let engine = Engine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()
@@ -2009,8 +1889,9 @@ accDescr: Treemap accDescr
                 assert_eq!(model.root.name, "");
                 let root_children = model.root.children.as_ref().unwrap();
                 assert_eq!(root_children.len(), 1);
-                assert_eq!(root_children[0].name, "Root");
-                assert_eq!(root_children[0].children.as_ref().unwrap()[0].name, "Leaf");
+                let root = &model.nodes[root_children[0]];
+                assert_eq!(root.name, "Root");
+                assert_eq!(model.nodes[root.children.as_ref().unwrap()[0]].name, "Leaf");
             }
             other => panic!("treemap render parse should return typed model, got {other:?}"),
         }
@@ -2052,20 +1933,6 @@ accDescr: Treemap accDescr
         input
     }
 
-    fn count_render_nodes(root: &TreemapNodeRenderModel) -> usize {
-        let mut count = 0usize;
-        let mut stack = vec![root];
-        while let Some(node) = stack.pop() {
-            count += 1;
-            if let Some(children) = node.children.as_ref() {
-                for child in children.iter().rev() {
-                    stack.push(child);
-                }
-            }
-        }
-        count
-    }
-
     #[test]
     fn treemap_deep_chain_semantic_and_render_model_use_heap_traversal() {
         const DEPTH: usize = 1200;
@@ -2089,60 +1956,10 @@ accDescr: Treemap accDescr
             .unwrap();
         match parsed.model() {
             RenderSemanticModel::Treemap(model) => {
-                assert_eq!(count_render_nodes(&model.root), DEPTH + 2);
+                assert_eq!(model.nodes.len() + 1, DEPTH + 2);
             }
             other => panic!("treemap render parse should return typed model, got {other:?}"),
         }
-    }
-
-    #[test]
-    fn treemap_render_model_preserves_a_wide_root_forest() {
-        const ROOT_COUNT: usize = 512;
-        let mut input = String::from("treemap\n");
-        for index in 0..ROOT_COUNT {
-            input.push_str(&format!("\"root-{index}\": 1\n"));
-        }
-
-        let model = parse_treemap_model_for_render(&input, &meta()).unwrap();
-        let roots = model.root.children.as_ref().expect("root forest");
-        assert_eq!(roots.len(), ROOT_COUNT);
-        assert_eq!(roots.first().map(|root| root.name.as_str()), Some("root-0"));
-        assert_eq!(
-            roots.last().map(|root| root.name.as_str()),
-            Some("root-511")
-        );
-    }
-
-    #[test]
-    fn treemap_render_model_conversion_observes_cancellation() {
-        const ROOT_COUNT: usize = 512;
-        let arena = Arena {
-            nodes: (0..ROOT_COUNT)
-                .map(|index| NodeRecord {
-                    name: format!("root-{index}"),
-                    value: Some(json!(1)),
-                    class_selector: None,
-                    children: None,
-                })
-                .collect(),
-        };
-        let source = TreemapSemanticSource {
-            present: true,
-            title: None,
-            acc_title: None,
-            acc_descr: None,
-            class_defs: std::collections::HashMap::new(),
-            roots: (0..ROOT_COUNT).collect(),
-            arena,
-            editor_facts: EditorSemanticFacts::new(),
-        };
-        let control = crate::OperationControl::new();
-        control.cancel_after_checkpoints(1);
-
-        assert!(matches!(
-            source.render_model_controlled(&control),
-            Err(crate::OperationCancelled { .. })
-        ));
     }
 
     #[test]
@@ -2264,39 +2081,30 @@ classDef important stroke:#333
         style_bytes: usize,
     ) -> (TreemapDiagramRenderModel, String) {
         let style = format!("fill:{}", "a".repeat(style_bytes.saturating_sub(5)));
-        let root = TreemapNodeRenderModel {
-            name: String::new(),
-            children: Some(
-                (0..node_count)
-                    .map(|index| TreemapNodeRenderModel {
-                        name: format!("node-{index}"),
-                        children: None,
-                        value: Some(json!(1)),
-                        class_selector: Some("shared".to_string()),
-                        css_compiled_styles: None,
-                    })
-                    .collect(),
-            ),
-            value: None,
-            class_selector: None,
-            css_compiled_styles: None,
-        };
-        let mut classes = std::collections::BTreeMap::new();
-        classes.insert(
-            "shared".to_string(),
-            TreemapClassDefRenderModel {
-                id: "shared".to_string(),
-                styles: vec![style.clone()],
-                text_styles: Vec::new(),
-            },
-        );
+        let nodes = (0..node_count)
+            .map(|index| TreemapNodeRenderModel {
+                name: format!("node-{index}"),
+                value: Some(json!(1)),
+                class_selector: Some("shared".to_string()),
+                ..Default::default()
+            })
+            .collect();
         (
             TreemapDiagramRenderModel {
-                acc_title: None,
-                acc_descr: None,
-                title: None,
-                root,
-                classes,
+                root: TreemapNodeRenderModel {
+                    children: Some((0..node_count).collect()),
+                    ..Default::default()
+                },
+                nodes,
+                classes: std::collections::BTreeMap::from([(
+                    "shared".to_string(),
+                    TreemapClassDefRenderModel {
+                        id: "shared".to_string(),
+                        styles: vec![style.clone()],
+                        text_styles: Vec::new(),
+                    },
+                )]),
+                ..Default::default()
             },
             style,
         )
@@ -2324,17 +2132,18 @@ classDef important stroke:#333
             acc_descr: Some("description".to_string()),
             root: TreemapNodeRenderModel {
                 name: "root".to_string(),
-                children: Some(vec![TreemapNodeRenderModel {
-                    name: "leaf \"\u{0001}".to_string(),
-                    children: None,
-                    value: Some(json!({"nested": ["value", true, null]})),
-                    class_selector: Some("shared".to_string()),
-                    css_compiled_styles: None,
-                }]),
+                children: Some(vec![0]),
                 value: None,
                 class_selector: None,
                 css_compiled_styles: None,
             },
+            nodes: vec![TreemapNodeRenderModel {
+                name: "leaf \"\u{0001}".to_string(),
+                children: None,
+                value: Some(json!({"nested": ["value", true, null]})),
+                class_selector: Some("shared".to_string()),
+                css_compiled_styles: None,
+            }],
             classes: std::collections::BTreeMap::from([(
                 "shared".to_string(),
                 TreemapClassDefRenderModel {
@@ -2383,29 +2192,20 @@ classDef important stroke:#333
         const NODE_COUNT: usize = 64_000;
         const NAME_BYTES: usize = 128;
         let name_suffix = "x".repeat(NAME_BYTES.saturating_sub(12));
-        let root = TreemapNodeRenderModel {
-            name: String::new(),
-            children: Some(
-                (0..NODE_COUNT)
-                    .map(|index| TreemapNodeRenderModel {
-                        name: format!("node-{index:06}-{name_suffix}"),
-                        children: None,
-                        value: Some(json!(1)),
-                        class_selector: None,
-                        css_compiled_styles: None,
-                    })
-                    .collect(),
-            ),
-            value: None,
-            class_selector: None,
-            css_compiled_styles: None,
-        };
+        let nodes = (0..NODE_COUNT)
+            .map(|index| TreemapNodeRenderModel {
+                name: format!("node-{index:06}-{name_suffix}"),
+                value: Some(json!(1)),
+                ..Default::default()
+            })
+            .collect();
         let model = TreemapDiagramRenderModel {
-            acc_title: None,
-            acc_descr: None,
-            title: None,
-            root,
-            classes: std::collections::BTreeMap::new(),
+            root: TreemapNodeRenderModel {
+                children: Some((0..NODE_COUNT).collect()),
+                ..Default::default()
+            },
+            nodes,
+            ..Default::default()
         };
 
         let error = render_model_to_compat_json(&model, &meta())
@@ -2493,6 +2293,39 @@ classDef important stroke:#333
     }
 
     #[test]
+    fn treemap_explicit_styles_override_shared_class_styles_in_both_projections() {
+        let (mut model, _) = model_with_shared_class_styles(1, 32);
+        for styles in [Vec::new(), vec!["fill:#123".to_string()]] {
+            model.nodes[0].css_compiled_styles = Some(styles.clone());
+            let output = render_model_to_compat_json(&model, &meta()).unwrap();
+            assert_eq!(
+                output["root"]["children"][0]["cssCompiledStyles"],
+                json!(styles)
+            );
+            assert_eq!(output["nodes"][0]["cssCompiledStyles"], json!(styles));
+            assert_eq!(output["nodes"][0]["classSelector"], json!("shared"));
+        }
+    }
+
+    #[test]
+    fn treemap_compatibility_preflight_rejects_repeated_relationships() {
+        let (mut model, _) = model_with_shared_class_styles(1, 32);
+        model.root.children = Some(vec![0, 0]);
+        let error = treemap_compatibility_output_preflight(
+            &model,
+            &meta(),
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("cyclic or repeated treemap child relationship")
+        );
+    }
+
+    #[test]
     fn treemap_classdef_rejects_bare_label_style_tokens_like_mermaid_parser() {
         let msg = parse_error(
             r#"treemap
@@ -2569,13 +2402,19 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         ];
 
         let (arena, roots) = build_hierarchy(&items);
-        let root_value = roots
-            .iter()
-            .map(|&idx| node_to_value(&arena, idx))
-            .collect::<Vec<_>>();
+        let model = TreemapDiagramRenderModel {
+            root: TreemapNodeRenderModel {
+                children: Some(roots),
+                ..Default::default()
+            },
+            nodes: arena.nodes,
+            ..Default::default()
+        };
+        let projected = render_model_to_compat_json(&model, &meta()).unwrap();
+        let root_value = projected["root"]["children"].as_array().unwrap();
         assert_eq!(
             root_value,
-            vec![json!({
+            &vec![json!({
                 "name": "Root",
                 "children": [
                     {
@@ -2598,13 +2437,181 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         );
     }
 
-    fn meta() -> ParseMetadata {
-        ParseMetadata {
-            diagram_type: "treemap".to_string(),
-            config: crate::MermaidConfig::empty_object(),
-            effective_config: crate::MermaidConfig::empty_object(),
-            title: None,
+    #[cfg(feature = "all-diagrams")]
+    pub(crate) fn run_lifecycle_child(test: &'static str, worker: impl FnOnce() + Send + 'static) {
+        const CASE_ENV: &str = "MERMAN_CORE_TREE_UNIT_LIFECYCLE_CASE";
+        if std::env::var(CASE_ENV).as_deref() == Ok(test) {
+            std::thread::Builder::new()
+                .stack_size(2 * 1024 * 1024)
+                .spawn(move || {
+                    println!("phase=tree-worker status=begin case={test} stack_bytes=2097152");
+                    worker();
+                    println!("phase=tree-worker status=done case={test}");
+                })
+                .expect("spawn 2 MiB tree worker")
+                .join()
+                .expect("tree lifecycle worker completes");
+            return;
         }
+        let mut child = std::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", test, "--nocapture", "--test-threads=1"])
+            .env(CASE_ENV, test)
+            .spawn()
+            .expect("spawn tree lifecycle child");
+        let started = std::time::Instant::now();
+        let status = loop {
+            match child.try_wait() {
+                Ok(Some(status)) => break status,
+                Ok(None) => {}
+                Err(error) => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    panic!("tree child observation failed: {error}");
+                }
+            }
+            if started.elapsed() > std::time::Duration::from_secs(60) {
+                let _ = child.kill();
+                let _ = child.wait();
+                panic!("tree lifecycle child timed out: {test}");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        };
+        assert!(
+            status.success(),
+            "tree lifecycle child failed: {test}, status={status}"
+        );
+    }
+
+    #[cfg(feature = "all-diagrams")]
+    pub(crate) fn assert_in_progress_export_deadline(json: &crate::ManagedSemanticJson) {
+        struct Writer {
+            control: crate::OperationControl,
+            written: usize,
+        }
+        impl std::io::Write for Writer {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.written += bytes.len();
+                if self.written >= 1_024 {
+                    self.control.set_deadline(std::time::Duration::ZERO);
+                }
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let control = crate::OperationControl::new();
+        let mut writer = Writer {
+            control: control.clone(),
+            written: 0,
+        };
+        assert!(matches!(
+            json.write_json_controlled(&mut writer, &control),
+            Err(crate::OperationCancelled {
+                reason: crate::CancelReason::DeadlineExceeded,
+                ..
+            })
+        ));
+        assert!(
+            writer.written >= 1_024,
+            "deadline is installed after useful export work"
+        );
+    }
+
+    #[cfg(feature = "all-diagrams")]
+    #[test]
+    fn treemap_deep_clone_drop_export_child() {
+        run_lifecycle_child(
+            "diagrams::treemap::tests::treemap_deep_clone_drop_export_child",
+            || {
+                let source = deep_treemap_chain(5_000);
+                let parsed = Engine::new()
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let RenderSemanticModel::Treemap(model) = parsed.model() else {
+                    panic!("typed treemap");
+                };
+                assert_eq!(model.nodes.len(), 5_001);
+                let json =
+                    ManagedSemanticJson::from(render_model_to_compat_json(model, &meta()).unwrap());
+                let mut output = Vec::new();
+                json.write_json(&mut output).unwrap();
+                assert_in_progress_export_deadline(&json);
+                assert!(output.windows(10).any(|bytes| bytes == b"\"value\":1}"));
+                drop(json.clone());
+                drop(json);
+                drop(parsed.clone());
+                drop(parsed);
+                assert!(
+                    Engine::new()
+                        .parse_diagram_sync("treemap\n\"leaf\": 1\n", ParseOptions::strict())
+                        .is_ok()
+                );
+            },
+        );
+    }
+
+    #[cfg(feature = "all-diagrams")]
+    #[test]
+    fn treemap_projection_cancels_after_deep_completed_subtree_child() {
+        run_lifecycle_child(
+            "diagrams::treemap::tests::treemap_projection_cancels_after_deep_completed_subtree_child",
+            || {
+                const DEPTH: usize = 3_000;
+                let mut source = deep_treemap_chain(DEPTH);
+                source.push_str("\"sibling\": 2\n");
+                let model = parse_treemap_model_for_render(&source, &meta()).unwrap();
+                let control = crate::OperationControl::new();
+                control.cancel_after_checkpoints(4 * DEPTH + 5);
+                assert!(matches!(
+                    model.project_root_controlled(&control),
+                    Err(crate::OperationCancelled { .. })
+                ));
+                let projection =
+                    render_model_to_compat_json(&model, &meta()).map(ManagedSemanticJson::from);
+                assert!(projection.is_ok());
+                let mut invalid = model.clone();
+                let sibling = invalid.root.children.as_ref().unwrap()[1];
+                invalid.nodes[sibling].children = Some(vec![usize::MAX]);
+                assert!(render_model_to_compat_json(&invalid, &meta()).is_err());
+                drop(invalid);
+                drop(model);
+            },
+        );
+    }
+
+    #[test]
+    fn treemap_projection_handles_deep_canonical_records() {
+        let boundary = parse_treemap_model_for_render(&deep_treemap_chain(62), &meta()).unwrap();
+        let json =
+            ManagedSemanticJson::from(render_model_to_compat_json(&boundary, &meta()).unwrap());
+        let mut output = Vec::new();
+        json.write_json(&mut output).unwrap();
+        assert!(!output.is_empty());
+        let empty = TreemapDiagramRenderModel::default();
+        assert_eq!(
+            render_model_to_compat_json(&empty, &meta()).unwrap(),
+            json!({})
+        );
+    }
+
+    #[test]
+    fn treemap_projection_rejects_invalid_ids_and_cycles() {
+        let mut model = TreemapDiagramRenderModel {
+            root: TreemapNodeRenderModel {
+                children: Some(vec![0]),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        assert!(render_model_to_compat_json(&model, &meta()).is_err());
+        model.nodes.push(TreemapNodeRenderModel {
+            name: "cycle".to_string(),
+            children: Some(vec![0]),
+            ..Default::default()
+        });
+        assert!(render_model_to_compat_json(&model, &meta()).is_err());
     }
 
     #[test]
@@ -2670,10 +2677,11 @@ classDef c fill:#ff0000, stroke:rgb(1\,2\,3), color;
         assert_eq!(compat["title"], json!(typed.title));
         assert_eq!(compat["accTitle"], json!(typed.acc_title));
         assert_eq!(compat["accDescr"], json!(typed.acc_descr));
-        assert!(
-            typed.root.children.as_ref().unwrap()[0]
-                .css_compiled_styles
-                .is_none()
+        let first = typed.root.children.as_ref().unwrap()[0];
+        assert!(typed.nodes[first].css_compiled_styles.is_none());
+        assert_eq!(
+            typed.nodes[first].class_selector.as_deref(),
+            Some("important")
         );
         assert_eq!(
             compat["root"]["children"][0]["cssCompiledStyles"][0],

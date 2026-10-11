@@ -104,9 +104,11 @@ CRATE_COMPONENTS = {
         "mermaid",
         "rough-rs",
         "roughjs",
+        "unicode-linebreak",
         "venn-js",
         "zenuml-core",
     ),
+    "crates/merman-unicode-linebreak": ("unicode-linebreak",),
 }
 
 

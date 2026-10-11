@@ -35,9 +35,33 @@ pub(crate) fn write_json_stdout<T: Serialize>(
     stdout.with_writer(|writer| write_json_to(writer, value, pretty))
 }
 
+pub(crate) fn write_semantic_json_stdout(
+    value: &merman::ManagedSemanticJson,
+    pretty: bool,
+    stdout: &SharedWriter,
+) -> Result<(), CliError> {
+    stdout.with_writer(|writer| write_semantic_json_to(writer, value, pretty))
+}
+
+fn write_semantic_json_to(
+    writer: &mut dyn Write,
+    value: &merman::ManagedSemanticJson,
+    pretty: bool,
+) -> Result<(), CliError> {
+    if pretty {
+        value.write_json_pretty(&mut *writer)
+    } else {
+        value.write_json(&mut *writer)
+    }
+    .map_err(CliError::json_output)?;
+    writer
+        .write_all(b"\n")
+        .map_err(|source| CliError::stream("stdout", source))
+}
+
 #[cfg(feature = "svg")]
-pub(crate) fn write_json_stdout_controlled<T: Serialize>(
-    value: &T,
+pub(crate) fn write_semantic_json_stdout_controlled(
+    value: &merman::ManagedSemanticJson,
     pretty: bool,
     stdout: &SharedWriter,
     control: &merman::OperationControl,
@@ -46,7 +70,7 @@ pub(crate) fn write_json_stdout_controlled<T: Serialize>(
         // Direct JSON serialization avoids a second complete buffer. Treat the final
         // checkpoint as the stdout commit point and finish serialization once it succeeds.
         crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
-        write_json_to(writer, value, pretty)
+        write_semantic_json_to(writer, value, pretty)
     })
 }
 

@@ -841,3 +841,49 @@ fn auto_layout_requires_an_explicit_width() {
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("width"));
 }
+
+#[test]
+fn node_vertical_padding_changes_rendered_report_without_collapsing_rank_gaps() {
+    let source = "flowchart TD\nA[Write code] --> B[Open PR] --> C[Merge]";
+    for format in ["ascii", "unicode"] {
+        let default = run_with_stdin(
+            &["render", "-", "--format", format, "--ascii-report"],
+            source,
+        );
+        assert!(default.status.success(), "stderr: {:?}", default.stderr);
+        let default = assert_plain_ascii_report(&default.stdout);
+        assert_eq!(default["emitted_height"], 25);
+
+        let compact_nodes = run_with_stdin(
+            &[
+                "render",
+                "-",
+                "--format",
+                format,
+                "--ascii-report",
+                "--ascii-node-padding-y",
+                "0",
+            ],
+            source,
+        );
+        assert!(
+            compact_nodes.status.success(),
+            "stderr: {:?}",
+            compact_nodes.stderr
+        );
+        let compact_nodes = assert_plain_ascii_report(&compact_nodes.stdout);
+        assert_eq!(compact_nodes["emitted_height"], 19);
+        assert_eq!(compact_nodes["emitted_width"], default["emitted_width"]);
+        assert_eq!(compact_nodes["projection"], "diagrammatic");
+        let rendered = compact_nodes["text"].as_str().expect("rendered text");
+        for label in ["Write code", "Open PR", "Merge"] {
+            assert_eq!(rendered.matches(label).count(), 1);
+        }
+        assert_eq!(
+            rendered
+                .matches(if format == "ascii" { "v" } else { "▼" })
+                .count(),
+            2
+        );
+    }
+}

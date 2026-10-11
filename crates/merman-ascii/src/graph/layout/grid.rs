@@ -5,7 +5,7 @@ use super::super::model::{
 };
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
-use super::{GridCoord, NodeLayout, charge_sort_work};
+use super::{GridCoord, NodeLayout, ROUTING_GRID_MARGIN, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
@@ -23,6 +23,7 @@ const MINIMUM_NODE_GRID_HEIGHT: usize = 3;
 const MINIMUM_NODE_GRID_CELLS: usize = MINIMUM_NODE_GRID_WIDTH * MINIMUM_NODE_GRID_HEIGHT;
 const AXIS_ENTRIES_PER_NODE: usize = 4;
 const MINIMUM_GROUP_RANK_GAP: usize = 1;
+const ROUTING_CORRIDOR_BAND_SIZE: usize = 2;
 const NODE_LABEL_PLAN_CHECKPOINT_INTERVAL: usize = 64;
 
 pub(super) type AxisSizes = HashMap<usize, usize>;
@@ -33,11 +34,13 @@ pub(super) type GridNodeLayoutParts = (Vec<NodeLayout>, AxisProjection, AxisProj
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AxisProjection {
     prefix_sizes: Vec<usize>,
+    content_cells: usize,
 }
 
 impl AxisProjection {
     fn try_new(
         axis_sizes: &AxisSizes,
+        routing_cell_count: usize,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
         checkpoint_iteration: &mut usize,
@@ -49,10 +52,11 @@ impl AxisProjection {
             max_index = Some(max_index.map_or(index, |current: usize| current.max(index)));
         }
 
-        let cell_count = max_index
+        let content_cells = max_index
             .map(|index| resources.checked_grid_add(index, 1))
             .transpose()?
             .unwrap_or_default();
+        let cell_count = content_cells.max(routing_cell_count);
         let prefix_count = resources.checked_grid_add(cell_count, 1)?;
         resources.grid_extent(prefix_count, 1)?;
         resources.charge_layout_work(cell_count)?;
@@ -63,11 +67,13 @@ impl AxisProjection {
         let mut total = 0usize;
         for index in 0..cell_count {
             checkpoint_projection(execution, checkpoint_iteration)?;
-            total = resources
-                .checked_grid_add(total, axis_sizes.get(&index).copied().unwrap_or_default())?;
+            total = resources.checked_grid_add(total, effective_axis_size(axis_sizes, index))?;
             prefix_sizes.push(total);
         }
-        Ok(Self { prefix_sizes })
+        Ok(Self {
+            prefix_sizes,
+            content_cells,
+        })
     }
 
     pub(super) fn position(&self, index: usize) -> usize {
@@ -85,6 +91,10 @@ impl AxisProjection {
         let start = start.min(cell_count);
         let end = start.saturating_add(len).min(cell_count);
         self.prefix_sizes[end] - self.prefix_sizes[start]
+    }
+
+    fn content_total(&self) -> usize {
+        self.prefix_sizes[self.content_cells]
     }
 
     fn total(&self) -> usize {
@@ -292,12 +302,13 @@ fn layout_left_right_grid_nodes(
         }
     }
 
-    finalize_node_layouts(
+    finalize_compound_node_layouts(
         graph,
         placements,
-        &column_widths,
-        &row_heights,
-        policy.terminal_width_profile,
+        topology,
+        policy,
+        &mut column_widths,
+        &mut row_heights,
         resources,
         execution,
     )
@@ -605,12 +616,13 @@ fn layout_top_down_grid_nodes(
         }
     }
 
-    finalize_node_layouts(
+    finalize_compound_node_layouts(
         graph,
         placements,
-        &column_widths,
-        &row_heights,
-        policy.terminal_width_profile,
+        topology,
+        policy,
+        &mut column_widths,
+        &mut row_heights,
         resources,
         execution,
     )
@@ -835,15 +847,14 @@ fn finalize_node_layouts(
 ) -> Result<GridNodeLayoutParts> {
     resources.transaction(|resources| {
         let mut checkpoint_iteration = 0usize;
-        let column_projection = AxisProjection::try_new(
+        let (column_projection, row_projection) = finalize_axis_projections(
+            placements.iter().copied(),
             column_widths,
+            row_heights,
             resources,
             execution,
             &mut checkpoint_iteration,
         )?;
-        let row_projection =
-            AxisProjection::try_new(row_heights, resources, execution, &mut checkpoint_iteration)?;
-        resources.grid_extent(column_projection.total(), row_projection.total())?;
         resources.charge_layout_work(placements.len())?;
         let layouts = build_node_layouts(
             graph,
@@ -855,6 +866,110 @@ fn finalize_node_layouts(
             &mut checkpoint_iteration,
         )?;
         Ok((layouts, column_projection, row_projection))
+    })
+}
+
+fn finalize_axis_projections(
+    placements: impl ExactSizeIterator<Item = GridCoord>,
+    column_widths: &AxisSizes,
+    row_heights: &AxisSizes,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+    checkpoint_iteration: &mut usize,
+) -> Result<(AxisProjection, AxisProjection)> {
+    let (routing_columns, routing_rows) =
+        routing_projection_cell_counts(placements, resources, execution)?;
+    let columns = AxisProjection::try_new(
+        column_widths,
+        routing_columns,
+        resources,
+        execution,
+        checkpoint_iteration,
+    )?;
+    let rows = AxisProjection::try_new(
+        row_heights,
+        routing_rows,
+        resources,
+        execution,
+        checkpoint_iteration,
+    )?;
+    // Routing bands are projection storage, not unused diagram cells.
+    resources.grid_extent(columns.content_total(), rows.content_total())?;
+    Ok((columns, rows))
+}
+
+fn routing_projection_cell_counts(
+    placements: impl ExactSizeIterator<Item = GridCoord>,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<(usize, usize)> {
+    resources.charge_layout_work(placements.len())?;
+    let mut max_x = 0usize;
+    let mut max_y = 0usize;
+    for (index, coord) in placements.enumerate() {
+        checkpoint_layout(execution, index)?;
+        max_x = max_x.max(resources.checked_grid_add(coord.x, 2)?);
+        max_y = max_y.max(resources.checked_grid_add(coord.y, 2)?);
+    }
+    let routing_span = resources.checked_grid_add(ROUTING_GRID_MARGIN, 1)?;
+    Ok((
+        resources.checked_grid_add(max_x, routing_span)?,
+        resources.checked_grid_add(max_y, routing_span)?,
+    ))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finalize_compound_node_layouts(
+    graph: &AsciiGraph,
+    placements: Vec<GridCoord>,
+    topology: Option<&GraphGroupTopology<'_>>,
+    policy: &GraphLayoutPolicy,
+    column_widths: &mut AxisSizes,
+    row_heights: &mut AxisSizes,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<GridNodeLayoutParts> {
+    let (mut nodes, columns, rows) = finalize_node_layouts(
+        graph,
+        placements,
+        column_widths,
+        row_heights,
+        policy.terminal_width_profile,
+        resources,
+        execution,
+    )?;
+    let Some(topology) = topology else {
+        return Ok((nodes, columns, rows));
+    };
+    groups::reserve_compound_axis_spacing(
+        graph,
+        &nodes,
+        topology,
+        policy,
+        column_widths,
+        row_heights,
+        resources,
+        execution,
+    )?;
+    resources.transaction(|resources| {
+        let mut checkpoint_iteration = 0usize;
+        let (columns, rows) = finalize_axis_projections(
+            nodes.iter().map(|node| node.grid),
+            column_widths,
+            row_heights,
+            resources,
+            execution,
+            &mut checkpoint_iteration,
+        )?;
+        resources.charge_layout_work(nodes.len())?;
+        for node in &mut nodes {
+            checkpoint_projection(execution, &mut checkpoint_iteration)?;
+            node.x = columns.position(node.grid.x);
+            node.y = rows.position(node.grid.y);
+            node.width = columns.span(node.grid.x, 3);
+            node.height = rows.span(node.grid.y, 3);
+        }
+        Ok((nodes, columns, rows))
     })
 }
 
@@ -914,7 +1029,15 @@ pub(super) fn materialize_node_labels(
     Ok(())
 }
 
-fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
+pub(super) fn effective_axis_size(axis_sizes: &AxisSizes, index: usize) -> usize {
+    axis_sizes
+        .get(&index)
+        .copied()
+        .unwrap_or(ROUTING_CORRIDOR_BAND_SIZE)
+        .max(1)
+}
+
+pub(super) fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
     axis_sizes
         .entry(index)
         .and_modify(|current| *current = (*current).max(size))
@@ -1100,9 +1223,48 @@ mod tests {
     }
 
     #[test]
+    fn routing_projection_covers_every_search_track_without_growing_diagram_content() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node("node", "Node");
+        let mut columns = AxisSizes::default();
+        let mut rows = AxisSizes::default();
+        for (index, size) in [(0, 1), (1, 6), (2, 1)] {
+            set_axis_size(&mut columns, index, size);
+        }
+        for (index, size) in [(0, 1), (1, 3), (2, 1)] {
+            set_axis_size(&mut rows, index, size);
+        }
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        let resources = ResourceContext::new(policy);
+        let (nodes, columns, rows) = finalize_node_layouts(
+            &graph,
+            vec![GridCoord { x: 0, y: 0 }],
+            &columns,
+            &rows,
+            TerminalWidthProfile::Unicode,
+            &resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .expect("bounded routing tracks should be projected");
+        let max_search_index = 2 + ROUTING_GRID_MARGIN;
+        for projection in [&columns, &rows] {
+            for index in 0..max_search_index {
+                assert!(projection.position(index) < projection.position(index + 1));
+            }
+            assert_eq!(projection.position(3) - projection.position(2), 2);
+        }
+        assert_eq!(nodes[0].x, 0);
+        assert_eq!(nodes[0].y, 0);
+        assert_eq!(nodes[0].width, 8);
+        assert_eq!(nodes[0].height, 5);
+        assert_eq!(columns.content_total(), 8);
+        assert_eq!(rows.content_total(), 5);
+    }
+
+    #[test]
     fn sparse_axis_projection_admits_linear_work_before_materializing_layouts() {
         const NODE_COUNT: usize = 256;
-        const EXPECTED_WORK: usize = 2_053;
+        const EXPECTED_WORK: usize = 2_321;
 
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         let mut placements = Vec::with_capacity(NODE_COUNT);
@@ -1134,8 +1296,11 @@ mod tests {
         )
         .expect("sparse axis projection should materialize");
         assert_eq!(layouts.len(), NODE_COUNT);
-        assert_eq!(columns.total(), NODE_COUNT * 3);
-        assert_eq!(rows.total(), 3);
+        assert_eq!(
+            columns.total(),
+            NODE_COUNT * 3 + (NODE_COUNT - 1) * 2 + ROUTING_GRID_MARGIN * 2
+        );
+        assert_eq!(rows.total(), 3 + ROUTING_GRID_MARGIN * 2);
         assert_eq!(measured.layout_work_used(), EXPECTED_WORK);
 
         let exact_policy = unbounded

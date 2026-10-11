@@ -1483,7 +1483,7 @@ pub(crate) fn render_model_to_compat_json(
     out.insert("other".to_string(), Value::Object(Map::new()));
     out.insert(
         "config".to_string(),
-        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
 }
@@ -1590,7 +1590,7 @@ mod tests {
     };
     use futures::executor::block_on;
 
-    fn parse(text: &str) -> Value {
+    fn parse(text: &str) -> crate::ManagedSemanticJson {
         let engine = Engine::new();
         block_on(engine.parse_diagram(text, ParseOptions::default()))
             .unwrap()

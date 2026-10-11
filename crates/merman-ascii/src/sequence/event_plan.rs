@@ -1,11 +1,11 @@
 use super::{SequenceCheckpointCursor, try_plan_sequence_label};
 use crate::error::{AsciiError, Result};
-use crate::options::TerminalWidthProfile;
+use crate::options::{SequenceLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{LabelBreakPolicy, NormalizedLabelPlan};
 
 use super::chars::SequenceChars;
-use super::layout::SequenceLayout;
+use super::layout::{SequenceLabelHost, SequenceLayout};
 use super::lifeline::retained_lifeline_width;
 use super::model::SequenceMessage;
 use super::text::{
@@ -16,7 +16,7 @@ use super::text::{
 pub(super) struct PreparedMessageRows {
     label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
-    label_start: usize,
+    label_host: SequenceLabelHost,
     lifeline_width: usize,
     message_footprint: SequenceRowFootprint,
 }
@@ -26,7 +26,7 @@ pub(super) struct PreparedSelfMessageRows {
     label_plan: Option<NormalizedLabelPlan>,
     extent: SequenceBatchExtent,
     geometry: SelfMessageGeometry,
-    label_start: usize,
+    label_host: SequenceLabelHost,
     lifeline_width: usize,
     message_footprint: SequenceRowFootprint,
 }
@@ -60,8 +60,14 @@ impl PreparedMessageRows {
             .map_or(0, NormalizedLabelPlan::materialization_work_units)
     }
 
-    pub(super) fn into_render_parts(self) -> (Option<NormalizedLabelPlan>, SequenceBatchExtent) {
-        (self.label_plan, self.extent)
+    pub(super) fn into_render_parts(
+        self,
+    ) -> (
+        Option<NormalizedLabelPlan>,
+        SequenceBatchExtent,
+        SequenceLabelHost,
+    ) {
+        (self.label_plan, self.extent, self.label_host)
     }
 
     pub(super) fn append_footprints(
@@ -74,7 +80,7 @@ impl PreparedMessageRows {
         MessageFootprintPlan {
             label_plan: self.label_plan,
             extent: self.extent,
-            label_start: self.label_start,
+            label_start: self.label_host.start,
             lifeline_width: self.lifeline_width,
             message_footprint: self.message_footprint,
             message_rows: 1,
@@ -99,8 +105,9 @@ impl PreparedSelfMessageRows {
         Option<NormalizedLabelPlan>,
         SequenceBatchExtent,
         SelfMessageGeometry,
+        SequenceLabelHost,
     ) {
-        (self.label_plan, self.extent, self.geometry)
+        (self.label_plan, self.extent, self.geometry, self.label_host)
     }
 
     pub(super) fn append_footprints(
@@ -113,7 +120,7 @@ impl PreparedSelfMessageRows {
         MessageFootprintPlan {
             label_plan: self.label_plan,
             extent: self.extent,
-            label_start: self.label_start,
+            label_start: self.label_host.start,
             lifeline_width: self.lifeline_width,
             message_footprint: self.message_footprint,
             message_rows: 3,
@@ -175,7 +182,7 @@ impl SelfMessageGeometry {
         resources: &ResourceContext,
     ) -> Result<Self> {
         let center = layout.participant_centers[message.from];
-        let width = effective_self_message_width(message, layout, chars);
+        let width = effective_self_message_width(message, layout.policy, chars);
         let loop_right_offset = width.checked_sub(1).ok_or_else(invalid_message_geometry)?;
         let loop_right = resources.checked_grid_add(center, loop_right_offset)?;
         Ok(Self {
@@ -214,7 +221,7 @@ pub(super) fn ensure_message_actors_visible(
     })
 }
 
-fn message_label_plan(
+pub(super) fn message_label_plan(
     message: &SequenceMessage,
     max_width: usize,
     width_profile: TerminalWidthProfile,
@@ -241,6 +248,31 @@ fn message_label_plan(
     )
 }
 
+fn prepare_message_label(
+    message: &SequenceMessage,
+    layout: &SequenceLayout,
+    resources: &ResourceContext,
+    checkpoints: &mut SequenceCheckpointCursor<'_>,
+) -> Result<(SequenceLabelHost, Option<NormalizedLabelPlan>)> {
+    let label_host = layout.message_label_host(message, resources)?;
+    let label_plan = match layout.message_labels.get(&message.model_index).copied() {
+        Some(plan) if !message.wrap => Some(plan),
+        _ => message_label_plan(
+            message,
+            label_host.width(),
+            layout.policy.terminal_width_profile,
+            resources,
+            checkpoints,
+        )?,
+    };
+    if let Some(plan) = label_plan {
+        checkpoints.before_charge()?;
+        plan.check_materialization_limits(resources)?;
+        label_host.verify_width(plan.metrics().max_width, resources)?;
+    }
+    Ok((label_host, label_plan))
+}
+
 pub(super) fn prepare_message_rows(
     message: &SequenceMessage,
     layout: &SequenceLayout,
@@ -263,23 +295,11 @@ fn prepare_message_rows_transactional(
 ) -> Result<PreparedMessageRows> {
     let from = layout.participant_centers[message.from];
     let to = layout.participant_centers[message.to];
-    let label_plan = message_label_plan(
-        message,
-        from.abs_diff(to)
-            .saturating_sub(layout.policy.message_label_left_margin),
-        layout.policy.terminal_width_profile,
-        resources,
-        checkpoints,
-    )?;
-    if let Some(plan) = label_plan {
-        checkpoints.before_charge()?;
-        plan.check_materialization_limits(resources)?;
-    }
+    let (label_host, label_plan) = prepare_message_label(message, layout, resources, checkpoints)?;
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
     let row_count =
         resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 1)?;
-    let start =
-        resources.checked_grid_add(from.min(to), layout.policy.message_label_left_margin)?;
+    let start = label_host.start;
     let mut max_width = resources.checked_grid_add(layout.total_width, 1)?;
     if let Some(metrics) = label_metrics {
         let label_right = resources.checked_grid_add(start, metrics.max_width)?;
@@ -318,7 +338,7 @@ fn prepare_message_rows_transactional(
     Ok(PreparedMessageRows {
         label_plan,
         extent,
-        label_start: start,
+        label_host,
         lifeline_width,
         message_footprint,
     })
@@ -355,23 +375,11 @@ fn prepare_self_message_rows_transactional(
 ) -> Result<PreparedSelfMessageRows> {
     let center = layout.participant_centers[message.from];
     let geometry = SelfMessageGeometry::try_new(message, layout, chars, resources)?;
-    let label_wrap_width =
-        resources.checked_grid_add(geometry.width, layout.policy.message_label_overflow_buffer)?;
-    let label_plan = message_label_plan(
-        message,
-        label_wrap_width,
-        layout.policy.terminal_width_profile,
-        resources,
-        checkpoints,
-    )?;
-    if let Some(plan) = label_plan {
-        checkpoints.before_charge()?;
-        plan.check_materialization_limits(resources)?;
-    }
+    let (label_host, label_plan) = prepare_message_label(message, layout, resources, checkpoints)?;
     let label_metrics = label_plan.map(NormalizedLabelPlan::metrics);
     let row_count =
         resources.checked_grid_add(label_metrics.map_or(0, |metrics| metrics.line_count), 3)?;
-    let start = resources.checked_grid_add(center, layout.policy.message_label_left_margin)?;
+    let start = label_host.start;
     let mut max_width = geometry.materialized_width;
     if let Some(metrics) = label_metrics {
         let label_right = resources.checked_grid_add(start, metrics.max_width)?;
@@ -413,15 +421,15 @@ fn prepare_self_message_rows_transactional(
         label_plan,
         extent,
         geometry,
-        label_start: start,
+        label_host,
         lifeline_width,
         message_footprint,
     })
 }
 
-fn effective_self_message_width(
+pub(super) fn effective_self_message_width(
     message: &SequenceMessage,
-    layout: &SequenceLayout,
+    policy: SequenceLayoutPolicy,
     chars: &SequenceChars,
 ) -> usize {
     let has_filled_half_stem = [message.source_marker, message.target_marker]
@@ -429,9 +437,9 @@ fn effective_self_message_width(
         .filter_map(|marker| chars.arrow_left(marker))
         .any(|glyph| glyph.lineward_stem.is_some());
     if has_filled_half_stem {
-        layout.policy.self_message_width.max(4)
+        policy.self_message_width.max(4)
     } else {
-        layout.policy.self_message_width
+        policy.self_message_width
     }
 }
 
@@ -469,6 +477,7 @@ mod tests {
         policy.message_spacing = 5;
         policy.self_message_width = 2;
         SequenceLayout {
+            message_labels: Default::default(),
             participant_widths: vec![3],
             participant_centers: vec![2],
             total_width: 5,

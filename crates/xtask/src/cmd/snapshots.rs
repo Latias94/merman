@@ -282,7 +282,7 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             }
         };
 
-        let mut artifact_json = match artifact.layout_json() {
+        let artifact_json = match artifact.layout_json() {
             Ok(value) => value,
             Err(err) => {
                 failures.push(format!(
@@ -293,8 +293,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             }
         };
         let Some(mut layout_json) = artifact_json
-            .as_object_mut()
-            .and_then(|object| object.remove("layout"))
+            .get("layout")
+            .map(|value| merman_core::ManagedSemanticJson::from(value).into_unmanaged_value())
         else {
             failures.push(format!(
                 "layout artifact for {} omitted its layout projection",
@@ -806,7 +806,7 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             continue;
         }
 
-        let mut model = parsed.model;
+        let mut model = parsed.model.into_unmanaged_value();
         if let JsonValue::Object(obj) = &mut model {
             obj.remove("config");
             if parsed.meta.diagram_type == "mindmap" && obj.get("diagramId").is_some() {

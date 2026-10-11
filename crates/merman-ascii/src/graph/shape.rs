@@ -387,6 +387,14 @@ pub(super) struct GraphNodeShapeSemantics {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum GraphNodeSide {
+    Top,
+    Right,
+    Bottom,
+    Left,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GraphNodeShapeSize {
     pub(super) width: usize,
     pub(super) height: usize,
@@ -418,11 +426,12 @@ impl GraphNodeShapeSemantics {
         policy: &GraphLayoutPolicy,
         resources: &ResourceContext,
     ) -> Result<GraphNodeShapeSize> {
-        let border_padding = resources.checked_grid_mul(policy.node_border_padding, 2)?;
-        let framed_width = resources
-            .checked_grid_add(resources.checked_grid_add(label_width, border_padding)?, 2)?;
+        let padding_x = resources.checked_grid_mul(policy.node_padding_x, 2)?;
+        let padding_y = resources.checked_grid_mul(policy.node_padding_y, 2)?;
+        let framed_width =
+            resources.checked_grid_add(resources.checked_grid_add(label_width, padding_x)?, 2)?;
         let framed_height = resources.checked_grid_add(
-            resources.checked_grid_add(label_content_height, border_padding)?,
+            resources.checked_grid_add(label_content_height, padding_y)?,
             2,
         )?;
 
@@ -496,10 +505,141 @@ impl GraphNodeShapeSemantics {
         Ok(size)
     }
 
-    pub(super) fn uses_external_self_loop_connector(self) -> bool {
+    pub(super) fn needs_contour_terminal_lowering(self) -> bool {
+        matches!(
+            self.shape,
+            GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft
+        )
+    }
+
+    pub(super) fn horizontal_span(
+        self,
+        node: &super::layout::NodeLayout,
+        y: usize,
+    ) -> Option<(usize, usize)> {
+        if !(node.y..=node.bottom()).contains(&y) {
+            return None;
+        }
+        if !matches!(
+            self.shape,
+            GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft
+        ) {
+            return Some((node.x, node.right()));
+        }
+        let slant = node
+            .height
+            .saturating_sub(1)
+            .min(node.width.saturating_sub(2));
+        let progress = y - node.y;
+        let shift = progress.saturating_mul(slant) / node.height.saturating_sub(1).max(1);
+        Some(match self.shape {
+            GraphNodeShape::LeanRight => (node.x + shift, node.right() - slant + shift),
+            GraphNodeShape::LeanLeft => (node.x + slant - shift, node.right() - shift),
+            _ => unreachable!(),
+        })
+    }
+
+    pub(super) fn route_contact(
+        self,
+        node: &super::layout::NodeLayout,
+        side: GraphNodeSide,
+        intercept: usize,
+    ) -> Option<super::layout::CanvasCoord> {
+        use super::layout::CanvasCoord;
+        let contact = match side {
+            GraphNodeSide::Left | GraphNodeSide::Right => {
+                let (left, right) = self.horizontal_span(node, intercept)?;
+                CanvasCoord {
+                    x: if side == GraphNodeSide::Left {
+                        left
+                    } else {
+                        right
+                    },
+                    y: intercept,
+                }
+            }
+            GraphNodeSide::Top | GraphNodeSide::Bottom => {
+                if !(node.x..=node.right()).contains(&intercept) {
+                    return None;
+                }
+                let slant = node
+                    .height
+                    .saturating_sub(1)
+                    .min(node.width.saturating_sub(2));
+                let progress = if slant == 0
+                    || !matches!(
+                        self.shape,
+                        GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft
+                    ) {
+                    if side == GraphNodeSide::Top {
+                        0
+                    } else {
+                        node.height - 1
+                    }
+                } else {
+                    let (minimum_shift, maximum_shift) = match self.shape {
+                        GraphNodeShape::LeanRight => (
+                            intercept.saturating_sub(node.right() - slant),
+                            (intercept - node.x).min(slant),
+                        ),
+                        GraphNodeShape::LeanLeft => (
+                            (node.x + slant).saturating_sub(intercept),
+                            (node.right() - intercept).min(slant),
+                        ),
+                        _ => unreachable!(),
+                    };
+                    let height = (node.height - 1) as u128;
+                    let denominator = slant as u128;
+                    if side == GraphNodeSide::Top {
+                        ((minimum_shift as u128 * height).div_ceil(denominator)) as usize
+                    } else if maximum_shift == slant {
+                        node.height - 1
+                    } else {
+                        (((maximum_shift + 1) as u128 * height).div_ceil(denominator) - 1) as usize
+                    }
+                };
+                CanvasCoord {
+                    x: intercept,
+                    y: node.y + progress,
+                }
+            }
+        };
+        self.allows_route_contact(node, contact).then_some(contact)
+    }
+
+    pub(super) fn allows_route_contact(
+        self,
+        node: &super::layout::NodeLayout,
+        contact: super::layout::CanvasCoord,
+    ) -> bool {
+        match self.shape {
+            GraphNodeShape::Diamond | GraphNodeShape::Choice => {
+                if contact.x == node.x || contact.x == node.right() {
+                    contact.y == node.center_y()
+                } else {
+                    contact.x == node.center_x()
+                }
+            }
+            GraphNodeShape::LeanRight | GraphNodeShape::LeanLeft => self
+                .horizontal_span(node, contact.y)
+                .is_some_and(|(left, right)| {
+                    contact.x == left
+                        || contact.x == right
+                        || ((contact.y == node.y || contact.y == node.bottom())
+                            && (left..=right).contains(&contact.x))
+                }),
+            _ => true,
+        }
+    }
+
+    pub(super) fn uses_route_connector(self) -> bool {
         !matches!(
             self.shape,
-            GraphNodeShape::Diamond | GraphNodeShape::Choice | GraphNodeShape::Text
+            GraphNodeShape::Diamond
+                | GraphNodeShape::Choice
+                | GraphNodeShape::Text
+                | GraphNodeShape::LeanRight
+                | GraphNodeShape::LeanLeft
         )
     }
 
@@ -723,9 +863,9 @@ mod tests {
         let choice = GraphNodeShapeSemantics::new(GraphNodeShape::Choice);
         let state_start = GraphNodeShapeSemantics::new(GraphNodeShape::StateStart);
 
-        assert!(rect.uses_external_self_loop_connector());
-        assert!(!diamond.uses_external_self_loop_connector());
-        assert!(!choice.uses_external_self_loop_connector());
+        assert!(rect.uses_route_connector());
+        assert!(!diamond.uses_route_connector());
+        assert!(!choice.uses_route_connector());
 
         assert!(!rect.uses_drop_then_turn_bent_route());
         assert!(!diamond.uses_drop_then_turn_bent_route());

@@ -28,7 +28,11 @@ fn flowchart_parser_top_down_branch_merge_preserves_dagre_rank_and_connectivity(
     );
     assert!(line_index("Execute") < line_index("End"), "{rendered}");
     assert!(
-        rendered.matches('▼').count() >= 4,
+        rendered
+            .chars()
+            .filter(|ch| matches!(ch, '▼' | '▲' | '►' | '◄'))
+            .count()
+            == 4,
         "all four semantic edges should retain target markers:\n{rendered}"
     );
 }

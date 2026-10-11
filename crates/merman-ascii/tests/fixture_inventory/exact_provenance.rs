@@ -194,8 +194,14 @@ fn fixture_source_provenance_pins_bytes_and_historical_transforms() {
             })
             .to_string_lossy()
             .replace('\\', "/");
-        let bytes = fs::read(&fixture_path)
+        let checkout_bytes = fs::read(&fixture_path)
             .unwrap_or_else(|error| panic!("failed to read {}: {error}", fixture_path.display()));
+        // Hash canonical Git text bytes: Windows checkouts may expand LF to CRLF.
+        // All other UTF-8 bytes and trailing newlines remain part of the pinned digest.
+        let bytes = String::from_utf8(checkout_bytes)
+            .expect("copied source fixtures must be UTF-8")
+            .replace("\r\n", "\n")
+            .into_bytes();
         aggregate.update((relative.len() as u64).to_le_bytes());
         aggregate.update(relative.as_bytes());
         aggregate.update((bytes.len() as u64).to_le_bytes());

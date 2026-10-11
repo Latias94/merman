@@ -50,6 +50,7 @@ pub mod time;
 pub mod utils;
 mod yaml_config;
 
+pub use compatibility_json::ManagedSemanticJson;
 pub use config::MermaidConfig;
 #[cfg(test)]
 use config::ThemeParseBinding;
@@ -506,7 +507,7 @@ fn merge_site_config_override(target: &mut MermaidConfig, mut site_config: Merma
         .as_value()
         .get("secure")
         .filter(|value| value.is_array())
-        .map(config::clone_value_nonrecursive);
+        .map(crate::compatibility_json::clone_value_nonrecursive);
     target.deep_merge_explicit(site_config.as_value());
 
     // Merman adds host-level hardening beyond Mermaid's upstream defaults. An explicit site

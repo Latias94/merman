@@ -883,7 +883,28 @@ A[Plain source]"##,
             1,
             "{cleanup_out}"
         );
-        assert!(cleanup_out.contains("Only fallback"));
+        let document = roxmltree::Document::parse(&cleanup_out).expect("valid SVG");
+        let fallback_group = document
+            .descendants()
+            .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+            .expect("the unique nonduplicate fallback must remain");
+        let rows: Vec<_> = fallback_group
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| {
+                node.descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+            })
+            .collect();
+        assert_eq!(rows, ["Only", "fallback"], "{cleanup_out}");
+        let fallback_label = rows
+            .join(" ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(fallback_label, "Only fallback", "{cleanup_out}");
         assert!(cleanup_out.contains(r#"<text class="task">Make tea</text>"#));
         assert!(!cleanup_out.contains("<foreignObject"));
     }
@@ -989,6 +1010,33 @@ Missing ref: id2,after missing,1d
 
         assert!(json.get("meta").is_some());
         assert!(json.get("layout").is_some());
+    }
+
+    #[cfg(feature = "diagram-ishikawa")]
+    #[test]
+    fn layout_json_exports_deep_semantic_tree() {
+        use std::fmt::Write as _;
+
+        let mut source = String::from("ishikawa-beta\n  Root\n");
+        for index in 0..150 {
+            writeln!(source, "{}Node {index}", "  ".repeat(index + 2)).unwrap();
+        }
+        let semantic = merman::Engine::new()
+            .parse_diagram_sync(&source, merman::ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert!(serde_json::to_vec(&semantic.model).is_err());
+
+        let bytes = layout_json(
+            source.as_bytes(),
+            br#"{"resources":{"profile":"unbounded-for-trusted-input"}}"#,
+        )
+        .expect("layout transport supports semantic trees beyond generic serde depth");
+        let json = String::from_utf8(bytes).unwrap();
+        assert!(json.contains("\"meta\":"));
+        assert!(json.contains("\"semantic\":"));
+        assert!(json.contains("\"layout\":"));
+        assert!(json.contains("\"text\":\"Node 149\""));
     }
 
     #[test]

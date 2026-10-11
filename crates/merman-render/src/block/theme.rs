@@ -1668,25 +1668,19 @@ mod tests {
             target: ThemeTarget::Node,
         };
         for class_owned in [false, true] {
-            let mut value = serde_json::json!({
-                "blocksFlat": [{
-                    "id": "root", "type": "composite", "columns": 1,
-                    "children": [{
-                        "id": "A", "type": "square", "label": "Alpha",
-                        "styles": ["fill:#bb0000"], "classes": []
-                    }]
-                }],
-                "classes": {}
-            });
-            if class_owned {
-                value["blocksFlat"][0]["children"][0]["styles"] = serde_json::json!([]);
-                value["blocksFlat"][0]["children"][0]["classes"] = serde_json::json!(["brand"]);
-                value["classes"] = serde_json::json!({"brand": {
-                    "id": "brand", "styles": ["fill:#bb0000"]
-                }});
-            }
-            let mut model: merman_core::diagrams::block::BlockDiagramRenderModel =
-                serde_json::from_value(value).unwrap();
+            let source = if class_owned {
+                "block\nA[\"Alpha\"]\nclassDef brand fill:#bb0000\nclass A brand\n"
+            } else {
+                "block\nA[\"Alpha\"]\nstyle A fill:#bb0000\n"
+            };
+            let parsed = merman_core::Engine::new()
+                .parse_diagram_for_render_model_sync(source, merman_core::ParseOptions::strict())
+                .expect("parse Block source ownership fixture")
+                .expect("detect Block source ownership fixture");
+            let mut model = match parsed.model() {
+                merman_core::RenderSemanticModel::Block(model) => model.clone(),
+                _ => panic!("expected Block render model"),
+            };
             let layout = crate::block::layout_block_diagram_typed(
                 &model,
                 &serde_json::json!({}),
@@ -1700,13 +1694,11 @@ mod tests {
             assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
             assert!(evidence.residuals().is_empty());
 
-            // Empty fragments preserve the nested source, just as the terminal writer does.
-            model.blocks_flat.push(
-                serde_json::from_value(serde_json::json!({
-                    "id": "A", "type": "na"
-                }))
-                .unwrap(),
-            );
+            // Empty fragments preserve the earlier source, just as the terminal writer does.
+            let mut fragment = merman_core::diagrams::block::BlockNodeRenderModel::default();
+            fragment.id = "A".to_string();
+            fragment.block_type = "na".to_string();
+            model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
             let evidence = plan.finish_evidence();
@@ -1714,13 +1706,12 @@ mod tests {
             assert!(evidence.residuals().is_empty());
 
             // A later non-empty list replaces the corresponding source list.
-            model.blocks_flat.push(
-                serde_json::from_value(serde_json::json!({
-                    "id": "A", "type": "na", "styles": ["stroke:#00bb00"],
-                    "classes": ["unowned"]
-                }))
-                .unwrap(),
-            );
+            let mut fragment = merman_core::diagrams::block::BlockNodeRenderModel::default();
+            fragment.id = "A".to_string();
+            fragment.block_type = "na".to_string();
+            fragment.styles = vec!["stroke:#00bb00".to_string()];
+            fragment.classes = vec!["unowned".to_string()];
+            model.blocks_flat.push(fragment);
             let plan =
                 resolve_node_paint(Some(&theme), &config, &model, &layout, &work_meter).unwrap();
             let evidence = plan.finish_evidence();

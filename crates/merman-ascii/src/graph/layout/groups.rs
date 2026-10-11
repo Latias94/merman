@@ -12,6 +12,9 @@ mod direction;
 mod members;
 mod placement;
 mod side_constraints;
+mod spacing;
+
+pub(super) use spacing::reserve_compound_axis_spacing;
 
 use self::bounds::RawBounds;
 use self::members::{
@@ -38,25 +41,15 @@ pub(super) fn apply_group_placement_adjustments(
     )
 }
 
-pub(super) fn subgraph_offsets(
+pub(super) fn layout_scene_groups(
     graph: &AsciiGraph,
-    layouts: &[NodeLayout],
-    topology: &GraphGroupTopology<'_>,
-    policy: &GraphLayoutPolicy,
-    resources: &mut ResourceContext,
-) -> Result<(usize, usize)> {
-    bounds::subgraph_offsets(graph, layouts, topology, policy, resources)
-}
-
-pub(super) fn layout_groups(
-    graph: &AsciiGraph,
-    layouts: &[NodeLayout],
+    layouts: &mut [NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<LaidOutGroups> {
-    bounds::layout_groups(graph, layouts, topology, policy, resources, execution)
+) -> Result<(LaidOutGroups, usize, usize)> {
+    bounds::layout_scene_groups(graph, layouts, topology, policy, resources, execution)
 }
 
 pub(super) fn empty_group_minimum_size(

@@ -1,4 +1,5 @@
 use super::*;
+use crate::environment::RenderEnvironment;
 use crate::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitId, ResourceLimitPhase,
 };
@@ -505,4 +506,90 @@ fn block_marker_writer_rejects_missing_duplicate_and_mismatched_layout() {
             "{case}: {error}"
         );
     }
+}
+
+#[test]
+fn diagram_id_terminal_precedes_later_block_model_validation() {
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, 1)
+        .expect("valid SVG byte limit");
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .expect("begin render session");
+    let request = SvgRenderOptions {
+        diagram_id: Some("terminal".to_string()),
+        ..SvgRenderOptions::default()
+    };
+    let debug = SvgDebugOptions::default();
+    let options =
+        SvgExecution::unthemed_for_test(&request, &debug, &session, crate::DiagramFamilyId::BLOCK)
+            .expect("SVG execution");
+    let layout = BlockDiagramLayout {
+        nodes: vec![LayoutNode {
+            id: "node".to_string(),
+            x: 0.0,
+            y: 0.0,
+            width: 10.0,
+            height: 10.0,
+            is_cluster: false,
+            label_width: None,
+            label_height: None,
+        }],
+        edges: Vec::new(),
+        shape_geometries: Vec::new(),
+        bounds: None,
+    };
+    let parsed = merman_core::Engine::new()
+        .parse_diagram_for_render_model_sync("block\nnode\n", merman_core::ParseOptions::strict())
+        .expect("parse Block render model")
+        .expect("Block input is detected");
+    let merman_core::RenderSemanticModel::Block(model) = parsed.model() else {
+        panic!("expected Block render model");
+    };
+
+    let config = &parsed.metadata().effective_config;
+    let typography = BlockTypographyThemePlan::resolve(None, config).unwrap();
+    let labels =
+        BlockNodeLabelPaintPlan::resolve(None, config, model, &layout, options.work_meter())
+            .unwrap();
+    let edges = crate::block::BlockEdgePaintPlan::resolve(
+        None,
+        config,
+        model,
+        &layout,
+        options.work_meter(),
+    )
+    .unwrap();
+    let markers = crate::block::BlockMarkerPaintPlan::resolve(
+        None,
+        config,
+        model,
+        &layout,
+        options.work_meter(),
+    )
+    .unwrap();
+    let background = BlockLabelBackgroundPlan::resolve(
+        None,
+        config,
+        &typography.css_binding().edge_label_background,
+        options.work_meter(),
+    )
+    .unwrap();
+    let error = render_block_diagram_svg_model_with_theme(
+        &layout,
+        model,
+        &BlockNodePaintThemePlan::baseline(),
+        &labels,
+        &edges,
+        &markers,
+        &background,
+        &typography,
+        &options,
+    )
+    .expect_err("diagram-id projection must stop before missing geometry validation");
+    let Error::ResourceLimitExceeded(details) = error else {
+        panic!("expected SVG byte resource rejection");
+    };
+    assert_eq!(details.limit, ResourceLimitId::MaxSvgBytes.as_str());
 }

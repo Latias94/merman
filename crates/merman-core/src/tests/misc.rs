@@ -822,7 +822,7 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
                     "retained config for {label}"
                 );
 
-                crate::config::drop_value_nonrecursive(model);
+                drop(model);
             }
 
             {
@@ -844,7 +844,7 @@ fn retained_semantic_config_handles_deep_public_config_with_small_stack() {
                     "retained config for {label}"
                 );
 
-                crate::config::drop_value_nonrecursive(model);
+                drop(model);
             }
         })
         .expect("spawn deep retained semantic config test");
@@ -897,7 +897,7 @@ fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stac
                     "retained config for {label}"
                 );
 
-                crate::config::drop_value_nonrecursive(model);
+                drop(model);
             }
 
             for (label, diagram_type, source) in [
@@ -917,7 +917,7 @@ fn remaining_retained_semantic_config_handles_deep_public_config_with_small_stac
                     "retained config for {label}"
                 );
 
-                crate::config::drop_value_nonrecursive(model);
+                drop(model);
             }
         })
         .expect("spawn remaining deep retained semantic config test");

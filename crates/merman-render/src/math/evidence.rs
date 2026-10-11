@@ -76,6 +76,7 @@ impl PreparedMathStyleAssurance {
         }
     }
 
+    #[cfg(any(test, merman_internal_theme_acceptance))]
     pub(crate) fn opaque_html(requested_foreground: &str, requested_font_size_px: f64) -> Self {
         Self {
             requested_foreground: Arc::from(requested_foreground),

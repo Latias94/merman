@@ -1,8 +1,8 @@
 use criterion::{BatchSize, BenchmarkId, Criterion, criterion_group, criterion_main};
 use merman::svg::{LayoutOptions, RenderResourcePolicy, SvgDebugOptions, SvgRenderOptions};
-use merman_core::{DetectorRegistry, Engine, ParseOptions};
+use merman_core::{DetectorRegistry, Engine, ManagedSemanticJson, ParseOptions};
 use merman_render::environment::RenderEnvironment;
-use serde_json::{Value, json};
+use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::{hint::black_box, sync::OnceLock};
 
@@ -61,8 +61,11 @@ fn emit_preflight(group: &str, name: &str, identity: &OutputIdentity) {
     );
 }
 
-fn json_output_identity(output_kind: &str, value: &Value) -> OutputIdentity {
-    let output = serde_json::to_vec(value).expect("benchmark JSON output must serialize");
+fn json_output_identity(output_kind: &str, value: &ManagedSemanticJson) -> OutputIdentity {
+    let mut output = Vec::new();
+    value
+        .write_json(&mut output)
+        .expect("benchmark JSON output must serialize");
     output_identity(output_kind, &output, None)
 }
 
@@ -556,7 +559,7 @@ fn bench_frontmatter_preprocess(c: &mut Criterion) {
                 "title": pre.title.as_deref(),
                 "config": pre.config.as_value(),
             });
-            json_output_identity("preprocessed_diagram", &projection)
+            json_output_identity("preprocessed_diagram", &projection.into())
         };
         let preflight = output_identity();
         emit_preflight("frontmatter_preprocess", name, &preflight);

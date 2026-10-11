@@ -906,6 +906,7 @@ mod tests {
         let mut policy = AsciiRenderOptions::unicode().sequence_layout();
         policy.self_message_width = 1;
         SequenceLayout {
+            message_labels: Default::default(),
             participant_widths: Vec::new(),
             participant_centers: Vec::new(),
             total_width: 0,

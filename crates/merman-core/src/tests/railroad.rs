@@ -439,3 +439,107 @@ fn railroad_detection_is_case_insensitive_but_semantic_headers_are_exact() {
         );
     }
 }
+
+#[test]
+fn railroad_constructed_depth_counts_postfix_groups_and_collection_nodes() {
+    use crate::diagrams::railroad::RailroadAstNode;
+
+    let engine = Engine::new();
+    let limit = MAX_DIAGRAM_NESTING_DEPTH;
+    let cases = [
+        (
+            "railroad-beta",
+            "=",
+            format!(
+                "{}terminal(\"a\"){}",
+                "optional(".repeat(limit),
+                ")".repeat(limit)
+            ),
+            format!(
+                "{}terminal(\"a\"){}",
+                "optional(".repeat(limit + 1),
+                ")".repeat(limit + 1)
+            ),
+        ),
+        (
+            "railroad-ebnf-beta",
+            "=",
+            format!("{}\"a\"?{}", "[".repeat(limit - 1), "]".repeat(limit - 1)),
+            format!("{}\"a\"?{}", "[".repeat(limit), "]".repeat(limit)),
+        ),
+        (
+            "railroad-abnf-beta",
+            "=",
+            format!("*{}\"a\"{}", "[".repeat(limit - 1), "]".repeat(limit - 1)),
+            format!("*{}\"a\"{}", "[".repeat(limit), "]".repeat(limit)),
+        ),
+        (
+            "railroad-peg-beta",
+            "<-",
+            format!("{}\"a\"{}", "(".repeat(limit), ")?".repeat(limit)),
+            format!("{}\"a\"?{}", "(".repeat(limit), ")?".repeat(limit)),
+        ),
+    ];
+    for (header, assignment, accepted, excessive) in cases {
+        let source = format!("{header}\nentry {assignment} {accepted} ;\n");
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .expect("exact constructed-depth boundary parses")
+            .unwrap();
+        let RenderSemanticModel::Railroad(model) = parsed.model() else {
+            panic!("expected Railroad model");
+        };
+        let mut pending = vec![(&model.rules[0].definition, 0usize)];
+        let mut actual_depth = 0;
+        while let Some((node, depth)) = pending.pop() {
+            actual_depth = actual_depth.max(depth);
+            match node {
+                RailroadAstNode::Sequence { elements, .. } => {
+                    pending.extend(elements.iter().map(|child| (child, depth + 1)));
+                }
+                RailroadAstNode::Choice { alternatives, .. } => {
+                    pending.extend(alternatives.iter().map(|child| (child, depth + 1)));
+                }
+                RailroadAstNode::Optional { element, .. } => pending.push((element, depth + 1)),
+                RailroadAstNode::Repetition {
+                    element, separator, ..
+                } => {
+                    pending.push((element, depth + 1));
+                    if let Some(separator) = separator {
+                        pending.push((separator, depth + 1));
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(actual_depth, limit, "{header}");
+        let source = format!("{header}\nentry {assignment} {excessive} ;\n");
+        let error = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .expect_err("first constructed-depth excess must be rejected");
+        assert!(
+            error
+                .to_string()
+                .contains("railroad nesting depth exceeds 256"),
+            "{header}: {error}"
+        );
+    }
+
+    let deepest = format!("\"a\"{}", "?".repeat(limit));
+    for expression in [
+        format!("{deepest}, \"b\""),
+        format!("{deepest} | \"b\""),
+        format!("{deepest} - \"b\""),
+    ] {
+        let source = format!("railroad-ebnf-beta\nentry = {expression} ;\n");
+        let error = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .expect_err("sequence, choice, and exception nodes count as owned layers");
+        assert!(
+            error
+                .to_string()
+                .contains("railroad nesting depth exceeds 256"),
+            "{error}"
+        );
+    }
+}

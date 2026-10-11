@@ -51,20 +51,6 @@ use crate::render::prepare_render_for_mmdc;
 #[cfg(any(feature = "svg", feature = "ascii"))]
 use crate::render::{execute_render, prepare_render_for_native};
 
-#[derive(Serialize)]
-struct MetaOut<'a> {
-    diagram_type: &'a str,
-    config: &'a Value,
-    effective_config: &'a Value,
-    title: Option<&'a str>,
-}
-
-#[derive(Serialize)]
-struct ParseOut<'a> {
-    meta: MetaOut<'a>,
-    model: &'a Value,
-}
-
 pub(crate) fn run(
     preflight: LocalPreflight,
     #[cfg(any(feature = "svg", feature = "ascii"))] operation_control: &merman::OperationControl,
@@ -210,20 +196,33 @@ fn run_parse(args: ResolvedParse, context: &mut ExecutionContext) -> Result<(), 
         return Err(CliError::NoDiagram);
     };
 
-    if args.meta {
-        let out = ParseOut {
-            meta: MetaOut {
-                diagram_type: &parsed.meta.diagram_type,
-                config: parsed.meta.config.as_value(),
-                effective_config: parsed.meta.effective_config.as_value(),
-                title: parsed.meta.title.as_deref(),
-            },
-            model: &parsed.model,
-        };
-        print_json(&out, args.pretty, &context.stdout)?;
+    let model = if args.meta {
+        let mut metadata = serde_json::Map::new();
+        metadata.insert(
+            "diagram_type".to_owned(),
+            Value::String(parsed.meta.diagram_type),
+        );
+        metadata.insert(
+            "config".to_owned(),
+            merman::ManagedSemanticJson::from(parsed.meta.config.as_value()).into_unmanaged_value(),
+        );
+        metadata.insert(
+            "effective_config".to_owned(),
+            merman::ManagedSemanticJson::from(parsed.meta.effective_config.as_value())
+                .into_unmanaged_value(),
+        );
+        metadata.insert(
+            "title".to_owned(),
+            parsed.meta.title.map(Value::String).unwrap_or(Value::Null),
+        );
+        let mut output = serde_json::Map::new();
+        output.insert("meta".to_owned(), Value::Object(metadata));
+        output.insert("model".to_owned(), parsed.model.into_unmanaged_value());
+        merman::ManagedSemanticJson::from(Value::Object(output))
     } else {
-        print_json(&parsed.model, args.pretty, &context.stdout)?;
-    }
+        parsed.model
+    };
+    crate::diagnostics::write_semantic_json_stdout(&model, args.pretty, &context.stdout)?;
     Ok(())
 }
 
@@ -255,7 +254,7 @@ fn run_layout(
     let merman::RenderOutput::LayoutJson(Some(layout_json)) = output else {
         return Err(CliError::NoDiagram);
     };
-    crate::diagnostics::write_json_stdout_controlled(
+    crate::diagnostics::write_semantic_json_stdout_controlled(
         layout_json.layout(),
         args.pretty,
         &context.stdout,
@@ -442,6 +441,7 @@ fn run_completion(args: CompletionArgs, stdout: &SharedWriter) -> Result<(), Cli
     write_stdout(&output, stdout)
 }
 
+#[cfg(feature = "analysis")]
 fn print_json<T: Serialize>(
     value: &T,
     pretty: bool,

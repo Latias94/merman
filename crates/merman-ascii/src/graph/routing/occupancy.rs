@@ -1,10 +1,13 @@
 use super::super::label::GRAPH_LABEL_LINE_GAP;
 use super::super::layout::{CanvasCoord, GraphLayout, GroupLayout};
 use super::super::model::GraphGroupKind;
+use super::cell::{
+    DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP, route_char_directions, stroke_route_char,
+};
 use super::path::StepDirection;
 use super::plan::{
     LabelAnchor, MAX_MARKER_CANDIDATES, MarkerCandidate, MarkerEndpoint, PlannedCellId,
-    PlannedRouteSegment, RoutePlan,
+    PlannedRouteCellKind, PlannedRouteSegment, RoutePlan,
 };
 use super::{PreparedRoute, RouteOwner, layout_allocation_failed};
 use crate::error::{AsciiError, Result};
@@ -21,8 +24,29 @@ const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 
 pub(super) use labels::allocate_route_label_placements;
 use labels::{label_anchor_contains, resolve_label_anchor, route_label_candidates};
+#[cfg(test)]
+pub(super) use marker::allocate_marker_berths;
 use marker::marker_candidate_continues_chain;
-pub(super) use marker::{MarkerCandidateDisposition, allocate_marker_berths};
+pub(super) use marker::{MarkerCandidateDisposition, allocate_committed_route_marker_berths};
+
+fn own_terminal_marker_escape(
+    protected: &ProtectedGeometry<'_>,
+    endpoint_id: &str,
+    plan: &RoutePlan,
+    endpoint: MarkerEndpoint,
+    candidate: MarkerCandidate,
+) -> bool {
+    if protected.kind != ProtectedKind::Node || protected.owner_id != endpoint_id {
+        return false;
+    }
+    plan.attachments.is_some_and(|attachments| {
+        let attachment = match endpoint {
+            MarkerEndpoint::Start => attachments.start,
+            MarkerEndpoint::End => attachments.end,
+        };
+        candidate.coord != attachment.contact && attachment.allows_escape(candidate.coord)
+    })
+}
 
 fn marker_occupant_is_compatible(
     routes: &[PreparedRoute],
@@ -240,6 +264,30 @@ impl ProtectedShape {
         }
     }
 
+    fn transverse_border_directions(self, coord: CanvasCoord, directions: u8) -> Option<u8> {
+        let horizontal = DIR_LEFT | DIR_RIGHT;
+        let vertical = DIR_UP | DIR_DOWN;
+        match self {
+            Self::HorizontalSpan { x_start, x_end, y }
+                if coord.y == y
+                    && x_start < coord.x
+                    && coord.x < x_end
+                    && directions == vertical =>
+            {
+                Some(horizontal)
+            }
+            Self::VerticalSpan { x, y_start, y_end }
+                if coord.x == x
+                    && y_start < coord.y
+                    && coord.y < y_end
+                    && directions == horizontal =>
+            {
+                Some(vertical)
+            }
+            _ => None,
+        }
+    }
+
     pub(super) fn intersects(self, rect: OccupiedRect) -> bool {
         match self {
             Self::Rect(protected) => protected.intersects(rect),
@@ -444,9 +492,38 @@ impl<'layout> SceneOccupancy<'layout> {
                             .boundary_group_indices
                             .binary_search(&group_index)
                             .is_ok()
+                    })
+                    && protected
+                        .shape
+                        .transverse_border_directions(cell.coord, route_char_directions(cell.ch))
+                        .is_some();
+                if let (ProtectedKind::Node, ProtectedShape::Rect(rect), Some(attachments)) =
+                    (protected.kind, protected.shape, plan.attachments)
+                {
+                    let in_reading_margin = cell.coord.x >= rect.x.saturating_sub(1)
+                        && cell.coord.x <= rect.right
+                        && cell.coord.y >= rect.y.saturating_sub(1)
+                        && cell.coord.y <= rect.bottom;
+                    if in_reading_margin
+                        && !(protected.owner_id == owner.from
+                            && attachments.start.allows_escape(cell.coord)
+                            || protected.owner_id == owner.to
+                                && attachments.end.allows_escape(cell.coord))
+                    {
+                        crosses_reserved = true;
+                        break;
+                    }
+                }
+                let is_own_terminal_escape = protected.kind == ProtectedKind::Node
+                    && plan.attachments.is_some_and(|attachments| {
+                        protected.owner_id == owner.from
+                            && attachments.start.allows_escape(cell.coord)
+                            || protected.owner_id == owner.to
+                                && attachments.end.allows_escape(cell.coord)
                     });
                 if protected.shape.contains(cell.coord)
                     && !is_endpoint_port
+                    && !is_own_terminal_escape
                     && !is_owned_group_border
                 {
                     crosses_reserved = true;
@@ -455,6 +532,36 @@ impl<'layout> SceneOccupancy<'layout> {
             }
             if crosses_reserved {
                 return Ok(None);
+            }
+            if let Some(marker) = self.markers.get(&cell.coord) {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                let existing = &existing_routes[marker.route_index];
+                let existing_endpoint = existing.owner.endpoint_id(marker.endpoint);
+                let existing_attachment = existing.plan.attachments.map(|attachments| match marker
+                    .endpoint
+                {
+                    MarkerEndpoint::Start => attachments.start,
+                    MarkerEndpoint::End => attachments.end,
+                });
+                let shares_terminal = plan.attachments.is_some_and(|attachments| {
+                    [
+                        (owner.from.as_str(), attachments.start),
+                        (owner.to.as_str(), attachments.end),
+                    ]
+                    .into_iter()
+                    .any(|(endpoint, attachment)| {
+                        endpoint == existing_endpoint
+                            && existing_attachment.is_some_and(|existing_attachment| {
+                                attachment.contact == existing_attachment.contact
+                                    && attachment.outward == existing_attachment.outward
+                                    && attachment.allows_escape(cell.coord)
+                            })
+                    })
+                });
+                if !shares_terminal {
+                    return Ok(None);
+                }
             }
             if let Some(claims) = self.terminal_claims.get(&cell.coord)
                 && !terminal_claims_allow_route_cell(
@@ -467,9 +574,23 @@ impl<'layout> SceneOccupancy<'layout> {
             {
                 return Ok(None);
             }
-            if self.route_cells.contains_key(&cell.coord) {
+            if let Some(occupied) = self.route_cells.get(&cell.coord) {
                 self.checkpoint_layout()?;
-                resources.charge_layout_work(1)?;
+                resources.charge_layout_work(occupied.owners.len().max(1))?;
+                for shared_owner in &occupied.owners {
+                    let existing = &existing_routes[shared_owner.route_index];
+                    let reverse_pair = owner.from != owner.to
+                        && existing.owner.from == owner.to
+                        && existing.owner.to == owner.from;
+                    let shared_contact = plan.attachments.is_some_and(|ports| {
+                        cell.coord == ports.start.contact || cell.coord == ports.end.contact
+                    });
+                    if reverse_pair && !shared_contact {
+                        // Opposite authored edges need distinct transit paths. Sharing the
+                        // same stroke would erase which edge owns each direction and label.
+                        return Ok(None);
+                    }
+                }
                 shared_cells = resources.checked_work_add(shared_cells, 1)?;
             }
         }
@@ -481,7 +602,10 @@ impl<'layout> SceneOccupancy<'layout> {
 
         let mut marker_pressure = 0usize;
         for endpoint in [MarkerEndpoint::Start, MarkerEndpoint::End] {
-            let candidates = plan.marker_candidates(endpoint, diagram_type, resources)?;
+            let Some(candidates) = plan.marker_candidates(endpoint, diagram_type, resources)?
+            else {
+                return Ok(None);
+            };
             if candidates.is_empty() {
                 continue;
             }
@@ -496,6 +620,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 match self.marker_candidate_disposition_before_commit(
                     existing_routes,
                     owner,
+                    plan,
                     endpoint,
                     candidate,
                     resources,
@@ -612,6 +737,10 @@ impl<'layout> SceneOccupancy<'layout> {
             }
         }
 
+        if !self.label_reading_clearance_is_clear(candidate, resources)? {
+            return Ok(false);
+        }
+
         for y in candidate.y..candidate.bottom {
             for x in candidate.x..candidate.right {
                 self.checkpoint_layout()?;
@@ -643,6 +772,7 @@ impl<'layout> SceneOccupancy<'layout> {
         &self,
         existing_routes: &[PreparedRoute],
         owner: &RouteOwner,
+        plan: &RoutePlan,
         endpoint: MarkerEndpoint,
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
@@ -654,6 +784,13 @@ impl<'layout> SceneOccupancy<'layout> {
             let allowed = !protected.shape.contains(candidate.coord)
                 || (candidate.is_primary()
                     && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
+                        || own_terminal_marker_escape(
+                            protected,
+                            endpoint_id,
+                            plan,
+                            endpoint,
+                            candidate,
+                        )
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(&owner.from, candidate.coord)
                                 || protected.allows_endpoint_port(&owner.to, candidate.coord)))));
@@ -723,6 +860,48 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         Ok(MarkerCandidateDisposition::Available)
+    }
+
+    pub(super) fn preserve_group_crossings(
+        &self,
+        plan: &mut RoutePlan,
+        owner: &RouteOwner,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
+        if owner.boundary_group_indices.is_empty() {
+            return Ok(());
+        }
+        for cell in &mut plan.cells {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(self.protected.len())?;
+            for (index, protected) in self.protected.iter().enumerate() {
+                self.checkpoint_layout_scan(index)?;
+                if protected.kind != ProtectedKind::GroupBorder
+                    || protected.group_index.is_none_or(|group_index| {
+                        owner
+                            .boundary_group_indices
+                            .binary_search(&group_index)
+                            .is_err()
+                    })
+                {
+                    continue;
+                }
+                let directions = route_char_directions(cell.ch);
+                if let Some(border_directions) = protected
+                    .shape
+                    .transverse_border_directions(cell.coord, directions)
+                {
+                    // The route owns the branch; the compound frame keeps its thin border.
+                    cell.ch = stroke_route_char(
+                        super::super::model::GraphEdgeStroke::Normal,
+                        directions | border_directions,
+                        cell.unicode,
+                    );
+                    cell.kind = PlannedRouteCellKind::EdgeLine;
+                }
+            }
+        }
+        Ok(())
     }
 
     pub(super) fn commit_route(
@@ -944,6 +1123,13 @@ impl<'layout> SceneOccupancy<'layout> {
             if protected.shape.contains(candidate.coord)
                 && !(candidate.is_primary()
                     && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
+                        || own_terminal_marker_escape(
+                            protected,
+                            endpoint_id,
+                            &routes[route_index].plan,
+                            endpoint,
+                            candidate,
+                        )
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(
                                 &routes[route_index].owner.from,
@@ -1127,6 +1313,10 @@ impl<'layout> SceneOccupancy<'layout> {
             }
         }
 
+        if !self.label_reading_clearance_is_clear(candidate, resources)? {
+            return Ok(false);
+        }
+
         for y in candidate.y..candidate.bottom {
             for x in candidate.x..candidate.right {
                 self.checkpoint_layout()?;
@@ -1146,6 +1336,29 @@ impl<'layout> SceneOccupancy<'layout> {
                             return Ok(false);
                         }
                     }
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn label_reading_clearance_is_clear(
+        &self,
+        candidate: OccupiedRect,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        // The ordinary footprint check owns the interior. Reserve only the two adjacent
+        // columns here so independent labels require exactly one blank reading column.
+        let right = resources.checked_grid_add(candidate.right, 1)?;
+        for y in candidate.y..candidate.bottom {
+            for x in [candidate.x.checked_sub(1), Some(right - 1)]
+                .into_iter()
+                .flatten()
+            {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                if self.labels.contains(&CanvasCoord { x, y }) {
+                    return Ok(false);
                 }
             }
         }
