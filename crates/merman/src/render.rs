@@ -1036,43 +1036,183 @@ impl Renderer {
 }
 
 #[cfg(feature = "native-fonts")]
+const UNSUPPORTED_NATIVE_TEXT_STYLES: &[&str] = &[
+    "letter-spacing",
+    "word-spacing",
+    "text-transform",
+    "white-space",
+    "font",
+    "font-variant",
+    "font-stretch",
+    "font-feature-settings",
+    "font-variation-settings",
+    "font-kerning",
+    "line-height",
+    "text-indent",
+    "writing-mode",
+    "direction",
+    "unicode-bidi",
+    "text-anchor",
+    "dominant-baseline",
+    "alignment-baseline",
+    "baseline-shift",
+    "kerning",
+    "text-rendering",
+    "font-size-adjust",
+];
+
+#[cfg(feature = "native-fonts")]
+fn ensure_native_font_theme_typography(
+    diagram_type: &str,
+    config: &serde_json::Value,
+) -> Result<(), RenderError> {
+    let family = match diagram_type {
+        "flowchart" | "flowchart-v2" | "flowchart-elk" | "agentflow" => "Flowchart",
+        "classDiagram" | "class" => "Class",
+        _ => return Ok(()),
+    };
+    // These families measure explicit px sizes but preserve the theme value in root CSS.
+    // Other families resolve or override their sizes independently before SVG emission.
+    if let Some(size) = config.pointer("/themeVariables/fontSize") {
+        let supported = size.as_str().is_some_and(|size| {
+            let size = size.trim();
+            let size = if family == "Class" {
+                size.trim_end_matches(';')
+                    .trim()
+                    .trim_end_matches("!important")
+                    .trim()
+            } else {
+                size
+            };
+            size.strip_suffix("px")
+                .and_then(|number| number.trim().parse::<f64>().ok())
+                .is_some_and(|number| number.is_finite() && number >= 1.0)
+        }) || size.as_f64() == Some(16.0);
+        if !supported {
+            return Err(merman_export::NativeFontError::Measurement(format!(
+                "native {family} measurement requires themeVariables.fontSize as a positive px string; other spellings have different compatibility layout and CSS sizes; use deterministic text measurement to preserve compatibility"
+            )).into());
+        }
+    }
+    if family == "Flowchart"
+        && config
+            .get("fontWeight")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|weight| !matches!(weight.trim(), "" | "normal" | "400"))
+    {
+        return Err(merman_export::NativeFontError::Measurement(
+            "native Flowchart measurement does not support root fontWeight; use node or class font-weight styles".to_owned(),
+        ).into());
+    }
+    Ok(())
+}
+
+#[cfg(all(
+    feature = "native-fonts",
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+fn unsupported_native_flowchart_html_style(
+    model: &merman_core::diagrams::flowchart::FlowchartModel,
+    context: &merman_core::diagrams::flowchart::FlowchartRenderContext,
+    config: &merman_core::MermaidConfig,
+    swimlane: bool,
+    control: &OperationControl,
+) -> Result<Option<String>, RenderError> {
+    let value = config.as_value();
+    // Node shapes use the root switch; edges and ordinary clusters honor the legacy fallback.
+    let node_html = value.get("htmlLabels").and_then(serde_json::Value::as_bool);
+    let edge_html = node_html
+        .or_else(|| {
+            value
+                .pointer("/flowchart/htmlLabels")
+                .and_then(serde_json::Value::as_bool)
+        })
+        .unwrap_or(true);
+    let inspect = |label: &str, label_type: Option<&str>| {
+        merman_render::text::unsupported_html_label_style(
+            label,
+            label_type.unwrap_or("text"),
+            config,
+            UNSUPPORTED_NATIVE_TEXT_STYLES,
+            control,
+        )
+        .map_err(RenderError::Cancelled)
+    };
+    if node_html.unwrap_or(true) {
+        for node in &model.nodes {
+            if let Some(property) = inspect(
+                context.node_label_for_render(node).unwrap_or(&node.id),
+                node.label_type.as_deref(),
+            )? {
+                return Ok(Some(property));
+            }
+        }
+    }
+    if edge_html {
+        for edge in &model.edges {
+            if let Some(label) = context.edge_label_for_render(edge)
+                && let Some(property) = inspect(label, edge.label_type.as_deref())?
+            {
+                return Ok(Some(property));
+            }
+        }
+    }
+    // Dedicated Swimlane titles evaluate only flowchart.htmlLabels and always use Markdown.
+    let swimlane_title_html = match value.pointer("/flowchart/htmlLabels") {
+        None => true,
+        Some(serde_json::Value::Bool(false) | serde_json::Value::Null) => false,
+        Some(serde_json::Value::Number(value)) => value.as_f64() != Some(0.0),
+        Some(serde_json::Value::String(value)) => !matches!(
+            value.trim().to_ascii_lowercase().as_str(),
+            "false" | "null" | "0"
+        ),
+        Some(_) => true,
+    };
+    // Only top-level Swimlane groups use the dedicated renderer; nested groups stay Flowchart.
+    let subgraph_children: std::collections::HashSet<&str> = if swimlane {
+        model
+            .subgraphs
+            .iter()
+            .flat_map(|subgraph| subgraph.nodes.iter().map(String::as_str))
+            .collect()
+    } else {
+        Default::default()
+    };
+    for (ordinal, subgraph) in model.subgraphs.iter().enumerate() {
+        let (title_html, label_type) =
+            if swimlane && !subgraph_children.contains(subgraph.id.as_str()) {
+                (swimlane_title_html, Some("markdown"))
+            } else {
+                (edge_html, subgraph.label_type.as_deref())
+            };
+        if title_html
+            && let Some(property) = inspect(
+                context.subgraph_title_for_render(ordinal, subgraph),
+                label_type,
+            )?
+        {
+            return Ok(Some(property));
+        }
+    }
+    Ok(None)
+}
+
+#[cfg(feature = "native-fonts")]
 fn unsupported_native_text_style(model: &serde_json::Value) -> Option<&str> {
     fn declaration(value: &serde_json::Value) -> Option<&str> {
         match value {
-            serde_json::Value::String(raw) => {
-                let unsupported = [
-                    "letter-spacing",
-                    "word-spacing",
-                    "text-transform",
-                    "white-space",
-                    "font",
-                    "font-variant",
-                    "font-stretch",
-                    "font-feature-settings",
-                    "font-variation-settings",
-                    "font-kerning",
-                    "line-height",
-                    "text-indent",
-                    "writing-mode",
-                    "direction",
-                    "unicode-bidi",
-                    "text-anchor",
-                    "dominant-baseline",
-                    "alignment-baseline",
-                    "baseline-shift",
-                    "kerning",
-                    "text-rendering",
-                    "font-size-adjust",
-                ];
-                raw.split(';').find_map(|declaration| {
-                    let (property, _) = declaration.split_once(':')?;
-                    let property = property.trim();
-                    unsupported
-                        .iter()
-                        .any(|name| property.eq_ignore_ascii_case(name))
-                        .then_some(property)
-                })
-            }
+            serde_json::Value::String(raw) => raw.split(';').find_map(|declaration| {
+                let (property, _) = declaration.split_once(':')?;
+                let property = property.trim();
+                UNSUPPORTED_NATIVE_TEXT_STYLES
+                    .iter()
+                    .any(|name| property.eq_ignore_ascii_case(name))
+                    .then_some(property)
+            }),
             serde_json::Value::Array(values) => values.iter().find_map(declaration),
             _ => None,
         }
@@ -1124,37 +1264,10 @@ impl SemanticArtifact {
         #[cfg(feature = "native-fonts")]
         if target.native_fonts_are_selected() {
             let metadata = self.parsed().metadata();
-            if matches!(
-                metadata.diagram_type.as_str(),
-                "flowchart" | "flowchart-v2" | "flowchart-elk" | "agentflow"
-            ) {
-                let config = metadata.effective_config.as_value();
-                // Mermaid's root styles interpolate fontSize verbatim and do not use the root
-                // fontWeight for Flowchart. Preserve the compatibility path, but do not admit
-                // configurations whose existing layout and emitted CSS disagree in native mode.
-                if let Some(size) = config.pointer("/themeVariables/fontSize") {
-                    let supported = size.as_str().is_some_and(|size| {
-                        let size = size.trim();
-                        size.strip_suffix("px")
-                            .and_then(|number| number.trim().parse::<f64>().ok())
-                            .is_some_and(|number| number.is_finite() && number >= 1.0)
-                    }) || size.as_f64() == Some(16.0);
-                    if !supported {
-                        return Err(merman_export::NativeFontError::Measurement(
-                            "native Flowchart measurement requires themeVariables.fontSize as a positive px string; other spellings have different compatibility layout and CSS sizes".to_owned(),
-                        ).into());
-                    }
-                }
-                if config
-                    .get("fontWeight")
-                    .and_then(serde_json::Value::as_str)
-                    .is_some_and(|weight| !matches!(weight.trim(), "" | "normal" | "400"))
-                {
-                    return Err(merman_export::NativeFontError::Measurement(
-                        "native Flowchart measurement does not support root fontWeight; use node or class font-weight styles".to_owned(),
-                    ).into());
-                }
-            }
+            ensure_native_font_theme_typography(
+                &metadata.diagram_type,
+                metadata.effective_config.as_value(),
+            )?;
             if self
                 .parsed()
                 .metadata()
@@ -1168,6 +1281,45 @@ impl SemanticArtifact {
                 return Err(merman_export::NativeFontError::Measurement(
                     "native font measurement does not support themeCSS or scoped CSS applied after layout; configure fontFamily through Mermaid configuration".to_owned(),
                 ).into());
+            }
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            ))]
+            {
+                let property = match self.parsed().model() {
+                    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+                    merman_core::RenderSemanticModel::Flowchart(model) => {
+                        let default_context = Default::default();
+                        unsupported_native_flowchart_html_style(
+                            model,
+                            self.parsed()
+                                .flowchart_render_context()
+                                .unwrap_or(&default_context),
+                            &metadata.effective_config,
+                            metadata.effective_config.get_str("layout") == Some("swimlane"),
+                            self.control(),
+                        )?
+                    }
+                    #[cfg(feature = "diagram-agentflow")]
+                    merman_core::RenderSemanticModel::Agentflow(model) => {
+                        let (model, context) = model.to_flowchart_model();
+                        unsupported_native_flowchart_html_style(
+                            &model,
+                            &context,
+                            &metadata.effective_config,
+                            false,
+                            self.control(),
+                        )?
+                    }
+                    _ => None,
+                };
+                if let Some(property) = property {
+                    return Err(merman_export::NativeFontError::Measurement(format!(
+                        "native font measurement does not support the inline HTML text geometry style `{property}`; use deterministic text measurement to preserve compatibility"
+                    )).into());
+                }
             }
             let model = self.compatibility_json()?;
             if let Some(property) = unsupported_native_text_style(&model) {

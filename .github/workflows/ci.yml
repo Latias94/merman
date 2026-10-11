@@ -482,7 +482,7 @@ jobs:
         shell: bash
         run: |
           cargo nextest run --locked -p merman-export --no-default-features --features native-fonts --cargo-quiet
-          cargo nextest run --locked -p merman --features native-fonts --test native_font_context --test native_font_families --test native_flowchart_typography --test native_font_wrapping --cargo-quiet
+          cargo nextest run --locked -p merman --features native-fonts --test native_font_context --test native_font_families --test native_flowchart_typography --test native_swimlane_typography --test native_font_wrapping --cargo-quiet
           cargo nextest run --locked -p merman-cli --no-default-features --features svg,diagram-flowchart,native-fonts,markdown,parallel-markdown --test native_fonts_contract --cargo-quiet
           cargo nextest run --locked -p merman --no-default-features --features diagram-flowchart,native-fonts,png,jpeg,pdf --test native_font_context --cargo-quiet
 

@@ -59,6 +59,17 @@ fn render_with_font_size(
     safe: bool,
     font_size: Option<f64>,
 ) -> String {
+    render_label(context, LABEL, width, html, safe, font_size)
+}
+
+fn render_label(
+    context: &NativeFontContext,
+    label: &str,
+    width: f64,
+    html: bool,
+    safe: bool,
+    font_size: Option<f64>,
+) -> String {
     let html_setting = if html {
         String::new()
     } else {
@@ -68,7 +79,7 @@ fn render_with_font_size(
         format!("  themeVariables:\n    fontSize: {size}px\n")
     });
     let source = format!(
-        "---\nconfig:\n  fontFamily: Cousine\n{theme_setting}{html_setting}  flowchart:\n    minNodeWidth: 0\n    wrappingWidth: {width}\n---\nflowchart LR\nA[{LABEL}]\n"
+        "---\nconfig:\n  fontFamily: Cousine\n{theme_setting}{html_setting}  flowchart:\n    minNodeWidth: 0\n    wrappingWidth: {width}\n---\nflowchart LR\nA[{label}]\n"
     );
     let request = SvgRequest {
         environment: SvgEnvironment::deterministic()
@@ -343,4 +354,51 @@ fn default_theme_html_metrics_follow_the_emitted_font_size() {
         dimension(shape(&document), "width")
     );
     assert_drawn_text_inside_node(&safe, &context);
+}
+
+#[test]
+fn resvg_safe_native_flowchart_keeps_literal_br_width_and_real_breaks() {
+    let context = context();
+    for (label, expected_lines) in [("a#lt;br#gt;b", vec!["a<br>b"]), ("a<br>b", vec!["a", "b"])] {
+        let expected_width = expected_lines
+            .iter()
+            .map(|line| length(&context, line))
+            .fold(0.0_f64, f64::max);
+        let width = length(&context, "a<br>b") + 0.5;
+        let parity = render_label(&context, label, width, true, false, Some(16.0));
+        let parity_document = roxmltree::Document::parse(&parity).unwrap();
+        let foreign = parity_document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert!(
+            dimension(foreign, "width") + 0.02 >= expected_width,
+            "HTML geometry must contain the drawn native advance: label={label:?}, foreign={foreign:?}, expected={expected_width}"
+        );
+
+        let safe = render_label(&context, label, width, true, true, Some(16.0));
+        let document = roxmltree::Document::parse(&safe).unwrap();
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("foreignObject"))
+        );
+        let lines: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text") && class(*node, "merman-foreignobject-fallback-text")
+            })
+            .map(content)
+            .collect();
+        assert_eq!(lines, expected_lines, "Flowchart label={label:?}");
+        assert!(dimension(shape(&document), "width") >= expected_width);
+        for name in ["width", "height"] {
+            assert_eq!(
+                dimension(shape(&document), name),
+                dimension(shape(&parity_document), name),
+                "the safe fallback preserves native node geometry: label={label:?}"
+            );
+        }
+        assert_drawn_text_inside_node(&safe, &context);
+    }
 }

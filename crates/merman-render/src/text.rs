@@ -38,6 +38,13 @@ pub(crate) use measure::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
     measure_mermaid_text_dimensions_with_checkpoint,
 };
+#[doc(hidden)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub use metrics::unsupported_html_label_style;
 pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
 pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,

@@ -95,6 +95,68 @@ fn native_fonts_reject_unmeasured_node_and_class_text_geometry() {
     }
 }
 
+#[cfg(feature = "diagram-class")]
+#[test]
+fn native_class_rejects_relative_and_unsupported_theme_sizes() {
+    for header in ["classDiagram", "classDiagram-v2"] {
+        for size in [
+            r#""2em""#,
+            r#""150%""#,
+            r#""large""#,
+            r#""24""#,
+            "24",
+            r#""0px""#,
+        ] {
+            let source = format!(
+                "%%{{init: {{\"themeVariables\":{{\"fontSize\":{size}}}}}}}%%\n{header}\nclass User\nUser --> Account : owns\n"
+            );
+            let error = Renderer::new()
+                .render(RenderRequest::new(
+                    &source,
+                    RenderTarget::Svg(native_request()),
+                    OperationControl::new(),
+                ))
+                .err()
+                .expect("Class layout/CSS size mismatch must fail native admission");
+            assert!(
+                error.to_string().contains("native Class"),
+                "{header}, {size}: {error}"
+            );
+            assert!(
+                error.to_string().contains("themeVariables.fontSize"),
+                "{header}, {size}: {error}"
+            );
+            assert!(error.to_string().contains("deterministic"), "{error}");
+            let compatibility = Renderer::new().render(RenderRequest::new(
+                &source,
+                RenderTarget::Svg(SvgRequest::default()),
+                OperationControl::new(),
+            ));
+            assert!(
+                compatibility.is_ok(),
+                "{header}, {size}: {:?}",
+                compatibility.err()
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn native_class_admits_px_theme_size() {
+    for header in ["classDiagram", "classDiagram-v2"] {
+        let source = format!(
+            "%%{{init: {{\"themeVariables\":{{\"fontSize\":\"24px\"}}}}}}%%\n{header}\nclass User\nUser --> Account : owns\n"
+        );
+        let result = Renderer::new().render(RenderRequest::new(
+            &source,
+            RenderTarget::Svg(native_request()),
+            OperationControl::new(),
+        ));
+        assert!(result.is_ok(), "{header}: {:?}", result.err());
+    }
+}
+
 #[test]
 fn native_fonts_allow_paint_styles_and_property_names_inside_labels() {
     let source = "flowchart LR\nA[\"letter-spacing:4px and white-space:nowrap\"]-->B\nstyle A fill:#fff,stroke:#123456,stroke-width:2px\nclassDef painted color:red\nclass A painted\n";

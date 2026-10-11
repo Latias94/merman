@@ -3,11 +3,15 @@
 use merman_core::{OperationControl, OperationLedgerError, OperationPhase};
 use merman_export::{NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions};
 use merman_render::environment::{
-    HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer, TextMeasurementOperation,
-    TextMeasurementPhase,
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, RenderSession, TextMeasurementOperation,
+    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    TextMeasurementSource,
 };
-use merman_render::text::{TextStyle, WrapMode};
+use merman_render::svg::SvgPipeline;
+use merman_render::text::{TextMeasurer, TextStyle, WrapMode};
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 
 fn font(name: &str) -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -265,4 +269,184 @@ fn malformed_collection_directory_is_rejected_before_face_loading() {
         result,
         Err(NativeFontError::Source { .. }) | Err(NativeFontError::EmptyFontSet)
     ));
+}
+
+struct RecordingNativeHost {
+    context: NativeFontContext,
+    calls: Mutex<Vec<(TextMeasurementPhase, TextMeasurementOperation, String)>>,
+}
+
+impl HostTextMeasurer for RecordingNativeHost {
+    fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+        panic!("routed native requests must carry the active session control");
+    }
+
+    fn measure_with_control(
+        &self,
+        request: HostTextMeasurementRequest<'_>,
+        control: &OperationControl,
+    ) -> HostMeasurementResult {
+        self.calls.lock().unwrap().push((
+            request.phase,
+            request.operation,
+            request.text.to_owned(),
+        ));
+        self.context.measure_with_control(request, control)
+    }
+}
+
+fn routed_context(context: &NativeFontContext) -> (RenderSession, Arc<RecordingNativeHost>) {
+    let host = Arc::new(RecordingNativeHost {
+        context: context.clone(),
+        calls: Mutex::new(Vec::new()),
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.native-decoded-html").unwrap(),
+        "v1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+            identity,
+            host.clone(),
+            [TextMeasurementPhase::Wrap],
+        ))
+        .begin_session()
+        .unwrap();
+    (session, host)
+}
+
+#[test]
+fn routed_decoded_html_candidates_match_native_export_without_label_normalization() {
+    let context = context(&["Cousine-Regular.ttf"]);
+    let style = TextStyle {
+        font_size: 16.0,
+        ..style("Cousine")
+    };
+    let (session, host) = routed_context(&context);
+    let measurer = session.text_measurer(TextMeasurementPhase::SvgBBox);
+    let candidates = [
+        "a<br>b",
+        "a  b",
+        "a  b  ",
+        "a\u{00ad}b",
+        "alpha\u{00ad}beta",
+    ];
+    for candidate in candidates {
+        let expected = svg_advance(&probe(&context, candidate, &style));
+        let actual = measurer.measure_html_line_width_px(candidate, &style);
+        assert!(
+            (actual - expected).abs() < 0.001,
+            "decoded candidate {candidate:?}: routed={actual}, drawn={expected}"
+        );
+    }
+    assert_eq!(
+        *host.calls.lock().unwrap(),
+        candidates
+            .map(|text| (
+                TextMeasurementPhase::Wrap,
+                TextMeasurementOperation::CanvasMeasureTextWidth,
+                text.to_owned(),
+            ))
+            .to_vec(),
+        "decoded candidates use the Wrap host even though Layout retains the built-in profile"
+    );
+
+    let wrapped = measurer.measure_wrapped("a<br>b", &style, None, WrapMode::HtmlLike);
+    assert_eq!(wrapped.line_count, 2);
+    assert!(
+        (wrapped.width - svg_advance(&probe(&context, "a", &style))).abs() < 0.001,
+        "complete labels must still normalize real breaks with max_width=None"
+    );
+    let report = session.text_measurement_report();
+    assert!(report.entries().iter().all(|entry| {
+        let provenance = entry.provenance();
+        provenance.phase == TextMeasurementPhase::Wrap
+            && provenance.source == TextMeasurementSource::Host
+            && provenance.fallback_reason.is_none()
+    }));
+}
+
+#[test]
+fn native_html_fallback_routes_literal_markup_preserved_spaces_and_soft_hyphens() {
+    fn drawn_lines(group: &usvg::Group, lines: &mut Vec<String>) {
+        for node in group.children() {
+            match node {
+                usvg::Node::Text(text) => {
+                    lines.push(text.chunks().iter().map(|chunk| chunk.text()).collect());
+                }
+                usvg::Node::Group(group) => drawn_lines(group, lines),
+                _ => {}
+            }
+        }
+    }
+
+    let context = context(&["Cousine-Regular.ttf"]);
+    let style = TextStyle {
+        font_size: 16.0,
+        ..style("Cousine")
+    };
+    for (html, candidate, fitting_text, expected_lines) in [
+        ("a&amp;lt;br&amp;gt;b", "a<br>b", "a<br>b", vec!["a<br>b"]),
+        (
+            "a&amp;lt;br&amp;gt;b c",
+            "a<br>b c",
+            "a<br>b ",
+            vec!["a<br>b ", "c"],
+        ),
+        ("a  b  ", "a  b  ", "a  b  ", vec!["a  b  "]),
+        ("a  b  ", "a  b  ", "a  ", vec!["a  ", "b  "]),
+        (
+            "alpha&amp;shy;beta",
+            "alpha\u{00ad}beta",
+            "alpha\u{00ad}beta",
+            vec!["alpha\u{00ad}beta"],
+        ),
+        (
+            "alpha&amp;shy;beta",
+            "alpha\u{00ad}beta",
+            "alpha-",
+            vec!["alpha-", "beta"],
+        ),
+        ("a<br/>b", "a", "a", vec!["a", "b"]),
+    ] {
+        let width = svg_advance(&probe(&context, fitting_text, &style)) + 0.5;
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><g font-family="Cousine" font-size="16"><foreignObject width="{width}" height="96"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:break-spaces;width:{width}px">{html}</div></foreignObject></g></svg>"#
+        );
+        let (session, host) = routed_context(&context);
+        let svg = SvgPipeline::resvg_safe()
+            .process_to_string(&source, &session)
+            .expect("native HTML fallback completes through the controlled pipeline");
+        assert!(!svg.contains("<foreignObject"));
+        assert_eq!(
+            svg.matches(r#"xml:space="preserve""#).count(),
+            expected_lines.len()
+        );
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        let tree = usvg::Tree::from_str(&svg, &options).unwrap();
+        let mut lines = Vec::new();
+        drawn_lines(tree.root(), &mut lines);
+        assert_eq!(lines, expected_lines, "HTML={html:?}, width={width}");
+        let calls = host.calls.lock().unwrap();
+        assert!(calls.iter().any(|(_, _, text)| text == candidate));
+        assert!(calls.iter().all(|(phase, operation, _)| {
+            *phase == TextMeasurementPhase::Wrap
+                && *operation == TextMeasurementOperation::CanvasMeasureTextWidth
+        }));
+        if expected_lines == ["alpha-", "beta"] {
+            assert!(
+                calls.iter().any(|(_, _, text)| text == "alpha-"),
+                "a selected SHY must measure the complete visible candidate"
+            );
+        }
+        assert!(
+            session
+                .text_measurement_report()
+                .entries()
+                .iter()
+                .all(|entry| { entry.provenance().source == TextMeasurementSource::Host })
+        );
+    }
 }
