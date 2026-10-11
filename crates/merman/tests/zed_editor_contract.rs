@@ -516,18 +516,44 @@ fn zed_like_pipeline_decodes_double_escaped_entities_in_fallback_text() {
     );
 
     let doc = roxmltree::Document::parse(&svg).expect("valid SVG");
-    let fallback_text = doc
+    let fallback_labels: Vec<_> = doc
         .descendants()
-        .filter(|node| node.has_tag_name("text"))
-        .filter(|node| {
-            node.ancestors()
-                .any(|ancestor| ancestor.attribute("data-merman-foreignobject") == Some("fallback"))
+        .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+        .map(|group| {
+            let rows: Vec<_> = group
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| {
+                    node.descendants()
+                        .filter(|node| node.is_text())
+                        .filter_map(|node| node.text())
+                        .collect::<String>()
+                })
+                .collect();
+            let label = rows
+                .join(" ")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            (label, rows)
         })
-        .filter_map(|node| node.text())
-        .collect::<Vec<_>>()
-        .join(" ");
-    assert!(
-        fallback_text.contains("Tom & Jerry") && fallback_text.contains("List<Animal> & friends"),
-        "expected decoded fallback text for XML predefined entities: {fallback_text:?}"
-    );
+        .collect();
+    assert_eq!(fallback_labels.len(), 2, "{fallback_labels:?}");
+    let expected_labels: &[(&str, &[&str])] = &[
+        ("Tom & Jerry", &["Tom & Jerry"]),
+        ("List<Animal> & friends", &["List<Animal> & ", "friends"]),
+    ];
+    for (expected, expected_rows) in expected_labels {
+        let rows = fallback_labels
+            .iter()
+            .find_map(|(label, rows)| (label == expected).then_some(rows))
+            .unwrap_or_else(|| {
+                panic!("expected complete decoded fallback label {expected:?}: {fallback_labels:?}")
+            });
+        assert_eq!(
+            rows.iter().map(String::as_str).collect::<Vec<_>>(),
+            *expected_rows,
+            "{expected:?}"
+        );
+    }
 }

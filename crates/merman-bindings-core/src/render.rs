@@ -968,7 +968,28 @@ B -->|No| D[Debug]";
             1,
             "{cleanup_out}"
         );
-        assert!(cleanup_out.contains("Only fallback"));
+        let document = roxmltree::Document::parse(&cleanup_out).expect("valid SVG");
+        let fallback_group = document
+            .descendants()
+            .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+            .expect("the unique nonduplicate fallback must remain");
+        let rows: Vec<_> = fallback_group
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| {
+                node.descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>()
+            })
+            .collect();
+        assert_eq!(rows, ["Only", "fallback"], "{cleanup_out}");
+        let fallback_label = rows
+            .join(" ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert_eq!(fallback_label, "Only fallback", "{cleanup_out}");
         assert!(cleanup_out.contains(r#"<text class="task">Make tea</text>"#));
         assert!(!cleanup_out.contains("<foreignObject"));
     }
