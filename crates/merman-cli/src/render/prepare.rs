@@ -102,6 +102,7 @@ pub(super) enum PreparedGraphicalSource {
 }
 
 #[cfg(feature = "svg")]
+#[derive(Clone)]
 pub(super) enum PreparedGraphicalOutput {
     Svg,
     #[cfg(feature = "png")]
@@ -120,6 +121,23 @@ pub(super) enum PreparedGraphicalOutput {
 
 #[cfg(feature = "svg")]
 impl PreparedGraphicalOutput {
+    #[cfg(feature = "native-fonts")]
+    pub(super) fn with_font_context(
+        mut self,
+        _context: Option<merman::svg::export::NativeFontContext>,
+    ) -> Self {
+        match &mut self {
+            Self::Svg => {}
+            #[cfg(feature = "png")]
+            Self::Png { options } => options.font_context = _context,
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg { options } => options.font_context = _context,
+            #[cfg(feature = "pdf")]
+            Self::Pdf { options } => options.font_context = _context,
+        }
+        self
+    }
+
     pub(super) fn target(&self, svg: merman::SvgRequest) -> merman::RenderTarget {
         match self {
             Self::Svg => merman::RenderTarget::Svg(svg),
@@ -546,32 +564,6 @@ pub(crate) fn prepare_graphical_output(
         return Err(CliError::InvalidInput(
             "native text measurement does not support --css-file (post-layout styling); configure typography through Mermaid configuration, or use --font-measurement deterministic without font sources".to_string(),
         ));
-    }
-    #[cfg(all(
-        feature = "native-fonts",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    let mut output = output;
-    #[cfg(all(
-        feature = "native-fonts",
-        any(feature = "png", feature = "jpeg", feature = "pdf")
-    ))]
-    if let Some(context) = &font_context {
-        match &mut output {
-            PreparedGraphicalOutput::Svg => {}
-            #[cfg(feature = "png")]
-            PreparedGraphicalOutput::Png { options } => {
-                options.font_context = Some(context.clone())
-            }
-            #[cfg(feature = "jpeg")]
-            PreparedGraphicalOutput::Jpeg { options } => {
-                options.font_context = Some(context.clone())
-            }
-            #[cfg(feature = "pdf")]
-            PreparedGraphicalOutput::Pdf { options } => {
-                options.font_context = Some(context.clone())
-            }
-        }
     }
     let pipeline =
         svg_output_policy(pipeline_kind, common.background.as_deref(), css.as_deref()).pipeline();

@@ -51,11 +51,11 @@ pub fn round_to_1_64_px_ties_to_even(v: f64) -> f64 {
 }
 
 /// Splits at a grapheme boundary using complete candidates and their newly appended graphemes.
-pub(super) fn split_graphemes_to_width<'t, E>(
-    token: &'t str,
+pub(super) fn split_graphemes_to_width<E>(
+    token: &str,
     max_width_px: f64,
     mut measure_candidate: impl FnMut(&str, &str) -> Result<f64, E>,
-) -> Result<(&'t str, &'t str), E> {
+) -> Result<(&str, &str), E> {
     let mut split_at = 0;
     let mut width_px = 0.0;
     let mut has_positive_advance = false;

@@ -137,7 +137,21 @@ fn execute_graphical_with_pipeline(
     )))]
     let _ = stderr;
     #[cfg(feature = "native-fonts")]
-    if let Some(context) = &prepared.font_context {
+    let font_context = prepared
+        .font_context
+        .as_ref()
+        .map(|context| context.for_operation(control));
+    #[cfg(feature = "native-fonts")]
+    let graphical_output = prepared
+        .output
+        .clone()
+        .with_font_context(font_context.clone());
+    #[cfg(feature = "native-fonts")]
+    let graphical_output = &graphical_output;
+    #[cfg(not(feature = "native-fonts"))]
+    let graphical_output = &prepared.output;
+    #[cfg(feature = "native-fonts")]
+    if let Some(context) = &font_context {
         crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
         context.check().map_err(super::prepare::native_font_error)?;
         let message = if matches!(&prepared.source, PreparedGraphicalSource::Mermaid(_)) {
@@ -156,13 +170,20 @@ fn execute_graphical_with_pipeline(
         PreparedGraphicalSource::Mermaid(renderer) => {
             let mut svg = renderer.svg.clone();
             svg.pipeline = Some(pipeline.clone());
-            let target = prepared.output.target(svg);
+            #[cfg(feature = "native-fonts")]
+            if let Some(context) = &font_context {
+                svg.environment = svg
+                    .environment
+                    .with_native_font_context(context.clone())
+                    .map_err(super::prepare::native_font_error)?;
+            }
+            let target = graphical_output.target(svg);
             let output =
                 renderer
                     .renderer
                     .render(renderer.request(source, target, control.clone()))?;
             #[cfg(feature = "native-fonts")]
-            if let Some(context) = &prepared.font_context {
+            if let Some(context) = &font_context {
                 crate::operation::checkpoint(control, merman::OperationPhase::Emit)?;
                 context.check().map_err(super::prepare::native_font_error)?;
                 let faces = context.selected_faces();
@@ -259,7 +280,7 @@ fn execute_graphical_with_pipeline(
             let svg = pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(merman::RenderError::from)?;
-            execute_encoded_svg(prepared, svg, permit, control, stderr)
+            execute_encoded_svg(prepared, graphical_output, svg, permit, control, stderr)
         }
     }
 }
@@ -267,6 +288,7 @@ fn execute_graphical_with_pipeline(
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn execute_encoded_svg(
     prepared: &PreparedGraphicalRender,
+    output: &PreparedGraphicalOutput,
     svg: merman::svg::ResvgCompatibleSvg,
     permit: super::admission::BackendPermit,
     control: &merman::OperationControl,
@@ -274,7 +296,7 @@ fn execute_encoded_svg(
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "markdown")]
     let metadata = svg_metadata(svg.as_str());
-    match &prepared.output {
+    match output {
         PreparedGraphicalOutput::Svg => Err(CliError::InvalidOutput(
             "SVG output entered the encoded backend".to_string(),
         )),

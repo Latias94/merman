@@ -328,44 +328,58 @@ fn native_font_budget_failure_aborts_the_entire_batch_publication() {
         format!("{source}```mermaid\nflowchart LR\nC[{oversized_label}]\n```\n"),
     )
     .unwrap();
-    for output_directory in ["generated", "fresh"] {
-        args[3] = output_directory;
-        let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
-        assert!(
-            !output.status.success(),
-            "native label budget must fail the batch"
-        );
-        assert!(
-            output.stdout.is_empty(),
-            "failed batch must not publish stdout artifacts"
-        );
-        let diagnostic = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            diagnostic.contains("native_font_label_bytes") || diagnostic.contains("label-bytes"),
-            "expected the native font label budget, not another failure: {diagnostic}"
-        );
-        assert!(
-            diagnostic.contains("Markdown chart 2 at line 5, column 1"),
-            "expected the second fence location: {diagnostic}"
-        );
-        assert!(
-            !temp
-                .path()
-                .join(output_directory)
-                .join(".merman.transaction")
-                .exists()
-        );
-        if output_directory == "generated" {
-            assert_eq!(snapshot(&output_root), previous);
-        } else {
-            assert_eq!(
-                snapshot(&temp.path().join("fresh")),
-                std::collections::BTreeMap::from([(
-                    std::path::PathBuf::from(".merman.lock"),
-                    Vec::new(),
-                )]),
-                "aborted publication must leave only the stable empty transaction lock"
+    #[cfg(feature = "parallel-markdown")]
+    let job_counts = ["1", "2"];
+    #[cfg(not(feature = "parallel-markdown"))]
+    let job_counts = ["1"];
+    for jobs in job_counts {
+        #[cfg(feature = "parallel-markdown")]
+        {
+            let last = args.len() - 1;
+            args[last] = jobs;
+        }
+        #[cfg(not(feature = "parallel-markdown"))]
+        let _ = jobs;
+        for output_directory in ["generated", "fresh"] {
+            args[3] = output_directory;
+            let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+            assert!(
+                !output.status.success(),
+                "native label budget must fail the batch"
             );
+            assert!(
+                output.stdout.is_empty(),
+                "failed batch must not publish stdout artifacts"
+            );
+            let diagnostic = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                diagnostic.contains("native_font_label_bytes")
+                    || diagnostic.contains("label-bytes"),
+                "expected the native font label budget, not another failure: {diagnostic}"
+            );
+            assert!(
+                diagnostic.contains("Markdown chart 2 at line 5, column 1"),
+                "expected the second fence location: {diagnostic}"
+            );
+            assert!(
+                !temp
+                    .path()
+                    .join(output_directory)
+                    .join(".merman.transaction")
+                    .exists()
+            );
+            if output_directory == "generated" {
+                assert_eq!(snapshot(&output_root), previous);
+            } else {
+                assert_eq!(
+                    snapshot(&temp.path().join("fresh")),
+                    std::collections::BTreeMap::from([(
+                        std::path::PathBuf::from(".merman.lock"),
+                        Vec::new(),
+                    )]),
+                    "aborted publication must leave only the stable empty transaction lock"
+                );
+            }
         }
     }
 }
@@ -414,6 +428,212 @@ fn explicit_font_files_are_protected_from_output_aliases() {
             std::fs::read(temp.path().join("font-alias")).unwrap(),
             original
         );
+    }
+}
+
+#[test]
+fn explicit_font_directories_are_protected_without_restricting_mermaid_inputs() {
+    let temp = tempfile::tempdir().unwrap();
+    let fonts = temp.path().join("fonts");
+    std::fs::create_dir_all(fonts.join("nested")).unwrap();
+    let original = std::fs::read(font()).unwrap();
+    let font_path = fonts.join("selectedfont.ttf");
+    std::fs::write(&font_path, &original).unwrap();
+    let source = "flowchart LR\nA-->B\n";
+    std::fs::write(fonts.join("diagram.mmd"), source).unwrap();
+    std::fs::write(fonts.join("existing.svg"), "previous output").unwrap();
+    std::fs::create_dir(temp.path().join("fonts-output")).unwrap();
+
+    for command in [
+        ["render", "fonts/diagram.mmd"],
+        ["mmdc", "--input=fonts/diagram.mmd"],
+    ] {
+        let mut args = vec![
+            command[0],
+            command[1],
+            "--font-dir",
+            "./fonts",
+            "--font-system",
+            "off",
+            "--format",
+            "svg",
+            "--output",
+            "-",
+        ];
+        for output_name in ["-", "fonts-output/result.svg"] {
+            args[9] = output_name;
+            let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+            assert!(
+                output.status.success(),
+                "Mermaid input in a font directory and output outside it must work: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        assert!(
+            std::fs::read_to_string(temp.path().join("fonts-output/result.svg"))
+                .unwrap()
+                .contains("<svg")
+        );
+        let output_names = [
+            "fonts/existing.svg",
+            "./fonts/nested/../existing.svg",
+            "fonts/nested/new.svg",
+            "fonts/new.svg",
+        ];
+        #[cfg(windows)]
+        let output_names = output_names
+            .into_iter()
+            .chain(["FONTS/existing.svg", "FONTS/new.svg"]);
+        for output_name in output_names {
+            args[9] = output_name;
+            let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+            assert!(
+                !output.status.success(),
+                "font directory output must be rejected"
+            );
+            assert!(output.stdout.is_empty());
+            let diagnostic = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                diagnostic.contains("aliases protected font directory input"),
+                "expected directory protection before rendering: {diagnostic}"
+            );
+            assert_eq!(std::fs::read(&font_path).unwrap(), original);
+            assert_eq!(
+                std::fs::read_to_string(fonts.join("diagram.mmd")).unwrap(),
+                source
+            );
+            assert_eq!(
+                std::fs::read_to_string(fonts.join("existing.svg")).unwrap(),
+                "previous output"
+            );
+            assert!(!fonts.join("new.svg").exists());
+            assert!(!fonts.join("nested/new.svg").exists());
+        }
+    }
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn explicit_font_directory_protection_resolves_output_parent_aliases() {
+    let temp = tempfile::tempdir().unwrap();
+    let fonts = temp.path().join("fonts");
+    std::fs::create_dir(&fonts).unwrap();
+    let original = std::fs::read(font()).unwrap();
+    let font_path = fonts.join("selectedfont.ttf");
+    std::fs::write(&font_path, &original).unwrap();
+    std::fs::write(fonts.join("existing.svg"), "previous output").unwrap();
+    let alias = temp.path().join("font-view");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(&fonts, &alias).unwrap();
+    #[cfg(windows)]
+    if let Err(error) = std::os::windows::fs::symlink_dir(&fonts, &alias) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            return;
+        }
+        panic!("create directory alias: {error}");
+    }
+
+    for output_name in ["font-view/existing.svg", "font-view/new.svg"] {
+        let output = support::run_with_stdin_in_dir(
+            &[
+                "render",
+                "-",
+                "--font-dir",
+                "fonts",
+                "--format",
+                "svg",
+                "--output",
+                output_name,
+            ],
+            "flowchart LR\nA-->B\n",
+            Some(temp.path()),
+        );
+        assert!(!output.status.success());
+        assert!(output.stdout.is_empty());
+        let diagnostic = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            diagnostic.contains("aliases protected font directory input"),
+            "expected canonical directory protection: {diagnostic}"
+        );
+        assert_eq!(std::fs::read(&font_path).unwrap(), original);
+        assert_eq!(
+            std::fs::read_to_string(fonts.join("existing.svg")).unwrap(),
+            "previous output"
+        );
+        assert!(!fonts.join("new.svg").exists());
+    }
+}
+
+#[test]
+fn explicit_font_directories_reject_external_hard_link_outputs() {
+    let temp = tempfile::tempdir().unwrap();
+    let fonts = temp.path().join("fonts");
+    std::fs::create_dir_all(fonts.join("nested")).unwrap();
+    let original = std::fs::read(font()).unwrap();
+    let font_path = fonts.join("nested/Cousine.ttf");
+    std::fs::write(&font_path, &original).unwrap();
+    std::fs::hard_link(&font_path, temp.path().join("font-alias.svg")).unwrap();
+    std::fs::write(temp.path().join("ordinary.svg"), "previous output").unwrap();
+    std::fs::write(temp.path().join("unrelated.svg"), "unrelated contents").unwrap();
+    std::fs::hard_link(
+        temp.path().join("unrelated.svg"),
+        temp.path().join("unrelated-alias.svg"),
+    )
+    .unwrap();
+    let source = "flowchart LR\nA-->B\n";
+    for command in [["render", "-"], ["mmdc", "--input=-"]] {
+        for output_name in [
+            "ordinary.svg",
+            "new.svg",
+            "font-alias.svg",
+            "unrelated-alias.svg",
+        ] {
+            let output = support::run_with_stdin_in_dir(
+                &[
+                    command[0],
+                    command[1],
+                    "--font-dir",
+                    "fonts",
+                    "--format",
+                    "svg",
+                    "--output",
+                    output_name,
+                ],
+                source,
+                Some(temp.path()),
+            );
+            if matches!(output_name, "ordinary.svg" | "new.svg") {
+                assert!(
+                    output.status.success(),
+                    "{}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
+                continue;
+            }
+            assert!(
+                !output.status.success(),
+                "hard-linked output must be rejected"
+            );
+            assert!(output.stdout.is_empty());
+            let diagnostic = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                diagnostic.contains("multiple hard links")
+                    && diagnostic.contains("font directory input"),
+                "expected bounded hard-link protection: {diagnostic}"
+            );
+            assert_eq!(std::fs::read(&font_path).unwrap(), original);
+            assert_eq!(
+                std::fs::read(temp.path().join("font-alias.svg")).unwrap(),
+                original
+            );
+            assert!(
+                same_file::is_same_file(&font_path, temp.path().join("font-alias.svg")).unwrap()
+            );
+            assert_eq!(
+                std::fs::read_to_string(temp.path().join("unrelated-alias.svg")).unwrap(),
+                "unrelated contents"
+            );
+        }
     }
 }
 
@@ -597,4 +817,69 @@ fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
         assert!(!rejected.status.success());
         assert!(rejected.stdout.is_empty());
     }
+}
+
+#[cfg(feature = "markdown")]
+#[test]
+fn font_directory_protection_precedes_batch_publication() {
+    let temp = tempfile::tempdir().unwrap();
+    let fonts = temp.path().join("fonts");
+    std::fs::create_dir(&fonts).unwrap();
+    let original = std::fs::read(font()).unwrap();
+    let font_path = fonts.join("Cousine.ttf");
+    std::fs::write(&font_path, &original).unwrap();
+    let markdown = "```mermaid\nflowchart LR\nA-->B\n```\n";
+    std::fs::write(temp.path().join("input.md"), markdown).unwrap();
+
+    for args in [
+        vec![
+            "batch",
+            "input.md",
+            "--font-dir",
+            "fonts",
+            "--output-dir",
+            "fonts/missing/output",
+        ],
+        vec![
+            "mmdc",
+            "--input",
+            "input.md",
+            "--font-dir",
+            "fonts",
+            "--output",
+            "output.md",
+            "--artefacts",
+            "fonts/missing/assets",
+        ],
+    ] {
+        let output = support::run_with_stdin_in_dir(&args, "", Some(temp.path()));
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("font directory input"));
+        assert!(!fonts.join("missing").exists());
+        assert!(!temp.path().join("output.md").exists());
+    }
+
+    for entry in [".merman-manifest.json", "input-1.svg"] {
+        let output_root = temp.path().join(entry.replace('.', "_") + "-out");
+        std::fs::create_dir(&output_root).unwrap();
+        std::fs::hard_link(&font_path, output_root.join(entry)).unwrap();
+        let output = support::run_with_stdin_in_dir(
+            &[
+                "batch",
+                "input.md",
+                "--font-dir",
+                "fonts",
+                "--output-dir",
+                output_root.to_str().unwrap(),
+            ],
+            "",
+            Some(temp.path()),
+        );
+        assert!(!output.status.success());
+        assert!(String::from_utf8_lossy(&output.stderr).contains("multiple hard links"));
+        assert_eq!(std::fs::read(output_root.join(entry)).unwrap(), original);
+        assert!(!output_root.join("input.md").exists());
+        assert!(!output_root.join(".merman.lock").exists());
+    }
+    assert_eq!(std::fs::read(&font_path).unwrap(), original);
 }

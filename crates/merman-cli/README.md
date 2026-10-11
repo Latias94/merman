@@ -145,6 +145,12 @@ no explicit sources are supplied, including for unsupported native typography.
 System-font output is host-dependent; pin font file contents for reproducibility.
 Minimal builds without `system-fonts` keep deterministic measurement by default.
 
+Explicit font files and directories are protected inputs. With `--font-dir`,
+choose output outside that directory; existing output files with multiple hard
+links are rejected because an alias to a directory font cannot be excluded without
+scanning the directory again. New outputs and ordinary existing outputs remain
+supported, including when the Mermaid source lives in the font directory.
+
 Native measurement uses the shared text-measurement infrastructure for layout,
 wrapping, SVG bounds, and computed lengths, not just titles. SVG output does not
 embed fonts; viewers need the same fonts. Raw SVG conversion uses supplied fonts
