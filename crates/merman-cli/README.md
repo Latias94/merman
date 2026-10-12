@@ -33,6 +33,14 @@ brew install merman-cli
 
 The formula follows stable releases and may trail the current Merman release.
 
+Windows users can install from Scoop's main bucket:
+
+```powershell
+scoop install merman-cli
+```
+
+External package managers update on their own schedule. Check the installed version against the [dated release record](../../docs/release/PUBLISH_ORDER.md#090-publication-snapshot).
+
 Starting with `0.8.0-alpha.5`, version-specific [GitHub Releases](https://github.com/Latias94/merman/releases) also provide `merman-cli-installer.sh` and `merman-cli-installer.ps1`. Download an installer from the chosen release rather than a moving URL; it installs only the binary and fails closed if the archive SHA-256 cannot be verified.
 
 From the matching reviewed source checkout:
@@ -595,7 +603,7 @@ merman-cli completion fish > merman-cli.fish
 merman-cli completion powershell > merman-cli.ps1
 ```
 
-Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository. Scoop and WinGet `0.8.0` manifests are submitted in [Scoop PR #8639](https://github.com/ScoopInstaller/Main/pull/8639) and [WinGet PR #447353](https://github.com/microsoft/winget-pkgs/pull/447353); installation by package name remains unavailable until upstream acceptance and registry propagation.
+Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository. Scoop's main bucket provides `merman-cli`; the [release record](../../docs/release/PUBLISH_ORDER.md#090-publication-snapshot) records verified versions. [WinGet PR #447353](https://github.com/microsoft/winget-pkgs/pull/447353) submits `0.9.0` and remains subject to upstream acceptance and registry propagation.
 
 The checked-in completion and manual assets represent the canonical `cli-release` complete profile.
 For a custom slim build with `shell-completions`, generate completion from that binary at runtime so

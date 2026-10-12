@@ -85,6 +85,14 @@ For WinGet and Scoop, run the independent [CLI registry candidate workflow](../r
 Publish jobs use GitHub Environments (`crates.io`, `pypi`, `pub.dev`, `npm`, and `github-release`).
 Configure required reviewers on those environments if publication should require explicit approval.
 
+Existing Trusted Publisher bindings remain valid across version upgrades with the same package,
+repository, workflow and environment. A newly admitted npm package or PyPI/pub.dev project needs
+its own binding before its first automated upload. The crates.io owners currently use the token
+listed above, including first uploads of new crates; adding a Trusted Publisher does not switch
+these workflows to OIDC. Implement that authentication change before enforcing trusted-only
+publishing. Homebrew, Scoop and WinGet use external repository review and require no registry
+Trusted Publisher binding.
+
 If a crates.io run stops after publishing only part of a release, keep the tag immutable and retain
 the uploaded `crates-io-receipts-*` artifact. Rerun the workflow only from that same immutable tag.
 A GitHub rerun downloads the prior attempt's receipts; a new manual recovery must pass
@@ -175,10 +183,20 @@ tag. Treat direct remote SwiftPM support as a separate release-manifest design t
 
 Homebrew installs `merman-cli` from the formula in `homebrew/core`; it is not published directly by
 this repository. After a stable release, Homebrew's autobump flow should pick up the new GitHub tag.
+For an ordinary version/checksum bump, track its existing bot PR rather than opening a duplicate;
+the [official 0.9.0 update](https://github.com/Homebrew/homebrew-core/pull/317871) follows this flow.
+Manual intervention is needed when autobump does not pick up a release, checks fail, or the formula
+needs dependency, patch or installation changes.
 Use the scheduled `homebrew.yml` workflow, or dispatch it with an optional `expected_version`, to
 verify formula freshness and run the installed CLI, linkage, and formula-test contracts. The
 workflow is deliberately independent of repository tags because Homebrew/core tracks stable
 versions on its own publication schedule.
+
+Before submitting a Homebrew update, follow its current
+[contribution rules](https://github.com/Homebrew/homebrew-core/blob/HEAD/CONTRIBUTING.md).
+AI-assisted changes and PR prose require the contributor's personal review and tool/model
+disclosure; the contributor must answer subsequent maintainer questions and review comments
+without AI assistance. Prepare the complete patch and PR description for that review first.
 
 ## 0.9.0 Preparation Checklist
 
@@ -195,6 +213,22 @@ Workspace 0.9.0 was published on 2026-10-12 from `f754a3c3077d35d2a372c2fec04f9e
 - [x] Publish the authorized Rust workspace, CLI/LSP, and independent prerequisites; record their registry and artifact receipts. Typst and other package channels retain separate shipping authorization and owner runs.
 
 A completed prerequisite publication does not publish workspace 0.9.0. A workspace publication does not publish Typst, VS Code, or the separately owned package channels. No checklist item is marked complete without the owner's recorded result.
+
+## 0.9.0 Channel Publication Checklist
+
+The maintainer separately authorized the language/native packages and CLI package-manager updates.
+Completed items below have owner or registry evidence in the
+[publication snapshot](PUBLISH_ORDER.md#090-publication-snapshot).
+
+- [x] Publish all five Web npm packages, verify their frozen-package integrities, `latest` tags and provenance.
+- [x] Publish all seven Node npm packages and verify the complete original package group after any recovery.
+- [x] Publish the three Python wheels and compare PyPI sizes/SHA256 values with the GitHub Release assets.
+- [x] Publish Flutter to pub.dev and reconcile the registry contents with the frozen five-platform package.
+- [x] Publish and verify the Android AAR after native, JVM and Maven staging checks.
+- [x] Publish the Apple XCFramework archive and matching checksum after its owner gates pass.
+- [x] Verify Scoop's main-bucket 0.9.0 archive URL/checksum and update user installation guidance.
+- [ ] Confirm the official Homebrew bot update passes platform checks and that the formula and bottles expose 0.9.0.
+- [ ] Confirm upstream acceptance and registry propagation of the updated WinGet 0.9.0 submission.
 
 ## Release Evidence
 

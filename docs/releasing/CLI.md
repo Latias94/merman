@@ -62,7 +62,7 @@ document and no mixed diagnostic text.
 | `cargo install merman-cli` | crates.io source | No | The target `0.9.0` default includes ELK and Rustdoc. |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
 | Homebrew | Formula source build or Homebrew bottle | Inspect the selected formula; owner validation checks required assets | External stable registry |
-| Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
+| Scoop | Verified Windows x86_64 archive | No | Published in Scoop's main bucket; its manifest governs the selected version |
 | WinGet candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
 
 The shell and PowerShell installers, as well as cargo-binstall, keep only the executable as their
@@ -220,10 +220,13 @@ admission record and native execution gate.
 
 ## Scoop and WinGet draft candidate contract
 
-The repository can generate draft candidate files for a stable release, but it does not
-claim that either central registry already provides Merman. Do not add `scoop install` or
-`winget install` instructions to user documentation until the corresponding external submission
-is accepted and the user-facing installation guidance is updated with the approved registry command.
+The repository generates draft candidate files for a stable release; candidate validation does not
+publish them to a central registry. Scoop's main bucket already provides `merman-cli`, and its
+automated updates can advance the manifest before a manual PR is reviewed. Check the current
+upstream manifest and open PRs before submitting an update. WinGet availability remains subject
+to acceptance of its external submission. Add installation instructions only after checking the
+corresponding registry; the [dated release record](../release/PUBLISH_ORDER.md#090-publication-snapshot)
+records verified versions and pending submissions.
 
 The generator consumes the exact Windows x86_64 archive and adjacent checksum from the verified
 release bundle. It runs the release-archive verifier again, requires the requested version to
