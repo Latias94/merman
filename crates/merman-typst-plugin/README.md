@@ -4,7 +4,7 @@
 
 > **Implementation transport:** Typst authors should import the [`@preview/merman`](https://typst.app/universe/package/merman) package. Do not load this raw WebAssembly artifact or depend on the Rust crate directly; the Typst wrapper owns package versioning, options, error presentation, and artifact loading.
 
-The prepared Cargo transport is Merman `0.9.0`, bundled by Typst wrapper `0.5.0`. The independently published `0.4.0` wrapper remains bound to Merman `0.8.0`; see the [Typst preparation guide](../../docs/release/TYPST_050_PREPARATION.md).
+Typst wrapper `0.5.0` bundles this transport from Merman `0.9.0`; wrapper `0.4.0` bundles Merman `0.8.0`. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
 
 ## Typst Plugin ABI 2
 
