@@ -123,3 +123,47 @@ remote CI and are not represented as locally executed.
   (2m 46s incremental build) and again passed both runtime and installation/asset
   verification. This rerun covers the operation-context correction in the actual
   release executable, including all compiled SVG/PNG/JPEG/PDF and Rustdoc routes.
+
+## CI Correction Pass
+
+The first PR run (`38164621151`, head `0d9f3d229`) identified owner-specific
+contract gaps. Its release artifact recipes passed on Linux, macOS and Windows;
+the aggregate gate failed on the following independent causes:
+
+- Linux all-feature CLI Clippy and experimental platform-query tests require
+  `libfontconfig1-dev` and `pkg-config`. Both Linux owners now install these before
+  their checks, with the existing bounded APT retry/timeout policy.
+- The registry alias test must canonicalize its host temporary root before
+  constructing a normal font source. This resolves macOS `/var` aliases without
+  changing production symlink rejection.
+- Web pure-dist smoke now asserts the complete append-only 22-operation protocol,
+  stable original mapping and the three new signed-length operations. Flutter's
+  native ABI projection includes the exact six-line ffigen delta recorded by CI.
+- Swimlane's controlled measurement fixtures now implement Canvas advance width.
+  SVG fallback tests retain the already-normalized whitespace in emitted text,
+  including normal-mode lines, instead of expecting a missing `xml:space` marker.
+- The existing layout snapshot generator refreshed exactly 15 Class, one
+  Flowchart and one State golden. Class/Flowchart literal-angle labels now use
+  structured HTML measurement and its final 1/64px lattice. State Markdown escape
+  handling removes the extra backslash that old measurement counted; the edge
+  label width changes from 179.48 to 173.18 and derived geometry follows. Pinned
+  Mermaid's Marked 16.4.2 projection and checked-in upstream SVG agree with the new
+  escape semantics. All 99 generated differences are numeric geometry; IDs,
+  labels, topology and other values are unchanged. Inputs, comparator policy and
+  numeric test tolerance are unchanged.
+
+Local correction checks passed: 73 fallback/Swimlane cases; 45 native/bounded-font
+cases; 114 experimental-font/codec cases (11 host cases intentionally ignored);
+all-feature CLI Clippy with `-D warnings`; 77 workflow/platform/process Python
+contracts (two platform-specific skips); Web pure-dist smoke and its focused Node
+contracts. The local complete Web smoke has stale WASM package inputs, which the
+freshness verifier rejects; the rebuilt remote Web owner supplies that evidence.
+Local Dart 3.9.2 remains below the package constraint. CI's exact ffigen delta was
+applied and statically checked against the C header without lowering the SDK
+requirement; the supported-SDK platform owner performs full generation and checks.
+
+The expanded render owner rerun passed all 1,638 library, Swimlane and complete
+layout-snapshot cases with all diagrams, both optional layout engines and math.
+Formatting and diff whitespace checks passed. Corrections are recorded in
+`3ef2c52bd` (platform/prerequisite/projection contracts) and the following focused
+render-test/snapshot commit; remote owners rerun after publication.
