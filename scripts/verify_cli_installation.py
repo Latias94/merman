@@ -159,9 +159,9 @@ def release_capabilities_subcontract(
         "outputs": outputs,
         "native_fonts": {
             "default_policy_scope": "mermaid-graphical-input",
-            "default_measurement": "native",
-            "default_font_source": "bounded-system-discovery",
-            "default_system_discovery": "before-layout",
+            "default_measurement": "deterministic",
+            "default_font_source": "none",
+            "default_system_discovery": "disabled",
             "system_resources_bounded": True,
             "selected_font_bytes_bounded": True,
             "legacy_export_paths": (

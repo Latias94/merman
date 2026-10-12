@@ -129,7 +129,7 @@
     {
       "id": "native-fonts",
       "kind": "adapter",
-      "description": "Measure shared graphical text, wrapping, bounds and computed lengths with a reusable font context; share selected font bytes with native painting and report unsupported or missing-glyph fallbacks.",
+      "description": "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.",
       "targets": ["native"],
       "implications": [],
       "absence": {

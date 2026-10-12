@@ -3,14 +3,30 @@
 Updated: 2026-10-10. Host: Windows 11, x86_64-pc-windows-msvc.
 Branch: `feat/cli-native-font-context`. No commit or publication performed.
 
+## Current CLI Policy (2026-10-12)
+
+Ordinary CLI Mermaid graphical output defaults to deterministic text measurement
+without a native font context or system discovery for layout. PNG/JPEG/PDF painting
+can still load system fonts through the existing codec path; this policy does not
+claim all binary exports avoid discovery. Default builds and the official release
+profile still compile `native-fonts` and `system-fonts`. Explicit font files/directories
+automatically enable native measurement with a closed font set; fixed font
+contents and configuration avoid system catalogue discovery for faster,
+reproducible native output. `--font-measurement native` without sources permits
+system discovery when available, and `--font-system on` explicitly selects it.
+Rust library, FFI, ASCII, and committed Rustdoc generation defaults are unchanged.
+This is a policy update, not a new verification or performance run. See the
+[current policy and selection contract](../plans/2026-10-09-feat-cli-native-font-context-plan.md#current-cli-policy-2026-10-12).
+
 ## Historical Scope
 
 This file records the explicit-font implementation and distribution checkpoint
 before automatic system discovery was admitted. Its CLI default and unavailable
 system-discovery statements are historical, not current product policy.
-The subsequent [default-quality plan and delivery receipt](../plans/2026-10-09-feat-cli-native-font-context-plan.md#default-quality-revision-2026-10-10)
-enable actual-font measurement plus bounded system discovery in full CLI builds,
-while preserving host-independent library/FFI measurement defaults. See the
+The subsequent historical [default-quality plan and delivery receipt](../plans/2026-10-09-feat-cli-native-font-context-plan.md#default-quality-revision-2026-10-10)
+recorded actual-font measurement plus bounded system discovery in full CLI builds,
+while preserving host-independent library/FFI measurement defaults. The current
+policy above supersedes that automatic CLI activation. See the
 [system-discovery report](../performance/native_system_discovery_2026-10-10.md)
 and [same-font visual evidence](../assets/native-font-measurement/README.md).
 The original results below are retained without retroactive verification claims.

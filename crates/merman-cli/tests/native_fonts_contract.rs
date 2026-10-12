@@ -183,7 +183,6 @@ fn native_cli_sizes_node_text_without_a_title() {
 }
 
 #[test]
-#[cfg(not(feature = "system-fonts"))]
 fn compiled_native_feature_does_not_change_default_rendering() {
     let source = "---\nconfig:\n  fontFamily: Cousine\n---\nflowchart LR\nA-->B\n";
     let implicit = svg(
@@ -207,21 +206,49 @@ fn compiled_native_feature_does_not_change_default_rendering() {
     assert_eq!(implicit, explicit);
 }
 
+#[test]
+fn default_measurement_preserves_post_layout_css_compatibility() {
+    let css = tempfile::NamedTempFile::new().unwrap();
+    let rule = ".nodeLabel { letter-spacing: 2px; }";
+    std::fs::write(css.path(), rule).unwrap();
+    let path = css.path().to_string_lossy();
+    let source = "flowchart LR\nA-->B\n";
+    let mut args = vec![
+        "mmdc",
+        "-i",
+        "-",
+        "-o",
+        "-",
+        "--svgId",
+        "default-css",
+        "--cssFile",
+        &path,
+    ];
+    let automatic = svg(&args, source);
+    assert!(automatic.contains(rule));
+    args.extend(["--font-measurement", "deterministic"]);
+    assert_eq!(automatic, svg(&args, source));
+}
+
 #[cfg(feature = "system-fonts")]
 #[test]
-fn system_fonts_default_to_native_measurement_and_allow_compatibility_opt_out() {
+fn system_fonts_require_explicit_native_measurement_or_system_opt_in() {
     let source = "---\nconfig:\n  fontFamily: monospace\n  htmlLabels: false\n  flowchart:\n    minNodeWidth: 0\n    wrappingWidth: 1000\n---\nflowchart LR\nA[iiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiiii]\n";
-    let args = ["mmdc", "-i", "-", "-o", "-", "--svgId", "system-default"];
+    let args = ["mmdc", "-i", "-", "-o", "-", "--svgId", "system-opt-in"];
     let implicit = svg(&args, source);
-    let mut explicit = args.to_vec();
-    explicit.extend(["--font-measurement", "native"]);
-    assert_eq!(implicit, svg(&explicit, source));
     let mut deterministic = args.to_vec();
     deterministic.extend(["--font-measurement", "deterministic"]);
-    assert_ne!(implicit, svg(&deterministic, source));
-    deterministic.extend(["--font-system", "off"]);
-    let off = svg(&deterministic, source);
-    assert_eq!(off, svg(&deterministic[..deterministic.len() - 2], source));
+    assert_eq!(implicit, svg(&deterministic, source));
+    let mut native = args.to_vec();
+    native.extend(["--font-measurement", "native"]);
+    let native_svg = svg(&native, source);
+    assert_ne!(implicit, native_svg);
+    let mut system = args.to_vec();
+    system.extend(["--font-system", "on"]);
+    assert_eq!(native_svg, svg(&system, source));
+    let mut off = args.to_vec();
+    off.extend(["--font-system", "off"]);
+    assert_eq!(implicit, svg(&off, source));
 }
 
 #[cfg(feature = "system-fonts")]
@@ -687,24 +714,9 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
         native["system_discovery_runtime_available"],
         cfg!(feature = "system-fonts")
     );
-    assert_eq!(
-        native["default_measurement"],
-        if cfg!(feature = "system-fonts") {
-            "native"
-        } else {
-            "deterministic"
-        }
-    );
-    assert_eq!(
-        native["default_font_source"],
-        if cfg!(feature = "experimental-system-font-query") {
-            "platform-managed-system-query"
-        } else if cfg!(feature = "system-fonts") {
-            "bounded-system-discovery"
-        } else {
-            "none"
-        }
-    );
+    assert_eq!(native["default_measurement"], "deterministic");
+    assert_eq!(native["default_font_source"], "none");
+    assert_eq!(native["default_system_discovery"], "disabled");
     assert_eq!(native["selected_font_bytes_bounded"], true);
     assert_eq!(
         native["system_resources_bounded"],

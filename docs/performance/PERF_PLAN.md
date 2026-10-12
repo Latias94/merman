@@ -5,6 +5,16 @@ Use [RUNBOOK.md](RUNBOOK.md) for the execution loop and [BENCHMARKING.md](BENCHM
 measurement semantics and tool details. Dated reports are evidence for a particular revision and
 host; they are not rolling sources of truth.
 
+As of 2026-10-12, ordinary CLI Mermaid graphical output defaults to deterministic
+measurement without a native font context or system discovery for layout.
+PNG/JPEG/PDF painting can still load system fonts through the existing codec path.
+Native/system context support remains compiled in default/release profiles and
+runs only on explicit requests. Fixed font sources avoid catalogue discovery for
+faster, reproducible native output;
+see the [CLI font selection rules](../../crates/merman-cli/README.md#explicit-fonts).
+Dated native-font reports retain their original runtime defaults and measurements;
+they do not measure the revised default policy.
+
 ## Current evidence
 
 - [System font query feasibility](../research/2026-10-10-system-font-query-feasibility.md)
@@ -20,8 +30,10 @@ host; they are not rolling sources of truth.
 - [Default CLI system-font checkpoint](native_system_discovery_2026-10-10.md)
   records identical-output fresh-process A/B on a font-heavy Windows host:
   preallocated bounded reads reduce median time from 2091.91 to 1468.03 ms.
-  Full catalogue acquisition remains a quality-default startup cost; investigate
-  a content-correct catalogue/snapshot design rather than weakening identity,
+  Full catalogue acquisition remains a cost for explicitly requested system-font
+  context operations; ordinary CLI Mermaid layout no longer selects it by default.
+  Legacy codec painting can still acquire system fonts independently of measurement.
+  Investigate a content-correct catalogue/snapshot design without weakening identity,
   resource accounting or fallback policy. Explicit-font timings are a separate lane.
 
 - [Native font measurement checkpoint](native_font_measurement_2026-10-10.md)

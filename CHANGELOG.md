@@ -8,11 +8,35 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Added
 
-- Shared actual-font text measurement for graphical diagrams, including node labels, attributes, participants, messages, titles and wrapping. Rust callers can enable `native-fonts` and supply a reusable font context; the CLI accepts repeatable `--font-file` and `--font-dir` sources. Explicit sources remain closed unless `--font-system on` requests system fallback. See the [same-Fira-Code Flowchart, ER and Sequence comparisons](docs/assets/native-font-measurement/README.md) for label containment and layout changes.
+- Optional actual-font text measurement for graphical diagrams, including node labels, attributes, participants, messages, titles and wrapping. **CLI actual-font measurement is off by default**: ordinary commands retain fast, deterministic layout without discovering system fonts for measurement. For more accurate text sizing, wrapping and diagram layout, pass local font files or a font directory. Explicit sources automatically enable actual-font measurement and share the selected fonts with PNG/JPEG/PDF drawing. Rust callers can enable `native-fonts` and supply a reusable font context. See the [same-font Flowchart, ER and Sequence comparisons](docs/assets/native-font-measurement/README.md).
+
+Set Mermaid's `fontFamily` to the actual family name in your font files. For example, save this as `diagram.mmd` and provide your local Fira Sans regular and bold files:
+
+```mermaid
+---
+config:
+  fontFamily: "Fira Sans"
+---
+flowchart LR
+    A[Prepare diagram] --> B[Measure text and render]
+```
+
+```sh
+merman-cli render diagram.mmd --output diagram.svg --font-file fonts/FiraSans-Regular.ttf --font-file fonts/FiraSans-Bold.ttf
+merman-cli render diagram.mmd --format png --output diagram.png --font-dir fonts
+```
+
+Include the bold or italic files used by your diagram. Explicit sources use only the supplied font set unless `--font-system on` is added, avoiding a full system-font scan and making layout more reproducible. To explicitly measure with system fonts instead:
+
+```sh
+merman-cli render diagram.mmd --output diagram.svg --font-measurement native
+```
+
+The CLI does not bundle diagram text fonts. SVG keeps label text rather than embedding fonts, so viewers also need the selected fonts. Actual-font measurement improves layout accuracy within the supported typography contract; it does not guarantee browser pixel identity.
 
 ### Changed
 
-- Default and release CLI builds include `native-fonts` and `system-fonts`: Mermaid-to-SVG/PNG/JPEG/PDF resolves local fonts before layout and shares selected font bytes with native painting. Use `--font-measurement deterministic` for the previous font-independent layout; this also opts out of automatic measurement-time discovery. Rust library and FFI measurement defaults remain host-independent. Native measurement rejects unsupported typography rather than silently claiming exact metrics; text SVGs still require compatible fonts on the viewing machine.
+- Default and release CLI builds include optional local/system font support while keeping deterministic measurement as the default. `--font-measurement deterministic` explicitly selects that default; `--font-file`, `--font-dir`, `--font-measurement native` or `--font-system on` request actual-font measurement. PNG/JPEG/PDF drawing can still load system fonts through its existing export path. Rust library and FFI measurement defaults remain host-independent. Native measurement rejects typography it cannot represent; use deterministic mode for unsupported custom CSS.
 
 - Semantic and layout JSON now use `ManagedSemanticJson` with iterative clone, drop, equality, and deep JSON writers. State, Block, Treemap, and Ishikawa retain flat canonical records; direct Rust consumers must migrate document/child references. Mermaid-compatible JSON shapes remain unchanged. See the [migration guide](docs/migrations/deep-diagram-lifecycle.md).
 
@@ -24,8 +48,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Performance
 
-- On the current full release-profile CLI, explicit Cousine font measurement added 6.01 ms for Flowchart, 3.15 ms for ER and 2.80 ms for Sequence median process latency versus deterministic layout on one Windows host. Each policy/input has 90 fresh-process observations with warm filesystem caches; this is whole CLI cost, not system discovery or isolated shaping. See the [current explicit-font report, harness and raw samples](docs/performance/cli_explicit_font_current_2026-10-10.md).
-- Reduced default CLI system-font acquisition overhead without changing selected-font policy, byte verification or measured SVG output. On one Windows font-heavy host, 90 fresh processes per implementation reduced median Flowchart time from 2091.91 to 1468.03 ms (29.82%) with warm filesystem caches; default discovery still costs over a second there. See the [reproducible system-discovery report and raw samples](docs/performance/native_system_discovery_2026-10-10.md), separately from the [historical explicit-font cost](docs/performance/native_font_measurement_2026-10-10.md).
+- Fixed font files avoid full system-font discovery while providing actual-font layout. In the 2026-10-10 Windows release-profile measurements, explicit Cousine fonts added 6.01 ms for Flowchart, 3.15 ms for ER and 2.80 ms for Sequence median complete CLI latency versus deterministic layout. Each policy/input had 90 fresh-process observations with warm filesystem caches. Costs vary with font size, diagram and host; these historical results are not a current-head or universal overhead guarantee. See the [explicit-font report, harness and raw samples](docs/performance/cli_explicit_font_current_2026-10-10.md).
+- In a 2026-10-12 Windows `dist`-profile exploratory probe, ordinary two-node and 25-node SVG commands took about 43–46 ms, versus about 46–53 ms with an explicit Cousine font. The previous system-discovery default took about 1.45–1.47 seconds on the same host. Each input/policy had nine fresh-process observations with warm filesystem caches; these are candidate observations, not portable latency guarantees. See the [runtime-policy report and raw samples](docs/performance/cli_font_runtime_policy_2026-10-12.md).
+- System-font discovery is opt-in because scanning a large font catalogue can dominate startup. A historical Windows comparison reduced complete CLI latency from 2091.91 to 1468.03 ms, but still took over a second on that font-heavy host. Normal CLI SVG commands now avoid that scan. Prefer explicit font paths when you need actual-font layout without catalogue discovery; PNG/JPEG/PDF painting has its own font-loading costs. See the [system-discovery report and raw samples](docs/performance/native_system_discovery_2026-10-10.md).
 
 ## [0.8.0] - 2026-10-06
 

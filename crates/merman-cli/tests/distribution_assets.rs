@@ -158,7 +158,7 @@ fn generated_manpages_have_deterministic_metadata_and_descriptions() {
 }
 
 #[test]
-fn complete_profile_assets_expose_default_native_fonts_and_compatibility_opt_out() {
+fn complete_profile_assets_expose_opt_in_native_fonts_and_fast_defaults() {
     let script = read_asset("completions/merman-cli.bash");
     for command in ["render", "batch", "mmdc"] {
         let options = bash_options(&script, command);
@@ -182,8 +182,8 @@ fn complete_profile_assets_expose_default_native_fonts_and_compatibility_opt_out
         );
         let man = read_asset(&format!("man/merman-cli-{command}.1"));
         assert!(man.contains("Select shared text measurement"));
-        assert!(man.contains("native by default"));
-        assert!(man.contains("deterministic opts out of automatic font discovery"));
+        assert!(man.contains("deterministic by default"));
+        assert!(man.contains("native enables actual fonts and system discovery"));
         assert!(man.contains("Control bounded system font discovery"));
         assert!(man.contains("off with explicit sources unless on is requested"));
         assert!(!man.contains("title horizontal bounds only"));
@@ -198,12 +198,12 @@ fn complete_profile_assets_expose_default_native_fonts_and_compatibility_opt_out
     ] {
         let completion = read_asset(asset);
         assert!(
-            completion.contains("native by default"),
+            completion.contains("deterministic by default"),
             "{asset} omits the default measurement policy"
         );
         assert!(
-            completion.contains("deterministic opts out of automatic font discovery"),
-            "{asset} omits the compatibility opt-out"
+            completion.contains("native enables actual fonts and system discovery"),
+            "{asset} omits the native measurement opt-in"
         );
         assert!(
             completion.contains("Control bounded system font discovery"),

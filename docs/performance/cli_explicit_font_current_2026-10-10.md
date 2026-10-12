@@ -1,5 +1,15 @@
 # Current Explicit-Font CLI Cost
 
+> Current policy (2026-10-12): ordinary CLI Mermaid graphical output defaults to
+> deterministic measurement without a native font context or system discovery for
+> layout. PNG/JPEG/PDF painting can still load system fonts through the existing codec
+> path. Default/release profiles still compile native/system context support. Explicit
+> files/directories enable native measurement with a closed font set;
+> `--font-measurement native` without sources or
+> `--font-system on` explicitly requests system discovery when available. The original
+> executable defaults, measurements, and results below are historical and unchanged;
+> this note does not claim a new timing run. See the [current CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+
 Date: 2026-10-10, Asia/Shanghai. Windows 11 build 26100, Intel i7-11700,
 Rust 1.95.0, Cargo 1.95.0, x86_64-pc-windows-msvc. This checkpoint uses the
 current uncommitted implementation, not published 0.8.0. Build with

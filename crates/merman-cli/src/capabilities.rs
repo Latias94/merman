@@ -173,25 +173,9 @@ pub(crate) fn write_compiled_capabilities(
         #[cfg(feature = "native-fonts")]
         native_fonts: NativeFontsView {
             default_policy_scope: "mermaid-graphical-input",
-            default_measurement: if cfg!(feature = "system-fonts") {
-                "native"
-            } else {
-                "deterministic"
-            },
-            default_font_source: if cfg!(feature = "experimental-system-font-query") {
-                "platform-managed-system-query"
-            } else if cfg!(feature = "system-fonts") {
-                "bounded-system-discovery"
-            } else {
-                "none"
-            },
-            default_system_discovery: if cfg!(feature = "experimental-system-font-query") {
-                "platform-initialization-then-on-demand-families"
-            } else if cfg!(feature = "system-fonts") {
-                "before-layout"
-            } else {
-                "disabled"
-            },
+            default_measurement: "deterministic",
+            default_font_source: "none",
+            default_system_discovery: "disabled",
             system_resources_bounded: cfg!(feature = "system-fonts")
                 && !cfg!(feature = "experimental-system-font-query"),
             selected_font_bytes_bounded: true,

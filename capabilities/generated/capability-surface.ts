@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:81d9233b2836df9a41e9c12da9ea1b197b3bcb97671b4cdd95d167e1b9c9c846" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed" as const;
 
 export const TARGETS = [
   {
@@ -119,7 +119,7 @@ export const CAPABILITIES = [
   {
     "id": "native-fonts",
     "kind": "adapter",
-    "description": "Measure shared graphical text, wrapping, bounds and computed lengths with a reusable font context; share selected font bytes with native painting and report unsupported or missing-glyph fallbacks.",
+    "description": "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.",
     "targets": [
       "native"
     ],

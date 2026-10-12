@@ -714,9 +714,11 @@ fn prepare_font_context(
         }
         return Ok(None);
     }
+    let native_requested = args.measurement == Some(FontMeasurementKind::Native);
     let use_system = args.system == Some(FontSystemKind::On)
         || (!raw_svg
             && !explicit
+            && native_requested
             && args.system != Some(FontSystemKind::Off)
             && cfg!(feature = "system-fonts"));
     if use_system && !cfg!(feature = "system-fonts") {
@@ -726,16 +728,13 @@ fn prepare_font_context(
     }
     if !explicit && !use_system {
         if args.system == Some(FontSystemKind::Off)
-            && (!svg_output
-                || (!raw_svg
-                    && (cfg!(feature = "system-fonts")
-                        || args.measurement == Some(FontMeasurementKind::Native))))
+            && (!svg_output || (!raw_svg && native_requested))
         {
             return Err(CliError::InvalidInput(
                 "--font-system off leaves no fonts for native measurement or encoded painting; provide --font-file or --font-dir, or use --font-measurement deterministic for Mermaid SVG output".to_string(),
             ));
         }
-        if args.measurement == Some(FontMeasurementKind::Native) {
+        if native_requested {
             return Err(CliError::InvalidInput(
                 "missing capability: system-fonts; --font-measurement native requires --font-file or --font-dir in this CLI build".to_string(),
             ));
@@ -889,6 +888,37 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
             .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
     )
     .with_profile(resources.profile())
+}
+
+#[cfg(all(test, feature = "native-fonts"))]
+mod font_policy_tests {
+    use super::prepare_font_context;
+    use crate::cli::{FontCliArgs, FontMeasurementKind, FontSystemKind};
+
+    #[test]
+    fn deterministic_svg_policies_do_not_prepare_a_font_context() {
+        let policies = [
+            FontCliArgs::default(),
+            FontCliArgs {
+                measurement: Some(FontMeasurementKind::Deterministic),
+                ..Default::default()
+            },
+            FontCliArgs {
+                system: Some(FontSystemKind::Off),
+                ..Default::default()
+            },
+        ];
+        let cwd = std::env::current_dir().unwrap();
+        for policy in policies {
+            let context =
+                prepare_font_context(&policy, &cwd, false, true, &merman::OperationControl::new())
+                    .unwrap();
+            assert!(
+                context.is_none(),
+                "deterministic layout must not acquire fonts"
+            );
+        }
+    }
 }
 
 #[cfg(all(test, feature = "rustdoc"))]

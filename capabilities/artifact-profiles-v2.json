@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:81d9233b2836df9a41e9c12da9ea1b197b3bcb97671b4cdd95d167e1b9c9c846"
+    "digest": "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed"
   },
   "profiles": [
     {
@@ -136,7 +136,7 @@
     },
     {
       "id": "cli-native-fonts",
-      "description": "Explicit-font SVG CLI with partial native title measurement and no binary codecs or system discovery.",
+      "description": "SVG CLI with deterministic measurement by default, opt-in explicit native fonts, and no binary codecs or system discovery.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-cli",
@@ -161,7 +161,7 @@
     },
     {
       "id": "cli-release",
-      "description": "Current complete command-line release build with explicit ELK, math, and default native font measurement using bounded system discovery.",
+      "description": "Complete command-line release build with ELK, math, and compiled native-fonts/system-fonts capabilities; Mermaid graphical output defaults to deterministic measurement without font discovery, with native fonts and bounded system discovery available through runtime opt-in.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-cli",

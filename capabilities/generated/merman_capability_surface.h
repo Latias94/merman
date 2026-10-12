@@ -7,7 +7,7 @@
 #include <stddef.h>
 
 #define MERMAN_CAPABILITY_DESCRIPTOR_SCHEMA_VERSION 1
-#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:81d9233b2836df9a41e9c12da9ea1b197b3bcb97671b4cdd95d167e1b9c9c846"
+#define MERMAN_CAPABILITY_DESCRIPTOR_DIGEST "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed"
 
 #define MERMAN_TARGET_NATIVE "native"
 #define MERMAN_TARGET_TYPST "typst"
@@ -211,7 +211,7 @@ static const MermanCapabilityDescriptor MERMAN_CAPABILITIES[] = {
     { "layout-elk", "engine", "Enable Mermaid ELK-backed layout behavior.", MERMAN_CAPABILITY_LAYOUT_ELK_TARGETS, 3, MERMAN_CAPABILITY_LAYOUT_ELK_IMPLICATIONS, 1 },
     { "markdown", "tool", "Compile CLI Markdown batch conversion.", MERMAN_CAPABILITY_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "math", "engine", "Render Mermaid math labels with the selected math engine.", MERMAN_CAPABILITY_MATH_TARGETS, 2, MERMAN_CAPABILITY_MATH_IMPLICATIONS, 1 },
-    { "native-fonts", "adapter", "Measure shared graphical text, wrapping, bounds and computed lengths with a reusable font context; share selected font bytes with native painting and report unsupported or missing-glyph fallbacks.", MERMAN_CAPABILITY_NATIVE_FONTS_TARGETS, 1, NULL, 0 },
+    { "native-fonts", "adapter", "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.", MERMAN_CAPABILITY_NATIVE_FONTS_TARGETS, 1, NULL, 0 },
     { "network-icons", "tool", "Compile CLI network icon loading commands.", MERMAN_CAPABILITY_NETWORK_ICONS_TARGETS, 1, NULL, 0 },
     { "parallel-markdown", "tool", "Compile parallel CLI Markdown batch processing.", MERMAN_CAPABILITY_PARALLEL_MARKDOWN_TARGETS, 1, NULL, 0 },
     { "pdf", "output", "Export rendered diagrams as PDF.", MERMAN_CAPABILITY_PDF_TARGETS, 1, NULL, 0 },

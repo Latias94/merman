@@ -1,5 +1,15 @@
 # Native Font Measurement Optimization Checkpoint
 
+> Current policy (2026-10-12): ordinary CLI Mermaid graphical output defaults to
+> deterministic measurement without a native font context or system discovery for
+> layout. PNG/JPEG/PDF painting can still load system fonts through the existing codec
+> path. Default/release profiles still compile native/system context support. Explicit
+> files/directories enable native measurement with a closed font set;
+> `--font-measurement native` without sources or
+> `--font-system on` explicitly requests system discovery when available. The original
+> executable defaults, measurements, and results below are historical and unchanged;
+> this note does not claim a new timing run. See the [current CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+
 Date: 2026-10-10. Windows 11, Intel i7-11700 (8 cores / 16 logical processors),
 Rust 1.95.0, x86_64-pc-windows-msvc, release/bench profiles. At the time of these
 measurements, native fonts were opt-in at runtime and in library builds; the CLI

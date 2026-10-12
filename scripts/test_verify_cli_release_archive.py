@@ -245,9 +245,9 @@ def valid_capabilities_payload(
         "outputs": outputs,
         "native_fonts": {
             "default_policy_scope": "mermaid-graphical-input",
-            "default_measurement": "native",
-            "default_font_source": "bounded-system-discovery",
-            "default_system_discovery": "before-layout",
+            "default_measurement": "deterministic",
+            "default_font_source": "none",
+            "default_system_discovery": "disabled",
             "system_resources_bounded": True,
             "selected_font_bytes_bounded": True,
             "legacy_export_paths": (
@@ -1300,7 +1300,30 @@ class RuntimeContractTests(unittest.TestCase):
         payload = valid_capabilities_payload()
         expected = verifier._release_capabilities_contract(PROJECT_ROOT, version=VERSION)
         self.assertEqual(payload["native_fonts"], expected["native_fonts"])
+        native = payload["native_fonts"]
+        self.assertEqual(native["default_measurement"], "deterministic")
+        self.assertEqual(native["default_font_source"], "none")
+        self.assertEqual(native["default_system_discovery"], "disabled")
+        self.assertIs(native["system_discovery_compiled"], True)
+        self.assertIs(native["system_discovery_runtime_available"], True)
+        self.assertEqual(len(native["measurement_operations"]), 22)
         verifier._validate_runtime_capabilities(payload, expected)
+
+    def test_runtime_rejects_implicit_native_font_defaults(self) -> None:
+        implicit_defaults = (
+            ("default_measurement", "native"),
+            ("default_font_source", "bounded-system-discovery"),
+            ("default_system_discovery", "before-layout"),
+            ("default_font_source", "platform-managed-system-query"),
+            ("default_system_discovery", "platform-initialization-then-on-demand-families"),
+        )
+        for field, value in implicit_defaults:
+            with self.subTest(field=field, value=value):
+                payload = valid_capabilities_payload()
+                payload["native_fonts"][field] = value
+                self.assert_runtime_payload_rejected(
+                    PROJECT_ROOT, payload, f"native_fonts.*{field}"
+                )
 
     def test_runtime_rejects_native_font_metadata_field_drift(self) -> None:
         native = valid_capabilities_payload()["native_fonts"]

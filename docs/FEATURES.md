@@ -71,17 +71,31 @@ select their own direct leaf set instead.
 
 ### Optional CLI Fonts
 
-The default CLI build and official release binaries include `native-fonts` and
-`system-fonts`. Mermaid graphical output uses actual-font measurement by default.
-Without explicit sources, bounded system discovery prepares a font context before
-layout. `--font-measurement deterministic` selects compatibility measurement.
-Explicit `--font-file` or `--font-dir` sources use a closed font set by default;
-add `--font-system on` to allow system fallback. `fontFamily` selects among the
-available faces, not a file. System-font output is host-dependent; explicit fixed
-font files are the reproducible route.
+The current-source default CLI build and official release profile include
+`native-fonts` and `system-fonts`. Ordinary CLI Mermaid SVG, PNG, JPEG, and PDF
+output defaults to deterministic text measurement, without creating a native font
+context or discovering system fonts for layout. Compiling these capabilities keeps
+native rendering available without activating it for every invocation. CLI contract
+6 reports compiled font support separately from the default measurement and discovery
+policy. PNG/JPEG/PDF painting can still load system fonts through the existing codec
+path; deterministic measurement does not guarantee binary export without discovery.
 
-Library defaults remain unchanged. For a minimal CLI build with explicit fonts
-and SVG output:
+Explicit `--font-file` or `--font-dir` sources automatically select native
+measurement with a closed font set, even with `--font-measurement native`; add
+`--font-system on` to allow system fallback. Without explicit sources,
+`--font-measurement native` explicitly permits system discovery when `system-fonts`
+is compiled. `--font-system on` explicitly selects system fonts and native
+measurement. `--font-measurement deterministic` explicitly selects the default
+layout without font sources. `fontFamily` selects among available faces, not a
+file, and alone does not enable native-context discovery. `--runtime native`
+controls other system adapters and alone does not enable native-context discovery.
+
+Fixed font files avoid full system catalogue discovery and provide the faster,
+reproducible native route when font contents and Mermaid configuration are pinned.
+System catalogue discovery is a separate cost from actual-font text measurement.
+System-font output is host-dependent. Rust library, FFI, ASCII, and committed
+Rustdoc generation defaults remain unchanged. For a minimal CLI build with
+explicit fonts and SVG output:
 
 ```powershell
 cargo run -p merman-cli --no-default-features --features diagram-flowchart,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
@@ -89,13 +103,16 @@ cargo run -p merman-cli --no-default-features --features diagram-flowchart,nativ
 
 Add `png`, `jpeg`, or `pdf` individually for binary output. `native-fonts` alone
 does not enable codecs or system discovery. Cargo features are additive: legacy
-binary exports compile usvg system discovery to preserve existing behavior,
-even when an explicit-font operation uses `--font-system off`. The separate
-`system-fonts` feature authorizes the bounded native context's discovery route.
-Minimal builds with only `native-fonts` retain deterministic defaults and require
-explicit fonts for native measurement. Dependency feature union does not grant
-the CLI that permission. `capabilities --json` reports the compiled dependency
-capability and the CLI runtime policy separately.
+binary exports compile usvg system discovery to preserve existing library/export
+behavior, even when an explicit-font operation uses `--font-system off`. This
+compiled availability does not activate native-context discovery for ordinary CLI
+Mermaid layout; legacy codec painting can still acquire system fonts.
+The separate CLI `system-fonts` feature permits the native context's discovery
+route only when requested through native/system font options. Minimal builds with
+only `native-fonts` retain deterministic defaults and require explicit fonts for
+native measurement. Dependency feature union does not grant the CLI that
+permission. `capabilities --json` reports the compiled dependency capability and
+the CLI runtime policy separately.
 
 The opt-in `experimental-system-font-query` feature selects Fontique-backed,
 on-demand system discovery in CLI builds. It is not part of the default or

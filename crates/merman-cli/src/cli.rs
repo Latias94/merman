@@ -793,10 +793,10 @@ struct FontArgumentDefinitions {
     /// Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable.
     #[arg(long = "font-dir", value_name = "PATH", value_hint = ValueHint::DirPath, help_heading = "Native fonts")]
     font_dir: Vec<PathBuf>,
-    /// Select shared text measurement: native by default with system-fonts support; deterministic opts out of automatic font discovery.
+    /// Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied.
     #[arg(long = "font-measurement", value_enum, help_heading = "Native fonts")]
     font_measurement: Option<FontMeasurementKind>,
-    /// Control bounded system font discovery; automatic without explicit sources when compiled, off with explicit sources unless on is requested.
+    /// Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested.
     #[arg(long = "font-system", value_enum, help_heading = "Native fonts")]
     font_system: Option<FontSystemKind>,
 }

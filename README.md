@@ -221,6 +221,18 @@ Choose the surface that owns the job instead of pulling the complete renderer in
 | Add diagnostics, completion, navigation, and rename | [`merman-lsp`] or the [VS Code extension] |
 | Integrate C/C++, Python, Flutter, Android, Apple, Typst, or other delivery surfaces | [Package surface guide] |
 
+For the current-source CLI, ordinary Mermaid SVG, PNG, JPEG, and PDF output defaults to
+deterministic text measurement without a native font context or system discovery for layout.
+PNG/JPEG/PDF painting can still load system fonts through the existing codec path. The default
+build and official release profile keep `native-fonts` and `system-fonts` compiled and available.
+
+`--font-file` or `--font-dir` automatically enables native measurement with a closed font set;
+fixed font contents and configuration avoid catalogue discovery for faster, reproducible
+native output.
+`--font-measurement native` without sources or `--font-system on` explicitly requests system
+discovery. Rust library, FFI, ASCII, and committed Rustdoc generation defaults remain unchanged.
+See the [CLI font guide](crates/merman-cli/README.md#explicit-fonts) for selection rules and limits.
+
 `tree-sitter-mermaid` is independently versioned because editor syntax trees and queries have a
 different compatibility contract from Merman's semantic model and renderer. Its [package README]
 covers Node.js, browser, Rust, C/C++, query, and downstream-editor integration.

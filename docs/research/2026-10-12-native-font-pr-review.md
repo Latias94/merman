@@ -3,6 +3,16 @@
 Date: 2026-10-12, Asia/Shanghai. Windows 11 / Rust 1.95.0.
 Branch: `feat/cli-native-font-context`.
 
+
+Current delivery policy: ordinary Mermaid graphical CLI output defaults to
+host-independent deterministic measurement. Compiled `native-fonts` and
+`system-fonts` remain available, but a native context is created only for explicit
+font sources, `--font-measurement native`, or `--font-system on`. Fixed font
+sources remain closed unless system fallback is requested. Default SVG layout
+performs no font acquisition; legacy PNG/JPEG/PDF painting can still discover
+fonts. The maintainer chose not to bundle diagram text fonts. Earlier default-native
+policy and measurements below are historical integration records.
+
 The native-font implementation was committed as `cee23328b`. Remote main at
 `54c5c6dfb` was merged in `728397269`, preserving upstream Unicode HTML wrapping,
 managed-operation lifecycle and ASCII geometry changes. This checkpoint records
@@ -199,3 +209,37 @@ and their recorded hashes remain identical. Rustdoc rendering already explicitly
 selects deterministic measurement and performs no native font discovery. The
 strict `rustdoc check` command passed after the reviewed regeneration. No receipt
 validation, rendering policy or CI check was relaxed.
+
+
+## Runtime Opt-In Policy Revision
+
+After reviewing the font-heavy host's complete CLI startup cost, the maintainer
+requested deterministic measurement as the ordinary default. The revised font
+admission creates no native context for default SVG, explicit deterministic SVG
+or source-free `--font-system off` SVG; its direct unit regression checks the
+returned context, and the process contracts verify default/deterministic output
+identity and post-layout CSS compatibility. Explicit files/directories still
+activate shared native measurement with a closed font set. System native
+measurement requires an explicit runtime request. Native and system support stay
+compiled into default/release recipes; binary painting's existing acquisition
+policy is preserved. No diagram text font was bundled.
+
+An independent correctness review found no confirmed P1/P2 in the policy change.
+Verification passed: 299 CLI unit/native/distribution/contract cases (one
+intentional skip), 12 minimal explicit-font process cases, the direct default
+context regression, selected graphical export cases, all-feature/all-target
+Clippy, 80 release/installation Python contracts (two platform skips), 36 asset
+and artifact-recipe Python cases (one platform skip), capability projection
+freshness, all 36 artifact recipes, and Web's 37 exports/48 bindings/five package
+entry contract check. Rustdoc regeneration changed only its capability digest
+and the strict check passed. The descriptor-owned Windows `dist` binary passed
+real runtime and installation checks with the tracked support assets.
+
+The [runtime-policy probe](../performance/cli_font_runtime_policy_2026-10-12.md)
+records nine complete-process observations per input/policy, source and artifact
+identities, and its limited same-host scope. Candidate default SVG latency is
+43.37/45.74 ms for two/25 nodes; explicit-font latency is 45.60/52.84 ms. Default
+matches explicit deterministic SVG hashes, and deterministic/explicit-font SVG
+hashes are unchanged across the policy revision. Historical measurement records
+remain intact. The Changelog includes font-family configuration, file/directory
+examples and the recommendation to use fixed local fonts for layout accuracy.

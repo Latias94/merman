@@ -7,6 +7,31 @@ date: 2026-10-09
 
 # Shared Native Font Measurement Across Diagram Families
 
+## Current CLI Policy (2026-10-12)
+
+Ordinary CLI Mermaid SVG, PNG, JPEG, and PDF output now defaults to deterministic
+text measurement without a native font context or system discovery for layout.
+PNG/JPEG/PDF painting can still load system fonts through the existing codec path;
+this policy does not claim all binary exports avoid discovery. Default builds and
+the official release profile still compile `native-fonts` and `system-fonts`; their
+availability does not activate font acquisition for every invocation.
+
+- `--font-file` or `--font-dir` automatically enables native measurement with a
+  closed font set, even with `--font-measurement native`. Fixed font contents and
+  configuration avoid catalogue discovery for faster, reproducible native output.
+- `--font-measurement native` without explicit sources explicitly permits system
+  discovery when `system-fonts` is compiled; `--font-system on` explicitly selects
+  system discovery and native measurement, including fallback for explicit sources.
+- `fontFamily` and `--runtime native` alone do not enable native-context discovery.
+  Rust library, FFI, ASCII, and committed Rustdoc generation defaults remain unchanged.
+- CLI contract 6 describes compiled font support separately from runtime defaults
+  and explicit selection. See the [current CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+
+The earlier plan, decisions, and delivery/validation receipts below are retained
+as historical records. This section supersedes their native-by-default CLI
+statements without changing their measured numbers or verification results. No
+new performance measurements are claimed for the revised default policy.
+
 ## Default Quality Revision (2026-10-10)
 
 The maintainer selected actual-font measurement as the default CLI graphical

@@ -369,6 +369,29 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                         runner=fixture.run,
                     )
 
+    def test_installed_cli_rejects_implicit_native_font_defaults(self) -> None:
+        implicit_defaults = (
+            ("default_measurement", "native"),
+            ("default_font_source", "bounded-system-discovery"),
+            ("default_system_discovery", "before-layout"),
+            ("default_font_source", "platform-managed-system-query"),
+            ("default_system_discovery", "platform-initialization-then-on-demand-families"),
+        )
+        for field, value in implicit_defaults:
+            with self.subTest(field=field, value=value), self.installation_fixture() as fixture:
+                fixture.capabilities["native_fonts"][field] = value
+                with self.assertRaisesRegex(
+                    verifier.HomebrewVerificationError, f"native_fonts.*{field}"
+                ):
+                    verifier.verify_homebrew_install(
+                        formula_version="0.8.0",
+                        support_assets_since=SUPPORT_ASSETS_SINCE,
+                        prefix=fixture.prefix,
+                        binary=fixture.binary,
+                        contract_root=fixture.contract_root,
+                        runner=fixture.run,
+                    )
+
     def test_native_font_fields_have_exact_json_types_and_values(self) -> None:
         native = valid_capabilities_payload()["native_fonts"]
         for field, value in native.items():

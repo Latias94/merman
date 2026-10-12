@@ -1,5 +1,15 @@
 # Default CLI System-Font Discovery Checkpoint
 
+> Current policy (2026-10-12): ordinary CLI Mermaid graphical output defaults to
+> deterministic measurement without a native font context or system discovery for
+> layout. PNG/JPEG/PDF painting can still load system fonts through the existing codec
+> path. Default/release profiles still compile native/system context support. Explicit
+> files/directories enable native measurement with a closed font set;
+> `--font-measurement native` without sources or
+> `--font-system on` explicitly requests system discovery when available. The original
+> executable defaults, measurements, and results below are historical and unchanged;
+> this note does not claim a new timing run. See the [current CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+
 Date: 2026-10-10, Asia/Shanghai. This is a same-host comparison of two
 unpublished, uncommitted native-font implementation snapshots based on
 `292826512`. It is not a comparison with published 0.8.0. Both executables
