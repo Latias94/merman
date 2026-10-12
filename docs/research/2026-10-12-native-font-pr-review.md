@@ -189,3 +189,13 @@ must include `merman-unicode-linebreak`, and the interactive layout ceiling is
 The precise expected closures and exact/plus-one boundary assertions were aligned
 without changing production policy. The final suite passed 129 cases with two
 platform-specific skips and no failures.
+
+The latest Linux owner (`38194358823`, head `26773050d`) passed all 9,416
+workspace tests (seven intentional skips), the explicit native-font process
+contracts and host-sensitive font contracts before detecting a stale committed
+Rustdoc generator capability digest. Regenerating the bundle with the default
+CLI changed only `receipt.json`'s capability digest; both Markdown/SVG fragments
+and their recorded hashes remain identical. Rustdoc rendering already explicitly
+selects deterministic measurement and performs no native font discovery. The
+strict `rustdoc check` command passed after the reviewed regeneration. No receipt
+validation, rendering policy or CI check was relaxed.
