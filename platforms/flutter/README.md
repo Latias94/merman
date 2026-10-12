@@ -14,7 +14,7 @@ Pin the exact package version when pairing the Dart facade with its Native Asset
 flutter pub add 'merman:0.9.0'
 ```
 
-Version `0.9.0` includes Mermaid 12.1 and schema-3 ASCII output; alpha.6 has the older contract. For source development, use a matching reviewed checkout as a local path dependency:
+Version `0.9.0` includes Mermaid 12.1 and schema-3 ASCII output; alpha.6 has the older contract. For source development, check out the `v0.9.0` tag and use a local path dependency:
 
 ```yaml
 dependencies:

@@ -14,7 +14,7 @@ Install the exact version documented here:
 python -m pip install 'merman==0.9.0'
 ```
 
-For source work, build the wheel and native library from the exact reviewed commit and keep those artifacts paired with the same binding contract.
+For source builds, use the `v0.9.0` tag and build the wheel and native library together to preserve the binding contract.
 
 Published wheels currently target CPython-compatible Python `3.9+` on macOS arm64, manylinux x86_64, and Windows x86_64. A platform without a listed wheel is not an officially packaged target; supporting another target requires a native-port contribution rather than only a local `pip` build.
 

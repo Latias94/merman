@@ -23,7 +23,7 @@ accept or render the document.
 | Node.js | [`@mermanjs/tree-sitter-mermaid`] | Native Node binding, TypeScript declarations, queries, and language WASM |
 | Browser or Worker | [`@mermanjs/tree-sitter-mermaid`] + [`web-tree-sitter`] | Language WASM and portable queries for the generic browser runtime |
 | Rust | [`tree-sitter-mermaid`] | `LANGUAGE`, `NODE_TYPES`, and the portable queries |
-| C/C++ and editors | Repository source, or a matching [GitHub Release] when available | Generated C parser/scanner, public header, Make, CMake, and pkg-config metadata |
+| C/C++ and editors | Repository source, or a matching [GitHub Release] | Generated C parser/scanner, public header, Make, CMake, and pkg-config metadata |
 
 The grammar has its own version line, independent of Merman. Its npm and Cargo artifacts share that
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
@@ -146,7 +146,7 @@ int main(void) {
 }
 ```
 
-For the independent 0.3.1 preparation and owner publication order, see the [grammar release guide](../../docs/release/TREE_SITTER_MERMAID.md). Version 0.3.0 remains the published 2026-10-06 historical package; source preparation does not assert registry availability.
+Version 0.3.1 pairs with Tree-sitter CLI, Rust, and Web runtime 0.27.1; the Rust language adapter uses compatible `^0.1.9`, and the generated language ABI remains 15. See [query migration](docs/query-migration.md) when upgrading queries and the [grammar release guide](../../docs/release/TREE_SITTER_MERMAID.md) when maintaining the package.
 
 ## Compatibility
 

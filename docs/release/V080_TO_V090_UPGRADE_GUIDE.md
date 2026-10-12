@@ -1,10 +1,10 @@
 # Merman 0.8.0 to 0.9.0 upgrade guide
 
-This guide describes the prepared 0.9.0 source contract relative to stable 0.8.0, published on 2026-10-06. It does not announce registry or artifact availability. Check the [preparation record](PUBLISH_ORDER.md#090-preparation) for owner status; earlier versioned guides remain historical contracts.
+This guide covers upgrading from Merman 0.8.0 to 0.9.0. It describes changes to Rust APIs, CLI commands, rendered output, bindings, and independently versioned packages. See the [release index](README.md) for earlier upgrade paths.
 
 ## Rust dependencies
 
-Upgrade coupled Merman crates together and retain explicit feature selection. Rust 1.95 remains the minimum toolchain. Stable internal workspace requirements use the ordinary compatible `0.9.0` requirement; exact prerelease lockstep rules do not apply to this stable candidate.
+Upgrade coupled Merman crates together and retain explicit feature selection. Rust 1.95 remains the minimum toolchain. Stable internal workspace requirements use the ordinary compatible `0.9.0` requirement; exact prerelease lockstep rules do not apply to this stable release.
 
 ```toml
 [dependencies]
@@ -66,7 +66,7 @@ Native `render -e` and `batch -e` are removed in 0.9.0 as scheduled by 0.8.x. Re
 
 Review snapshots containing long HTML labels, preserved newlines, non-breaking spaces, soft hyphens, Markdown code spans, or escaped tags. Layout and exported SVG now share wrapping and decoded-text semantics. XHTML label paths keep literal angle brackets; Flowchart HTML labels follow Mermaid's raw-token handling. See [PR #192](https://github.com/Latias94/merman/pull/192) and [PR #193](https://github.com/Latias94/merman/pull/193).
 
-Typst `@preview/merman:0.5.0` keeps 0.4.0's rendering functions, figures, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Upgrade the import once the package is published and review the [package changelog](../../distribution/typst/merman/CHANGELOG.md). Use `background: "white"` for opaque artwork. ELK defaults and Dagre opt-in recipes already shipped in 0.4.0; this update does not add another default-layout migration or native-font measurement.
+Typst `@preview/merman:0.5.0` keeps 0.4.0's rendering functions, figures, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Update the import to `@preview/merman:0.5.0` and review the [package changelog](../../distribution/typst/merman/CHANGELOG.md). Use `background: "white"` for opaque artwork. ELK defaults and Dagre opt-in recipes already shipped in 0.4.0; this update does not add another default-layout migration or native-font measurement.
 
 ## Edge geometry and terminal output
 
@@ -90,11 +90,11 @@ Text-measurement protocol 1 adds signed length operations `raw-bbox-y-offset` (1
 
 ## Independent packages
 
-| Surface | Prepared version and action |
+| Surface | Version and upgrade action |
 | --- | --- |
-| `roughr-merman` | 0.12.4 precedes workspace publication. Private host-random dependencies advance while the public legacy svgtypes 0.11 API remains supported. |
-| Tree-sitter Mermaid | 0.3.1 precedes dependent workspace crates. Keep the admitted CLI/Rust/Web 0.27.1 contract. The public language adapter uses compatible `^0.1.9`; generated language ABI remains 15. |
-| Typst | `@preview/merman:0.5.0` bundles Merman 0.9.0 and keeps plugin ABI 2. Published 0.4.0 continues to identify Merman 0.8.0. Use the [Typst guide](TYPST_050_PREPARATION.md). |
-| VS Code | Extension version 0.1.0 remains independent; prepared runtime binaries use Merman 0.9.0. A workspace release does not publish a VSIX or Marketplace entry. |
+| `roughr-merman` | 0.12.4 updates private host-random dependencies while preserving the public legacy svgtypes 0.11 API. |
+| Tree-sitter Mermaid | 0.3.1 uses the paired CLI/Rust/Web 0.27.1 contract. The public language adapter uses compatible `^0.1.9`; generated language ABI remains 15. |
+| Typst | `@preview/merman:0.5.0` bundles Merman 0.9.0 and keeps plugin ABI 2. Version 0.4.0 bundles Merman 0.8.0. See the [Typst package guide](../../distribution/typst/merman/README.md#upgrading-from-040). |
+| VS Code | Extension version 0.1.0 uses Merman 0.9.0 runtime binaries. See the [extension guide](../../tools/vscode-extension/README.md) for installation and runtime selection. |
 
-These are preparation targets, not registry observations. Review the [dependency policy](../DEPENDENCY_POLICY.md) for compatible lines, exact generator groups, and intentional upgrade exceptions. Independent prerequisite owners must establish registry visibility before the workspace owner publishes dependents.
+These packages use independent version numbers. Review the [dependency policy](../DEPENDENCY_POLICY.md) for compatible dependency lines, exact generator groups, and intentional upgrade exceptions.

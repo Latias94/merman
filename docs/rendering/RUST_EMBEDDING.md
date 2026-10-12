@@ -1,6 +1,6 @@
 # Embedding Merman in a Rust application
 
-This guide covers Rust embedding for the prepared `0.9.0` contract, retaining Mermaid `12.1.0` from stable 0.8.0. Use the [0.8.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for managed JSON and canonical record migrations, the [versioned upgrade index](../release/README.md) for earlier releases, and the [preparation record](../release/PUBLISH_ORDER.md#090-preparation) for independently delivered packages.
+This guide covers Rust embedding with Merman `0.9.0`, retaining Mermaid `12.1.0` compatibility from 0.8.0. Use the [0.8.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for managed JSON and canonical record migrations, the [versioned upgrade index](../release/README.md) for earlier releases, and [package surfaces](../release/PACKAGE_SURFACES.md) to choose a binding or artifact.
 
 ## Select languages, outputs, and layout backends
 

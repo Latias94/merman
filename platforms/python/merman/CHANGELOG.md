@@ -6,7 +6,7 @@ The format is based on Keep a Changelog, and this package follows the merman wor
 
 ## [0.9.0] - Unreleased
 
-This is the prepared package delta since 0.8.0, not a channel publication announcement. Keep the generated wrapper and native artifacts paired; UniFFI API 7 remains unchanged.
+Version `0.9.0` retains UniFFI API 7 from 0.8.0. Keep the generated wrapper and native artifacts paired.
 
 ### Added
 
@@ -24,7 +24,7 @@ This is the prepared package delta since 0.8.0, not a channel publication announ
 - Deep input cleanup no longer relies on recursive ownership. Block child metadata and repeated composite declarations follow the pinned Mermaid behavior. [PR #191](https://github.com/Latias94/merman/pull/191)
 - ASCII/Unicode output preserves loop-back contacts, transition labels, compound frames, Sequence spacing, and diamond shoulders. Resource ceilings retain their existing meanings. [PR #179](https://github.com/Latias94/merman/pull/179), [PR #188](https://github.com/Latias94/merman/pull/188)
 
-See the [upgrade guide](../../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks) and [channel preparation record](../../../docs/release/PUBLISH_ORDER.md#090-preparation).
+See the [package guide](README.md) and [upgrade guide](../../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
 
 ## [0.8.0] - 2026-10-06
 

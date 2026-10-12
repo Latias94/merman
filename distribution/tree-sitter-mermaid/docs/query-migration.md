@@ -4,7 +4,7 @@ The `tree-sitter-mermaid` CST and canonical query captures are experimental befo
 must pin a released version or immutable repository commit and compile their queries against that
 exact generated parser.
 
-## 0.2.0 to 0.3.0 (candidate)
+## 0.2.0 to 0.3.0
 
 Version 0.3.0 accepts sequence actor-menu names (`link`, `links`, `properties`, and `details`) as message endpoints, following the Mermaid 12.1 lexer fix. Sequence actor metadata uses the `keyword` field for `sequence_statement_keyword`; custom queries that select the historical `kind` field must select `keyword` instead. No diagram family is removed, and the language ABI remains 15.
 

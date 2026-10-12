@@ -14,7 +14,7 @@ The loader, selected native platform package, and explicit `@mermanjs/node-wasm`
 npm install @mermanjs/node@0.9.0
 ```
 
-Version `0.9.0` includes Mermaid 12.1 and Agentflow/Usecase support; see the [package changelog](CHANGELOG.md). For source validation, use the exact reviewed commit rather than a moving branch.
+Version `0.9.0` includes Mermaid 12.1 and Agentflow/Usecase support; see the [package changelog](CHANGELOG.md). For source builds, use the `v0.9.0` tag with its matching package workspace and lockfile.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";
@@ -94,7 +94,7 @@ npm run check:packages --prefix platforms/node
 
 `npm test` exercises the JavaScript API, bounded executor, catalog validation, loader behavior, and
 benchmark contract with test transports. `check:packages` verifies the source manifests; native
-candidate assembly and installed-package smoke run in the target-specific release workflow.
+artifact assembly and installed-package smoke run in the target-specific release workflow.
 
 The Linux GNU builder uses the full Node Bullseye image to preserve the declared glibc 2.31
 floor. Its inherited `buildpack-deps` tools and CA bundle are checked during image assembly;

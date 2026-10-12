@@ -26,13 +26,13 @@ typst compile document.typ document.pdf
 
 Upgrading from `0.3.0`? Mermaid 12 changed the default layout of flowcharts and several other graph families to ELK. To keep Dagre, see [Choose a Layout](#choose-a-layout); no custom plugin build is needed.
 
-See the [package changelog](CHANGELOG.md) for the 0.4.0 to 0.5.0 behavior changes and the [release record](../../../docs/release/TYPST_050_PREPARATION.md) for preparation and delivery status.
+See the [package changelog](CHANGELOG.md) for the 0.4.0 to 0.5.0 behavior changes and the corresponding fixes and PRs.
 
 ## Version Mapping
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.5.0` | `0.9.0` | `2` | Prepared wrapper; same minimum Typst `0.15.0`, corrected wrapping and SVG behavior. |
+| `0.5.0` | `0.9.0` | `2` | Requires Typst `0.15.0` or newer; corrected wrapping and SVG behavior. |
 | `0.4.0` | `0.8.0` | `2` | Mermaid 12.1 rendering; requires Typst `0.15.0` or newer. |
 | `0.3.0` | `0.8.0-alpha.6` | `2` | Previous size-optimized WASM package. |
 | `0.2.0` | Previously published source revision | `2` | Published registry channel; do not infer alpha.6 source provenance from this version. |
@@ -44,7 +44,7 @@ The API and example sections below describe the `0.5.0` package.
 
 ## Upgrading from 0.4.0
 
-The wrapper retains its rendering functions, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Update the package import when 0.5.0 becomes available; the bundled engine moves from Merman 0.8.0 to 0.9.0. Review long-label wrapping, Markdown code/escaped markup, hollow relationship markers, and Block metadata in document snapshots. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md) for the corresponding fixes and PRs.
+The wrapper retains its rendering functions, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Update the package import to `@preview/merman:0.5.0`; the bundled engine moves from Merman 0.8.0 to 0.9.0. Review long-label wrapping, Markdown code/escaped markup, hollow relationship markers, and Block metadata in document snapshots. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md) for the corresponding fixes and PRs.
 
 The ELK layout defaults and Dagre recipes already shipped in 0.4.0. Upgrading from 0.4.0 does not introduce another default-layout migration; users upgrading from 0.3.0 can use [Choose a Layout](#choose-a-layout).
 

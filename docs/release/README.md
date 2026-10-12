@@ -1,12 +1,12 @@
 # Releases and upgrades
 
-Use this index to choose an upgrade path by the version you have installed. Merman `0.8.0` Rust crates and CLI/LSP archives are published with Mermaid `12.1.0` compatibility. Other channels remain independent; consult the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) before changing their installed versions.
+Use this index to choose an upgrade path by the version you have installed. Merman `0.9.0` retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
-## Preparing 0.9.0
+## Merman 0.9.0
 
-Workspace 0.9.0 is selected for preparation, with Mermaid 12.1.0 retained. Start with the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) and [unshipped changelog](../../CHANGELOG.md#090---unreleased). Check the [preparation record](PUBLISH_ORDER.md#090-preparation) for independent prerequisites and channel evidence; this index does not announce publication.
+Start with the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) and [changelog](../../CHANGELOG.md#090---unreleased) for changed APIs, CLI commands, rendered output, and binding callbacks.
 
-Typst wrapper 0.5.0 bundles workspace 0.9.0, while the already-published 0.4.0 bundle remains at 0.8.0. Roughr 0.12.4 and Tree-sitter 0.3.1 are independently prepared prerequisites; VS Code remains on extension version 0.1.0.
+Typst wrapper 0.5.0 bundles Merman 0.9.0; wrapper 0.4.0 bundles Merman 0.8.0. Roughr uses version 0.12.4, Tree-sitter uses 0.3.1, and the VS Code extension uses 0.1.0.
 
 ## Reading the 0.8.0 release notes
 
@@ -18,7 +18,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
-| `0.8.0` | `0.9.0` | [Prepared stable upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md): managed JSON, canonical model records, transparent SVG, fonts, geometry, and binding callbacks |
+| `0.8.0` | `0.9.0` | [Stable upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md): managed JSON, canonical model records, transparent SVG, fonts, geometry, and binding callbacks |
 | `0.7.0` | `0.8.0` | [Stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md), [Rust embedding guide](../rendering/RUST_EMBEDDING.md), and [comparison report](V070_TO_V080_RELEASE_REPORT.md) |
 | `0.8.0-alpha.3` | `0.8.0-alpha.5` | [Upgrade guide](ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md): capability selection, Rust APIs, browser packages, and native transports |
 | `0.8.0-alpha.4` | `0.8.0-alpha.5` | Runtime contracts are unchanged; alpha.5 follows up the incomplete alpha.4 distribution. See the [alpha.5 changelog](../../CHANGELOG.md#080-alpha5---2026-08-09). |
@@ -28,17 +28,17 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 Apply the intervening guides in order when skipping prereleases. For example, an alpha.5-to-alpha.7 upgrade needs both the alpha.6 and alpha.7 migrations. Published-version guides are historical release contracts: their examples target that version, not the current branch. The stable upgrade guide consolidates consumer actions across the 0.8 prereleases. For another earlier release without a dedicated guide, start with its [changelog](../../CHANGELOG.md) and the README at the matching Git tag.
 
-Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts on one release. Package channels publish independently; a workspace tag alone does not prove that every channel has published. The [dated publication snapshots](PUBLISH_ORDER.md#080-publication-snapshot) record verified channels and recovery history. Inspect the installed artifact's runtime catalog when its capabilities matter.
+Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts on one release. Inspect the installed artifact's runtime catalog when its capabilities matter. See [package surfaces](PACKAGE_SURFACES.md) for supported environments and their version mappings.
 
-`UNRELEASED_UPGRADE_GUIDE.md` is the fixed alpha.6 detailed reference. Its historical filename remains for existing links; it is not a rolling guide to unshipped changes. Development changes belong in the root changelog's unshipped section; the selected 0.9.0 migration lives in its own guide. The [alpha.7-to-0.8.0 guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) records the Mermaid 12.1 migration; channel availability is tracked separately.
+`UNRELEASED_UPGRADE_GUIDE.md` is the fixed alpha.6 detailed reference. Its historical filename remains for existing links; it is not a rolling guide to unshipped changes. Development changes belong in the root changelog's unshipped section; the 0.9.0 migration lives in its own guide. The [alpha.7-to-0.8.0 guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md) records the Mermaid 12.1 migration.
 
 ## Independent versions and native protocols
 
 | Contract | Reference | Version boundary |
 | --- | --- | --- |
-| Tree-sitter grammar and queries | [Query migration](../../distribution/tree-sitter-mermaid/docs/query-migration.md) and [owner release guide](TREE_SITTER_MERMAID.md) | Published `0.3.0`; prepared `0.3.1` remains separate from workspace and language ABI versions |
+| Tree-sitter grammar and queries | [Query migration](../../distribution/tree-sitter-mermaid/docs/query-migration.md) and [owner release guide](TREE_SITTER_MERMAID.md) | Grammar `0.3.1` is versioned separately from the Merman workspace and language ABI |
 | C and Flutter native integration | [ABI 3 migration](../bindings/ABI3_MIGRATION.md) and [FFI protocol](../bindings/FFI_PROTOCOL.md) | Rolling source protocol; use generated headers and documentation from the same Merman release |
-| Typst package | [Package README](../../distribution/typst/merman/README.md) | Independent Typst Universe version; a new workspace plugin crate does not publish a new wrapper |
+| Typst package | [Package README](../../distribution/typst/merman/README.md) | Wrapper `0.5.0` bundles Merman `0.9.0`; the wrapper version is independent of the workspace version |
 | VS Code extension | [Extension README](../../tools/vscode-extension/README.md) | Independent extension version and artifact channel |
 
 ## Release operations and evidence

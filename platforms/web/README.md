@@ -34,7 +34,7 @@ its documented DOM-admission helpers without owning the surrounding editor or te
 npm install @mermanjs/web@0.9.0
 ```
 
-For source validation, use the repository's package workspace and lockfile at the accepted preflight commit. Registry dist-tags are not source-provenance guarantees.
+For source builds, use the repository's package workspace and lockfile at the `v0.9.0` tag.
 
 ```ts
 import { initMerman, renderSvgToElement } from "@mermanjs/web";

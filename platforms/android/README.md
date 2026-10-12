@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-> **Alpha:** the Android wrapper is not published to Maven Central. Use the repository module or an AAR from a matching GitHub release; Kotlin classes and `libmerman_android_jni.so` must come from the same release.
+> Use the repository module or an AAR from a matching GitHub release; Kotlin classes and `libmerman_android_jni.so` must come from the same release.
 
 ## Requirements
 
@@ -202,7 +202,7 @@ The helper uses the checked-in Gradle Wrapper, pinned JDK 17/NDK toolchain, and 
 - [Diagram coverage](https://github.com/Latias94/merman/blob/main/docs/alignment/STATUS.md)
 - [GitHub Releases](https://github.com/Latias94/merman/releases)
 
-The Gradle module defines local Maven publication metadata for release verification; this is not a claim that `io.merman:merman-android` exists in Maven Central.
+The Gradle module defines local Maven publication metadata for repository builds.
 
 ## License And Notices
 

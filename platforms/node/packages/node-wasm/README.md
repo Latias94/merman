@@ -25,7 +25,7 @@ try {
 
 The package embeds a Node-targeted wasm-bindgen artifact and does not depend on `@mermanjs/web`.
 It is intended for Node-only server-side rendering and static generation. The WASM transport is
-single-threaded, so an `AbortSignal` cannot interrupt an operation after it enters the candidate;
+single-threaded, so an `AbortSignal` cannot interrupt an operation after it enters WASM;
 operation deadlines remain available through `timeoutMs`.
 
 `renderSvg()` and `renderSvgSync()` use the `parity` pipeline by default. This preserves the

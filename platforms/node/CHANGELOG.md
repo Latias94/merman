@@ -4,7 +4,7 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [0.9.0] - Unreleased
 
-This is the prepared delta since 0.8.0 for the experimental package group, not an npm publication announcement. Keep the loader and selected native/WASM transport artifacts at one version; Node.js 22 remains the minimum.
+The experimental `0.9.0` package group requires Node.js 22 or newer. Keep the loader and selected native/WASM transport artifacts at the same version.
 
 ### Added
 
@@ -19,7 +19,7 @@ This is the prepared delta since 0.8.0 for the experimental package group, not a
 - Unicode HTML wrapping preserves complete decoded labels and whitespace; resvg-safe Class/ER markers stay hollow. [PR #182](https://github.com/Latias94/merman/pull/182), [PR #192](https://github.com/Latias94/merman/pull/192)
 - Deep cleanup and Block metadata updates follow the shared engine contract without changing transport selection. Native CLI font discovery is not a Node host-measurement feature. [PR #191](https://github.com/Latias94/merman/pull/191)
 
-See the [migration guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) and [publication record](../../docs/release/PUBLISH_ORDER.md#090-preparation); Rust CLI measurements do not measure Node transport latency.
+See the [package guide](README.md) and [migration guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md); Rust CLI measurements do not measure Node transport latency.
 
 ## [0.8.0] - 2026-10-06
 
