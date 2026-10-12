@@ -2,14 +2,14 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents Typst package `0.4.0`, bundling Merman `0.8.0`. It requires Typst `0.15.0` or newer.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents Typst package `0.5.0`, bundling Merman `0.9.0`. It requires Typst `0.15.0` or newer.
 
 ## Quick Start
 
-Package `0.4.0` is published on [Typst Universe](https://typst.app/universe/package/merman). Save the following as `document.typ`:
+Save the following as `document.typ`:
 
 ```typst
-#import "@preview/merman:0.4.0": mermaid
+#import "@preview/merman:0.5.0": mermaid
 
 #mermaid("
 flowchart TD
@@ -26,10 +26,13 @@ typst compile document.typ document.pdf
 
 Upgrading from `0.3.0`? Mermaid 12 changed the default layout of flowcharts and several other graph families to ELK. To keep Dagre, see [Choose a Layout](#choose-a-layout); no custom plugin build is needed.
 
+See the [package changelog](CHANGELOG.md) for the 0.4.0 to 0.5.0 behavior changes and the [release record](../../../docs/release/TYPST_050_PREPARATION.md) for preparation and delivery status.
+
 ## Version Mapping
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
+| `0.5.0` | `0.9.0` | `2` | Prepared wrapper; same minimum Typst `0.15.0`, corrected wrapping and SVG behavior. |
 | `0.4.0` | `0.8.0` | `2` | Mermaid 12.1 rendering; requires Typst `0.15.0` or newer. |
 | `0.3.0` | `0.8.0-alpha.6` | `2` | Previous size-optimized WASM package. |
 | `0.2.0` | Previously published source revision | `2` | Published registry channel; do not infer alpha.6 source provenance from this version. |
@@ -37,9 +40,13 @@ Upgrading from `0.3.0`? Mermaid 12 changed the default layout of flowcharts and 
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `2`, including `presentation` for first-party profiles and host themes, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 2 and native ABI 3.
 
-The API and example sections below describe the `0.4.0` package.
+The API and example sections below describe the `0.5.0` package.
 
-## Upgrading from 0.3.0
+## Upgrading from 0.4.0
+
+The wrapper retains its entry points, plugin ABI 2, and minimum Typst 0.15.0. The bundled engine moves from Merman 0.8.0 to 0.9.0, correcting Unicode wrapping, hollow relationship markers, deep cleanup, and Block metadata. SVG leaves the root background unset; pass `background: "white"` for opaque artwork. Review the [package changelog](CHANGELOG.md) before accepting new snapshots.
+
+## Earlier 0.3.0 to 0.4.0 migration
 
 - The bundled renderer moves from Merman `0.8.0-alpha.6` to stable `0.8.0`, targeting Mermaid `12.1.0`. Agentflow and Usecase join the supported diagram families.
 - Mermaid 12.0 changed layout and appearance defaults, and this package targets Mermaid 12.1. Flowchart, State, Class, ER, Requirement, Usecase, and Agentflow default to ELK; supported families adopt Redux/Neo presentation. Review existing diagrams for changed geometry, colors, and spacing. To request Dagre with the earlier theme and look, use `site-config: (layout: "dagre", theme: "default", look: "classic")`; this does not promise identical historical output.
@@ -66,7 +73,7 @@ Package fixtures are grouped by behavior family under `distribution/typst/merman
 
 ## Choose a Layout
 
-The `0.4.0` package includes both Dagre and ELK. Mermaid 12.0 made ELK the default for Flowchart, State, Class, ER, Requirement, Usecase, and Agentflow when ELK is available; other diagram families keep their own layout behavior. `flowchart LR` sets the direction, not the layout algorithm.
+The `0.5.0` package includes both Dagre and ELK. Mermaid 12.0 made ELK the default for Flowchart, State, Class, ER, Requirement, Usecase, and Agentflow when ELK is available; other diagram families keep their own layout behavior. `flowchart LR` sets the direction, not the layout algorithm.
 
 To use Dagre for one diagram, pass Mermaid site configuration. This does not require rebuilding the plugin:
 
@@ -80,7 +87,7 @@ To use Dagre for one diagram, pass Mermaid site configuration. This does not req
 To use Dagre throughout a document, reuse a profile for direct calls and Mermaid raw blocks:
 
 ```typst
-#import "@preview/merman:0.4.0": mermaid, mermaid-profile, show-mermaid-blocks
+#import "@preview/merman:0.5.0": mermaid, mermaid-profile, show-mermaid-blocks
 
 #let dagre = mermaid-profile(site-config: (layout: "dagre"))
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(profile: dagre)
@@ -188,7 +195,7 @@ A profile that contains raw `options` is an opaque binding-options bundle: it by
 Use `show-mermaid-blocks` with Typst's `raw.where` selector:
 
 ````typst
-#import "@preview/merman:0.4.0": show-mermaid-blocks
+#import "@preview/merman:0.5.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 100%)
 
@@ -206,7 +213,7 @@ Avoid setting a fixed `id` in a document-wide raw-block show rule unless the doc
 For document-context-aware rendering, pass `document-context: true`. This reads the current Typst text font, text size, and container width inside `context`, then forwards them to the renderer.
 
 ```typst
-#import "@preview/merman:0.4.0": show-mermaid-blocks
+#import "@preview/merman:0.5.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   document-context: true,
@@ -370,22 +377,22 @@ Build the publish Typst package locally:
 cargo run --locked -p xtask -- build-typst-package --profile publish
 ```
 
-The release build requires `wasm-tools` and Binaryen `wasm-opt version 131`. The package builder applies a pinned `wasm-opt -Oz` pass before stripping custom sections and records both tool versions in the artifact manifest.
+The release build requires `wasm-tools` and Binaryen `wasm-opt version 133`. The package builder applies a pinned `wasm-opt -Oz` pass before stripping custom sections and records both tool versions in the artifact manifest.
 
 The package is written to:
 
 ```sh
-dist/typst/merman/0.4.0
+dist/typst/merman/0.5.0
 ```
 
 The source package carries the examples shown above so they remain readable in the package review. `typst.toml` excludes `examples/**` from the runtime download; tests stay in the Merman source repository and are not bundled.
 
-For a manual local install, copy that directory to `<package-root>/preview/merman/0.4.0` and pass the parent directory to Typst:
+For a manual local install, copy that directory to `<package-root>/preview/merman/0.5.0` and pass the parent directory to Typst:
 
 ```text
-<package-root>/preview/merman/0.4.0/typst.toml
-<package-root>/preview/merman/0.4.0/lib.typ
-<package-root>/preview/merman/0.4.0/merman_typst_plugin.wasm
+<package-root>/preview/merman/0.5.0/typst.toml
+<package-root>/preview/merman/0.5.0/lib.typ
+<package-root>/preview/merman/0.5.0/merman_typst_plugin.wasm
 ```
 
 ```sh

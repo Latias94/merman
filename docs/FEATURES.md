@@ -1,6 +1,6 @@
 # Choosing Merman capabilities
 
-This page documents the current source tree. The published `0.8.0` Rust release includes explicit family selection and ELK in the default facade build; unreleased additions are identified below. Registry channels publish independently, so check the [versioned release index](release/README.md) and the exact package version before copying an install command. Workspace path snippets are for source-tree development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
+This page documents the prepared `0.9.0` source contract. Explicit family selection and default facade ELK remain as in stable 0.8.0; use the [upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for changed models and output defaults. Registry channels publish independently; the [preparation record](release/PUBLISH_ORDER.md#090-preparation) tracks availability evidence. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select built-in parser, model, and output implementations. Selected
@@ -391,7 +391,7 @@ EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli
+cargo install merman-cli --version 0.9.0 --locked
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd
@@ -424,7 +424,7 @@ Use `--no-default-features --features all-diagrams,markdown` for a sequential al
 
 ## Rustdoc
 
-Rustdoc has two independently distributed static-SVG workflows. The `0.8.0` source default
+Rustdoc has two independently distributed static-SVG workflows. The `0.9.0` source default
 and release archive retain the deterministic CLI `build/check` authoring workflow, as in
 alpha.7. It enables SVG rendering with Cytoscape and math;
 it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are
@@ -504,7 +504,7 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter's published `0.8.0` package uses `flutter pub add 'merman:0.8.0'` and `Merman.open()`; see the [dated publication snapshot](release/PUBLISH_ORDER.md#080-publication-snapshot). Android consumes the
+Flutter's target `0.9.0` package uses `flutter pub add 'merman:0.9.0'` and `Merman.open()`; see the [channel preparation record](release/PUBLISH_ORDER.md#090-preparation). Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 1 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
@@ -513,10 +513,10 @@ artifact profile. The [Flutter](../platforms/flutter/README.md),
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
 and lifecycle rules; there is no interchangeable generic native binary SDK.
 
-Typst is independently versioned. Use the published `0.4.0` wrapper with Typst `0.15.0` or later:
+Typst is independently versioned. Use the `0.5.0` wrapper with Typst `0.15.0` or later; delivery evidence is in the [Typst preparation record](release/TYPST_050_PREPARATION.md):
 
 ```typst
-#import "@preview/merman:0.4.0": mermaid
+#import "@preview/merman:0.5.0": mermaid
 
 #mermaid(```mermaid
 flowchart TD
@@ -524,7 +524,7 @@ flowchart TD
 ```)
 ```
 
-The `0.4.0` wrapper bundles Merman `0.8.0` with Mermaid `12.1.0` compatibility, SVG,
+The prepared `0.5.0` wrapper bundles Merman `0.9.0` with Mermaid `12.1.0` compatibility, SVG,
 analysis, Cytoscape, and ELK. It uses deterministic text measurement; Typst's actual glyph
 metrics are not measured automatically, and math rendering is unavailable. The package ships
 ELK's EPL-2.0 notices and enforces a constrained resource policy that caller options may tighten.

@@ -12,7 +12,7 @@ The standard CLI release is defined by the `cli-release` entry in
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
 
-The `0.8.0` source candidate uses the same capabilities for its default feature list,
+The `0.9.0` source candidate uses the same capabilities for its default feature list,
 including `layout-elk`; both standard binaries therefore include the EPL-2.0 ELK closure and
 its notice/source obligations. The published `0.8.0-alpha.7` default and archives include
 the Rustdoc authoring command. Custom source builds can omit ELK or Rustdoc by disabling defaults
@@ -49,11 +49,7 @@ release command inventory is `batch`, `capabilities`, `completion`, `detect`, `f
 The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
-the explicit compatibility command while remaining absent from help and completions. The separate
-native `render -e` / `batch -e` migration aliases map to `-f`, retain their bounded warning even
-when quiet, and are removed in `v0.9.0`. The explicit `merman-cli mmdc` command and its
-`-e/--outputFormat` option remain supported. ASCII report mode suppresses that human migration
-warning so a failed `--ascii-report` invocation still emits exactly one schema-1 Plain JSON stderr
+the explicit compatibility command while remaining absent from help and completions. Native `render` / `batch` use `-f/--format`; the former native `-e` aliases are removed in 0.9.0 as scheduled by 0.8.x. See the [migration guide](../release/V080_TO_V090_UPGRADE_GUIDE.md#fonts-and-cli-discovery). The explicit `merman-cli mmdc` command and its `-e/--outputFormat` option remain supported. Failed ASCII report-mode invocations retain exactly one schema-1 Plain JSON stderr
 document and no mixed diagnostic text.
 
 ## Installation channels
@@ -63,9 +59,9 @@ document and no mixed diagnostic text.
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
-| `cargo install merman-cli` | crates.io source | No | Both alpha.7 and `0.8.0` include ELK and Rustdoc by default. |
+| `cargo install merman-cli` | crates.io source | No | The target `0.9.0` default includes ELK and Rustdoc. |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
-| Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
+| Homebrew | Formula source build or Homebrew bottle | Inspect the selected formula; owner validation checks required assets | External stable registry |
 | Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
 | WinGet candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
 
@@ -87,7 +83,7 @@ Users extracting an archive directly should verify its adjacent `.sha256` file f
 archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both cases, the logical
 payload contains the executable, package README, repository changelog and licenses,
 `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/`. CLI archives additionally contain
-`completions/` and `man/`. The `0.8.0` standard profile ships 15 manual pages, including
+`completions/` and `man/`. The `0.9.0` standard profile ships 15 manual pages, including
 Rustdoc build/check; its checked completions and manual pages match the compiled command tree.
 
 The script installers start from the pinned cargo-dist `0.32.0` output, then pass through one
@@ -262,7 +258,7 @@ python3 -m unittest scripts.test_generate_cli_registry_candidates
 After a stable GitHub Release is published, run the independent candidate workflow:
 
 ```bash
-gh workflow run release-cli-registries.yml --ref main -f release_tag=v0.8.0
+gh workflow run release-cli-registries.yml --ref main -f release_tag=v0.9.0
 ```
 
 The workflow requires an existing non-draft stable release. It resolves the tag to a commit, verifies the release receipt's GitHub attestation, and checks every CLI/LSP bundle file against that receipt before generating candidates. The generator compares the Windows archive with the tagged source rather than the current branch. No binaries are rebuilt and no release assets are replaced.
@@ -289,7 +285,7 @@ contract 5; a new release advances the contract through its own tag-owned verifi
 `homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
 rather than falling back to the weaker check.
 
-Use this shape when preparing the upstream Formula change for `0.8.0`:
+Use this shape when preparing the upstream Formula change for `0.9.0`:
 
 ```ruby
 def install

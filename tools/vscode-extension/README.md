@@ -2,6 +2,8 @@
 
 Merman for VS Code provides local Mermaid authoring backed by `merman-lsp` and `merman-cli`. It is designed for Tree-sitter-backed syntax highlighting plus parser-backed diagnostics, completion, hover, symbols, rename, references, code actions, preview, and export without login, telemetry, cloud sync, or remote AI.
 
+The extension keeps its independent `0.1.0` version; prepared bundled CLI/LSP binaries follow Merman `0.9.0`. See the [extension changelog](CHANGELOG.md) and [runtime migration](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
+
 ## What it supports
 
 - Mermaid source files: `.mmd`, `.mermaid`

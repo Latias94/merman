@@ -260,7 +260,7 @@ For local workflow checks, make ShellCheck available on `PATH` or pass its execu
 that the Linux CI runner enforces.
 
 Workflow syntax and expression semantics are checked with actionlint 1.7.12. High-severity workflow
-security findings are checked with zizmor 1.29.0. CI verifies the downloaded actionlint archive and
+security findings are checked with zizmor 1.30.1. CI verifies the downloaded actionlint archive and
 the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. Repository
 tests cover only Merman-specific boundaries: the same-run fail-closed gate, read-only PR owner
 closure, trusted deployment separation, maintained action release tags, checkout credential

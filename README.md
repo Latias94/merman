@@ -29,11 +29,11 @@ Try the [Playground] for more examples; its hosted build follows its deployed pa
 
 ## Quick start
 
-With Rust 1.95 or later, add the published crate to your `Cargo.toml`:
+With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "0.8.0"
+merman = "0.9.0"
 ```
 
 Render a source string to SVG:
@@ -92,6 +92,8 @@ upgrading, and the [Changelog] for user-facing changes. Each package channel pub
 check its guide for available versions and capabilities.
 
 ## Compatibility
+
+For the 0.8.0 to 0.9.0 API and output changes, use the [upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). CLI text measurement remains deterministic by default; explicit font files or directories opt into actual-font layout.
 
 Merman follows Mermaid `12.1.0`, with source-backed checks for semantic models, layout, and SVG
 structure. See the [alignment dashboard] for diagram coverage and documented differences.

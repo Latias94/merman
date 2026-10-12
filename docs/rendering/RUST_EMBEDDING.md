@@ -1,6 +1,6 @@
 # Embedding Merman in a Rust application
 
-This guide covers Rust embedding for `0.8.0` and the current source tree. The published `0.8.0` Rust release follows Mermaid `12.1.0`. For release-specific migration, start with the [versioned upgrade index](../release/README.md); check the [publication snapshot](../release/PUBLISH_ORDER.md#080-publication-snapshot) for independently delivered packages.
+This guide covers Rust embedding for the prepared `0.9.0` contract, retaining Mermaid `12.1.0` from stable 0.8.0. Use the [0.8.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for managed JSON and canonical record migrations, the [versioned upgrade index](../release/README.md) for earlier releases, and the [preparation record](../release/PUBLISH_ORDER.md#090-preparation) for independently delivered packages.
 
 ## Select languages, outputs, and layout backends
 
@@ -10,7 +10,7 @@ For an SVG host that needs all built-in diagram families and Cytoscape support:
 
 ```toml
 [dependencies]
-merman = { version = "0.8.0", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
+merman = { version = "0.9.0", default-features = false, features = ["all-diagrams", "svg", "layout-cytoscape"] }
 ```
 
 Default facade builds include all languages, SVG, Cytoscape, ELK, and math. Disable defaults when that exceeds the host's requirements; `complete-svg` adds SVG, Cytoscape, and math without ELK, and still needs a family selection. See [Features](../FEATURES.md) for the complete matrix and distribution notices.
@@ -54,7 +54,7 @@ Reuse the configured `Renderer` across calls when site configuration and default
 The reviewed Zed reference snapshot pins `0.8.0-alpha.5` and selects `svg, layout-cytoscape` with defaults disabled. Updating that declaration alone compiles on alpha.7, but strict parsing fails because no built-in family is selected. Add `all-diagrams` to preserve the former language surface, or select the families from the host's own allowlist:
 
 ```toml
-merman = { version = "0.8.0", default-features = false, features = [
+merman = { version = "0.9.0", default-features = false, features = [
     "svg", "layout-cytoscape",
     "diagram-flowchart", "diagram-sequence", "diagram-class", "diagram-state",
     "diagram-er", "diagram-gantt", "diagram-pie", "diagram-git-graph",
@@ -76,6 +76,8 @@ A widened core dependency can have more parsers than a locally selected SVG or A
 Optional graph backends preserve registered fallback behavior. Without compiled ELK, an ELK layout request resolves to the family's fallback, usually Dagre, or the available Mindmap fallback. Without Cytoscape, Mindmap can use Dagre; Architecture's Cytoscape-dependent render path returns a typed missing-capability error. When a compiled requested backend is denied by runtime policy, the result is a typed policy error, not a silent fallback. A generic feature flag is therefore neither a universal layout promise nor a substitute for inspecting the host's required family/backend combination.
 
 ## Review presentation and host services
+
+Core SVG leaves the background unset; set `SvgOutputPolicy.root_background_color` when opaque artwork is required. Optional `native-fonts` supports a reusable `NativeFontContext` through `RenderEnvironment::with_native_font_context`; ordinary Rust defaults remain deterministic. Keep `ManagedSemanticJson` owned when writing deep semantic or layout results, using its maintained JSON writers rather than raw recursive serde.
 
 Mermaid 12 changes default layout, theme, and look. To request the earlier presentation choices, set top-level `layout: dagre`, `theme: default`, and `look: classic` through the host's approved site configuration. These choices do not promise byte-identical old SVG; correctness fixes and measurement changes also affect geometry and IDs. Refresh snapshots and selectors against the actual artifact. Runtime configuration does not remove compiled ELK dependencies or their distribution notices.
 

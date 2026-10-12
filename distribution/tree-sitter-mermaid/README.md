@@ -29,12 +29,12 @@ The grammar has its own version line, independent of Merman. Its npm and Cargo a
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
 the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
-This guide documents `0.3.0`, including the Mermaid 12.1 sequence endpoint fix and updated generator/runtime contract. Match the examples to the version installed in your project; earlier versions have their own tagged documentation. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
+This guide documents `0.3.1`, retaining the Mermaid 12.1 sequence endpoint fix from 0.3.0 and updating the generator/runtime contract. Match the examples to the version installed in your project; earlier versions have their own tagged documentation. Custom query consumers should review the [migration guide](https://github.com/Latias94/merman/blob/main/distribution/tree-sitter-mermaid/docs/query-migration.md).
 
 ## Node.js
 
 ```console
-npm install tree-sitter@0.25.1 @mermanjs/tree-sitter-mermaid@0.3.0
+npm install tree-sitter@0.25.1 @mermanjs/tree-sitter-mermaid@0.3.1
 ```
 
 With npm 12 or later, review and approve the native install scripts, then rebuild:
@@ -71,7 +71,7 @@ import Mermaid from '@mermanjs/tree-sitter-mermaid';
 ## Browser and Workers
 
 ```console
-npm install web-tree-sitter@0.27.0 @mermanjs/tree-sitter-mermaid@0.3.0
+npm install web-tree-sitter@0.27.1 @mermanjs/tree-sitter-mermaid@0.3.1
 ```
 
 The package exports `@mermanjs/tree-sitter-mermaid/tree-sitter-mermaid.wasm`. Copy that asset to a
@@ -92,7 +92,7 @@ A no-build browser prototype can pin the exact grammar version on jsDelivr:
 
 ```js
 const language = await Language.load(
-  'https://cdn.jsdelivr.net/npm/@mermanjs/tree-sitter-mermaid@0.3.0/tree-sitter-mermaid.wasm',
+  'https://cdn.jsdelivr.net/npm/@mermanjs/tree-sitter-mermaid@0.3.1/tree-sitter-mermaid.wasm',
 );
 ```
 
@@ -104,7 +104,7 @@ diagnostics, completion, navigation, and rename.
 ## Rust
 
 ```console
-cargo add tree-sitter@=0.27.0 tree-sitter-mermaid@=0.3.0
+cargo add tree-sitter@=0.27.1 tree-sitter-mermaid@=0.3.1
 ```
 
 ```rust
@@ -146,6 +146,8 @@ int main(void) {
 }
 ```
 
+For the independent 0.3.1 preparation and owner publication order, see the [grammar release guide](../../docs/release/TREE_SITTER_MERMAID.md). Version 0.3.0 remains the published 2026-10-06 historical package; source preparation does not assert registry availability.
+
 ## Compatibility
 
 | Contract | Version |
@@ -154,8 +156,10 @@ int main(void) {
 | Agentflow and Usecase syntax | 12.0.0 |
 | ZenUML Core syntax baseline | 3.50.1 |
 | Tree-sitter language ABI | 15 |
-| Tested Rust runtime | 0.27.0 |
-| Tested Web runtime | 0.27.0 |
+| Generator CLI | 0.27.1 |
+| Rust language crate requirement / audited version | ^0.1.9 / 0.1.9 |
+| Tested Rust runtime | 0.27.1 |
+| Tested Web runtime | 0.27.1 |
 | Native Node runtime contract | 0.25.x |
 
 Before 1.0, a minor release may change named nodes, fields, canonical captures, the language ABI, or

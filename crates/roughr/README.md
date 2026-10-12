@@ -25,11 +25,13 @@ This lets one Merman render operation replay Rough.js decisions deterministicall
 
 Version `0.12.3` restores the `OptionsBuilder::seed` and `svgtypes` 0.11 call surface required by Merman 0.7 while retaining the explicit randomness and `svgtypes` 0.16 surface used by current Merman releases. The default `legacy-compat` feature carries the old path type and host-random fallback; current Merman disables default features and therefore keeps the smaller explicit-randomness dependency closure. New direct callers should use `OptionsBuilder::randomness`; the legacy entry points exist so already-published Merman versions remain buildable.
 
+The prepared `0.12.4` patch upgrades private host-random dependencies to rand 0.10.3 and getrandom 0.4.3 while retaining the public legacy `svgtypes` 0.11 compatibility surface and default compatibility feature. It is a prerequisite for workspace 0.9.0, not a publication announcement. The owner must verify public SemVer and fresh published consumers before shipping; see the [dependency policy](../../docs/DEPENDENCY_POLICY.md) and [release order](../../docs/release/PUBLISH_ORDER.md#090-preparation).
+
 ## Scope
 
 The crate produces operation sets for lines, curves, arcs, polygons, ellipses, and SVG paths. It does not choose a canvas, raster backend, or UI framework, and this repository does not ship the old upstream Piet gallery adapter.
 
-APIs and defaults may change when required by the pinned Mermaid and Rough.js behavior. Consumers that intentionally use the low-level generator should follow the exact `roughr-merman` version selected by the matching Merman release.
+Patch releases preserve public APIs and defaults; breaking changes required by the pinned Mermaid and Rough.js behavior use a new minor line. Consumers that intentionally use the low-level generator should follow the exact `roughr-merman` version selected by the matching Merman release.
 
 ## Source And License
 

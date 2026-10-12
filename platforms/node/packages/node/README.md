@@ -3,15 +3,14 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-This package is experimental and published on npm's `alpha` dist-tag. Pin an exact version when
-reproducible installs matter.
+This package is experimental. Pin an exact package version when reproducible installs matter.
 
 ## Quick start
 
 Install the loader package, not a platform package:
 
 ```sh
-npm install @mermanjs/node@alpha
+npm install @mermanjs/node@0.9.0
 ```
 
 ```js

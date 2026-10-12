@@ -3,13 +3,12 @@
 Detect, validate, and analyze Mermaid source in a browser without shipping SVG rendering, ASCII
 output, or retained editor sessions.
 
-This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
-matter.
+Pin an exact package version when reproducible installs matter.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-analysis@alpha
+npm install @mermanjs/web-analysis@0.9.0
 ```
 
 ```ts

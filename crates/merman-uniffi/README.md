@@ -4,7 +4,7 @@
 
 Generate high-level native bindings for Merman's headless Mermaid parser, analyzer, layout engine, and renderers with [UniFFI](https://mozilla.github.io/uniffi-rs/). This crate is the source of the published Python package and the Apple SwiftPM package; native hosts that need a stable language-neutral C boundary should use [`merman-ffi`](https://crates.io/crates/merman-ffi).
 
-> **Alpha:** the development direct UniFFI binding API is `7`; published alpha.6 artifacts retain API `6`. It is not the C ABI and not the text-measurement protocol; all three have independent version ownership. Regenerate bindings and ship them with the exact native library used to generate them.
+> The `0.9.0` source retains direct UniFFI binding API `7` from stable 0.8.0; published alpha.6 artifacts retain API `6`. It is not the C ABI and not the text-measurement protocol; all three have independent version ownership. Regenerate bindings and ship them with the exact native library used to generate them.
 
 ## Use A Published Wrapper
 
