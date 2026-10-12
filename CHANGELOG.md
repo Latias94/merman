@@ -12,7 +12,7 @@ For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/releas
 
 - Rust semantic and layout JSON now use `ManagedSemanticJson`; State, Block, Treemap, and Ishikawa replace nested typed-wire serde models with indexed records. Update model traversal and use `compatibility_json()` for Mermaid-shaped output or `write_json` / `write_json_pretty` for deep JSON. See the [model migration reference](docs/migrations/deep-diagram-lifecycle.md). [#191](https://github.com/Latias94/merman/pull/191)
 - Core SVG and native CLI SVG output leave the canvas background unset, matching Mermaid core. Set `SvgOutputPolicy.root_background_color` or CLI `--background white` for an opaque canvas; the `mmdc` command retains its white default. Diagram-owned label colors and opacity are unchanged. [#180](https://github.com/Latias94/merman/pull/180)
-- Native CLI `render -e` and `batch -e` format aliases are removed in 0.9.0, as scheduled by 0.8.x. Replace them with `-f` or `--format`; `merman-cli mmdc -e/--outputFormat` remains supported.
+- Native CLI `render -e` and `batch -e` format aliases are removed in 0.9.0, as scheduled by 0.8.x. Replace them with `-f` or `--format`; `merman-cli mmdc -e/--outputFormat` remains supported. [#194](https://github.com/Latias94/merman/pull/194)
 
 ### Added
 
@@ -22,7 +22,7 @@ For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/releas
 
 ### Changed
 
-- Editor integrations use Tree-sitter 0.27.1 and grammar 0.3.1; the public language adapter keeps a compatible 0.1.9 requirement. Runtime dependencies and build tools are refreshed with documented compatibility exceptions. See the [dependency policy](docs/DEPENDENCY_POLICY.md).
+- Editor integrations use Tree-sitter 0.27.1 and grammar 0.3.1; the public language adapter keeps a compatible 0.1.9 requirement. Runtime dependencies and build tools are refreshed with documented compatibility exceptions. See the [dependency policy](docs/DEPENDENCY_POLICY.md). [#194](https://github.com/Latias94/merman/pull/194)
 - Host text-measurement protocol 1 adds signed raw bounding-box Y-offset operations 19–21. Update exhaustive custom callback handlers and keep generated wrappers paired with their native/WASM artifacts; the protocol number, native ABI 3, UniFFI API 7, and Web transport API 5 remain unchanged. [#193](https://github.com/Latias94/merman/pull/193)
 
 ### Fixed

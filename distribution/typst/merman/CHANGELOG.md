@@ -4,7 +4,7 @@ The Typst package has its own version axis; its bundled Merman version is record
 
 ## [0.5.0] - Unreleased
 
-This entry prepares the wrapper bundling Merman 0.9.0 relative to published 0.4.0. It does not announce Typst Universe availability. Plugin ABI 2 and minimum Typst 0.15.0 remain unchanged.
+This entry prepares the wrapper bundling Merman 0.9.0 relative to published 0.4.0. It does not announce Typst Universe availability. Plugin ABI 2 and minimum Typst 0.15.0 remain unchanged. [PR #194](https://github.com/Latias94/merman/pull/194)
 
 ### Changed
 
