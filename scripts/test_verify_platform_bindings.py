@@ -35,8 +35,8 @@ class NativeSdkRecipeTests(unittest.TestCase):
         pubspec = (root / "pubspec.yaml").read_text(encoding="utf-8")
         hook = (root / "hook" / "build.dart").read_text(encoding="utf-8")
 
-        self.assertIn("code_assets: ^1.0.0", pubspec)
-        self.assertIn("hooks: ^1.0.0", pubspec)
+        self.assertIn("code_assets: ^2.1.0", pubspec)
+        self.assertIn("hooks: ^2.2.0", pubspec)
         self.assertNotIn("plugin:", pubspec)
         self.assertIn("DynamicLoadingBundled", hook)
         self.assertIn("native/android", hook)
@@ -77,7 +77,7 @@ class NativeSdkRecipeTests(unittest.TestCase):
         for workflow in workflows:
             with self.subTest(workflow=workflow.name):
                 self.assertIn(
-                    'flutter-version: "3.44.9"',
+                    'flutter-version: "3.47.7"',
                     workflow.read_text(encoding="utf-8"),
                 )
 

@@ -1,6 +1,6 @@
 [package]
 name = "merman-node-candidate"
-version = "0.8.0"
+version = "0.9.0"
 edition = "2024"
 rust-version = "1.95"
 publish = false
@@ -105,10 +105,10 @@ transport-wasm = ["dep:wasm-bindgen"]
 [dependencies]
 merman-bindings-core = { path = "../merman-bindings-core", default-features = false }
 # Update the N-API runtime, derive, and build pins together for the generated runtime APIs.
-napi = { version = "=3.14.0", default-features = false, features = ["napi8", "dyn-symbols"], optional = true }
-napi-derive = { version = "=3.6.10", optional = true }
+napi = { version = "=3.14.2", default-features = false, features = ["napi8", "dyn-symbols"], optional = true }
+napi-derive = { version = "=3.6.12", optional = true }
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
+serde_json = "1.0.154"
 wasm-bindgen = { version = "0.2.129", optional = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]

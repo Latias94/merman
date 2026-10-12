@@ -172,6 +172,10 @@ const Map<String, MermanBindingCapabilitySpec> mermanBindingCapabilitySpecs =
       "svg",
     },
   ),
+  "native-fonts": MermanBindingCapabilitySpec(
+    id: "native-fonts",
+    implicationIds: <String>{},
+  ),
   "network-icons": MermanBindingCapabilitySpec(
     id: "network-icons",
     implicationIds: <String>{},

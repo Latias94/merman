@@ -1,8 +1,8 @@
 {
   "schema_version": 2,
-  "updated": "2026-10-10",
+  "updated": "2026-10-12",
   "compression_source": "stripped",
-  "notes": "Single-source theme path retirement baseline dd79ca584; all five canonical assembled Web packages and Typst publish recipe measured with Rust 1.95.0 and Binaryen 131. Each raw, stripped, gzip and Brotli ceiling is the measured artifact plus 3%, rounded upward to 1,000 bytes. Web uses wasm-tools strip --all on final assembled npm WASM; Typst retains release wasm-opt -Oz and strip. Owner Rust compression is unchanged. Source, package checks, hashes and before/after limits are recorded in docs/performance/theme_artifact_budget_reassessment_2026-10-10.md.",
+  "notes": "Single-source theme path retirement baseline dd79ca584; all five canonical assembled Web packages and Typst publish recipe measured with Rust 1.95.0 and Binaryen 131. Each raw, stripped, gzip and Brotli ceiling is the measured artifact plus 3%, rounded upward to 1,000 bytes. Web uses wasm-tools strip --all on final assembled npm WASM; Typst retains release wasm-opt -Oz and strip. Owner Rust compression is unchanged. Source, package checks, hashes and before/after limits are recorded in docs/performance/theme_artifact_budget_reassessment_2026-10-10.md. Main release dependency measurements are separately recorded in the upstream 0.9.0 budget history; the retained limits here are the theme branch measurements, and do not claim remeasurement of this integration.",
   "artifact_profiles": {
     "typst-wasm": {
       "max_raw_bytes": 20252000,

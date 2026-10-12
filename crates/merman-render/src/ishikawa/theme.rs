@@ -58,16 +58,33 @@ pub(crate) struct IshikawaTextThemePlan {
 }
 
 impl IshikawaTextThemePlan {
+    #[cfg(test)]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         layout: &IshikawaDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let mut expectations = terminal_domain(layout);
-        let css_binding = IshikawaCssBinding::resolve(effective_config.as_value());
         let inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        Self::resolve_with_font_stack(
+            theme,
+            effective_config,
+            layout,
+            work_meter,
+            inherited_font_stack,
+        )
+    }
+
+    pub(crate) fn resolve_with_font_stack(
+        theme: Option<&ResolvedDiagramTheme>,
+        effective_config: &MermaidConfig,
+        layout: &IshikawaDiagramLayout,
+        work_meter: &OperationWorkMeter,
+        inherited_font_stack: InheritedFontStackPlan,
+    ) -> Result<Self, OperationWorkError> {
+        let mut expectations = terminal_domain(layout);
+        let css_binding = IshikawaCssBinding::resolve(effective_config.as_value());
         let typed_font_size_requested = theme.is_some_and(|theme| {
             theme.family_mechanism_routes().iter().any(|route| {
                 route.mechanism()

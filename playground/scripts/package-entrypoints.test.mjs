@@ -95,13 +95,13 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   assert.deepEqual(browserTestsPackageJson.engines, packageJson.engines);
   assert.equal(
     browserTestsPackageJson.devDependencies["@axe-core/playwright"],
-    "4.12.1"
+    "4.13.0"
   );
   assert.equal(
     browserTestsPackageJson.devDependencies["@playwright/test"],
-    "1.62.1"
+    "1.64.0"
   );
-  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.62.1");
+  assert.equal(browserTestsPackageJson.devDependencies.playwright, "1.64.0");
   assert.equal(browserTestsPackageJson.dependencies?.["@zenuml/core"], undefined);
   assert.equal(
     browserTestsPackageJson.dependencies?.["@mermaid-js/mermaid-zenuml"],
@@ -131,15 +131,15 @@ test("browser test tooling is isolated from the companion runtime tree", async (
   }
   assert.equal(
     browserTestsLock.packages["node_modules/@playwright/test"].version,
-    "1.62.1"
+    "1.64.0"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright"].version,
-    "1.62.1"
+    "1.64.0"
   );
   assert.equal(
     browserTestsLock.packages["node_modules/playwright-core"].version,
-    "1.62.1"
+    "1.64.0"
   );
   for (const packagePath of [
     "node_modules/@mermaid-js/mermaid-zenuml",

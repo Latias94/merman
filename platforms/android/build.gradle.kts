@@ -12,7 +12,7 @@ plugins {
 }
 
 group = "io.merman"
-version = "0.8.0"
+version = "0.9.0"
 
 android {
     namespace = "io.merman"
@@ -81,7 +81,7 @@ val dokkaHtmlElements = configurations.create("dokkaHtmlElements") {
 
 dependencies {
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20240303")
+    testImplementation("org.json:json:20260814")
     androidTestImplementation("androidx.test:runner:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
 }

@@ -578,8 +578,12 @@ pub(crate) fn render_er_diagram_svg_model(
             title_style.font_family.as_deref(),
             title_style.font_size,
         );
-        let (title_ascent, title_descent) =
-            crate::text::svg_title_bbox_vertical_extents_px(&title_style);
+        let (title_ascent, title_descent) = crate::text::svg_text_vertical_extents_px(
+            measurer,
+            title,
+            &title_style,
+            crate::text::svg_title_bbox_vertical_extents_px(&title_style),
+        );
         let w = (content_bounds.max_x - content_bounds.min_x).max(1.0);
         let title_x = content_bounds.min_x + w / 2.0;
         let title_y = -title_top_margin;

@@ -1,0 +1,185 @@
+{
+  "binary": "target/dist/merman-cli.exe",
+  "binary_sha256": "a8263b4f15c41ca58a1b9c49e337081a21ebcb7aa97ea79a13bded92d4bc00cc",
+  "font_sha256": "1da22250675fc4c42fcf3a9736c44bc0570516105331443b663fd5cfbd1412fe",
+  "profile": "dist; exact cli-release feature recipe",
+  "fresh_processes_per_lane": 9,
+  "warmups_per_lane": 1,
+  "filesystem_caches": "warm; not flushed",
+  "clock": "perf_counter_ns; includes spawn, input, render and output capture",
+  "inputs": {
+    "two-node": {
+      "source": "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[First label]-->B[Second label]\n",
+      "source_sha256": "131c2f969a44d0130b0ad1257b76fbcce2da85ff33f47df105c932f3dcf3a169",
+      "lanes": {
+        "default": {
+          "samples_ms": [
+            47.3593,
+            42.4026,
+            42.0302,
+            46.5746,
+            42.3669,
+            47.1909,
+            43.3712,
+            44.5993,
+            42.5501
+          ],
+          "svg_sha256": [
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2"
+          ],
+          "median_ms": 43.3712
+        },
+        "deterministic": {
+          "samples_ms": [
+            42.0928,
+            43.9404,
+            45.9989,
+            42.3996,
+            43.7496,
+            43.6779,
+            44.251,
+            44.2538,
+            41.8697
+          ],
+          "svg_sha256": [
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2",
+            "3f61fe9d4e842f92d09fcd3d4e40afc50e55b3ee9a3781698cc7009ec2bbb6e2"
+          ],
+          "median_ms": 43.7496
+        },
+        "explicit-font": {
+          "samples_ms": [
+            46.4931,
+            47.8271,
+            44.9932,
+            43.8237,
+            45.5951,
+            44.7876,
+            45.8268,
+            46.1677,
+            44.7412
+          ],
+          "svg_sha256": [
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272",
+            "39c58634578485c56402700f65e89b1641bf76b60f9f0a563fcc2da2384ae272"
+          ],
+          "median_ms": 45.5951
+        }
+      }
+    },
+    "25-node": {
+      "source": "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nN0[Node label 0]-->N1\nN1[Node label 1]-->N2\nN2[Node label 2]-->N3\nN3[Node label 3]-->N4\nN4[Node label 4]-->N5\nN5[Node label 5]-->N6\nN6[Node label 6]-->N7\nN7[Node label 7]-->N8\nN8[Node label 8]-->N9\nN9[Node label 9]-->N10\nN10[Node label 10]-->N11\nN11[Node label 11]-->N12\nN12[Node label 12]-->N13\nN13[Node label 13]-->N14\nN14[Node label 14]-->N15\nN15[Node label 15]-->N16\nN16[Node label 16]-->N17\nN17[Node label 17]-->N18\nN18[Node label 18]-->N19\nN19[Node label 19]-->N20\nN20[Node label 20]-->N21\nN21[Node label 21]-->N22\nN22[Node label 22]-->N23\nN23[Node label 23]-->N24\n",
+      "source_sha256": "bcec258e540c62c13e2f060f64296d4c0bb25df2118e4a4a8a48781496ab08bc",
+      "lanes": {
+        "default": {
+          "samples_ms": [
+            45.7441,
+            47.1988,
+            50.0954,
+            45.5953,
+            51.6902,
+            45.2618,
+            43.6641,
+            42.8285,
+            47.2127
+          ],
+          "svg_sha256": [
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec"
+          ],
+          "median_ms": 45.7441
+        },
+        "deterministic": {
+          "samples_ms": [
+            46.0781,
+            46.4366,
+            48.6048,
+            45.1792,
+            49.9006,
+            44.1156,
+            43.7417,
+            44.8164,
+            48.0694
+          ],
+          "svg_sha256": [
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec",
+            "2fc4050815c8f98ea719106de45ed3d48c49be6a4c72a58d9005e68e031242ec"
+          ],
+          "median_ms": 46.0781
+        },
+        "explicit-font": {
+          "samples_ms": [
+            49.7976,
+            54.949,
+            55.461,
+            56.4322,
+            55.5355,
+            52.8398,
+            50.2799,
+            51.4773,
+            51.2048
+          ],
+          "svg_sha256": [
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf",
+            "ed528af4d04daef04685e215b5ab1c7a35f741f4ff4ea9835179ce714ebd8faf"
+          ],
+          "median_ms": 52.8398
+        }
+      }
+    }
+  },
+  "source_base_commit": "7ba994e22cee89f02f7b1b75b467b96ebfba45f8",
+  "source_note": "Working tree with the reviewed runtime opt-in font policy; source file hashes recorded below. No final-head benchmark claim.",
+  "source_file_sha256": {
+    "crates/merman-cli/src/render/prepare.rs": "b7eae7c13ed8c0be73dbecbba5efb6e82b16f43ee97c8b02ea091e37023b005f",
+    "crates/merman-cli/src/cli.rs": "d47b1740c49bc3cd2805a3134396f5b017de7b2d615aacfcd1ef0427fe9df07a",
+    "crates/merman-cli/src/capabilities.rs": "b12e9bb015a61e6e441b71a0ef4cfd47dff53f4c9b389796882d1a5367ccc611",
+    "crates/merman-cli/src/generated/capability_surface.rs": "49fe6afd1cfd9079e99b1695ecb68a0b29f6b61001dcc3bb13493301dce1d5da",
+    "capabilities/feature-surface-v1.json": "b1559c572432859b12759a4ba48c5773fa9477b734404424831271022420c977",
+    "capabilities/artifact-profiles-v2.json": "7f88a23a9ad6aa6e0f88d022861d21840dfb6a03c66a7f1e08f43b10c124c4bd",
+    "Cargo.lock": "fdc7f5e8710406098c81e53737f87d944bb67f454a5533f07f959a0e4bc0c67a"
+  }
+}

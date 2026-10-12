@@ -43,6 +43,8 @@ export default defineConfig({
     outDir: "dist",
     target: "esnext",
     rolldownOptions: {
+      // Keep shared exports out of page entries so lazy features cannot execute them.
+      preserveEntrySignatures: "strict",
       input: Object.fromEntries(
         OPAQUE_REALM_ARTIFACT_PLAN.pages.map(
           (page: Readonly<{ key: string; source: string }>) => [
@@ -52,6 +54,9 @@ export default defineConfig({
         ),
       ),
       output: {
+        // Client worker constructors are modules, not the separately emitted worker scripts.
+        chunkFileNames: (chunk) =>
+          `assets/${chunk.name.replace(/\.worker$/u, "-worker-client")}-[hash].js`,
         codeSplitting: true,
       },
     },

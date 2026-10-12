@@ -8,7 +8,7 @@ import {
 
 describe("VS Code test version", () => {
   it("uses the exact minimum version declared by the extension manifest", () => {
-    assert.equal(vscodeTestVersion, "1.121.0");
+    assert.equal(vscodeTestVersion, "1.140.0");
   });
 
   it("rejects ranges that cannot identify one reproducible test build", () => {

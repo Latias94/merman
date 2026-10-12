@@ -1,12 +1,69 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-06 (Asia/Shanghai)
+Last updated: 2026-10-12 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 ## Version Decision
 
-Published Rust workspace and CLI/LSP release: `0.8.0`. Other delivery channels remain independent. The current source additionally carries the compiled theme integration, which is not part of the immutable published `0.8.0` artifacts; start with the [stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md) or [alpha.7 delta](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+Selected preparation target: `0.9.0`; latest verified published Rust workspace and CLI/LSP release: `0.8.0`. Independent prerequisites and channels are tracked in the [0.9.0 preparation record](#090-preparation). The broader theme refactor remains deferred; start with the [stable upgrade guide](V070_TO_V080_UPGRADE_GUIDE.md) or [alpha.7 delta](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+
+## 0.9.0 preparation
+
+Status on 2026-10-12 (Asia/Shanghai): workspace 0.9.0 is selected for preparation only. The last verified stable workspace release is v0.8.0, published on 2026-10-06. No 0.9.0 tag, registry acceptance, artifact publication, or successful immutable preflight is asserted by this record. Installation examples describe the target contract; publication evidence remains owner-specific.
+
+The source delta starts at `v0.8.0` (`2029bd547077b1a6800878e125663633d81e6d87`) and includes reviewed `origin/main` commit `745d223512591bc4964cf1d4e16cf2ae8e8f44bc` plus [release-preparation PR #194](https://github.com/Latias94/merman/pull/194). Freeze and record the final 40-character source SHA only after all owner changes and packaged documentation are complete. The lightweight documentation evidence ledger is under `target/release-docs-0.9.0/`; it is not a publication receipt.
+
+| Surface | Selected target | Preparation and delivery boundary |
+| --- | --- | --- |
+| Independent rough drawing crate | `roughr-merman 0.12.4` | Private host-random upgrades preserve the public legacy svgtypes 0.11 API. Owner SemVer and fresh published-consumer evidence are required; independently publish and confirm crates.io visibility before workspace dependents. |
+| Independent grammar | `tree-sitter-mermaid 0.3.1` / `@mermanjs/tree-sitter-mermaid 0.3.1` | Exact CLI/Rust/Web 0.27.1 contract, compatible language adapter `^0.1.9`, and generated language ABI 15. Verify generated parser, root WASM, package/provenance, and owner smoke. Independently publish the required Cargo package before workspace dependents; npm and GitHub evidence remain separate. |
+| Workspace Rust / CLI / LSP | `0.9.0` / intended `v0.9.0` | Version projection is prepared. Changelogs remain `Unreleased`; dependency/legal checks, frozen-source preflight, packaging, and publication receipts are required. |
+| Web / Node / Python / Flutter / Android / Apple | `0.9.0` | Prepared source contracts and documentation only. Each owner must build and verify its exact package group or native artifact; workspace shipping does not authorize channel shipping. |
+| Independent Typst wrapper | `@preview/merman:0.5.0` | Bundles Merman 0.9.0. Owner source, WASM size, interpreter, package, examples, and legal checks precede a separately authorized manual registry submission. Published 0.4.0 continues to bundle Merman 0.8.0. |
+| Independent VS Code extension | `0.1.0` | Prepared runtime binaries follow Merman 0.9.0. Extension artifacts and Marketplace availability are separate from workspace publication. |
+
+Publish order is the two independent Cargo prerequisites first, then the topologically ordered workspace crates and CLI/LSP release, followed by separately authorized channel owners. Typst preparation runs alongside workspace preparation; a Cargo plugin publication does not publish its wrapper. Retain each exact artifact and receipt through recovery instead of rebuilding an accepted version.
+
+The [dependency policy](../DEPENDENCY_POLICY.md) records intentional exceptions: deterministic libm; generated NAPI and Tree-sitter groups; public legacy svgtypes; the shared resvg/usvg/krilla/fontdb line; and frozen reference-host and TypeScript compiler/peer contracts. The preparation audit considers newer candidates but does not equate freshness with compatibility. A new `cargo deny` pass, complete npm audit, or green artifact preflight must be recorded only when its owner provides evidence.
+
+These are verified local source-gate results at the 2026-10-12 preparation checkpoint. They do not identify a frozen release SHA or prove registry acceptance, complete behavior testing, or immutable preflight; later source changes require the affected gates to run again.
+
+| Preparation gate | Current evidence boundary |
+| --- | --- |
+| Version projection | The `release-version.py` final source projection gate passed for workspace 0.9.0 and its coupled package versions. Revalidate after later projection or source changes. |
+| Workspace compilation | `cargo check --workspace --all-targets --locked` passed in 17m24s. This checks compilation, not Rust behavior tests or platform package delivery. |
+| Release declaration gates | `verify_release_changelog.py` passed 0.9.0 preparation admission; `release_surface_contract.py` passed the five static FFI/native surface declarations. Dated preflight and real artifacts remain separate gates. |
+| Source/process regression tests | 37 Python tests across `test_release_process`, changelog, projection, and RustSec suites passed. |
+| RustSec exception governance | The two governed exceptions passed `verify_rustsec_exceptions.py`. This is not a new `cargo deny` result or evidence that the exceptions have disappeared. |
+| Security source gate | SHA-256-verified official cargo-deny 0.20.2 returned exit 0 for `cargo deny check advisories bans licenses sources`; all four summaries were `ok`. Upstream duplicate-version warnings remain, as do the two governed exceptions with review due 2027-01-11. |
+| CI owner validation | 90 focused checks passed; actionlint, zizmor, and dist generation checks passed. These results do not certify frozen-source remote preflight or package publication. |
+| User documentation | Root/platform changelogs, install examples, migration, Typst mapping, and dependency policy are prepared. Documentation static/link checks passed; inspect final packaged documentation bytes before freeze. |
+| Cargo/npm candidate audit | Current candidates and compatibility exceptions were checked against primary registries. Six mutable npm roots reported no audit findings; the frozen Mermaid reference host retains five low findings and requires coordinated admission. Detailed audit records remain release artifacts. |
+| Independent patch compatibility | Roughr 0.12.4 passed 202 public API checks against 0.12.3. Fresh candidate and registry lanes on Rust 1.95.0 compiled published merman-render 0.7.0, 0.8.0, and 0.8.0-alpha.7. Independent registry publication remains pending. |
+| Generator provenance and license pins | Tree-sitter generator 0.27.1 source/component pins and the official license digest agree; provenance hashes for three component pins were refreshed and verified. This does not establish grammar registry publication or final package admission. |
+| Legal material checks | Pinned cargo-about 0.9.2 generated all 13 Rust license reports; 394 release legal-material projections were refreshed, and `verify-third-party-licenses.py` passed. The 18 generation/sync unit tests and 20 third-party verification tests passed. |
+| Selected Rust behavior tests | The nextest selection for Rust core/analysis, Tree-sitter grammar, roughr, and Typst/wasmi passed all 2,287 selected tests; 575 tests were skipped outside this selection. This selection does not establish a complete workspace behavior pass; the CLI contract selection is recorded separately. |
+| Feature matrix | The ordinary curated owner gate passed all 42 builds and its isolated consumers, checking empty/default/subset/all diagram selections and transport combinations. The wider strict release matrix remains with immutable preflight. |
+| Native and binding static owner gates | `verify-native-abi`, `binding-contract`, and `typst-profile-constants` each exited 0. These static source checks do not replace final package or size checks. |
+| Representative dependency closures | All 36 artifact profiles passed representative dependency-closure checks, including `typst-wasm` and all five Web profiles. Final artifact size and package checks remain separate. |
+| CLI process and distribution contracts | The `process_contract`, `distribution_assets`, and `cli_native_contract` selection passed 36/36 tests, covering native `render -e` / `batch -e` removal. |
+| Profile and native-font contracts | `profile_contract` and `native_fonts_contract` passed 18/18 tests. Together with the 36 process/distribution/native contract tests, the combined CLI selection passed 54/54. |
+| Typst artifact and package | The exact publish recipe passed existing size budgets: raw 13,936,547; optimized/stripped 8,822,440; gzip 3,433,230; Brotli 2,552,937 bytes. The final 0.5.0 package passed interpreter validation and all fixtures with Typst 0.15.0 and 0.15.1: 21 compiled plus one expected failure per compiler. |
+| Wasmi 2 migration | The initial real package run exposed missing automatic dispatch in unoptimized builds. Explicit auto-dispatch and a long-loop regression fix it; 87 grammar/Typst/Wasmi tests passed after the change, followed by the real package checks above. |
+| Node candidate contracts | The selected NAPI recipe compiled with runtime 3.14.2, derive 3.6.12, and build 2.6.0. All 16 selected Rust transport tests and 99 JavaScript owner tests passed. Native loading across the published target set remains an owner CI gate. |
+| Linux Rust and SVG owner | [PR run 38227361221](https://github.com/Latias94/merman/actions/runs/38227361221) passed the complete Linux workspace tests, feature contracts, Rustdoc fragment check, SVG DOM suite, and browser root-viewport audit at preparation source `24e69ad66`. The title-029 audit was revalidated for Playwright 1.64.0 and Chromium 156 with identical SVG hashes and paired paint fields; its exact browser fingerprint was regenerated. This is source-owner evidence, not immutable release preflight. |
+| Web WASM release size | [Main run 38203131903](https://github.com/Latias94/merman/actions/runs/38203131903/job/114661820476) and [PR run 38221177606](https://github.com/Latias94/merman/actions/runs/38221177606/job/114718118763) measured the same final-package recipes with Rust 1.95.0 and wasm-pack 0.15.0. Analysis Brotli grows from 1,122,850 to 1,126,753 bytes (0.35%); the remaining Web profiles grow by at most 0.30% across size metrics. The analysis Brotli budget was refreshed to 1,175,000 bytes under the existing headroom rule; the other limits remain unchanged. [Follow-up run 38227361221](https://github.com/Latias94/merman/actions/runs/38227361221/job/114738155641) passed the final Web package size check at preparation source `24e69ad66`, reproducing analysis Brotli at 1,126,753 bytes. Its subsequent Chromium editor tests exposed Monaco 0.57's omitted document semantic-token feature registration; an explicit owner import restores highlighting and passed 8 Chromium worker tests plus 62 editor unit tests locally; a complete Web owner result remains required. |
+| Playground dependency migration | A real npm 12 installation passed npm ls and audit with no findings. TypeScript and Vite prepared builds, final dist isolation checks, and 446 owner tests passed; the prepared CSP check also passed. Its local frontend input build does not establish a fresh release Rust-WASM receipt. |
+| Grammar generation and package consumers | SDK 34 and CLI 0.27.1 produced a byte-identical regeneration with ABI 15. Corpus 259/259, generation tests 9/9, native Node, Web-WASM, C, and packed package consumers passed; the freshly packed Cargo consumer also passed on pinned Rust 1.95.0; registry availability remains separate. |
+| Final-version generated metadata | Playground catalog freshness and the combined `verify-generated` gate passed. Grammar parser/WASM metadata now matches 0.3.1; 11 generator-script, 259 corpus, four WASM, and 30 nextest checks passed. SDK 34 compiler validation binds official host banners to one LLVM commit. [CI run 38215861848](https://github.com/Latias94/merman/actions/runs/38215861848) passed native, WASM full-byte reproduction, Windows generation, and packed grammar-owner checks for preparation commit `5e10b2f93`; this is not immutable release preflight. |
+| Generated CLI documentation | All 15 tracked manual pages were regenerated with Merman 0.9.0 headers. The source-asset checks across the temporal environments and Cargo source-package inclusion check passed. |
+| Native CLI format migration | The selected 0.9.0 contract removes native `render -e` / `batch -e`; migrate to `-f/--format`. The pinned `mmdc -e/--outputFormat` remains supported. Alias-removal behavior is covered by the passed CLI contract selection. |
+| Native, WASM, size, and package-content checks | Require final-source owner results; compilation and static declarations do not replace these artifact checks. |
+| Immutable preflight and release | Not recorded. Keep selected changelogs `Unreleased` until the approved intended tag date is set; rerun evidence after the final source freeze. |
+
+See the [0.8.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md), [Typst preparation guide](TYPST_050_PREPARATION.md), and [owner checklist](RELEASING.md#090-preparation-checklist). Dated publication snapshots below retain their original release context.
+The source also carries experimental compiled-theme integration. It is not part of immutable `0.8.0` artifacts, and any `0.9.0` claim remains subject to the matching artifact, theme evidence, and owner gates above.
 
 ## 0.8.0 Publication Snapshot
 
@@ -118,13 +175,23 @@ implied by the presence of the source crates. Registry tarballs are immutable; i
 prerelease contains a moving sibling requirement, the correction takes effect only in a later
 release (or a new compatibility line), not by editing the already-published version in this tree.
 
+## Typst 0.4.0 publication
+
+Verified on 2026-10-12 (Asia/Shanghai): [Typst Universe](https://typst.app/universe/package/merman)
+lists `@preview/merman:0.4.0` as published on 2026-10-09. Its version mapping identifies
+Merman `0.8.0`, Typst plugin ABI `2`, and a minimum Typst version of `0.15.0`.
+Normal users can import the registry package directly; `--package-path` is for testing local builds.
+This registry observation does not assert a byte-for-byte comparison with a new source build.
+The published package still contains preparation-time README wording; the current source README
+corrects its installation guidance without changing the already-published WASM artifact.
+
 ## Typst Package Surface
 
 The Typst wrapper is an independent publication surface. `@preview/merman:0.3.0` was published to Typst Universe on 2026-09-01 from the Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
 
 Version `0.3.0` is the first Typst package rebuilt after the text-measurement closure reduction. ICU4X collation data and generated font-metric tables are no longer linked into the production artifact; the plugin keeps deterministic measurement and retains the current Typst plugin ABI `3`, including the closed `theme_operation_json` dispatcher. Relative to the prior `0.2.0` development candidate, the package version changes because the shipped implementation closure and size characteristics are materially different; this rebuild itself does not change the ABI 3 transport protocol.
 
-For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. The 0.3.0 submission is complete; after any future submission, query the registry for the exact package and update the package README and this file with observed publication evidence.
+For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
 
 ## Publish Order
 

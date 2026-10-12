@@ -272,7 +272,12 @@ pub(crate) fn render_usecase_diagram_svg_model(
     if let Some(title) = title {
         let style = &css_binding.root_font;
         let (left, right) = measurer.measure_svg_title_bbox_x(title, style);
-        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(style);
+        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+            measurer,
+            title,
+            style,
+            crate::text::svg_title_bbox_vertical_extents_px(style),
+        );
         viewport_bounds.min_x = viewport_bounds.min_x.min(title_x - left);
         viewport_bounds.max_x = viewport_bounds.max_x.max(title_x + right);
         viewport_bounds.min_y = viewport_bounds.min_y.min(-ascent);

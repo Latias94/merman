@@ -555,7 +555,9 @@ fn gitgraph_commit_tag_label_height_px(
             .measure_svg_simple_text_bbox_height_px(text, style)
             .max(0.0);
     }
-    crate::text::svg_wrapped_first_line_bbox_height_px(style).max(0.0)
+    measurer
+        .measure_svg_tspan_text_bbox_height_px(text, style)
+        .max(0.0)
 }
 
 #[allow(
@@ -1474,7 +1476,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     if let Some(title) = title {
         let title_style = typography_theme.title_style();
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
-        let (ascent, descent) = crate::text::svg_title_bbox_vertical_extents_px(&title_style);
+        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+            measurer,
+            title,
+            &title_style,
+            crate::text::svg_title_bbox_vertical_extents_px(&title_style),
+        );
         let title_min_x = title_anchor_x - title_left;
         let title_max_x = title_anchor_x + title_right;
         b.min_x = b.min_x.min(title_min_x);
@@ -1761,7 +1768,7 @@ mod tests {
     }
 
     #[test]
-    fn commit_and_tag_measurements_route_raw_width_and_simple_height() {
+    fn commit_and_tag_measurements_route_raw_width_and_shape_specific_height() {
         struct OperationProbe;
 
         impl crate::text::TextMeasurer for OperationProbe {
@@ -1792,6 +1799,14 @@ mod tests {
             ) -> f64 {
                 7.75
             }
+
+            fn measure_svg_tspan_text_bbox_height_px(
+                &self,
+                _text: &str,
+                _style: &crate::text::TextStyle,
+            ) -> f64 {
+                22.5
+            }
         }
 
         let style = crate::text::TextStyle {
@@ -1809,6 +1824,14 @@ mod tests {
             assert_eq!(
                 gitgraph_commit_tag_label_height_px(&OperationProbe, label, &style),
                 7.75
+            );
+            let larger_style = crate::text::TextStyle {
+                font_size: 18.0,
+                ..style.clone()
+            };
+            assert_eq!(
+                gitgraph_commit_tag_label_height_px(&OperationProbe, label, &larger_style),
+                22.5
             );
         }
     }

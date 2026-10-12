@@ -4,8 +4,6 @@ use crate::error::CliError;
 use crate::invocation::ColorEnvironment;
 use crate::invocation::InvocationFacts;
 use crate::runtime::{ExecutionContext, SharedWriter};
-#[cfg(any(feature = "svg", feature = "ascii"))]
-use clap::ValueEnum;
 use clap::error::ErrorKind;
 use clap::{CommandFactory, FromArgMatches};
 use std::env;
@@ -23,6 +21,7 @@ use std::process::ExitCode;
     feature = "layout-elk",
     feature = "markdown",
     feature = "math",
+    feature = "native-fonts",
     feature = "network-icons",
     feature = "parallel-markdown",
     feature = "pdf",
@@ -116,19 +115,12 @@ impl CliApp {
             mut execution,
         } = self;
         let error_output = error_output_mode(&process.args);
-        let parsed = match parse_cli(&process.args) {
-            Ok(parsed) => parsed,
+        let cli = match parse_cli(&process.args) {
+            Ok(cli) => cli,
             Err(error) => {
                 return print_clap_error(error, &execution.stdout, &execution.stderr, error_output);
             }
         };
-        if error_output.emits_human_text()
-            && let Some(warning) = parsed.deprecated_native_format_warning()
-            && let Err(source) = execution.stderr.write_all(warning.as_bytes())
-        {
-            return CliError::stream("stderr", source).exit_code();
-        }
-        let cli = parsed.cli;
         let facts = match process.into_facts(command_needs_working_directory(&cli.command)) {
             Ok(facts) => facts,
             Err(error) => {
@@ -349,53 +341,13 @@ fn hide_bash_theme_preset_values(command: clap::Command) -> clap::Command {
         .mut_subcommands(hide_bash_theme_preset_values)
 }
 
-struct ParsedCli {
-    cli: Cli,
-    deprecated_native_format: bool,
-}
-
-impl ParsedCli {
-    fn deprecated_native_format_warning(&self) -> Option<String> {
-        if !self.deprecated_native_format {
-            return None;
-        }
-        match &self.cli.command {
-            #[cfg(any(feature = "svg", feature = "ascii"))]
-            RawCommand::Render(args) => args.options.format.and_then(|format| {
-                format.to_possible_value().map(|value| {
-                    format!(
-                        "warning: native `render -e {}` is deprecated and will be removed in v0.9.0\nhelp: use `merman-cli render -f {}`\n",
-                        value.get_name(),
-                        value.get_name()
-                    )
-                })
-            }),
-            #[cfg(feature = "markdown")]
-            RawCommand::Batch(args) => args.options.format.and_then(|format| {
-                format.to_possible_value().map(|value| {
-                    format!(
-                        "warning: native `batch -e {}` is deprecated and will be removed in v0.9.0\nhelp: use `merman-cli batch -f {}`\n",
-                        value.get_name(),
-                        value.get_name()
-                    )
-                })
-            }),
-            _ => None,
-        }
-    }
-}
-
-fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
+fn parse_cli(args: &[OsString]) -> Result<Cli, clap::Error> {
     let mut command = cli_command();
-    let deprecated_native_format = uses_deprecated_native_format(args);
     let normalized_args = root_mmdc_compatibility_args(&command, args);
     let root_mmdc_compatibility = normalized_args.is_some();
     let parse_args = normalized_args.as_deref().unwrap_or(args);
     match command.try_get_matches_from_mut(parse_args) {
-        Ok(mut matches) => Cli::from_arg_matches_mut(&mut matches).map(|cli| ParsedCli {
-            cli,
-            deprecated_native_format,
-        }),
+        Ok(mut matches) => Cli::from_arg_matches_mut(&mut matches),
         Err(error) => {
             if let Some(argument) = superseded_resource_flag(error.kind(), args) {
                 return Err(clap::Error::raw(
@@ -416,25 +368,6 @@ fn parse_cli(args: &[OsString]) -> Result<ParsedCli, clap::Error> {
             Err(error)
         }
     }
-}
-
-fn uses_deprecated_native_format(args: &[OsString]) -> bool {
-    if !matches!(
-        args.get(1).and_then(|argument| argument.to_str()),
-        Some("render" | "batch")
-    ) {
-        return false;
-    }
-    args.iter()
-        .skip(2)
-        .take_while(|argument| argument.as_os_str() != OsStr::new("--"))
-        .filter_map(|argument| argument.to_str())
-        .any(|argument| {
-            argument == "-e"
-                || argument
-                    .strip_prefix("-e")
-                    .is_some_and(|value| !value.is_empty())
-        })
 }
 
 fn root_mmdc_compatibility_args(

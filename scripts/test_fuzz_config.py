@@ -89,14 +89,15 @@ def workflow_dispatch_choice_options(input_name: str) -> list[str]:
 
 
 class FuzzConfigTests(unittest.TestCase):
-    def test_workflow_installs_declared_nightly_as_toolchain_input(self) -> None:
+    def test_workflow_installs_declared_nightly_with_rustup(self) -> None:
         install_step = workflow_named_step("Install Rust nightly")
 
-        self.assertIn("uses: dtolnay/rust-toolchain@", install_step)
-        self.assertIn("toolchain: ${{ env.FUZZ_NIGHTLY }}", install_step)
-        self.assertIn("components: rust-src", install_step)
-        self.assertNotIn("@master", install_step)
-        self.assertNotRegex(install_step, r"uses: dtolnay/rust-toolchain@nightly-\d{4}-\d{2}-\d{2}")
+        self.assertIn(
+            'rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src',
+            install_step,
+        )
+        self.assertNotIn("uses:", install_step)
+        self.assertNotIn("rustup default", install_step)
 
     def test_pr_calls_run_fixed_regressions_and_schedules_run_discovery(self) -> None:
         text = FUZZ_WORKFLOW.read_text(encoding="utf-8")

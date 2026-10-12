@@ -116,11 +116,11 @@ fn commit_axis_start_pos(dir: &str) -> f64 {
 }
 
 fn branch_label_bbox_width_px(text: &str, style: &TextStyle, measurer: &dyn TextMeasurer) -> f64 {
-    // Mermaid creates the same `<text><tspan>` node for every direction and reads its `getBBox()`.
+    // Mermaid creates `<text><tspan xml:space="preserve">` and reads its `getBBox()`.
     // Keep that DOM measurement semantic intact so a host SvgBBox route can provide the exact
     // system-font result. The built-in deterministic profile remains the fallback.
     measurer
-        .measure_svg_tspan_text_bbox_width_px(text, style)
+        .measure_svg_preserved_tspan_text_bbox_width_px(text, style)
         .max(0.0)
 }
 
@@ -962,7 +962,11 @@ mod tests {
             branch_label_bbox_width_px("main", &style, &measurer),
             123.456_789
         );
-        assert_eq!(&*measurer.calls.borrow(), &["main"]);
+        assert_eq!(
+            branch_label_bbox_width_px("feature  spaced", &style, &measurer),
+            123.456_789
+        );
+        assert_eq!(&*measurer.calls.borrow(), &["main", "feature  spaced"]);
     }
 
     #[test]

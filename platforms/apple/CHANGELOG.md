@@ -4,6 +4,28 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.9.0] - Unreleased
+
+Version `0.9.0` retains UniFFI API 7 from 0.8.0. Keep the generated wrapper and native artifacts paired.
+
+### Added
+
+- SVG-capable operations add `edge-geometry-json` for Flowchart, Swimlane, and Agentflow clipped edge points and painted label centers. `layout-json` keeps its pre-paint coordinates; inspect the installed operation catalog. [PR #174](https://github.com/Latias94/merman/pull/174), [PR #177](https://github.com/Latias94/merman/pull/177)
+- Flowchart, Swimlane, and State ASCII/Unicode node padding accepts independent X/Y overrides, including zero, separately from graph spacing. [PR #188](https://github.com/Latias94/merman/pull/188)
+
+### Upgrade
+
+- Host text-measurement protocol 1 adds signed raw bounding-box Y-offset operations 19–21. Update exhaustive callback handlers without changing the protocol number. Native CLI font flags do not enable native font discovery in the default package. [PR #193](https://github.com/Latias94/merman/pull/193)
+- Review transparent SVG backgrounds and corrected geometry/wrapping snapshots. Set `svg.root_background_color` through the binding options when opaque SVG is required; match the installed runtime catalog rather than assuming every optional operation is compiled.
+
+### Fixed
+
+- Corrected Unicode HTML wrapping and resvg-safe hollow Class/ER markers; SVG leaves the canvas unset unless an explicit background is requested. [PR #180](https://github.com/Latias94/merman/pull/180), [PR #182](https://github.com/Latias94/merman/pull/182), [PR #192](https://github.com/Latias94/merman/pull/192)
+- Deep input cleanup no longer relies on recursive ownership. Block child metadata and repeated composite declarations follow the pinned Mermaid behavior. [PR #191](https://github.com/Latias94/merman/pull/191)
+- ASCII/Unicode output preserves loop-back contacts, transition labels, compound frames, Sequence spacing, and diamond shoulders. Resource ceilings retain their existing meanings. [PR #179](https://github.com/Latias94/merman/pull/179), [PR #188](https://github.com/Latias94/merman/pull/188)
+
+See the [package guide](README.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
+
 ## [0.8.0] - 2026-10-06
 
 This entry consolidates the 0.7.0-to-0.8.0 migration across the alphas. It prepares a matching Swift facade and XCFramework candidate; it does not announce artifact publication.

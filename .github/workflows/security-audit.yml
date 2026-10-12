@@ -50,9 +50,9 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-audit
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: cargo-audit
+          tool: cargo-audit@0.22.2
 
       - name: Audit Rust dependencies
         env:
@@ -71,14 +71,14 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-deny
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: cargo-deny
+          tool: cargo-deny@0.20.2
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: cargo-about@0.9.1
+          tool: cargo-about@0.9.2
 
       - name: Verify dependency advisories, bans, licenses, and sources
         run: cargo deny check advisories bans licenses sources

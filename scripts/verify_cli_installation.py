@@ -95,6 +95,201 @@ class CliInstallationError(RuntimeError):
     """Raised when an installed CLI violates the complete-profile contract."""
 
 
+def _release_output_contract(output: dict[str, object]) -> dict[str, object]:
+    """Project the runtime metadata emitted by ``merman-cli capabilities``.
+
+    Native raster/PDF exporters disclose their host-font and embedded-image
+    policies at runtime.  Keep the release verifiers in sync with that public
+    release contract; SVG and ASCII do not own those resources and therefore emit
+    explicit ``null`` values through serde.
+    """
+
+    projected = {
+        "id": output["id"],
+        "description": output["description"],
+        "media_type": output["media_type"],
+        "system_fonts": None,
+        "embedded_images": None,
+    }
+    if output["id"] in {"jpeg", "pdf", "png"}:
+        projected["system_fonts"] = {
+            "source_id": "host-system",
+            "discovery": "first-use",
+            "cache_scope": "process-global",
+            "host_dependent": True,
+            "caller_configurable": True,
+            "resource_bounded": False,
+        }
+        projected["embedded_images"] = {
+            "source_ids": ["data-url"],
+            "filesystem_access": False,
+            "network_access": False,
+            "caller_configurable": True,
+            "limits": {
+                "max_bytes_per_image": 16 * 1024 * 1024,
+                "max_total_bytes": 32 * 1024 * 1024,
+                "max_pixels_per_image": 16 * 1024 * 1024,
+                "max_total_pixels": 32 * 1024 * 1024,
+            },
+        }
+    return projected
+
+
+def release_capabilities_subcontract(
+    surface: dict[str, object],
+    *,
+    capability_ids: set[str],
+) -> dict[str, object]:
+    """Project the release metadata shared by archive and installation checks."""
+    capabilities = [
+        {
+            "id": capability["id"],
+            "kind": capability["kind"],
+            "description": capability["description"],
+            "implications": sorted(capability["implications"]),
+        }
+        for capability in sorted(surface["capabilities"], key=lambda value: value["id"])
+        if capability["id"] in capability_ids
+    ]
+    outputs = [
+        _release_output_contract(output)
+        for output in sorted(surface["outputs"], key=lambda value: value["id"])
+        if output["capability"] in capability_ids
+    ]
+    return {
+        "capabilities": capabilities,
+        "outputs": outputs,
+        "native_fonts": {
+            "default_policy_scope": "mermaid-graphical-input",
+            "default_measurement": "deterministic",
+            "default_font_source": "none",
+            "default_system_discovery": "disabled",
+            "system_resources_bounded": True,
+            "selected_font_bytes_bounded": True,
+            "legacy_export_paths": (
+                "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
+            ),
+            "explicit_font_sources": "closed-set-unless-font-system-on",
+            "measurement_operations": [
+                "measure",
+                "computed-length",
+                "bbox-x",
+                "bbox-x-with-ascii-overhang",
+                "title-bbox-x",
+                "simple-bbox-width",
+                "raw-bbox-width",
+                "tspan-bbox-width",
+                "tspan-bbox-height",
+                "wrap-probe-bbox-width",
+                "simple-bbox-height",
+                "wrapped",
+                "wrapped-with-raw-width",
+                "bounding-client-rect-width",
+                "create-text-bbox-y-offset",
+                "mermaid-calculate-text-dimensions",
+                "canvas-measure-text-width",
+                "create-text-middle-bbox-y-offset",
+                "raw-bbox-height",
+                "raw-bbox-y-offset",
+                "raw-middle-bbox-y-offset",
+                "raw-hanging-bbox-y-offset",
+            ],
+            "measurement_phases": ["layout", "wrap", "svg-bbox", "computed-length"],
+            "unsupported_operations": "deterministic-fallback",
+            "missing_glyphs": "deterministic-fallback",
+            "browser_pixel_parity": False,
+            "system_discovery_compiled": True,
+            "system_discovery_runtime_available": True,
+            "embeds_fonts_in_svg": False,
+            "context_scope": "operation-owned",
+        },
+    }
+
+
+def _require_exact_json(label: str, observed: object, expected: object) -> None:
+    if type(observed) is not type(expected):
+        raise CliInstallationError(
+            f"{label} has the wrong JSON type: "
+            f"expected {type(expected).__name__}, got {type(observed).__name__}"
+        )
+    if isinstance(expected, dict):
+        observed_object = observed
+        expected_fields = set(expected)
+        observed_fields = set(observed_object)
+        if observed_fields != expected_fields:
+            missing = sorted(expected_fields - observed_fields)
+            extra = sorted(observed_fields - expected_fields)
+            details = []
+            if missing:
+                details.append("missing fields " + ", ".join(missing))
+            if extra:
+                details.append("extra fields " + ", ".join(extra))
+            raise CliInstallationError(f"{label} has " + "; ".join(details))
+        for key, expected_value in expected.items():
+            _require_exact_json(
+                f"{label}.{key}",
+                observed_object[key],
+                expected_value,
+            )
+        return
+    if isinstance(expected, list):
+        observed_array = observed
+        if len(observed_array) != len(expected):
+            raise CliInstallationError(
+                f"{label} has {len(observed_array)} entries; expected {len(expected)}"
+            )
+        for index, expected_value in enumerate(expected):
+            _require_exact_json(
+                f"{label}[{index}]",
+                observed_array[index],
+                expected_value,
+            )
+        return
+    if observed != expected:
+        raise CliInstallationError(
+            f"{label} differs from the repository contract: "
+            f"expected {expected!r}, got {observed!r}"
+        )
+
+
+def _strict_json_object(
+    data: bytes,
+    *,
+    label: str = "capabilities output",
+) -> dict[str, object]:
+    try:
+        text = data.decode("utf-8")
+        value = json.loads(
+            text,
+            object_pairs_hook=lambda pairs: _json_object_without_duplicates(
+                pairs,
+                label=label,
+            ),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise CliInstallationError(
+            f"{label} is not valid UTF-8 JSON: {error}"
+        ) from error
+    if not isinstance(value, dict):
+        raise CliInstallationError(f"{label} must be one JSON object")
+    return value
+
+
+def _json_object_without_duplicates(
+    pairs: list[tuple[str, object]],
+    *,
+    label: str,
+) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise CliInstallationError(
+                f"{label} contains duplicate JSON key {key!r}"
+            )
+        result[key] = value
+    return result
+
+
 def read_release_contract(root: Path) -> tuple[dict, dict]:
     path = root / PROFILE_DESCRIPTOR
     try:
@@ -265,16 +460,14 @@ def _verify_capabilities(
     package_version: str,
     profile: dict,
     authority: dict,
+    contract_root: Path,
 ) -> None:
-    try:
-        document = json.loads(payload.decode("utf-8"))
-    except (UnicodeError, json.JSONDecodeError) as error:
-        raise CliInstallationError(f"capabilities output is not JSON: {error}") from error
-    if not isinstance(document, dict):
-        raise CliInstallationError("capabilities output must be a JSON object")
-    if document.get("schema_version") != CAPABILITIES_SCHEMA_VERSION:
+    document = _strict_json_object(payload)
+    schema_version = document.get("schema_version")
+    if type(schema_version) is not int or schema_version != CAPABILITIES_SCHEMA_VERSION:
         raise CliInstallationError("unexpected capabilities schema version")
-    if document.get("cli_contract_version") != CLI_CONTRACT_VERSION:
+    contract_version = document.get("cli_contract_version")
+    if type(contract_version) is not int or contract_version != CLI_CONTRACT_VERSION:
         raise CliInstallationError("unexpected CLI contract version")
     package = document.get("package")
     if package != {"name": "merman-cli", "version": package_version}:
@@ -283,10 +476,15 @@ def _verify_capabilities(
         "schema_version": authority["schema_version"],
         "digest": authority["digest"],
     }
-    if document.get("descriptor") != expected_descriptor:
-        raise CliInstallationError(
-            "capabilities descriptor does not match the release capability authority"
+    try:
+        _require_exact_json(
+            "capabilities descriptor", document.get("descriptor"), expected_descriptor
         )
+    except CliInstallationError as error:
+        raise CliInstallationError(
+            "capabilities descriptor does not match the release capability authority: "
+            f"{error}"
+        ) from error
     compatibility = document.get("compatibility")
     if not isinstance(compatibility, dict) or any(
         not isinstance(compatibility.get(key), str) or not compatibility[key]
@@ -324,6 +522,25 @@ def _verify_capabilities(
             raise CliInstallationError(f"installed {error}") from error
     elif "theme_presets" in document:
         raise CliInstallationError("installed capabilities expose a theme preset catalog without SVG support")
+    surface = _strict_json_object(
+        _read_regular_file(
+            contract_root / "capabilities/feature-surface-v1.json", "release capability surface"
+        ),
+        label="release capability surface",
+    )
+    _require_exact_json(
+        "release capability surface schema version",
+        surface.get("schema_version"),
+        authority["schema_version"],
+    )
+    try:
+        expected_subcontract = release_capabilities_subcontract(
+            surface, capability_ids=expected_capabilities
+        )
+    except (KeyError, TypeError) as error:
+        raise CliInstallationError("release capability surface is incomplete") from error
+    for field, expected in expected_subcontract.items():
+        _require_exact_json(f"installed {field}", document.get(field), expected)
     if "ascii" in expected_capabilities:
         _verify_ascii_capabilities(document.get("ascii"))
     elif "ascii" in document:
@@ -391,6 +608,7 @@ def verify_cli_installation(
         package_version=package_version,
         profile=profile,
         authority=authority,
+        contract_root=contract_root,
     )
     _verify_completion_paths(
         prefix=installed_prefix,

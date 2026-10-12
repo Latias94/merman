@@ -106,7 +106,7 @@ function FeatureLoadState({
     <div
       role={failed ? "alert" : "status"}
       aria-live={failed ? "assertive" : "polite"}
-      className="flex min-h-32 flex-col items-center justify-center gap-3 px-5 py-8 text-center"
+      className="flex min-h-32 w-full flex-col items-center justify-center gap-3 px-5 py-8 text-center"
     >
       {failed ? (
         <>

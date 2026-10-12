@@ -171,6 +171,35 @@ pub trait TextMeasurer {
         self.measure(text, style).height.max(0.0)
     }
 
+    /// Signed bbox Y of direct SVG text at baseline zero. `None` means this profile does not
+    /// supply baseline facts; callers retain their established compatibility bounds.
+    fn measure_svg_raw_text_bbox_y_offset_px(
+        &self,
+        _text: &str,
+        _style: &TextStyle,
+    ) -> Option<f64> {
+        None
+    }
+
+    /// Signed bbox Y of direct SVG text with inherited `dominant-baseline: middle`.
+    /// This is not the specially positioned Mermaid createFormattedText DOM.
+    fn measure_svg_raw_text_middle_bbox_y_offset_px(
+        &self,
+        _text: &str,
+        _style: &TextStyle,
+    ) -> Option<f64> {
+        None
+    }
+
+    /// Signed bbox Y of direct SVG text with inherited `dominant-baseline: hanging`.
+    fn measure_svg_raw_text_hanging_bbox_y_offset_px(
+        &self,
+        _text: &str,
+        _style: &TextStyle,
+    ) -> Option<f64> {
+        None
+    }
+
     /// Measures the CSS pixel width returned by SVG `<text>.getBoundingClientRect().width`.
     ///
     /// This is a distinct browser primitive from `getBBox().width`: transforms, CSS pixel
@@ -189,6 +218,16 @@ pub trait TextMeasurer {
     /// raw SVG text measurement.
     fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.measure_svg_raw_text_bbox_width_px(text, style)
+    }
+
+    /// Measures child `<tspan>` rows with explicit `xml:space="preserve"` semantics.
+    ///
+    /// Mermaid's `gitGraphRenderer.drawText` preserves interior row whitespace, as does Merman's
+    /// Gitgraph SVG emitter. Routed hosts receive the existing `TspanBBoxWidth` operation with
+    /// `WrapMode::HtmlLike` to distinguish preserved spaces from ordinary SVG collapsing; this
+    /// probe remains unwrapped. Existing custom profiles keep their tspan-width implementation.
+    fn measure_svg_preserved_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.measure_svg_tspan_text_bbox_width_px(text, style)
     }
 
     /// Measures the bbox height of a `<text>` node whose visible rows are child `<tspan>` nodes.

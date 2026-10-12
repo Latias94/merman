@@ -75,8 +75,17 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) pipeline: SvgPipeline,
     pub(super) output: PreparedGraphicalOutput,
     pub(super) admission: BackendAdmission,
-    #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+    #[cfg(any(
+        feature = "native-fonts",
+        feature = "png",
+        feature = "jpeg",
+        feature = "pdf"
+    ))]
     pub(super) quiet: bool,
+    #[cfg(feature = "native-fonts")]
+    pub(super) font_context: Option<merman::svg::export::NativeFontContext>,
+    #[cfg(feature = "native-fonts")]
+    pub(super) font_diagnostics: bool,
 }
 
 #[cfg(feature = "rustdoc")]
@@ -93,6 +102,7 @@ pub(super) enum PreparedGraphicalSource {
 }
 
 #[cfg(feature = "svg")]
+#[derive(Clone)]
 pub(super) enum PreparedGraphicalOutput {
     Svg,
     #[cfg(feature = "png")]
@@ -111,6 +121,23 @@ pub(super) enum PreparedGraphicalOutput {
 
 #[cfg(feature = "svg")]
 impl PreparedGraphicalOutput {
+    #[cfg(feature = "native-fonts")]
+    pub(super) fn with_font_context(
+        mut self,
+        _context: Option<merman::svg::export::NativeFontContext>,
+    ) -> Self {
+        match &mut self {
+            Self::Svg => {}
+            #[cfg(feature = "png")]
+            Self::Png { options } => options.font_context = _context,
+            #[cfg(feature = "jpeg")]
+            Self::Jpeg { options } => options.font_context = _context,
+            #[cfg(feature = "pdf")]
+            Self::Pdf { options } => options.font_context = _context,
+        }
+        self
+    }
+
     pub(super) fn target(&self, svg: merman::SvgRequest) -> merman::RenderTarget {
         match self {
             Self::Svg => merman::RenderTarget::Svg(svg),
@@ -357,6 +384,15 @@ fn prepare_single(
             viewport,
             report,
         } => {
+            #[cfg(all(feature = "native-fonts", feature = "svg"))]
+            if !common.render.fonts.sources.is_empty()
+                || common.render.fonts.measurement.is_some()
+                || common.render.fonts.system.is_some()
+            {
+                return Err(CliError::InvalidInput(
+                    "native font options require SVG, PNG, JPEG, or PDF output".to_string(),
+                ));
+            }
             let options = *options;
             let mut resources = common.resources.ascii_policy();
             for (id, value) in legacy_resources.explicit_overrides() {
@@ -505,6 +541,21 @@ pub(crate) fn prepare_graphical_output(
             SvgPipelineKind::ResvgSafe,
         ),
     };
+    #[cfg(feature = "native-fonts")]
+    let font_context = prepare_font_context(
+        &common.render.fonts,
+        &common.cwd,
+        raw_svg,
+        matches!(&output, PreparedGraphicalOutput::Svg),
+        control,
+    )?;
+    #[cfg(feature = "native-fonts")]
+    if font_context.is_some() && !raw_svg && css.as_ref().is_some_and(|css| !css.trim().is_empty())
+    {
+        return Err(CliError::InvalidInput(
+            "native text measurement does not support --css-file (post-layout styling); configure typography through Mermaid configuration, or use --font-measurement deterministic without font sources".to_string(),
+        ));
+    }
     let pipeline =
         svg_output_policy(pipeline_kind, common.background.as_deref(), css.as_deref()).pipeline();
     let admission = match &output {
@@ -545,6 +596,18 @@ pub(crate) fn prepare_graphical_output(
             &common.resources,
             control,
         )?;
+        #[cfg(feature = "native-fonts")]
+        let renderer = if let Some(context) = &font_context {
+            let environment = renderer
+                .svg
+                .environment
+                .clone()
+                .with_native_font_context(context.clone())
+                .map_err(native_font_error)?;
+            renderer.with_svg_environment(environment)
+        } else {
+            renderer
+        };
         #[cfg(feature = "icons")]
         let renderer = if let Some(icon_registry) = load_icon_registry(
             &common.icons,
@@ -573,8 +636,19 @@ pub(crate) fn prepare_graphical_output(
             pipeline,
             output,
             admission,
-            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            #[cfg(any(
+                feature = "native-fonts",
+                feature = "png",
+                feature = "jpeg",
+                feature = "pdf"
+            ))]
             quiet: common.quiet,
+            #[cfg(feature = "native-fonts")]
+            font_context,
+            #[cfg(feature = "native-fonts")]
+            font_diagnostics: !common.render.fonts.sources.is_empty()
+                || common.render.fonts.measurement.is_some()
+                || common.render.fonts.system.is_some(),
         },
     ))
 }
@@ -588,6 +662,105 @@ pub(crate) fn prepare_rustdoc_renderers(
         light: prepare_rustdoc_renderer("default", resources, control)?,
         dark: prepare_rustdoc_renderer("dark", resources, control)?,
     })
+}
+
+#[cfg(feature = "native-fonts")]
+fn prepare_font_context(
+    args: &crate::cli::FontCliArgs,
+    cwd: &Path,
+    raw_svg: bool,
+    svg_output: bool,
+    control: &OperationControl,
+) -> Result<Option<merman::svg::export::NativeFontContext>, CliError> {
+    use crate::cli::{FontMeasurementKind, FontSource, FontSystemKind};
+    use merman::svg::export::NativeFontOptions;
+
+    let explicit = !args.sources.is_empty();
+    if raw_svg && args.measurement.is_some() {
+        return Err(CliError::InvalidInput(
+            "--font-measurement is only supported for Mermaid input; raw SVG is not relaid out"
+                .to_string(),
+        ));
+    }
+    if raw_svg && svg_output && (explicit || args.system.is_some()) {
+        return Err(CliError::InvalidInput(
+            "font options for raw SVG require PNG, JPEG, or PDF output; fonts are not embedded into SVG".to_string(),
+        ));
+    }
+    if explicit && args.measurement == Some(FontMeasurementKind::Deterministic) {
+        return Err(CliError::InvalidInput(
+            "explicit fonts cannot be combined with --font-measurement deterministic for Mermaid input".to_string(),
+        ));
+    }
+    if args.measurement == Some(FontMeasurementKind::Deterministic) {
+        if args.system == Some(FontSystemKind::On) {
+            return Err(CliError::InvalidInput(
+                "--font-system on conflicts with --font-measurement deterministic; omit --font-system to retain the compatibility measurement path".to_string(),
+            ));
+        }
+        if !svg_output && args.system == Some(FontSystemKind::Off) {
+            return Err(CliError::InvalidInput(
+                "--font-system off requires explicit fonts for encoded output; provide --font-file or --font-dir".to_string(),
+            ));
+        }
+        return Ok(None);
+    }
+    let native_requested = args.measurement == Some(FontMeasurementKind::Native);
+    let use_system = args.system == Some(FontSystemKind::On)
+        || (!raw_svg
+            && !explicit
+            && native_requested
+            && args.system != Some(FontSystemKind::Off)
+            && cfg!(feature = "system-fonts"));
+    if use_system && !cfg!(feature = "system-fonts") {
+        return Err(CliError::InvalidInput(
+            "missing capability: system-fonts; this CLI build cannot discover system fonts; provide --font-file or --font-dir".to_string(),
+        ));
+    }
+    if !explicit && !use_system {
+        if args.system == Some(FontSystemKind::Off)
+            && (!svg_output || (!raw_svg && native_requested))
+        {
+            return Err(CliError::InvalidInput(
+                "--font-system off leaves no fonts for native measurement or encoded painting; provide --font-file or --font-dir, or use --font-measurement deterministic for Mermaid SVG output".to_string(),
+            ));
+        }
+        if native_requested {
+            return Err(CliError::InvalidInput(
+                "missing capability: system-fonts; --font-measurement native requires --font-file or --font-dir in this CLI build".to_string(),
+            ));
+        }
+        return Ok(None);
+    }
+    let mut options = NativeFontOptions::default().with_system_fonts(use_system);
+    for source in &args.sources {
+        let resolve = |path: &std::path::PathBuf| {
+            if path.is_absolute() {
+                path.clone()
+            } else {
+                cwd.join(path)
+            }
+        };
+        options = match source {
+            FontSource::File(path) => options.with_font_file(resolve(path)),
+            FontSource::Directory(path) => options.with_font_dir(resolve(path)),
+        };
+    }
+    #[cfg(feature = "experimental-system-font-query")]
+    let result = if use_system {
+        options.load_platform(control)
+    } else {
+        options.load(control)
+    };
+    #[cfg(not(feature = "experimental-system-font-query"))]
+    let result = options.load(control);
+    crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+    result.map(Some).map_err(native_font_error)
+}
+
+#[cfg(feature = "native-fonts")]
+pub(super) fn native_font_error(error: merman::svg::export::NativeFontError) -> CliError {
+    CliError::Io(std::io::Error::other(error))
 }
 
 #[cfg(feature = "rustdoc")]
@@ -608,6 +781,11 @@ fn prepare_rustdoc_renderer(
         theme_preset: None,
         theme_file: None,
         theme_definition: None,
+        #[cfg(feature = "native-fonts")]
+        fonts: crate::cli::FontCliArgs {
+            measurement: Some(crate::cli::FontMeasurementKind::Deterministic),
+            ..Default::default()
+        },
         math_renderer: Some(crate::cli::MathRendererKind::Ratex),
         container_width: None,
         container_height: None,
@@ -623,8 +801,17 @@ fn prepare_rustdoc_renderer(
         pipeline,
         output: PreparedGraphicalOutput::Svg,
         admission: BackendAdmission::for_svg(resources)?,
-        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        #[cfg(any(
+            feature = "native-fonts",
+            feature = "png",
+            feature = "jpeg",
+            feature = "pdf"
+        ))]
         quiet: true,
+        #[cfg(feature = "native-fonts")]
+        font_context: None,
+        #[cfg(feature = "native-fonts")]
+        font_diagnostics: false,
     })
 }
 
@@ -694,6 +881,37 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
             .value(merman::resources::InputResourceLimitId::MaxSourceBytes),
     )
     .with_profile(resources.profile())
+}
+
+#[cfg(all(test, feature = "native-fonts"))]
+mod font_policy_tests {
+    use super::prepare_font_context;
+    use crate::cli::{FontCliArgs, FontMeasurementKind, FontSystemKind};
+
+    #[test]
+    fn deterministic_svg_policies_do_not_prepare_a_font_context() {
+        let policies = [
+            FontCliArgs::default(),
+            FontCliArgs {
+                measurement: Some(FontMeasurementKind::Deterministic),
+                ..Default::default()
+            },
+            FontCliArgs {
+                system: Some(FontSystemKind::Off),
+                ..Default::default()
+            },
+        ];
+        let cwd = std::env::current_dir().unwrap();
+        for policy in policies {
+            let context =
+                prepare_font_context(&policy, &cwd, false, true, &merman::OperationControl::new())
+                    .unwrap();
+            assert!(
+                context.is_none(),
+                "deterministic layout must not acquire fonts"
+            );
+        }
+    }
 }
 
 #[cfg(all(test, feature = "rustdoc"))]

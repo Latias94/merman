@@ -17,6 +17,13 @@ use super::RenderError;
 #[derive(Debug, Clone)]
 pub struct SvgEnvironment {
     backend: BackendRenderEnvironment,
+    #[cfg(feature = "native-fonts")]
+    pub(super) native_fonts: Option<merman_export::NativeFontContext>,
+    #[cfg(all(
+        feature = "native-fonts",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    pub(super) text_measurement_is_default: bool,
     text_measurement_routes: [merman_render::environment::TextMeasurementRoute; 4],
     // Retain source admission without opening a backend session.
     pub(super) input_resources: InputResourcePolicy,
@@ -28,6 +35,13 @@ impl SvgEnvironment {
         let text_measurement = TextMeasurementPolicy::deterministic();
         let resources = RenderResourcePolicy::default();
         Self {
+            #[cfg(feature = "native-fonts")]
+            native_fonts: None,
+            #[cfg(all(
+                feature = "native-fonts",
+                any(feature = "png", feature = "jpeg", feature = "pdf")
+            ))]
+            text_measurement_is_default: true,
             backend: BackendRenderEnvironment::deterministic()
                 .with_text_measurement_policy(text_measurement.clone())
                 .with_resource_policy(resources),
@@ -37,9 +51,49 @@ impl SvgEnvironment {
     }
 
     pub fn with_text_measurement_policy(mut self, policy: TextMeasurementPolicy) -> Self {
+        #[cfg(feature = "native-fonts")]
+        {
+            self.native_fonts = None;
+            #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+            {
+                self.text_measurement_is_default = false;
+            }
+        }
         self.text_measurement_routes = policy.routes();
         self.backend = self.backend.with_text_measurement_policy(policy);
         self
+    }
+
+    /// Shares explicit fonts between text measurement and native painting.
+    #[cfg(feature = "native-fonts")]
+    pub fn with_native_font_context(
+        self,
+        context: merman_export::NativeFontContext,
+    ) -> Result<Self, merman_export::NativeFontError> {
+        context.check()?;
+        use merman_render::environment::{
+            MeasurementProfileId, TextMeasurementPhase, TextMeasurementProfileIdentity,
+        };
+        let id = MeasurementProfileId::new("native-fonts")
+            .map_err(|error| merman_export::NativeFontError::Measurement(error.to_string()))?;
+        let identity = TextMeasurementProfileIdentity::new(id, context.identity())
+            .map_err(|error| merman_export::NativeFontError::Measurement(error.to_string()))?;
+        let policy = TextMeasurementPolicy::host_display(
+            identity,
+            std::sync::Arc::new(context.clone()),
+            TextMeasurementPhase::ALL,
+        );
+        let mut environment = self.with_text_measurement_policy(policy);
+        environment.native_fonts = Some(context);
+        Ok(environment)
+    }
+
+    #[cfg(feature = "native-fonts")]
+    pub(super) fn check_native_fonts(&self) -> Result<(), RenderError> {
+        if let Some(context) = &self.native_fonts {
+            context.check()?;
+        }
+        Ok(())
     }
 
     pub fn with_capability_policy(mut self, policy: RenderCapabilityPolicy) -> Self {

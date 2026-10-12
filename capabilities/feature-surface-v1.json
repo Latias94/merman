@@ -127,6 +127,17 @@
       }
     },
     {
+      "id": "native-fonts",
+      "kind": "adapter",
+      "description": "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.",
+      "targets": ["native"],
+      "implications": [],
+      "absence": {
+        "error_id": "command-not-compiled",
+        "contract": "Native-font CLI controls are absent when the optional adapter is not compiled."
+      }
+    },
+    {
       "id": "system-clock",
       "kind": "adapter",
       "description": "Compile the native system clock adapter.",

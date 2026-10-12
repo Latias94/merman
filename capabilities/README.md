@@ -53,6 +53,23 @@ RustSec exception coverage follows the same authority boundary. Every verifier h
 
 Artifact profiles describe compiled components, not every package that redistributes one. Wheels, AARs, XCFrameworks, npm packages, and other release bundles keep their package manifests and release checks at the owning surface. A bundle may compose one or more artifact profiles without inventing another Cargo root or copying an ABI definition.
 
+## CLI Font Policy
+
+Default and release CLI binaries compile `native-fonts` and `system-fonts` so native font
+measurement remains available as a runtime choice. Ordinary Mermaid graphical output defaults to
+`deterministic` measurement, with `default_font_source: none` and
+`default_system_discovery: disabled`. Compiled capability and runtime availability fields describe
+what the binary can do; they do not enable system discovery for an ordinary invocation.
+
+Providing `--font-file` or `--font-dir` selects native measurement automatically. Explicit font
+inputs form a closed set unless `--font-system on` is supplied. Without explicit font inputs,
+`--font-measurement native` permits bounded system discovery; `--font-system on` also explicitly
+opts into system fonts. The experimental system-font query backend remains outside the default and
+release feature recipes, and compiling it does not change the deterministic measurement default.
+These defaults apply to Mermaid graphical input; legacy raw SVG exports retain their existing
+per-output environment contracts. CLI contract version 6 and the 22 measurement operations remain
+unchanged.
+
 ## Default Native Prebuilt SKU
 
 The Android, Apple, Python, and Flutter artifact profiles select all families and one shared

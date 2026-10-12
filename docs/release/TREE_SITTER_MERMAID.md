@@ -7,20 +7,22 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Published version: `0.3.0` (2026-10-06, Asia/Shanghai; required by Merman LSP `0.8.0`)
-- Immutable release tag: `tree-sitter-mermaid-v0.3.0`
+- Prepared version: `0.3.1`, required by Merman LSP `0.9.0`; not a registry publication observation
+- Latest recorded published version: `0.3.0` (2026-10-06, Asia/Shanghai; Merman LSP `0.8.0`)
+- Intended independent release tag: `tree-sitter-mermaid-v0.3.1` (not created by preparation)
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
 - Language ABI: 15
-- Tree-sitter CLI: 0.27.0
-- Verified Rust runtime: 0.27.0
-- Verified Web runtime: 0.27.0
+- Tree-sitter CLI: 0.27.1
+- Selected Rust runtime: 0.27.1
+- Selected Web runtime: 0.27.1
+- Rust language crate: 0.1.9
 - Native Node runtime contract: 0.25.x
 - Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0
 - ZenUML Core baseline: 3.50.1
 
-The [dated publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) records the completed `0.3.0` publication from commit `2029bd547077b1a6800878e125663633d81e6d87`, including recovery with the original package bytes. Consumer changes are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). This checklist remains the procedure for a future selected version.
+The [dated publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) records the completed `0.3.0` publication from commit `2029bd547077b1a6800878e125663633d81e6d87`, including recovery with the original package bytes. Consumer changes are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). The 0.3.1 candidate updates the exact generator/runtime group and selects the compatible language adapter requirement `^0.1.9`, without changing generated language ABI 15. Run this checklist and publish the independently verified grammar before workspace crates that require it; retain registry visibility and package/provenance evidence in the [preparation record](PUBLISH_ORDER.md#090-preparation).
 
 Cargo, npm (including its lockfile), `tree-sitter.json`, `metadata/provenance.json`, Make, and CMake versions must match. Regenerate the C parser and language WASM after a version change because they embed the language version. A release tag must resolve to the immutable commit containing the generated parser, root WASM, queries, and legal material.
 
@@ -63,7 +65,7 @@ git diff --check
 
 One candidate release stages:
 
-- `tree-sitter-mermaid-0.3.0.crate` for crates.io;
+- `tree-sitter-mermaid-0.3.1.crate` for crates.io;
 - an `@mermanjs/tree-sitter-mermaid` tarball containing Node source fallback and release-built
   N-API prebuilds;
 - root `tree-sitter-mermaid.wasm` for npm and GitHub Releases;

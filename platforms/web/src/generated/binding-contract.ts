@@ -54,6 +54,10 @@ export const CAPABILITY_SPECS = [
     ]
   },
   {
+    "id": "native-fonts",
+    "implication_ids": []
+  },
+  {
     "id": "network-icons",
     "implication_ids": []
   },

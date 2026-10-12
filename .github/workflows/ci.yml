@@ -109,8 +109,8 @@ jobs:
         env:
           ACTIONLINT_VERSION: 1.7.12
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-          ZIZMOR_VERSION: 1.29.0
-          ZIZMOR_SHA256: 587b99c2e1b34575c6c8565c2bfde415ca8bc0310f5589f19bc948c8dea10a20
+          ZIZMOR_VERSION: 1.30.1
+          ZIZMOR_SHA256: eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e
         run: |
           set -euo pipefail
           tools_dir="$RUNNER_TEMP/workflow-tools"
@@ -229,21 +229,21 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: nextest
+          tool: nextest@0.9.148
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
-      - name: Install CLI asset validators
+      - name: Install CLI build dependencies and asset validators
         timeout-minutes: 10
         run: |
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish libfontconfig1-dev mandoc pkg-config zsh
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
@@ -269,7 +269,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.22.5
+        uses: DeterminateSystems/determinate-nix-action@v3.23.1
 
       - name: Build reusable Nix derivation
         run: |
@@ -405,9 +405,9 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: nextest
+          tool: nextest@0.9.148
 
       - name: Free disk space (Ubuntu)
         if: runner.os == 'Linux'
@@ -428,13 +428,22 @@ jobs:
         with:
           cache-targets: false
 
+      - name: Install Linux font build dependencies
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config
+
       - name: Verify pinned Mermaid reference before runtime install
         if: matrix.parity
         run: cargo run --locked -p xtask -- verify-mermaid-reference
 
       - name: Setup Node for generated Mermaid artifacts
         if: matrix.parity
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24"
           cache: npm
@@ -498,6 +507,30 @@ jobs:
             --test theme_font_capability --test flowchart_edge_label_theme --cargo-quiet
           cargo nextest run --locked -p merman-export --no-default-features \
             --features png,jpeg,pdf --lib --cargo-quiet
+
+      - name: Test explicit native fonts on every host
+        shell: bash
+        run: |
+          cargo nextest run --locked -p merman-export --no-default-features --features native-fonts --cargo-quiet
+          cargo nextest run --locked -p merman --features native-fonts --test native_font_context --test native_font_families --test native_flowchart_typography --test native_swimlane_typography --test native_font_wrapping --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features svg,diagram-flowchart,native-fonts,markdown,parallel-markdown --test native_fonts_contract --cargo-quiet
+          cargo nextest run --locked -p merman --no-default-features --features diagram-flowchart,native-fonts,png,jpeg,pdf --test native_font_context --cargo-quiet
+
+      - name: Test bounded system font policy on every host
+        shell: bash
+        run: |
+          cargo nextest run --locked -p merman-export --no-default-features --features native-fonts,system-fonts --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,system-fonts --test native_fonts_contract --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,png --test native_fonts_contract --cargo-quiet
+
+      - name: Test experimental platform font query on every host
+        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet
+
+      - name: Test platform font host contracts on every host
+        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context --run-ignored only --cargo-quiet
+
+      - name: Test experimental platform font CLI contracts on every host
+        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,system-fonts,experimental-system-font-query --test native_fonts_contract --cargo-quiet
 
       - name: Test host-sensitive contracts on pull requests
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
@@ -698,7 +731,7 @@ jobs:
 
       - name: Upload SVG parity diagnostic reports
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' && always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: svg-parity-diagnostics-${{ github.run_attempt }}
           path: |
@@ -718,7 +751,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -818,7 +851,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
-      TYPST_CLI_VERSION: "0.15.0"
+      TYPST_CLI_VERSION: "0.15.1"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -835,16 +868,16 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: wasm-tools
+          tool: wasm-tools@1.261.0
 
       - name: Install wasm-opt
         uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
-          tag: version_131
+          tag: version_133
 
       - name: Download Typst
         shell: bash
@@ -890,7 +923,7 @@ jobs:
 
       - name: Upload Typst package smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: typst-package-smoke
           path: target/typst-package-smoke
@@ -921,16 +954,16 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: wasm-tools
+          tool: wasm-tools@1.261.0
 
       - name: Install wasm-opt
         uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
-          tag: version_131
+          tag: version_133
 
       - name: Check WASM size budgets
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
@@ -965,7 +998,7 @@ jobs:
 
       - name: Upload Typst package compatibility artifacts
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: typst-package-compat-smoke
           path: target/typst-package-smoke
@@ -1022,7 +1055,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version: "3.44.9"
+          flutter-version: "3.47.7"
           channel: stable
           cache: true
 

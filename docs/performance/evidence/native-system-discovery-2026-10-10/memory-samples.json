@@ -1,0 +1,32 @@
+[
+  {
+    "round": 1,
+    "lane": "baseline",
+    "observed_peak_working_set_bytes": 81829888
+  },
+  {
+    "round": 1,
+    "lane": "candidate-final",
+    "observed_peak_working_set_bytes": 51073024
+  },
+  {
+    "round": 2,
+    "lane": "baseline",
+    "observed_peak_working_set_bytes": 81793024
+  },
+  {
+    "round": 2,
+    "lane": "candidate-final",
+    "observed_peak_working_set_bytes": 51093504
+  },
+  {
+    "round": 3,
+    "lane": "baseline",
+    "observed_peak_working_set_bytes": 81793024
+  },
+  {
+    "round": 3,
+    "lane": "candidate-final",
+    "observed_peak_working_set_bytes": 51089408
+  }
+]

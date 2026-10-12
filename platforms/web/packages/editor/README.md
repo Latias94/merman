@@ -3,13 +3,12 @@
 Parser-backed diagnostics, symbols, and editor intelligence for browser-based Mermaid editors. Use
 retained sessions from a dedicated module Worker when the editor benefits from an isolated runtime.
 
-This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
-matter.
+Pin an exact package version when reproducible installs matter.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-editor@alpha
+npm install @mermanjs/web-editor@0.9.0
 ```
 
 ```ts

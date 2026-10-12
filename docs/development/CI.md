@@ -110,6 +110,8 @@ the browser environment. That admission requires `active-filter` to be the only 
 reason on both sides, with no paint reaching the capture boundary. Missing roots, capture limits,
 unbounded markers, and image failures cannot use this admission.
 
+The 2026-10-12 dependency refresh revalidated title 029 against [main run 38203131903](https://github.com/Latias94/merman/actions/runs/38203131903/job/114661820476) and [PR run 38221177606](https://github.com/Latias94/merman/actions/runs/38221177606/job/114718117719). Both SVG hashes and every paired geometry, capture, violation, and structural-pixel field were identical. Only Playwright/Chromium changed from 1.62.1/151.0.7922.34 to 1.64.0/156.0.8078.4; the exact audit fingerprint was regenerated for that browser environment.
+
 Neither receipt is a numeric tolerance or a claim that clipping was repaired. The original
 containment classification and full paint evidence remain in the report. A changed, malformed,
 or unused receipt and every other local-only, new, or worse structural result remain blocking.
@@ -267,7 +269,7 @@ For local workflow checks, make ShellCheck available on `PATH` or pass its execu
 that the Linux CI runner enforces.
 
 Workflow syntax and expression semantics are checked with actionlint 1.7.12. High-severity workflow
-security findings are checked with zizmor 1.29.0. CI verifies the downloaded actionlint archive and
+security findings are checked with zizmor 1.30.1. CI verifies the downloaded actionlint archive and
 the selected zizmor wheel by SHA-256 before execution, and prints both tool versions. Repository
 tests cover only Merman-specific boundaries: the same-run fail-closed gate, read-only PR owner
 closure, trusted deployment separation, maintained action release tags, checkout credential

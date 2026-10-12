@@ -23,7 +23,7 @@ const ARTIFACT_ROOT_NAME: &str = "typst-wasm-artifacts";
 const MANIFEST_FILE_NAME: &str = "manifest.json";
 const TARGET_TRIPLE: &str = "wasm32-unknown-unknown";
 const CARGO_PROFILE: &str = "wasm-size";
-const WASM_OPT_VERSION: &str = "wasm-opt version 131";
+const WASM_OPT_VERSION: &str = "wasm-opt version 133";
 const WASM_OPT_FEATURES: [&str; 7] = [
     "--enable-bulk-memory",
     "--enable-bulk-memory-opt",
@@ -496,7 +496,7 @@ fn validate_typst_wasm_optimizer_version(version: &str) -> Result<(), XtaskError
     };
     if !compatible {
         return Err(artifact_error(format!(
-            "Typst packaging requires Binaryen 131 (`{WASM_OPT_VERSION}`), found `{version}`"
+            "Typst packaging requires Binaryen 133 (`{WASM_OPT_VERSION}`), found `{version}`"
         )));
     }
     Ok(())
@@ -1640,10 +1640,10 @@ mod tests {
     fn wasm_optimizer_version_accepts_release_build_suffix() {
         assert!(validate_typst_wasm_optimizer_version(WASM_OPT_VERSION).is_ok());
         assert!(
-            validate_typst_wasm_optimizer_version("wasm-opt version 131 (version_131)").is_ok()
+            validate_typst_wasm_optimizer_version("wasm-opt version 133 (version_133)").is_ok()
         );
         assert!(validate_typst_wasm_optimizer_version("wasm-opt version 130").is_err());
-        assert!(validate_typst_wasm_optimizer_version("wasm-opt version 1310").is_err());
+        assert!(validate_typst_wasm_optimizer_version("wasm-opt version 1330").is_err());
     }
 
     #[test]

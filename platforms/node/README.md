@@ -8,13 +8,13 @@ Application developers should start with the [`@mermanjs/node` package guide](pa
 
 ## Quick start
 
-All seven packages in the `0.8.0` group, including `@mermanjs/node-wasm`, are published on npm. Pin the exact version when reproducible installs matter.
+The loader, selected native platform package, and explicit `@mermanjs/node-wasm` transport use one package-group version. Pin an exact version when reproducible installs matter.
 
 ```sh
-npm install @mermanjs/node@0.8.0
+npm install @mermanjs/node@0.9.0
 ```
 
-Version `0.8.0` includes Mermaid 12.1 and Agentflow/Usecase support; see the [package changelog](CHANGELOG.md). For source validation, use the exact reviewed commit rather than a moving branch.
+Version `0.9.0` includes Mermaid 12.1 and Agentflow/Usecase support; see the [package changelog](CHANGELOG.md). For source builds, use the `v0.9.0` tag with its matching package workspace and lockfile.
 
 ```js
 import { createNodeEngine } from "@mermanjs/node";
@@ -93,9 +93,8 @@ npm run check:packages --prefix platforms/node
 ```
 
 `npm test` exercises the JavaScript API, bounded executor, catalog validation, loader behavior, and
-benchmark contract with test transports. `check:packages` verifies the source manifests. Pull request CI also assembles the real Node-WASM
-and Node N-API packages, installs them into a clean temporary project, and runs the installed-package
-smoke; target-specific release workflows repeat the same check for release artifacts.
+benchmark contract with test transports. `check:packages` verifies the source manifests; native
+artifact assembly and installed-package smoke run in the target-specific release workflow.
 
 The Linux GNU builder uses the full Node Bullseye image to preserve the declared glibc 2.31
 floor. Its inherited `buildpack-deps` tools and CA bundle are checked during image assembly;

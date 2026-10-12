@@ -404,6 +404,7 @@ pub(crate) struct ResolvedRenderCommon {
     pub(crate) css_file: Option<PathBuf>,
     #[cfg(any(
         feature = "markdown",
+        feature = "native-fonts",
         feature = "png",
         feature = "jpeg",
         feature = "pdf"
@@ -434,6 +435,8 @@ pub(crate) struct ResolvedRenderOptions {
     pub(crate) theme_preset: Option<merman::svg::ThemePreset>,
     pub(crate) theme_file: Option<PathBuf>,
     pub(crate) theme_definition: Option<PathBuf>,
+    #[cfg(feature = "native-fonts")]
+    pub(crate) fonts: crate::cli::FontCliArgs,
     pub(crate) math_renderer: Option<crate::cli::MathRendererKind>,
     pub(crate) container_width: Option<f64>,
     pub(crate) container_height: Option<f64>,
@@ -927,6 +930,8 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         theme_preset: None,
         theme_file: None,
         theme_definition: None,
+        #[cfg(feature = "native-fonts")]
+        fonts: args.render.fonts.clone(),
         math_renderer: args.render.math_renderer,
         container_width: Some(args.render.container_width),
         container_height: Some(args.render.container_height),
@@ -989,6 +994,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
     validate_mmdc_output_options(format, &args)?;
     #[cfg(any(
         feature = "markdown",
+        feature = "native-fonts",
         feature = "png",
         feature = "jpeg",
         feature = "pdf"
@@ -1015,6 +1021,7 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         css_file: args.css_file.clone(),
         #[cfg(any(
             feature = "markdown",
+            feature = "native-fonts",
             feature = "png",
             feature = "jpeg",
             feature = "pdf"
@@ -1524,6 +1531,7 @@ fn resolve_native_common(
         css_file,
         #[cfg(any(
             feature = "markdown",
+            feature = "native-fonts",
             feature = "png",
             feature = "jpeg",
             feature = "pdf"
@@ -1549,6 +1557,7 @@ fn resolve_native_common(
         css_file,
         #[cfg(any(
             feature = "markdown",
+            feature = "native-fonts",
             feature = "png",
             feature = "jpeg",
             feature = "pdf"
@@ -1585,6 +1594,8 @@ fn resolve_render_options(args: RenderCliArgs) -> ResolvedRenderOptions {
         theme_preset: args.theme_preset,
         theme_file: args.theme_file,
         theme_definition: args.theme_definition,
+        #[cfg(feature = "native-fonts")]
+        fonts: args.fonts,
         math_renderer: args.math_renderer,
         container_width: args.container_width,
         container_height: args.container_height,

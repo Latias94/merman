@@ -6,6 +6,7 @@ use super::{
     DeterministicTextMeasurer, TextMeasurer, TextStyle, trim_end_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
 };
+use unicode_segmentation::UnicodeSegmentation;
 
 pub fn ceil_to_1_64_px(v: f64) -> f64 {
     if !(v.is_finite() && v >= 0.0) {
@@ -47,6 +48,104 @@ pub fn round_to_1_64_px_ties_to_even(v: f64) -> f64 {
     };
     let out = i / 64.0;
     if out == -0.0 { 0.0 } else { out }
+}
+
+#[cfg(test)]
+#[derive(Debug, Default)]
+pub(super) struct GraphemeSplitStats {
+    pub(super) grapheme_visits: usize,
+    pub(super) partitioned_bytes: usize,
+}
+
+pub(super) struct GraphemeLineVisit<'a> {
+    pub(super) tail: &'a str,
+    #[cfg(test)]
+    pub(super) stats: GraphemeSplitStats,
+}
+
+/// Visits every grapheme once, measuring complete candidates within the current line.
+/// Returning false from `emit_line` stops at the first completed line without probing its tail.
+/// The width callback receives true when its accumulation must start a new line.
+pub(super) fn visit_grapheme_lines_to_width<'a, E>(
+    token: &'a str,
+    max_width_px: f64,
+    mut measure_candidate: impl FnMut(&str, &str, bool) -> Result<f64, E>,
+    mut emit_line: impl FnMut(&'a str) -> bool,
+) -> Result<GraphemeLineVisit<'a>, E> {
+    let mut line_start = 0usize;
+    let mut width_px = 0.0;
+    let mut has_positive_advance = false;
+    #[cfg(test)]
+    let mut stats = GraphemeSplitStats::default();
+
+    for (index, grapheme) in token.grapheme_indices(true) {
+        #[cfg(test)]
+        {
+            stats.grapheme_visits = stats.grapheme_visits.saturating_add(1);
+        }
+        let candidate_end = index + grapheme.len();
+        let candidate_width_px = measure_candidate(
+            &token[line_start..candidate_end],
+            grapheme,
+            index == line_start,
+        )?;
+        if has_positive_advance
+            && candidate_width_px > width_px
+            && candidate_width_px > max_width_px
+        {
+            let completed = &token[line_start..index];
+            #[cfg(test)]
+            {
+                stats.partitioned_bytes = stats.partitioned_bytes.saturating_add(completed.len());
+            }
+            if !emit_line(completed) {
+                return Ok(GraphemeLineVisit {
+                    tail: &token[index..],
+                    #[cfg(test)]
+                    stats,
+                });
+            }
+            line_start = index;
+            width_px = measure_candidate(grapheme, grapheme, true)?;
+            has_positive_advance = width_px > 0.0;
+        } else {
+            width_px = candidate_width_px;
+            has_positive_advance |= candidate_width_px > 0.0;
+        }
+    }
+    let tail = &token[line_start..];
+    #[cfg(test)]
+    {
+        stats.partitioned_bytes = stats.partitioned_bytes.saturating_add(tail.len());
+    }
+    Ok(GraphemeLineVisit {
+        tail,
+        #[cfg(test)]
+        stats,
+    })
+}
+
+/// Splits at a grapheme boundary using complete candidates and their newly appended graphemes.
+#[cfg(test)]
+fn split_graphemes_to_width<E>(
+    token: &str,
+    max_width_px: f64,
+    mut measure_candidate: impl FnMut(&str, &str) -> Result<f64, E>,
+) -> Result<(&str, &str), E> {
+    let mut first_line = None;
+    let visit = visit_grapheme_lines_to_width(
+        token,
+        max_width_px,
+        |candidate, grapheme, _| measure_candidate(candidate, grapheme),
+        |line| {
+            first_line = Some(line);
+            false
+        },
+    )?;
+    Ok(match first_line {
+        Some(line) => (line, visit.tail),
+        None => (visit.tail, ""),
+    })
 }
 
 /// Wraps SVG-like text into lines using the provided [`TextMeasurer`] for width decisions.
@@ -105,22 +204,27 @@ pub fn wrap_text_lines_measurer(
                 continue;
             }
 
-            // Token itself does not fit on an empty line; split by characters.
-            let chars = tok.chars().collect::<Vec<_>>();
-            let mut cut = 1usize;
-            while cut < chars.len() {
-                let head: String = chars[..cut].iter().collect();
-                if measurer.measure(&head, style).width > max_width_px {
-                    break;
+            let visit = match visit_grapheme_lines_to_width(
+                &tok,
+                max_width_px,
+                |candidate, _, _| {
+                    Ok::<_, std::convert::Infallible>(measurer.measure(candidate, style).width)
+                },
+                |line| {
+                    out.push(line.to_string());
+                    true
+                },
+            ) {
+                Ok(visit) => visit,
+                Err(error) => match error {},
+            };
+            if !visit.tail.is_empty() {
+                if measurer.measure(visit.tail, style).width > max_width_px {
+                    out.push(visit.tail.to_string());
+                } else {
+                    cur.clear();
+                    cur.push_str(visit.tail);
                 }
-                cut += 1;
-            }
-            cut = cut.saturating_sub(1).max(1);
-            let head: String = chars[..cut].iter().collect();
-            let tail: String = chars[cut..].iter().collect();
-            out.push(head);
-            if !tail.is_empty() {
-                tokens.push_front(tail);
             }
         }
 
@@ -323,4 +427,122 @@ pub(crate) fn wrap_label_like_mermaid_lines_with_checkpoint(
     mut checkpoint: impl FnMut() -> crate::Result<()>,
 ) -> crate::Result<Vec<String>> {
     try_wrap_label_like_mermaid_lines(label, measurer, style, max_width_px, &mut checkpoint)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        split_graphemes_to_width, visit_grapheme_lines_to_width, wrap_text_lines_measurer,
+    };
+    use crate::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode, try_measure_wrapped_text,
+    };
+
+    #[test]
+    fn grapheme_splitting_keeps_non_increasing_overwide_candidates() {
+        let mut widths = [0.0, 8.0, 8.0, 7.0, 9.0].into_iter();
+        let parts = split_graphemes_to_width("\u{0301}Wabc", 1.0, |_, _| {
+            Ok::<_, ()>(widths.next().unwrap())
+        })
+        .unwrap();
+        assert_eq!(parts, ("\u{0301}Wab", "c"));
+    }
+
+    #[test]
+    fn grapheme_splitting_stops_on_measurement_errors() {
+        let mut probes = Vec::new();
+        let result =
+            split_graphemes_to_width("\u{0301}👩‍🔬WZ", 1.0, |candidate, grapheme| {
+                probes.push((candidate.to_string(), grapheme.to_string()));
+                match grapheme {
+                    "\u{0301}" => Ok(0.0),
+                    "👩‍🔬" => Ok(8.0),
+                    _ => Err("canceled"),
+                }
+            });
+        assert_eq!(result, Err("canceled"));
+        assert_eq!(
+            probes,
+            [
+                ("\u{0301}".to_string(), "\u{0301}".to_string()),
+                ("\u{0301}👩‍🔬".to_string(), "👩‍🔬".to_string()),
+                ("\u{0301}👩‍🔬W".to_string(), "W".to_string()),
+            ],
+        );
+    }
+
+    #[test]
+    fn streamed_grapheme_lines_stop_after_a_later_measurement_error() {
+        let mut completed = Vec::new();
+        let mut probes = Vec::new();
+        let result = visit_grapheme_lines_to_width(
+            "abcd",
+            1.0,
+            |candidate, grapheme, _| {
+                probes.push(candidate.to_string());
+                if grapheme == "c" {
+                    Err("canceled")
+                } else {
+                    Ok(candidate.len() as f64)
+                }
+            },
+            |line| {
+                completed.push(line.to_string());
+                true
+            },
+        );
+        assert!(matches!(result, Err("canceled")));
+        assert_eq!(completed, ["a"]);
+        assert_eq!(probes, ["a", "ab", "b", "bc"]);
+    }
+
+    #[test]
+    fn emitted_long_tokens_match_shared_grapheme_wrapping() {
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        for text in [
+            "W\u{0301}W",
+            "\u{0301}WW",
+            "👩‍🔬👨‍🔬",
+            "👍🏽👍🏻",
+            "🇨🇳🇺🇸",
+            "1️⃣2️⃣",
+            "a\u{200b}b",
+        ] {
+            for limit in [1.0, 8.0, 16.0, 25.0] {
+                let expected = try_measure_wrapped_text(
+                    text,
+                    &style,
+                    Some(limit),
+                    WrapMode::SvgLike,
+                    19.0,
+                    |candidate, style| Ok::<_, ()>(measurer.measure(candidate, style).width),
+                )
+                .unwrap();
+                let emitted = wrap_text_lines_measurer(text, &measurer, &style, Some(limit));
+                assert_eq!(emitted, expected.lines, "text={text:?}, limit={limit}");
+                assert_eq!(emitted.concat(), text);
+            }
+        }
+    }
+
+    #[test]
+    fn emitted_wrapping_keeps_leading_zero_width_text_with_overwide_grapheme() {
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 16.0,
+            ..TextStyle::default()
+        };
+        assert_eq!(
+            wrap_text_lines_measurer("\u{0301}WW", &measurer, &style, Some(1.0)),
+            ["\u{0301}W", "W"],
+        );
+        assert_eq!(
+            wrap_text_lines_measurer("👩‍🔬👨‍🔬", &measurer, &style, Some(1.0)),
+            ["👩‍🔬", "👨‍🔬"],
+        );
+    }
 }

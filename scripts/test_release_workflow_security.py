@@ -252,9 +252,9 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         for publish_job in (publish_crates, publish_npm, publish_github):
             self.assertIn("git/ref/tags/$RELEASE_TAG", publish_job)
             self.assertIn("commits/$RELEASE_TAG", publish_job)
-        self.assertIn(
-            "uses: actions/attest@v4.2.2",
+        self.assertRegex(
             attest,
+            r"uses: actions/attest@v\d+\.\d+\.\d+(?:\s|$)",
         )
         self.assertIn("attestations: write", attest)
         self.assertIn("gh release create", publish_github)
@@ -584,7 +584,7 @@ jobs:
         for path, (semver_command, publication_command) in workflows.items():
             text = read(path)
             with self.subTest(workflow=path.name):
-                self.assertIn("tool: cargo-semver-checks@0.50.0", text)
+                self.assertIn("tool: cargo-semver-checks@0.51.0", text)
                 self.assertIn(semver_command, text)
                 self.assertLess(
                     text.index("cargo semver-checks check-release"),

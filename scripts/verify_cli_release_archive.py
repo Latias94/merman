@@ -43,6 +43,12 @@ if __package__:
         require_repository_root,
         verified_archive_contents,
     )
+    from .verify_cli_installation import (
+        CliInstallationError,
+        _require_exact_json as _require_installation_json,
+        _strict_json_object as _strict_installation_json,
+        release_capabilities_subcontract,
+    )
     from .release_process import (
         CommandRunner,
         HostTargetChecker,
@@ -78,6 +84,12 @@ else:
         require_repository_root,
         verified_archive_contents,
     )
+    from verify_cli_installation import (
+        CliInstallationError,
+        _require_exact_json as _require_installation_json,
+        _strict_json_object as _strict_installation_json,
+        release_capabilities_subcontract,
+    )
     from release_process import (
         CommandRunner,
         HostTargetChecker,
@@ -92,6 +104,7 @@ __all__ = (
     "VerificationReport",
     "release_archive_name",
     "release_binary_archive_path",
+    "release_capabilities_subcontract",
     "verify_release_archive",
     "verify_runtime_contract",
 )
@@ -130,46 +143,6 @@ PACKAGE_README_PATH = "README.md"
 ROOT_RELEASE_PATHS = ("CHANGELOG.md", "LICENSE-APACHE", "LICENSE-MIT")
 NOTICE_PATH = "THIRD_PARTY_NOTICES.md"
 LICENSE_ROOT = "THIRD_PARTY_LICENSES"
-
-
-def _release_output_contract(output: dict[str, object]) -> dict[str, object]:
-    """Project the runtime metadata emitted by ``merman-cli capabilities``.
-
-    Native raster/PDF exporters disclose their host-font and embedded-image
-    policies at runtime.  Keep the archive verifier in sync with that public
-    CLI contract; SVG and ASCII do not own those resources and therefore emit
-    explicit ``null`` values through serde.
-    """
-
-    projected = {
-        "id": output["id"],
-        "description": output["description"],
-        "media_type": output["media_type"],
-        "system_fonts": None,
-        "embedded_images": None,
-    }
-    if output["id"] in {"jpeg", "pdf", "png"}:
-        projected["system_fonts"] = {
-            "source_id": "host-system",
-            "discovery": "first-use",
-            "cache_scope": "process-global",
-            "host_dependent": True,
-            "caller_configurable": False,
-            "resource_bounded": False,
-        }
-        projected["embedded_images"] = {
-            "source_ids": ["data-url"],
-            "filesystem_access": False,
-            "network_access": False,
-            "caller_configurable": True,
-            "limits": {
-                "max_bytes_per_image": 16 * 1024 * 1024,
-                "max_total_bytes": 32 * 1024 * 1024,
-                "max_pixels_per_image": 16 * 1024 * 1024,
-                "max_total_pixels": 32 * 1024 * 1024,
-            },
-        }
-    return projected
 
 
 def release_archive_name(target: str) -> str:
@@ -281,36 +254,9 @@ def _strict_json_object(
     label: str = "capabilities output",
 ) -> dict[str, object]:
     try:
-        text = data.decode("utf-8")
-        value = json.loads(
-            text,
-            object_pairs_hook=lambda pairs: _json_object_without_duplicates(
-                pairs,
-                label=label,
-            ),
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise ArchiveVerificationError(
-            f"{label} is not valid UTF-8 JSON: {error}"
-        ) from error
-    if not isinstance(value, dict):
-        raise ArchiveVerificationError(f"{label} must be one JSON object")
-    return value
-
-
-def _json_object_without_duplicates(
-    pairs: list[tuple[str, object]],
-    *,
-    label: str,
-) -> dict[str, object]:
-    result: dict[str, object] = {}
-    for key, value in pairs:
-        if key in result:
-            raise ArchiveVerificationError(
-                f"{label} contains duplicate JSON key {key!r}"
-            )
-        result[key] = value
-    return result
+        return _strict_installation_json(data, label=label)
+    except CliInstallationError as error:
+        raise ArchiveVerificationError(str(error)) from error
 
 
 def _read_repository_json(repo_root: Path, relative: str) -> dict[str, object]:
@@ -451,7 +397,7 @@ def _cli_release_runtime_ids(
     _require_exact_json(
         "cli-release cargo.features",
         cargo_features,
-        sorted(["all-diagrams", *runtime_ids]),
+        sorted(["all-diagrams", "system-fonts", *runtime_ids]),
     )
     for label, values in (
         ("cli-release expected runtime_ids", runtime_ids),
@@ -594,27 +540,13 @@ def _release_capabilities_contract(
         profiles,
         surface=surface,
     )
-    enabled = set(runtime_ids)
-    capabilities = [
-        {
-            "id": capability["id"],
-            "kind": capability["kind"],
-            "description": capability["description"],
-            "implications": capability["implications"],
-        }
-        for capability in surface["capabilities"]
-        if capability["id"] in enabled
-    ]
-    outputs = [
-        _release_output_contract(output)
-        for output in surface["outputs"]
-        if output["capability"] in enabled
-    ]
-    observed_output_ids = [output["id"] for output in outputs]
+    subcontract = release_capabilities_subcontract(
+        surface, capability_ids=set(runtime_ids)
+    )
     _require_exact_json(
         "cli-release expected outputs",
         expected_output_ids,
-        observed_output_ids,
+        [output["id"] for output in subcontract["outputs"]],
     )
     return {
         "schema_version": CAPABILITIES_SCHEMA_VERSION,
@@ -627,55 +559,15 @@ def _release_capabilities_contract(
         },
         "commands": _cli_release_commands(runtime_ids),
         "diagram_families": diagram_families,
-        "capabilities": capabilities,
-        "outputs": outputs,
+        **subcontract,
     }
 
 
 def _require_exact_json(label: str, observed: object, expected: object) -> None:
-    if type(observed) is not type(expected):
-        raise ArchiveVerificationError(
-            f"{label} has the wrong JSON type: "
-            f"expected {type(expected).__name__}, got {type(observed).__name__}"
-        )
-    if isinstance(expected, dict):
-        observed_object = observed
-        expected_fields = set(expected)
-        observed_fields = set(observed_object)
-        if observed_fields != expected_fields:
-            missing = sorted(expected_fields - observed_fields)
-            extra = sorted(observed_fields - expected_fields)
-            details = []
-            if missing:
-                details.append("missing fields " + ", ".join(missing))
-            if extra:
-                details.append("extra fields " + ", ".join(extra))
-            raise ArchiveVerificationError(f"{label} has " + "; ".join(details))
-        for key, expected_value in expected.items():
-            _require_exact_json(
-                f"{label}.{key}",
-                observed_object[key],
-                expected_value,
-            )
-        return
-    if isinstance(expected, list):
-        observed_array = observed
-        if len(observed_array) != len(expected):
-            raise ArchiveVerificationError(
-                f"{label} has {len(observed_array)} entries; expected {len(expected)}"
-            )
-        for index, expected_value in enumerate(expected):
-            _require_exact_json(
-                f"{label}[{index}]",
-                observed_array[index],
-                expected_value,
-            )
-        return
-    if observed != expected:
-        raise ArchiveVerificationError(
-            f"{label} differs from the repository contract: "
-            f"expected {expected!r}, got {observed!r}"
-        )
+    try:
+        _require_installation_json(label, observed, expected)
+    except CliInstallationError as error:
+        raise ArchiveVerificationError(str(error)) from error
 
 
 def _validate_runtime_capabilities(

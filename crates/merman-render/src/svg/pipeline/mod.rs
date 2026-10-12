@@ -105,6 +105,11 @@ use std::sync::Arc;
 pub trait SvgPostprocessor: Send + Sync {
     fn name(&self) -> &'static str;
 
+    /// Host CSS injected by this pass after layout, when applicable.
+    fn scoped_css(&self) -> Option<&str> {
+        None
+    }
+
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,
@@ -641,6 +646,16 @@ impl SvgPipeline {
         });
     }
 
+    /// Whether the pipeline injects host CSS after text layout has completed.
+    pub fn has_scoped_css(&self) -> bool {
+        self.postprocessors.iter().any(|entry| {
+            entry
+                .processor
+                .scoped_css()
+                .is_some_and(|css| !css.trim().is_empty())
+        })
+    }
+
     pub fn process<'a>(&self, svg: &'a str, session: &RenderSession) -> Result<Cow<'a, str>> {
         let execution = SvgPostprocessExecution::new(session);
         let metadata = SvgPostprocessMetadata::from_svg_with_execution(svg, execution)?;
@@ -1028,6 +1043,18 @@ mod tests {
         crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap()
+    }
+
+    #[test]
+    fn scoped_css_detection_reads_wrapped_passes_without_trusting_them() {
+        for css in ["", "   ", ".node { font-family: Fixture; }"] {
+            let pipeline =
+                SvgPipeline::parity().with_postprocessor(ScopedCssPostprocessor::new(css));
+            assert_eq!(pipeline.has_scoped_css(), !css.trim().is_empty());
+            assert!(
+                !pipeline.preserves_typed_theme_evidence(Some(crate::DiagramFamilyId::FLOWCHART))
+            );
+        }
     }
 
     #[test]

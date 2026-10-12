@@ -360,6 +360,33 @@ mod tests {
     use wasmi::{FuncType, GlobalType, MemoryType};
 
     #[test]
+    fn interpreted_loop_keeps_native_dispatch_stack_bounded() {
+        // This guest counts to its argument with a loop, without recursive Wasm calls.
+        // Unoptimized host builds must not recurse once per dispatched instruction.
+        let bytes = [
+            0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01, 0x06, 0x01, 0x60, 0x01, 0x7f,
+            0x01, 0x7f, 0x03, 0x02, 0x01, 0x00, 0x07, 0x09, 0x01, 0x05, 0x63, 0x6f, 0x75, 0x6e,
+            0x74, 0x00, 0x00, 0x0a, 0x19, 0x01, 0x17, 0x01, 0x01, 0x7f, 0x03, 0x40, 0x20, 0x01,
+            0x41, 0x01, 0x6a, 0x21, 0x01, 0x20, 0x01, 0x20, 0x00, 0x48, 0x0d, 0x00, 0x0b, 0x20,
+            0x01, 0x0b,
+        ];
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("loop.wasm");
+        std::fs::write(&path, bytes).unwrap();
+        let loaded = LoadedWasmModule::from_file(path).unwrap();
+        let mut store = wasmi::Store::new(loaded.engine(), ());
+        let linker = wasmi::Linker::new(loaded.engine());
+        let instance = linker
+            .instantiate_and_start(&mut store, loaded.module())
+            .unwrap();
+        let count = instance
+            .get_typed_func::<i32, i32>(&store, "count")
+            .unwrap();
+
+        assert_eq!(count.call(&mut store, 100_000).unwrap(), 100_000);
+    }
+
+    #[test]
     fn typst_profile_accepts_the_closed_typed_surface() {
         let surface = valid_typst_surface();
 

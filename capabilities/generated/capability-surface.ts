@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:5b258cdc24e14dbc01dc19276c0c3d3477a4c3db20fba0214c87f6fd2333d00c" as const;
 
 export const TARGETS = [
   {
@@ -115,6 +115,15 @@ export const CAPABILITIES = [
     "implications": [
       "svg"
     ]
+  },
+  {
+    "id": "native-fonts",
+    "kind": "adapter",
+    "description": "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.",
+    "targets": [
+      "native"
+    ],
+    "implications": []
   },
   {
     "id": "network-icons",
@@ -558,6 +567,7 @@ export const CAPABILITY_IDS = [
   "layout-elk",
   "markdown",
   "math",
+  "native-fonts",
   "network-icons",
   "parallel-markdown",
   "pdf",

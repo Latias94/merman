@@ -18,6 +18,8 @@ pub enum ExportFontMode {
     EmbeddedThenSystem,
     /// Prefer host system fonts, then consult retained font assets.
     SystemThenEmbedded,
+    /// A caller-provided native context supplied both measurement and painting fonts.
+    NativeContext,
 }
 
 impl ExportFontMode {
@@ -28,12 +30,13 @@ impl ExportFontMode {
             Self::EmbeddedOnly => "embedded-only",
             Self::EmbeddedThenSystem => "embedded-then-system",
             Self::SystemThenEmbedded => "system-then-embedded",
+            Self::NativeContext => "native-context",
         }
     }
 
     /// Returns whether this mode permits retained document fonts.
     pub const fn allows_embedded_fonts(self) -> bool {
-        !matches!(self, Self::SystemOnly)
+        !matches!(self, Self::SystemOnly | Self::NativeContext)
     }
 
     /// Returns whether this mode permits host system fonts.
@@ -166,7 +169,8 @@ impl ExportFontPlan {
     /// Returns whether the concrete parsed output is host-dependent or lacks complete native text
     /// proof and therefore cannot be treated as Portable.
     pub const fn is_host_dependent(self) -> bool {
-        self.used_system_fonts
+        matches!(self.source_mode, ExportFontMode::NativeContext)
+            || self.used_system_fonts
             || self.prepared_label_host_dependent_count != 0
             || self.prepared_label_terminal_incomplete_count != 0
     }
@@ -185,9 +189,26 @@ pub(crate) struct ExportFontPlanSeed {
     source_mode: ExportFontMode,
     system_fonts: Arc<usvg::fontdb::Database>,
     recorder: Arc<FontResolutionRecorder>,
+    #[cfg(feature = "native-fonts")]
+    native_export: Option<crate::fonts::NativeExportFontObserver>,
 }
 
 impl ExportFontPlanSeed {
+    #[cfg(feature = "native-fonts")]
+    pub(crate) fn from_native_context(
+        svg: &ResvgCompatibleSvg,
+        context: &crate::NativeFontContext,
+        observer: crate::fonts::NativeExportFontObserver,
+    ) -> Self {
+        Self {
+            catalog_fingerprint: svg.font_catalog().fingerprint(),
+            source_mode: ExportFontMode::NativeContext,
+            system_fonts: context.fontdb_for_export(),
+            recorder: Arc::new(FontResolutionRecorder::default()),
+            native_export: Some(observer),
+        }
+    }
+
     pub(crate) fn finish_with_tree(&self, tree: &usvg::Tree) -> ExportFontPlan {
         let evidence = FinalTreeFontEvidence::collect(tree, &self.system_fonts);
         let unresolved_glyph_fallback = self
@@ -195,20 +216,40 @@ impl ExportFontPlanSeed {
             .unresolved_glyph_fallback
             .load(Ordering::Relaxed)
             || evidence.notdef_glyph_count != 0;
+        #[cfg(feature = "native-fonts")]
+        let native_facts = self.native_export.as_ref().map(|observer| {
+            (
+                observer.used_system_face(),
+                observer.family_fallback_used(),
+                observer.glyph_fallback_used(),
+                observer.unresolved_font_request(),
+                observer.unresolved_glyph_fallback(),
+            )
+        });
+        #[cfg(not(feature = "native-fonts"))]
+        let native_facts: Option<(bool, bool, bool, bool, bool)> = None;
 
         ExportFontPlan {
             catalog_fingerprint: self.catalog_fingerprint,
             source_mode: self.source_mode,
             loaded_embedded_face_count: 0,
+            // Native contexts are explicitly caller-owned, even if their policy permits system
+            // discovery. They must never be mistaken for a theme-retained font catalog.
             used_embedded_fonts: false,
-            used_system_fonts: evidence.used_system_fonts,
-            family_fallback_used: self.recorder.family_fallback_used.load(Ordering::Relaxed),
-            glyph_fallback_used: self.recorder.glyph_fallback_used.load(Ordering::Relaxed),
+            // Only the installed NativeFontContext resolver can distinguish a discovery-backed
+            // face from an explicit caller file. Do not infer this from the shared fontdb.
+            used_system_fonts: native_facts.map_or(evidence.used_system_fonts, |facts| facts.0),
+            family_fallback_used: self.recorder.family_fallback_used.load(Ordering::Relaxed)
+                || native_facts.is_some_and(|facts| facts.1),
+            glyph_fallback_used: self.recorder.glyph_fallback_used.load(Ordering::Relaxed)
+                || native_facts.is_some_and(|facts| facts.2),
             unresolved_font_request: self
                 .recorder
                 .unresolved_font_request
-                .load(Ordering::Relaxed),
-            unresolved_glyph_fallback,
+                .load(Ordering::Relaxed)
+                || native_facts.is_some_and(|facts| facts.3),
+            unresolved_glyph_fallback: unresolved_glyph_fallback
+                || native_facts.is_some_and(|facts| facts.4),
             prepared_label_expected_count: 0,
             prepared_label_verified_count: 0,
             prepared_label_mismatch_count: evidence.prepared_labels.len()
@@ -343,6 +384,8 @@ impl ExportFontEnvironment {
                 source_mode: ExportFontMode::SystemOnly,
                 system_fonts: fontdb,
                 recorder,
+                #[cfg(feature = "native-fonts")]
+                native_export: None,
             },
         })
     }
@@ -718,5 +761,30 @@ mod tests {
         assert_eq!(decoded_plan.prepared_label_mismatch_count(), 2);
         assert!(!decoded_plan.prepared_text_evidence_matches());
         assert!(!decoded_plan.prepared_text_terminal_proof_complete());
+    }
+
+    #[cfg(feature = "native-fonts")]
+    #[test]
+    fn explicit_native_context_is_host_owned_without_claiming_a_system_face() {
+        let control = merman_core::OperationControl::new();
+        let context = crate::NativeFontOptions::default()
+            .with_font_file("tests/fonts/Cousine-Regular.ttf")
+            .load(&control)
+            .expect("explicit fixture font loads");
+        let svg = sealed_svg(FontCatalog::system_fonts(), FontSourcePolicy::system_only());
+        let mut options = usvg::Options::default();
+        let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+        let seed = ExportFontPlanSeed::from_native_context(&svg, &context, observer);
+        let tree = usvg::Tree::from_str(
+            r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20" font-family="Cousine">native context</text></svg>"#,
+            &options,
+        )
+        .expect("explicit native context parses text");
+        let plan = seed.finish_with_tree(&tree);
+
+        assert_eq!(plan.source_mode(), ExportFontMode::NativeContext);
+        assert!(!plan.used_embedded_fonts());
+        assert!(!plan.used_system_fonts());
+        assert!(plan.is_host_dependent());
     }
 }

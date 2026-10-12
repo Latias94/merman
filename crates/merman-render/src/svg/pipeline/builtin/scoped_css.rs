@@ -53,6 +53,10 @@ impl SvgPostprocessor for ScopedCssPostprocessor {
         "scoped-css"
     }
 
+    fn scoped_css(&self) -> Option<&str> {
+        Some(&self.css)
+    }
+
     fn process<'a>(
         &self,
         svg: Cow<'a, str>,

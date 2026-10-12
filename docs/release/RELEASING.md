@@ -194,6 +194,22 @@ verify formula freshness and run the installed CLI, linkage, and formula-test co
 workflow is deliberately independent of repository tags because Homebrew/core tracks stable
 versions on its own publication schedule.
 
+## 0.9.0 Preparation Checklist
+
+The selected workspace target is 0.9.0. This is preparation only; [PUBLISH_ORDER.md](PUBLISH_ORDER.md#090-preparation) records owner status and the last published stable baseline. Keep root and workspace-coupled package headings at `[0.9.0] - Unreleased` until the intended tag date is approved for immutable preflight.
+
+- [ ] Complete independent roughr 0.12.4 public-API and published-consumer compatibility checks, then separately authorize its publication and confirm registry visibility.
+- [ ] Complete independent Tree-sitter 0.3.1 generator/runtime/language, package, and provenance checks, then separately authorize prerequisite publication and confirm registry visibility before workspace dependents.
+- [ ] Validate the final 0.9.0 version projection and source graph after all dependency updates.
+- [ ] Inspect target READMEs, package-local changelogs, the 0.8.0 migration, closest install guides, and the [dependency policy](../DEPENDENCY_POLICY.md); verify packaged documentation bytes.
+- [ ] Retain complete Cargo/npm candidate audits, compatibility exceptions, and new legal/advisory results without borrowing historical passes.
+- [ ] Complete native, Web/Node, CLI/LSP, FFI, and Typst artifact/profile/package-size owner gates on the final source.
+- [ ] Prepare Typst wrapper 0.5.0 with Merman 0.9.0 and plugin ABI 2, keeping the published 0.4.0 mapping unchanged; follow the [Typst checklist](TYPST_050_PREPARATION.md).
+- [ ] Set the approved intended tag date, commit all source/documentation projections, freeze the reviewed 40-character SHA, and run immutable preflight.
+- [ ] Obtain explicit shipping authorization for the exact source/version/channel/surface set, then record registry and artifact receipts separately for each owner.
+
+A completed prerequisite publication does not publish workspace 0.9.0. A workspace publication does not publish Typst, VS Code, or the separately owned package channels. No checklist item is marked complete without the owner's recorded result.
+
 ## Release Evidence
 
 Before tagging, identify the packages and artifact workflows that will actually publish, then run
@@ -237,6 +253,16 @@ python3 scripts/release-version.py
 Preparation or pre-apply validation failures leave the caller worktree unchanged. Inspect the
 reported owner failure, keep the release worktree clean, and rerun the same command; do not copy
 partial files out of the disposable worktree or hand-edit generated locks.
+
+After the version projection succeeds, regenerate the CLI completions, manual pages, and
+Playground catalog from the selected package version, then verify their source gates:
+
+```sh
+python3 scripts/generate_cli_assets.py --write
+python3 scripts/generate_cli_assets.py --check
+cargo run -p xtask -- gen-playground-example-catalog
+cargo run -p xtask -- verify-playground-example-catalog
+```
 
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests. For a prerelease, every coupled root workspace dependency must use the exact Cargo requirement `=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`; stable releases continue to use the ordinary compatible requirement. This permits intentional alpha API breaks without allowing a fresh Cargo resolution to mix sibling release lines.
 
@@ -286,24 +312,34 @@ For a stable release following several prereleases, make the pending stable entr
 
 For workspace-coupled packages, keep the target package entry at `Unreleased` during preparation and stamp it with the same intended tag date as the root entry immediately before immutable preflight. For an authorized channel-only publication, keep the root entry at `Unreleased` but stamp the channel's package-local entry before building its immutable package artifact. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
 
-README files are ordinary source documentation and `release-version.py` never rewrites them. Before immutable preflight, review the root README, every package README shipped by an authorized surface, and the closest installation guides. Release-facing Cargo dependency examples should use the exact target prerelease version instead of a moving default-branch Git dependency. Source-only Git commands must be labeled as source installs and pin a reviewed full commit. Remove stale statements that an already-published version is unavailable, old published baselines, and future tense such as “after this version is published”. Historical reports may retain historical wording. Confirm publication through the owning package registry or artifact workflow before recommending a released install command, and repeat this documentation pass after any partial-release recovery.
+README files are ordinary source documentation and `release-version.py` never rewrites them.
+Before immutable preflight, finish the root README, each shipped package README, and the closest
+installation guides with the target version, minimum toolchain, supported capabilities, and final
+install/import/run examples. Describe normal use directly rather than conditioning it on a later
+publication; keep local source builds in development sections. Release-facing Cargo examples use
+exact target prerelease versions, and source-only Git installs pin a reviewed full commit.
+Inspect the README bytes in each prepared package before freezing the source so the published
+artifact already contains usable documentation.
+
+Track candidate status, pending channels, source identities, and verified registry availability in
+release records such as `PUBLISH_ORDER.md`. Preparing a target-version install example is source
+work, not publication evidence or authorization to publish. Historical reports retain dated context.
 
 A focused audit command is:
 
 ```bash
 rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
-  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|[Aa]fter .*is available|[Bb]efore publication|not yet published|git\s*=\s*"https://github\.com/Latias94/merman' \
   README.md CHANGELOG.md crates distribution docs platforms tools
 ```
 
 Classify each match rather than applying a repository-wide mechanical rewrite. Package-local READMEs included in crates, cargo-dist archives, npm tarballs, wheels, Flutter packages, Apple/Android bundles, Typst packages, or VSIX files are part of the release experience even though they are not version authorities.
 
-After publication or recovery, query each owning registry and GitHub Release independently, then
-repeat the README audit and update `PUBLISH_ORDER.md` from candidate state to the published
-baseline. Do not imply that npm, PyPI, pub.dev, Android, Apple, Typst, crates.io, and GitHub binaries
-move in lockstep. The release is not operationally complete while a current install command names
-an older version or current prose still describes an externally published target as unavailable;
-commit the documentation reconciliation or report it as explicit unfinished release work.
+After publication or recovery, query each owning registry and GitHub Release independently and
+record accepted versions, checksums, availability, and receipts in `PUBLISH_ORDER.md`. User guides
+should already describe the frozen target package. Check for preparation defects and correct the
+source for the next release if an immutable artifact contains stale documentation. Registry
+channels remain independent; pending delivery belongs in the release record.
 
 For Web and Node npm groups, verify every package member's exact registry integrity and complete
 dist-tag map against the downloaded package-group manifest. npm Trusted Publisher can publish under
@@ -340,7 +376,7 @@ build/install smokes, platform VSIX packaging, and Flutter `dart pub publish --d
 not publish to any registry.
 
 Release CI keeps integrity checks at boundaries where bytes or trust cross jobs or registries. GitHub
-Actions are pinned to immutable commit references; source identity uses the commit and tree; SHA-256
+Actions use reviewed full version tags; source identity uses the commit and tree; SHA-256
 is used for downloaded release tools, staged release artifacts, and immutable registry reconciliation
 (crates.io, npm, and PyPI). Ordinary unit tests and in-workspace builds do not calculate or compare
 extra hashes. pub.dev uses a member-level content comparison because Dart rewrites tar metadata.
@@ -504,8 +540,8 @@ The Web package build uses `wasm-pack --profile wasm-size`, so CI and local rele
 package as an independently installable artifact. Release preflight must build/check each admitted
 package's matching TypeScript, wasm-bindgen glue, single WASM, provenance, generated binding API,
 editor schema,
-and complete 35-family language catalog; it is not valid to publish only a wrapper declaration.
-Typst package builds additionally require Binaryen `wasm-opt version 131` and `wasm-tools`; the
+and the complete descriptor-defined language catalog; it is not valid to publish only a wrapper declaration.
+Typst package builds additionally require Binaryen `wasm-opt version 133` and `wasm-tools`; the
 post-link optimizer and stripper versions are recorded in the artifact manifest.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package
@@ -527,7 +563,7 @@ manifest remains private to `target/typst-wasm-artifacts/`; the package transact
 verified artifact to an in-memory frozen wrapper/license source snapshot and must fail before
 replacing the prior version if live source or any staged byte changes.
 
-These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.3.0` are separate publication surfaces; publishing the crate does not publish the wrapper. The 0.3.0 wrapper was published on 2026-09-01 after the exact alpha.6 source candidate passed its owner gates. For a later version, retain the generated package and private artifact receipt, verify the registry's exact package version after acceptance, and only then change current installation guidance from a local `--package-path` candidate to the registry package.
+These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.4.0` are separate publication surfaces; publishing the crate does not publish the wrapper. The 0.4.0 wrapper was published on 2026-10-09, bundling Merman 0.8.0; see the [dated publication record](PUBLISH_ORDER.md#typst-040-publication). The selected next wrapper is 0.5.0, bundling Merman 0.9.0; follow [Typst preparation](TYPST_050_PREPARATION.md). Prepare its final registry import and usage examples before packaging; keep `--package-path` in development guidance. Retain the generated package and private artifact receipt, then verify the registry's exact version after acceptance and record that evidence in `PUBLISH_ORDER.md`.
 
 ## Tag And Push
 

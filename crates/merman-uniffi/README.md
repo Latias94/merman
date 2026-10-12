@@ -4,9 +4,9 @@
 
 Generate high-level native bindings for Merman's headless Mermaid parser, analyzer, layout engine, and renderers with [UniFFI](https://mozilla.github.io/uniffi-rs/). This crate is the source of the published Python package and the Apple SwiftPM package; native hosts that need a stable language-neutral C boundary should use [`merman-ffi`](https://crates.io/crates/merman-ffi).
 
-> **Alpha:** the development direct UniFFI binding API is `7`; published alpha.6 artifacts retain API `6`. It is not the C ABI and not the text-measurement protocol; all three have independent version ownership. Regenerate bindings and ship them with the exact native library used to generate them.
+> Merman `0.9.0` uses direct UniFFI binding API `7`, unchanged from 0.8.0; published alpha.6 artifacts retain API `6`. It is not the C ABI and not the text-measurement protocol; all three have independent version ownership. Regenerate bindings and ship them with the exact native library used to generate them.
 
-## Use A Published Wrapper
+## Use A Language Wrapper
 
 Most applications should not generate UniFFI bindings themselves:
 
@@ -98,7 +98,7 @@ the shared `theme_authoring` envelope with diagnostic code, path, and details.
 
 ## Text Measurement Ownership
 
-Generated bindings use Merman's deterministic, font-agnostic measurer unless a host constructs `MermanEngine` with a `MermanEngineServices` value containing `MermanTextMeasurer`. The same immutable service bundle may carry a sealed `MermanIconRegistry` built transactionally from bounded `MermanIconPack` values. Text-measurement protocol 1 exposes 19 exact operations (`0..18`) and requires a matching tagged result kind for every handled operation. Return `None` for work the host cannot answer synchronously; invalid results and errors returned through UniFFI's generated callback trampoline use the operation's deterministic fallback. Foreign callback code must not unwind, throw, or longjmp across the generated FFI boundary; Merman does not claim to catch arbitrary foreign unwinds.
+Generated bindings use Merman's deterministic, font-agnostic measurer unless a host constructs `MermanEngine` with a `MermanEngineServices` value containing `MermanTextMeasurer`. The same immutable service bundle may carry a sealed `MermanIconRegistry` built transactionally from bounded `MermanIconPack` values. Text-measurement protocol 1 exposes 22 exact operations (`0..21`) and requires a matching tagged result kind for every handled operation. Return `None` for work the host cannot answer synchronously; invalid results and errors returned through UniFFI's generated callback trampoline use the operation's deterministic fallback. Foreign callback code must not unwind, throw, or longjmp across the generated FFI boundary; Merman does not claim to catch arbitrary foreign unwinds.
 
 Create services with the zero-argument constructor, then chain `with_icon_registry(...)` and
 `with_text_measurer(...)`. Each method returns a new immutable bundle and leaves the original

@@ -1,5 +1,5 @@
-#import "@preview/merman:0.4.0": mermaid, mermaid-svg
-#import "../../src/options.typ": config-with-context-width, context-text-style, mermaid-profile, render-config
+#import "@preview/merman:0.5.0": mermaid, mermaid-svg
+#import "../../src/options.typ": config-with-context-width, context-host-theme, context-text-style, mermaid-profile, render-config
 #import "../../src/units.typ": context-width-css-px, typst-length-to-css-px
 
 #set page(width: 12cm, margin: 10mm)

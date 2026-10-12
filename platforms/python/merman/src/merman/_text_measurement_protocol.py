@@ -53,6 +53,9 @@ TEXT_MEASUREMENT_OPERATIONS = (
     (16, "canvas-measure-text-width", "length", False),
     (17, "create-text-middle-bbox-y-offset", "length", True),
     (18, "raw-bbox-height", "length", False),
+    (19, "raw-bbox-y-offset", "length", True),
+    (20, "raw-middle-bbox-y-offset", "length", True),
+    (21, "raw-hanging-bbox-y-offset", "length", True),
 )
 
 class TextMeasurementProtocolVersionMismatch(RuntimeError):

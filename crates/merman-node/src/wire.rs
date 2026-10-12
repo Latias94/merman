@@ -607,6 +607,7 @@ pub(crate) fn error_envelope(error: &BindingError) -> String {
     }
 }
 
+#[cfg(test)]
 fn parse_operation_request(request_json: &str) -> Result<NodeOperationRequest, BindingError> {
     let request = parse_operation_request_framing(request_json)?;
     validate_operation_request_options(&request)?;

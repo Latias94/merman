@@ -2,6 +2,25 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [0.9.0] - Unreleased
+
+The experimental `0.9.0` package group requires Node.js 22 or newer. Keep the loader and selected native/WASM transport artifacts at the same version.
+
+### Added
+
+- SVG-capable operations add `edge-geometry-json` for final clipped points and painted label centers in Flowchart, Swimlane, and Agentflow. `layout-json` remains a pre-paint projection; query the loaded operation catalog before use. Thanks [@isaced](https://github.com/isaced) for the contribution. [PR #174](https://github.com/Latias94/merman/pull/174), [PR #177](https://github.com/Latias94/merman/pull/177)
+
+### Changed
+
+- SVG leaves the canvas unset. Supply an explicit SVG output background when the host needs opaque artwork. [PR #180](https://github.com/Latias94/merman/pull/180)
+
+### Fixed
+
+- Unicode HTML wrapping preserves complete decoded labels and whitespace; resvg-safe Class/ER markers stay hollow. [PR #182](https://github.com/Latias94/merman/pull/182), [PR #192](https://github.com/Latias94/merman/pull/192)
+- Deep cleanup and Block metadata updates follow the shared engine contract without changing transport selection. Native CLI font discovery is not a Node host-measurement feature. [PR #191](https://github.com/Latias94/merman/pull/191)
+
+See the [package guide](README.md) and [migration guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md); Rust CLI measurements do not measure Node transport latency.
+
 ## [0.8.0] - 2026-10-06
 
 This entry summarizes the package since its introduction during the 0.8 alphas; there was no 0.7.0 Node package. All seven packages were published on npm at 0.8.0 on 2026-10-06. The package group remains experimental and requires Node.js 22 or newer.

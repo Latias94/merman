@@ -198,13 +198,32 @@ pub(crate) fn render_sankey_diagram_svg(
     let label_font_size: f64 = 14.0;
     let label_gap_x: f64 = 6.0;
     let label_hide_values_dy_em: f64 = 0.35;
+    let measurer = options.text_measurer();
+    let label_style = crate::text::TextStyle {
+        font_family: Some(typography_theme.font_family_css().to_string()),
+        font_size: label_font_size,
+        font_weight: None,
+        font_style: None,
+    };
+    let mut label_texts = Vec::with_capacity(layout.nodes.len());
+    for node in &layout.nodes {
+        options.checkpoint_emit()?;
+        let text = if show_values {
+            let value = (node.value * 100.0).round() / 100.0;
+            format!("{}\n{}{}{}", node.id, prefix, value, suffix)
+        } else {
+            node.id.clone()
+        };
+        label_texts.push(text);
+    }
 
     let mut min_x: f64 = 0.0;
     let mut min_y: f64 = 0.0;
     let mut max_x = layout_width;
     let mut max_y = layout_height;
 
-    for n in &layout.nodes {
+    for (n, text) in layout.nodes.iter().zip(&label_texts) {
+        options.checkpoint_emit()?;
         min_x = min_x.min(n.x0);
         min_y = min_y.min(n.y0);
         max_x = max_x.max(n.x1);
@@ -216,8 +235,15 @@ pub(crate) fn render_sankey_diagram_svg(
             label_hide_values_dy_em
         };
         let baseline_y = (n.y0 + n.y1) / 2.0 + dy_em * label_font_size;
-        let ascent = label_font_size * DEFAULT_ASCENT_EM;
-        let descent = label_font_size * DEFAULT_DESCENT_EM;
+        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+            measurer,
+            text,
+            &label_style,
+            (
+                label_font_size * DEFAULT_ASCENT_EM,
+                label_font_size * DEFAULT_DESCENT_EM,
+            ),
+        );
         min_y = min_y.min(baseline_y - ascent);
         max_y = max_y.max(baseline_y + descent);
     }
@@ -315,7 +341,7 @@ pub(crate) fn render_sankey_diagram_svg(
                              surface: crate::sankey::SankeyLabelSurface|
      -> Result<()> {
         let class_name = surface.class_name();
-        for n in &layout.nodes {
+        for (n, text) in layout.nodes.iter().zip(&label_texts) {
             options.checkpoint_emit()?;
             let y = (n.y0 + n.y1) / 2.0;
             let (x, anchor) = if outlined_labels {
@@ -334,12 +360,6 @@ pub(crate) fn render_sankey_diagram_svg(
             } else {
                 format!("{}em", fmt(label_hide_values_dy_em))
             };
-            let v = (n.value * 100.0).round() / 100.0;
-            let text = if show_values {
-                format!("{}\n{}{}{}", n.id, prefix, v, suffix)
-            } else {
-                n.id.clone()
-            };
             let class_attr = class_name
                 .map(|class_name| format!(r#" class="{}""#, escape_attr(class_name)))
                 .unwrap_or_default();
@@ -352,7 +372,7 @@ pub(crate) fn render_sankey_diagram_svg(
                 y = fmt(y),
                 dy = dy,
                 anchor = anchor,
-                text = escape_xml(&text),
+                text = escape_xml(text),
             );
             out.checkpoint()?;
             if let Some(receipt) = &mut typography_receipt {

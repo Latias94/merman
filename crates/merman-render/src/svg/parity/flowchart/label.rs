@@ -137,195 +137,6 @@ fn flowchart_label_html_impl(
         return html;
     }
 
-    fn mermaid_markdown_to_html_minimal(
-        markdown: &str,
-        markdown_auto_wrap: bool,
-        wants_p: bool,
-    ) -> String {
-        if !wants_p {
-            return markdown.replace("\r\n", "\n");
-        }
-
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum Ty {
-            Strong,
-            Em,
-        }
-
-        fn is_punctuation(ch: char) -> bool {
-            !crate::text::is_ecmascript_whitespace(ch) && !ch.is_alphanumeric()
-        }
-
-        fn mermaid_delim_can_open_close(
-            ch: char,
-            prev: Option<char>,
-            next: Option<char>,
-        ) -> (bool, bool) {
-            let prev_is_ws = prev.is_none_or(crate::text::is_ecmascript_whitespace);
-            let next_is_ws = next.is_none_or(crate::text::is_ecmascript_whitespace);
-            let prev_is_punct = prev.is_some_and(is_punctuation);
-            let next_is_punct = next.is_some_and(is_punctuation);
-
-            let left_flanking = !next_is_ws && (!next_is_punct || prev_is_ws || prev_is_punct);
-            let right_flanking = !prev_is_ws && (!prev_is_punct || next_is_ws || next_is_punct);
-
-            if ch == '_' {
-                let can_open = left_flanking && (!right_flanking || prev_is_ws || prev_is_punct);
-                let can_close = right_flanking && (!left_flanking || next_is_ws || next_is_punct);
-                (can_open, can_close)
-            } else {
-                (left_flanking, right_flanking)
-            }
-        }
-
-        let s = markdown.replace("\r\n", "\n");
-        let chars: Vec<char> = s.chars().collect();
-
-        fn open_tag(ty: Ty) -> &'static str {
-            match ty {
-                Ty::Strong => "<strong>",
-                Ty::Em => "<em>",
-            }
-        }
-
-        fn close_tag(ty: Ty) -> &'static str {
-            match ty {
-                Ty::Strong => "</strong>",
-                Ty::Em => "</em>",
-            }
-        }
-
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        struct Delim {
-            ty: Ty,
-            ch: char,
-            run_len: usize,
-            token_index: usize,
-        }
-
-        let mut tokens: Vec<String> = Vec::with_capacity(16);
-        tokens.push("<p>".to_string());
-
-        let mut text_buf = String::new();
-        let flush_text = |tokens: &mut Vec<String>, text_buf: &mut String| {
-            if !text_buf.is_empty() {
-                tokens.push(std::mem::take(text_buf));
-            }
-        };
-
-        let mut stack: Vec<Delim> = Vec::new();
-
-        let mut i = 0usize;
-        while i < chars.len() {
-            let ch = chars[i];
-
-            if ch == '\n' {
-                let mut j = i;
-                while j < chars.len() && chars[j] == '\n' {
-                    j += 1;
-                }
-                let newline_count = j - i;
-
-                if newline_count >= 2 {
-                    while text_buf.ends_with(' ') {
-                        text_buf.pop();
-                    }
-                    flush_text(&mut tokens, &mut text_buf);
-                    tokens.push("</p><p>".to_string());
-                    i = j;
-                    while i < chars.len() && chars[i] == ' ' {
-                        i += 1;
-                    }
-                    continue;
-                }
-
-                flush_text(&mut tokens, &mut text_buf);
-                tokens.push("<br/>".to_string());
-                i += 1;
-                while i < chars.len() && chars[i] == ' ' {
-                    i += 1;
-                }
-                continue;
-            }
-
-            if ch == '<'
-                && let Some(end_rel) = chars[i..].iter().position(|c| *c == '>')
-            {
-                let end = i + end_rel;
-                flush_text(&mut tokens, &mut text_buf);
-                let mut tag = String::new();
-                for c in &chars[i..=end] {
-                    tag.push(*c);
-                }
-                tokens.push(tag);
-                i = end + 1;
-                continue;
-            }
-
-            if ch == '*' || ch == '_' {
-                let run_len = if i + 1 < chars.len() && chars[i + 1] == ch {
-                    2
-                } else {
-                    1
-                };
-                let want = if run_len == 2 { Ty::Strong } else { Ty::Em };
-                let prev = if i > 0 { Some(chars[i - 1]) } else { None };
-                let next = if i + run_len < chars.len() {
-                    Some(chars[i + run_len])
-                } else {
-                    None
-                };
-                let (can_open, can_close) = mermaid_delim_can_open_close(ch, prev, next);
-
-                flush_text(&mut tokens, &mut text_buf);
-
-                let delim_text: String = std::iter::repeat_n(ch, run_len).collect();
-
-                if can_close
-                    && stack
-                        .last()
-                        .is_some_and(|d| d.ty == want && d.ch == ch && d.run_len == run_len)
-                    && let Some(opener) = stack.pop()
-                {
-                    tokens[opener.token_index] = open_tag(want).to_string();
-                    tokens.push(close_tag(want).to_string());
-                    i += run_len;
-                    continue;
-                }
-                if can_open {
-                    let token_index = tokens.len();
-                    tokens.push(delim_text);
-                    stack.push(Delim {
-                        ty: want,
-                        ch,
-                        run_len,
-                        token_index,
-                    });
-                    i += run_len;
-                    continue;
-                }
-
-                tokens.push(delim_text);
-                i += run_len;
-                continue;
-            }
-
-            if ch == ' ' && !markdown_auto_wrap {
-                text_buf.push_str("&nbsp;");
-            } else {
-                text_buf.push(ch);
-            }
-            i += 1;
-        }
-
-        while text_buf.ends_with(' ') {
-            text_buf.pop();
-        }
-        flush_text(&mut tokens, &mut text_buf);
-        tokens.push("</p>".to_string());
-        tokens.concat()
-    }
-
     match label_type {
         "markdown" => {
             let decoded = decode_mermaid_entities_for_render_text(label);
@@ -340,15 +151,10 @@ fn flowchart_label_html_impl(
                 .get("markdownAutoWrap")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(true);
-            let html_out = if crate::text::mermaid_markdown_contains_raw_blocks(decoded.as_ref()) {
-                crate::text::mermaid_markdown_to_html_label_fragment(
-                    decoded.as_ref(),
-                    markdown_auto_wrap,
-                )
-            } else {
-                let wants_p = crate::text::mermaid_markdown_wants_paragraph_wrap(decoded.as_ref());
-                mermaid_markdown_to_html_minimal(decoded.as_ref(), markdown_auto_wrap, wants_p)
-            };
+            let html_out = crate::text::mermaid_markdown_to_html_label_fragment(
+                decoded.as_ref(),
+                markdown_auto_wrap,
+            );
             let html_out =
                 crate::flowchart::flowchart_trim_html_collapsible_whitespace(&html_out).to_string();
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
@@ -678,6 +484,76 @@ mod tests {
 
         assert_eq!(normalize_flowchart_img_tags("<IMG", false), "<IMG");
         assert!(!is_single_img_label("<IMG"));
+    }
+
+    #[test]
+    fn markdown_html_output_follows_upstream_raw_tokens_and_escapes() {
+        for security_level in ["strict", "loose", "antiscript", "sandbox"] {
+            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+                "htmlLabels": true,
+                "securityLevel": security_level,
+            }));
+            for (input, text) in [
+                ("`<span style='font-size:64px'>AVAVAV</span>`", "`AVAVAV`"),
+                (
+                    "``<span style='font-size:64px'>`**AVAVAV**`</span>``",
+                    "```**AVAVAV**```",
+                ),
+                (r"\<span style='font-size:64px'>AVAVAV\</span>", "AVAVAV"),
+                (r"\\<span style='font-size:64px'>AVAVAV\\</span>", "AVAVAV"),
+            ] {
+                let output = flowchart_label_html_impl(input, "markdown", &config, None);
+                let document = roxmltree::Document::parse(&output).unwrap();
+                let span = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("span"))
+                    .unwrap_or_else(|| panic!("expected effective HTML: {input}: {output}"));
+                assert_eq!(span.attribute("style"), Some("font-size:64px"));
+                assert_eq!(
+                    crate::text::mermaid_xhtml_label_text_content(&output).as_deref(),
+                    Some(text)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn markdown_html_output_decodes_mermaid_entities_before_html_projection() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "securityLevel": "loose"
+        }));
+        for input in [
+            "`#60;span style=#quot;font-size:64px#quot;#62;AVAVAV#60;/span#62;`\n\n",
+            "`ﬂ°°60¶ßspan style=ﬂ°quot¶ßfont-size:64pxﬂ°quot¶ßﬂ°°62¶ßAVAVAVﬂ°°60¶ß/spanﬂ°°62¶ß`\n\n",
+        ] {
+            let output = flowchart_label_html_impl(input, "markdown", &config, None);
+            assert_eq!(
+                output,
+                "<p>`<span style=\"font-size:64px\">AVAVAV</span>`</p>"
+            );
+        }
+    }
+
+    #[test]
+    fn markdown_html_output_preserves_authored_raw_tags() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "securityLevel": "loose"
+        }));
+        let input = "Before <span style='font-size:64px'>AVAVAV</span> after\n\n";
+        let output = flowchart_label_html_impl(input, "markdown", &config, None);
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let span = document
+            .descendants()
+            .find(|node| node.has_tag_name("span"))
+            .unwrap();
+        assert_eq!(span.attribute("style"), Some("font-size:64px"));
+        assert_eq!(span.text(), Some("AVAVAV"));
+        assert_eq!(
+            crate::text::mermaid_xhtml_label_text_content(&output).as_deref(),
+            Some("Before AVAVAV after")
+        );
     }
 
     #[test]

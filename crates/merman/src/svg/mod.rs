@@ -75,7 +75,12 @@ pub use merman_render::{
 };
 
 /// Binary export APIs accept only terminally validated [`ResvgCompatibleSvg`] values.
-#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[cfg(any(
+    feature = "native-fonts",
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
+))]
 pub mod export {
     pub use merman_export::*;
 }

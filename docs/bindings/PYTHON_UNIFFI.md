@@ -196,12 +196,16 @@ failing the reusable render/layout call. Merman does not catch arbitrary foreign
 bypass that generated boundary. Follow
 [`HOST_TEXT_MEASUREMENT.md`](HOST_TEXT_MEASUREMENT.md) for the
 shared callback rules around caching, natural width, and avoiding async UI-thread blocking.
-Text-measurement protocol 1 exposes 19 operations with contiguous codes 0 through 18.
+Text-measurement protocol 1 exposes 22 operations with contiguous codes 0 through 21.
 `CREATE_TEXT_MIDDLE_B_BOX_Y_OFFSET` returns the signed `length` for Architecture's
 `createFormattedText(...)` bbox y under inherited `dominant-baseline="middle"`.
 `CREATE_TEXT_B_BOX_Y_OFFSET` remains the ordinary createText probe; the two operations are not
 interchangeable and both may return a finite negative value. `RAW_B_BOX_HEIGHT` returns the
 non-negative height from a direct raw SVG `<text>.getBBox()` probe.
+`RAW_B_BOX_Y_OFFSET`, `RAW_MIDDLE_B_BOX_Y_OFFSET`, and `RAW_HANGING_B_BOX_Y_OFFSET`
+return signed direct-text bbox y offsets at origin `(0, 0)` under ordinary, middle, and hanging
+baselines respectively. They have no formatted-text offsets and must not be substituted for the
+two createText probes.
 
 The generated callback method is `measure(self, request)`, not `measure_text`. One-shot facade
 methods receive `options_json` explicitly (`api.render_svg(source, options_json)`). Generic

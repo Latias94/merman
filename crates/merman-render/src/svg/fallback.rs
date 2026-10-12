@@ -839,6 +839,86 @@ mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use std::cell::RefCell;
 
+    #[test]
+    fn break_spaces_overlay_preserves_measured_trailing_spaces_in_svg_text() {
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(|text, _| text.len() as f64);
+        let svg = r#"<svg><foreignObject width="9.5" height="100"><div style="white-space: break-spaces; width: 9.5px">iiii iiii iiii iiii iiii iiii</div></foreignObject></svg>"#;
+        let converted = render_fallback(svg, measurer.as_ref());
+        assert_eq!(converted.matches(r#"xml:space="preserve""#).count(), 5);
+        assert_eq!(converted.matches(">iiii </text>").count(), 4);
+        assert_eq!(converted.matches(">iiii iiii</text>").count(), 1);
+
+        let normal = svg.replace("break-spaces", "normal");
+        let converted = render_fallback(&normal, measurer.as_ref());
+        // Normal-mode runs are already collapsed before SVG emission; preserve that result.
+        assert_eq!(converted.matches(r#"xml:space="preserve""#).count(), 3);
+        assert_eq!(converted.matches(">iiii iiii</text>").count(), 3);
+    }
+
+    #[test]
+    fn overlay_keeps_nbsp_boundaries_and_explicit_empty_break_rows() {
+        let measurer = DeterministicTextMeasurer::default();
+        let nbsp = r#"<svg><foreignObject width="200" height="100"><div>&nbsp;A&nbsp;</div></foreignObject></svg>"#;
+        let converted = render_fallback(nbsp, &measurer);
+        assert!(converted.contains(">\u{a0}A\u{a0}</text>"));
+
+        let breaks = r#"<svg><foreignObject width="200" height="100"><div>A<br/><br/>B</div></foreignObject></svg>"#;
+        let converted = render_fallback(breaks, &measurer);
+        assert_eq!(
+            converted
+                .matches("class=\"merman-foreignobject-fallback-text\"")
+                .count(),
+            3
+        );
+        assert!(converted.contains("></text>"));
+        assert!(converted.contains(">A</text>"));
+        assert!(converted.contains(">B</text>"));
+    }
+
+    #[test]
+    fn break_spaces_overlay_keeps_boundary_spaces_and_normal_collapses_indentation() {
+        let measurer = DeterministicTextMeasurer::default();
+        let svg = r#"<svg><foreignObject width="200" height="100"><div style="white-space: break-spaces">  A  </div></foreignObject></svg>"#;
+        let converted = render_fallback(svg, &measurer);
+        assert!(converted.contains(">  A  </text>"));
+        assert!(converted.contains(r#"xml:space="preserve""#));
+
+        let normal = "<svg><foreignObject width=\"200\" height=\"100\">\n  <div>\n    A   B\n  </div>\n</foreignObject></svg>";
+        let converted = render_fallback(normal, &measurer);
+        assert!(converted.contains(">A B</text>"));
+        assert_eq!(
+            converted
+                .matches("class=\"merman-foreignobject-fallback-text\"")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn overlay_discards_only_trailing_empty_break_rows() {
+        let measurer = DeterministicTextMeasurer::default();
+        for (white_space, text, expected_rows) in [
+            ("normal", "A<br/>", 1),
+            ("break-spaces", "A<br/>", 1),
+            ("normal", "A<br/><br/>B", 3),
+            ("normal", "A<br/>&nbsp;", 2),
+            ("break-spaces", "A<br/>  ", 2),
+        ] {
+            let svg = format!(
+                r#"<svg><foreignObject width="200" height="100"><div style="white-space: {white_space}">{text}</div></foreignObject></svg>"#,
+            );
+            let converted = render_fallback(&svg, &measurer);
+            assert_eq!(
+                converted
+                    .matches("class=\"merman-foreignobject-fallback-text\"")
+                    .count(),
+                expected_rows,
+                "{white_space}: {text}",
+            );
+        }
+    }
+
     #[derive(Default)]
     struct RecordingMeasurer {
         styles: RefCell<Vec<TextStyle>>,

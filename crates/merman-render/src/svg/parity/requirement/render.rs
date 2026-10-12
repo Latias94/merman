@@ -398,8 +398,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
         let x = (content_bounds.min_x + content_bounds.max_x) / 2.0;
         let y = -render_settings.title_top_margin;
         let (left, right) = measurer.measure_svg_title_bbox_x(title, &html_style_regular);
-        let (ascent, descent) =
-            crate::text::svg_title_bbox_vertical_extents_px(&html_style_regular);
+        let (ascent, descent) = crate::text::svg_text_vertical_extents_px(
+            measurer,
+            title,
+            &html_style_regular,
+            crate::text::svg_title_bbox_vertical_extents_px(&html_style_regular),
+        );
         content_bounds.min_x = content_bounds.min_x.min(x - left);
         content_bounds.max_x = content_bounds.max_x.max(x + right);
         content_bounds.min_y = content_bounds.min_y.min(y - ascent);

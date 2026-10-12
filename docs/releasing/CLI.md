@@ -7,12 +7,12 @@ registry metadata maintained by Homebrew, Scoop, or WinGet.
 ## Canonical release profile
 
 The standard CLI release is defined by the `cli-release` entry in
-`capabilities/artifact-profiles-v2.json`. Its 20 direct features must match in two places:
+`capabilities/artifact-profiles-v2.json`. Its direct features must match in two places:
 
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
 
-The `0.8.0` source candidate uses the same capabilities for its default feature list,
+The `0.9.0` source candidate uses the same capabilities for its default feature list,
 including `layout-elk`; both standard binaries therefore include the EPL-2.0 ELK closure and
 its notice/source obligations. The published `0.8.0-alpha.7` default and archives include
 the Rustdoc authoring command. Custom source builds can omit ELK or Rustdoc by disabling defaults
@@ -31,22 +31,28 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 
 ## CLI contract migration
 
-Complete releases governed by this source contract report capability document schema 2 and CLI
-contract 6. SVG-enabled artifacts add `theme_presets` with alpha maturity, compiler-policy
-availability, and empty built-in qualification scope. Contract 6 retains contract 4's
-`-f/--format` native spelling, text-first `lint`, narrowed `detect`, and feature-gated top-level
-`rustdoc` workflow, plus contract 5's ASCII capability subcontract and Plain JSON stderr failure
-channel selected by `--ascii-report`. The complete
-release command inventory remains `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
-`lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`. The archive, installation, and
-Homebrew verifiers require that exact contract.
+Complete releases governed by the current source contract report capability document schema 2
+and CLI contract 6. Default source builds and the official release profile include `native-fonts`
+and `system-fonts`, while ordinary Mermaid SVG/PNG/JPEG/PDF output defaults to deterministic
+measurement without a native font context or system discovery for layout. PNG/JPEG/PDF painting
+can still load system fonts through the existing codec path. Explicit font files/directories
+enable native measurement with a closed set; `--font-measurement native` without sources or
+`--font-system on` explicitly requests system discovery when available. Fixed font contents
+and configuration avoid catalogue discovery for faster, reproducible native output. See the [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+
+Contract 6 retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
+`rustdoc` workflow, the ASCII capability subcontract, and the Plain JSON stderr failure channel
+selected by `--ascii-report`. Rust library, FFI, ASCII, and committed Rustdoc generation defaults
+remain unchanged. Published tags keep their own contract and verifier. The standard
+release command inventory is `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
+`lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`.
+The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
+SVG-enabled artifacts also expose `theme_presets` with alpha maturity, compiler-policy availability,
+and empty built-in qualification scope; archive qualification remains a separate host-scoped
+companion rather than a claim from the installed binary alone.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
-the explicit compatibility command while remaining absent from help and completions. The separate
-native `render -e` / `batch -e` migration aliases map to `-f`, retain their bounded warning even
-when quiet, and are removed in `v0.9.0`. The explicit `merman-cli mmdc` command and its
-`-e/--outputFormat` option remain supported. ASCII report mode suppresses that human migration
-warning so a failed `--ascii-report` invocation still emits exactly one schema-1 Plain JSON stderr
+the explicit compatibility command while remaining absent from help and completions. Native `render` / `batch` use `-f/--format`; the former native `-e` aliases are removed in 0.9.0 as scheduled by 0.8.x. See the [migration guide](../release/V080_TO_V090_UPGRADE_GUIDE.md#fonts-and-cli-discovery). The explicit `merman-cli mmdc` command and its `-e/--outputFormat` option remain supported. Failed ASCII report-mode invocations retain exactly one schema-1 Plain JSON stderr
 document and no mixed diagnostic text.
 
 ## Installation channels
@@ -56,9 +62,9 @@ document and no mixed diagnostic text.
 | Direct GitHub archive | cargo-dist `cli-release` binary | Yes, under `completions/` and `man/` | Published release artifact |
 | cargo-dist shell or PowerShell installer | Binary extracted from the release archive | No | Published release installer |
 | `cargo binstall merman-cli` | `0.8.0-alpha.5` and later: official release archive, then source fallback | No | Version-scoped manifest metadata |
-| `cargo install merman-cli` | crates.io source | No | Both alpha.7 and `0.8.0` include ELK and Rustdoc by default. |
+| `cargo install merman-cli` | crates.io source | No | The target `0.9.0` default includes ELK and Rustdoc. |
 | Nix | Repository source | Yes, in Nix integration directories | First-party source package and locked Flake |
-| Homebrew | Formula source build or Homebrew bottle | Formula `0.8.0+` installs assets | External stable registry |
+| Homebrew | Formula source build or Homebrew bottle | Inspect the selected formula; owner validation checks required assets | External stable registry |
 | Scoop candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
 | WinGet candidate | Verified Windows x86_64 archive | No | Generated for stable releases; external submission pending |
 
@@ -80,9 +86,8 @@ Users extracting an archive directly should verify its adjacent `.sha256` file f
 archives use a `merman-cli-<target>/` wrapper; the Windows ZIP is flat. In both cases, the logical
 payload contains the executable, package README, repository changelog and licenses,
 `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/`. CLI archives additionally contain
-`completions/` and `man/`. Contract 6 retains 15 manual pages, including the top-level
-`merman-cli-rustdoc.1` page and the nested `merman-cli-rustdoc-build.1` and
-`merman-cli-rustdoc-check.1` pages.
+`completions/` and `man/`. The `0.9.0` standard profile ships 15 manual pages, including
+Rustdoc build/check; its checked completions and manual pages match the compiled command tree.
 
 The script installers start from the pinned cargo-dist `0.32.0` output, then pass through one
 repository-owned deterministic hardening step. PowerShell binds the downloaded Windows ZIP with
@@ -256,7 +261,7 @@ python3 -m unittest scripts.test_generate_cli_registry_candidates
 After a stable GitHub Release is published, run the independent candidate workflow:
 
 ```bash
-gh workflow run release-cli-registries.yml --ref main -f release_tag=v0.8.0
+gh workflow run release-cli-registries.yml --ref main -f release_tag=v0.9.0
 ```
 
 The workflow requires an existing non-draft stable release. It resolves the tag to a commit, verifies the release receipt's GitHub attestation, and checks every CLI/LSP bundle file against that receipt before generating candidates. The generator compares the Windows archive with the tagged source rather than the current branch. No binaries are rebuilt and no release assets are replaced.
@@ -275,22 +280,22 @@ Formula's command or capability contract. Starting at `0.8.0`, a release tag wit
 is invalid and cannot fall back to the current branch's implementation. The installed binary's
 capability schema and digest must also match that tag's declared capability authority.
 
-Formula versions below `0.8.0` retain the legacy binary-only contract. The `0.8.x` release line must
-expose CLI contract 6, match the complete `cli-release` capability set, install four Homebrew
-completion files, and install all 15 man pages. The inventory includes
-`merman-cli-rustdoc.1`, `merman-cli-rustdoc-build.1`, and `merman-cli-rustdoc-check.1`. A later
-release line may advance the contract through its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
+Formula versions below `0.8.0` retain the legacy binary-only contract. For `0.8.0` and later,
+verify the CLI contract declared by the selected release tag, match that tag's complete
+`cli-release` capability set, install four Homebrew completion files, and install all 15
+standard-profile man pages. Current-source CLI contract 6 does not redefine historical tags'
+contract 5; a new release advances the contract through its own tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
 `homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
 rather than falling back to the weaker check.
 
-Use this shape when preparing the upstream Formula change for `0.8.0`:
+Use this shape when preparing the upstream Formula change for `0.9.0`:
 
 ```ruby
 def install
   features = %w[
     all-diagrams analysis ascii icons jpeg layout-cytoscape layout-elk markdown math
-    network-icons parallel-markdown pdf png rustdoc shell-completions svg
-    system-clock system-random system-timezone system-timing
+    native-fonts network-icons parallel-markdown pdf png rustdoc shell-completions svg
+    system-clock system-fonts system-random system-timezone system-timing
   ]
 
   args = std_cargo_args(path: "crates/merman-cli", features:)

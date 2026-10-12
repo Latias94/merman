@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 pub const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
-pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:1cbb07bcdfeea137586d5c4cc87ada26d542d44282455964fb9773fadb6631d4";
+pub const CAPABILITY_DESCRIPTOR_DIGEST: &str = "sha256:5b258cdc24e14dbc01dc19276c0c3d3477a4c3db20fba0214c87f6fd2333d00c";
 
 pub const TARGET_IDS: &[&str] = &[
     "native",
@@ -20,6 +20,7 @@ pub const CAPABILITY_IDS: &[&str] = &[
     "layout-elk",
     "markdown",
     "math",
+    "native-fonts",
     "network-icons",
     "parallel-markdown",
     "pdf",
@@ -110,6 +111,7 @@ pub enum CapabilityKey {
     LayoutElk,
     Markdown,
     Math,
+    NativeFonts,
     NetworkIcons,
     ParallelMarkdown,
     Pdf,
@@ -134,6 +136,7 @@ impl CapabilityKey {
         Self::LayoutElk,
         Self::Markdown,
         Self::Math,
+        Self::NativeFonts,
         Self::NetworkIcons,
         Self::ParallelMarkdown,
         Self::Pdf,
@@ -158,6 +161,7 @@ impl CapabilityKey {
             "layout-elk" => Some(Self::LayoutElk),
             "markdown" => Some(Self::Markdown),
             "math" => Some(Self::Math),
+            "native-fonts" => Some(Self::NativeFonts),
             "network-icons" => Some(Self::NetworkIcons),
             "parallel-markdown" => Some(Self::ParallelMarkdown),
             "pdf" => Some(Self::Pdf),
@@ -188,17 +192,18 @@ impl CapabilityKey {
             Self::LayoutElk => &CAPABILITIES[6],
             Self::Markdown => &CAPABILITIES[7],
             Self::Math => &CAPABILITIES[8],
-            Self::NetworkIcons => &CAPABILITIES[9],
-            Self::ParallelMarkdown => &CAPABILITIES[10],
-            Self::Pdf => &CAPABILITIES[11],
-            Self::Png => &CAPABILITIES[12],
-            Self::Rustdoc => &CAPABILITIES[13],
-            Self::ShellCompletions => &CAPABILITIES[14],
-            Self::Svg => &CAPABILITIES[15],
-            Self::SystemClock => &CAPABILITIES[16],
-            Self::SystemRandom => &CAPABILITIES[17],
-            Self::SystemTimezone => &CAPABILITIES[18],
-            Self::SystemTiming => &CAPABILITIES[19],
+            Self::NativeFonts => &CAPABILITIES[9],
+            Self::NetworkIcons => &CAPABILITIES[10],
+            Self::ParallelMarkdown => &CAPABILITIES[11],
+            Self::Pdf => &CAPABILITIES[12],
+            Self::Png => &CAPABILITIES[13],
+            Self::Rustdoc => &CAPABILITIES[14],
+            Self::ShellCompletions => &CAPABILITIES[15],
+            Self::Svg => &CAPABILITIES[16],
+            Self::SystemClock => &CAPABILITIES[17],
+            Self::SystemRandom => &CAPABILITIES[18],
+            Self::SystemTimezone => &CAPABILITIES[19],
+            Self::SystemTiming => &CAPABILITIES[20],
         }
     }
 }
@@ -678,6 +683,14 @@ pub const CAPABILITIES: &[CapabilityDescriptor] = &[
         description: "Render Mermaid math labels with the selected math engine.",
         targets: &[TargetKey::Native, TargetKey::Web, ],
         implications: &[CapabilityKey::Svg, ],
+    },
+    CapabilityDescriptor {
+        key: CapabilityKey::NativeFonts,
+        id: "native-fonts",
+        kind: "adapter",
+        description: "Compile reusable native font measurement for shared graphical text, wrapping, bounds and computed lengths; CLI use requires runtime opt-in and shares selected font bytes with native painting while reporting unsupported or missing-glyph fallbacks.",
+        targets: &[TargetKey::Native, ],
+        implications: &[],
     },
     CapabilityDescriptor {
         key: CapabilityKey::NetworkIcons,

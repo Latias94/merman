@@ -1,0 +1,37 @@
+date: 2026-10-10
+owner: cli-native-fonts
+question: Separate compiled capability cost from explicit-font measurement cost.
+classification: exploratory CLI process latency, not optimization admission
+source: same uncommitted worktree, no production edits during timing
+host: Windows 11, x86_64-pc-windows-msvc, Intel i7-11700
+profile: release, not thin-LTO dist
+lock_sha256: 77c66b401c6e1400b3e4868b1dd6e2f8092abecbb1447df440f6a93912c90631
+baseline_sha256: bf50d17c04e16bba4a8481a896b7294744183dd9973cb06c5862610edb446a44
+candidate_sha256: 027d4f17ee80d3bf938863cfb36b668015d6a2bf478ba1959ee308377a9d5ba1
+font_sha256: 1da22250675fc4c42fcf3a9736c44bc0570516105331443b663fd5cfbd1412fe
+capabilities: cli-release recipe; baseline removes only native-fonts
+warmups_per_lane: 3
+samples_per_lane: 30
+concurrency: 1
+order: alternate ABC and CBA for each sample
+lanes:
+  A: baseline binary, no font sources
+  B: candidate binary, no font sources
+  C: candidate binary, explicit Cousine-Regular.ttf, font-system off
+inputs: Cousine family, htmlLabels false, small 2-node and medium 25-node chains
+operation: mmdc stdin to stdout, SVG format and fixed svgId
+clock: includes process spawn, acquisition, render, and stdout capture
+controls: successful exit, stable stdout per lane, A/B identical SVG, source digest
+primary_metric: median process milliseconds with raw samples and paired deltas
+threshold: none; diagnostic only, noisy or conflicting results remain inconclusive
+limitations: warm OS file caches, fresh child processes, one host and one font
+outcome: no observed inactive regression; active measurement adds cost; diagnostic only
+raw_samples: process-latency.json
+results_ms:
+  small_medians_ABC: [45.56345, 43.3508, 46.65625]
+  medium_medians_ABC: [44.6839, 44.0678, 52.16775]
+  small_paired_B_minus_A: -2.20075
+  medium_paired_B_minus_A: -0.17895
+  small_paired_C_minus_B: 3.58335
+  medium_paired_C_minus_B: 8.50865
+interpretation: inactive negative deltas are not admitted speedups; active output intentionally differs

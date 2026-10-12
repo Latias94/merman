@@ -1,10 +1,31 @@
 #![forbid(unsafe_code)]
 
-//! Bounded binary export for SVG that has passed Merman's terminal compatibility validation.
+//! Bounded native font services and binary export for validated SVG.
 //!
 //! This crate deliberately accepts [`ResvgCompatibleSvg`] rather than Mermaid source or an
 //! arbitrary SVG string. Parsing, semantic construction, layout, SVG production, and terminal
-//! SVG validation stay owned by `merman`; this crate only owns allocation-aware encoding.
+//! SVG validation stay owned by `merman`; this crate owns explicit native font contexts and
+//! allocation-aware encoding.
+
+#[cfg(feature = "native-fonts")]
+pub mod fonts;
+#[cfg(feature = "native-fonts")]
+pub use fonts::{
+    FontSource, NativeFontContext, NativeFontError, NativeFontLimits, NativeFontOptions,
+};
+
+/// Reports the actual feature-unified system-font discovery capability of this dependency.
+#[cfg(any(
+    feature = "native-fonts",
+    feature = "system-fonts",
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
+))]
+#[must_use]
+pub const fn system_font_discovery_available() -> bool {
+    cfg!(feature = "system-fonts")
+}
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 mod font_environment;
@@ -26,6 +47,9 @@ use merman_render::svg::ResvgCompatibleSvg;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, thiserror::Error)]
 pub enum ExportError {
+    #[cfg(feature = "native-fonts")]
+    #[error(transparent)]
+    NativeFont(#[from] NativeFontError),
     #[error(transparent)]
     Cancelled(#[from] OperationCancelled),
     #[error("failed to parse SVG")]
@@ -851,6 +875,8 @@ pub struct RasterOptions {
     pub size_limit: RasterSizeLimit,
     pub embedded_image_limit: EmbeddedImageLimit,
     pub conversion_limits: SvgConversionLimits,
+    #[cfg(feature = "native-fonts")]
+    pub font_context: Option<NativeFontContext>,
 }
 
 /// Resource budget checked before and after usvg resolves embedded images.
@@ -1081,6 +1107,8 @@ pub struct PdfOptions {
     pub embedded_image_limit: EmbeddedImageLimit,
     /// Structural budget shared with PNG/JPEG conversion.
     pub conversion_limits: SvgConversionLimits,
+    #[cfg(feature = "native-fonts")]
+    pub font_context: Option<NativeFontContext>,
 }
 
 #[cfg(feature = "pdf")]
@@ -1093,12 +1121,20 @@ impl Default for PdfOptions {
             filter_image_limit: PdfFilterImageLimit::default(),
             embedded_image_limit: EmbeddedImageLimit::default(),
             conversion_limits: SvgConversionLimits::default(),
+            #[cfg(feature = "native-fonts")]
+            font_context: None,
         }
     }
 }
 
 #[cfg(feature = "pdf")]
 impl PdfOptions {
+    #[cfg(feature = "native-fonts")]
+    pub fn with_font_context(mut self, font_context: NativeFontContext) -> Self {
+        self.font_context = Some(font_context);
+        self
+    }
+
     pub fn with_page_policy(mut self, page_policy: PdfPagePolicy) -> Self {
         self.page_policy = page_policy;
         self
@@ -1146,12 +1182,20 @@ impl Default for RasterOptions {
             size_limit: RasterSizeLimit::default(),
             embedded_image_limit: EmbeddedImageLimit::default(),
             conversion_limits: SvgConversionLimits::default(),
+            #[cfg(feature = "native-fonts")]
+            font_context: None,
         }
     }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 impl RasterOptions {
+    #[cfg(feature = "native-fonts")]
+    pub fn with_font_context(mut self, font_context: NativeFontContext) -> Self {
+        self.font_context = Some(font_context);
+        self
+    }
+
     pub fn with_scale(mut self, scale: f32) -> Self {
         self.scale = scale;
         self
@@ -1465,6 +1509,8 @@ pub struct PreparedRaster {
     matte: Option<ExportRgbaColor>,
     jpeg_quality: u8,
     control: OperationControl,
+    #[cfg(feature = "native-fonts")]
+    font_context: Option<NativeFontContext>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -1541,6 +1587,8 @@ impl PreparedRaster {
     #[cfg(feature = "png")]
     pub fn encode_png_with_report(self) -> Result<(Vec<u8>, RasterExportReport)> {
         let control = self.control.clone();
+        #[cfg(feature = "native-fonts")]
+        let font_context = self.font_context.clone();
         run_recursive_svg_backend(&control, move |control| {
             export_checkpoint(control)?;
             let matte = self.matte;
@@ -1549,7 +1597,12 @@ impl PreparedRaster {
             export_checkpoint(control)?;
             let bytes = pixmap.encode_png().map_err(|_| ExportError::PngEncode);
             export_checkpoint(control)?;
-            Ok((bytes?, report))
+            let bytes = bytes?;
+            #[cfg(feature = "native-fonts")]
+            if let Some(context) = &font_context {
+                context.check()?;
+            }
+            Ok((bytes, report))
         })
     }
 
@@ -1563,6 +1616,8 @@ impl PreparedRaster {
     #[cfg(feature = "jpeg")]
     pub fn encode_jpeg_with_report(self) -> Result<(Vec<u8>, RasterExportReport)> {
         let control = self.control.clone();
+        #[cfg(feature = "native-fonts")]
+        let font_context = self.font_context.clone();
         run_recursive_svg_backend(&control, move |control| {
             export_checkpoint(control)?;
             if self.report.raster.width_px > u32::from(u16::MAX)
@@ -1597,6 +1652,10 @@ impl PreparedRaster {
                 .map_err(|_| ExportError::JpegEncode);
             export_checkpoint(control)?;
             encoded?;
+            #[cfg(feature = "native-fonts")]
+            if let Some(context) = &font_context {
+                context.check()?;
+            }
             Ok((out, report))
         })
     }
@@ -1634,6 +1693,10 @@ impl PreparedRaster {
         export_checkpoint(control)?;
         resvg::render(&self.tree, transform, &mut pixmap.as_mut());
         export_checkpoint(control)?;
+        #[cfg(feature = "native-fonts")]
+        if let Some(context) = &self.font_context {
+            context.check()?;
+        }
         Ok(pixmap)
     }
 
@@ -1655,6 +1718,8 @@ pub struct PreparedPdf {
     page_paint: Option<ExportRgbaColor>,
     report: PdfExportReport,
     control: OperationControl,
+    #[cfg(feature = "native-fonts")]
+    font_context: Option<NativeFontContext>,
 }
 
 #[cfg(feature = "pdf")]
@@ -1700,6 +1765,8 @@ impl PreparedPdf {
     /// Encodes PDF together with the exact resources, page, and filter evidence used.
     pub fn encode_with_report(self) -> Result<(Vec<u8>, PdfExportReport)> {
         let control = self.control.clone();
+        #[cfg(feature = "native-fonts")]
+        let font_context = self.font_context.clone();
         run_recursive_svg_backend(&control, move |control| {
             let bytes = svg_tree_to_pdf(
                 &self.tree,
@@ -1708,6 +1775,10 @@ impl PreparedPdf {
                 self.page_paint,
                 control,
             )?;
+            #[cfg(feature = "native-fonts")]
+            if let Some(context) = &font_context {
+                context.check()?;
+            }
             Ok((bytes, self.report))
         })
     }
@@ -1763,7 +1834,8 @@ fn prepare_raster_source_on_backend_stack(
         .map_err(|_| ExportError::InvalidRasterMatte)?;
     let root_metadata = parse_root_svg_metadata(source, control)?;
     let mut usvg_options = usvg::Options::default();
-    let font_plan = configure_usvg_options_for_raster(&mut usvg_options, root_metadata, svg)?;
+    let font_plan =
+        configure_usvg_options_for_raster(&mut usvg_options, root_metadata, svg, options, control)?;
     let data_plan = plan_embedded_data_resources_with_occurrences(
         source,
         svg.reference_plan().raw_element_occurrences(),
@@ -1773,6 +1845,10 @@ fn prepare_raster_source_on_backend_stack(
     export_checkpoint(control)?;
     let tree = usvg::Tree::from_str(source, &usvg_options).map_err(|_| ExportError::SvgParse);
     export_checkpoint(control)?;
+    #[cfg(feature = "native-fonts")]
+    if let Some(context) = &options.font_context {
+        context.check()?;
+    }
     let tree = tree?;
     let (geometry, translate_min_to_origin) = raster_geometry_for_svg(root_metadata, &tree);
     let native_filter_receipt = usvg::Rect::from_xywh(
@@ -1806,6 +1882,8 @@ fn prepare_raster_source_on_backend_stack(
         matte,
         jpeg_quality: options.jpeg_quality,
         control: control.clone(),
+        #[cfg(feature = "native-fonts")]
+        font_context: options.font_context.clone(),
     })
 }
 
@@ -1855,7 +1933,7 @@ fn prepare_pdf_on_backend_stack(
         options.embedded_image_limit,
         control,
     )?;
-    let (tree, font_plan) = parse_pdf_tree(svg, control)?;
+    let (tree, font_plan) = parse_pdf_tree(svg, options, control)?;
     let native_filter_receipt = tree.size().to_rect(0.0, 0.0).and_then(|viewport| {
         native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
     });
@@ -1898,6 +1976,8 @@ fn prepare_pdf_on_backend_stack(
         page_paint,
         report,
         control: control.clone(),
+        #[cfg(feature = "native-fonts")]
+        font_context: options.font_context.clone(),
     })
 }
 
@@ -2090,13 +2170,18 @@ pub fn svg_to_pdf_with_report(
 #[cfg(feature = "pdf")]
 fn parse_pdf_tree(
     svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
     control: &OperationControl,
 ) -> Result<(usvg::Tree, ExportFontPlan)> {
     export_checkpoint(control)?;
     let mut opts = usvg::Options::default();
-    let font_plan = configure_usvg_options_for_pdf(&mut opts, svg)?;
+    let font_plan = configure_usvg_options_for_pdf(&mut opts, svg, options, control)?;
     let tree = usvg::Tree::from_str(svg.as_str(), &opts).map_err(|_| ExportError::SvgParse);
     export_checkpoint(control)?;
+    #[cfg(feature = "native-fonts")]
+    if let Some(context) = &options.font_context {
+        context.check()?;
+    }
     let tree = tree?;
     let font_plan = font_plan.finish_with_tree(&tree);
     Ok((tree, font_plan))
@@ -3161,10 +3246,32 @@ fn configure_usvg_options_for_raster(
     opt: &mut usvg::Options<'_>,
     metadata: RootSvgMetadata,
     svg: &ResvgCompatibleSvg,
+    options: &RasterOptions,
+    control: &OperationControl,
 ) -> Result<font_environment::ExportFontPlanSeed> {
-    let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
-    let plan = fonts.plan;
-    opt.fontdb = fonts.fontdb;
+    #[cfg(feature = "native-fonts")]
+    let plan = if let Some(context) = &options.font_context {
+        context.check()?;
+        let observer = context.apply_to_usvg_options_for_export(opt, control);
+        font_environment::ExportFontPlanSeed::from_native_context(svg, context, observer)
+    } else {
+        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
+        let plan = fonts.plan;
+        opt.fontdb = fonts.fontdb;
+        opt.font_family = fonts.default_family;
+        opt.font_resolver = fonts.resolver;
+        plan
+    };
+    #[cfg(not(feature = "native-fonts"))]
+    let plan = {
+        let _ = (options, control);
+        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
+        let plan = fonts.plan;
+        opt.fontdb = fonts.fontdb;
+        opt.font_family = fonts.default_family;
+        opt.font_resolver = fonts.resolver;
+        plan
+    };
 
     if !metadata.has_view_box
         && let Some(max_width) = metadata.max_width_px
@@ -3175,8 +3282,6 @@ fn configure_usvg_options_for_raster(
         opt.default_size = size;
     }
 
-    opt.font_family = fonts.default_family;
-    opt.font_resolver = fonts.resolver;
     opt.image_href_resolver = data_url_only_image_href_resolver();
     Ok(plan)
 }
@@ -3185,12 +3290,32 @@ fn configure_usvg_options_for_raster(
 fn configure_usvg_options_for_pdf(
     opt: &mut usvg::Options<'_>,
     svg: &ResvgCompatibleSvg,
+    options: &PdfOptions,
+    control: &OperationControl,
 ) -> Result<font_environment::ExportFontPlanSeed> {
-    let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
-    let plan = fonts.plan;
-    opt.fontdb = fonts.fontdb;
-    opt.font_family = fonts.default_family;
-    opt.font_resolver = fonts.resolver;
+    #[cfg(feature = "native-fonts")]
+    let plan = if let Some(context) = &options.font_context {
+        context.check()?;
+        let observer = context.apply_to_usvg_options_for_export(opt, control);
+        font_environment::ExportFontPlanSeed::from_native_context(svg, context, observer)
+    } else {
+        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
+        let plan = fonts.plan;
+        opt.fontdb = fonts.fontdb;
+        opt.font_family = fonts.default_family;
+        opt.font_resolver = fonts.resolver;
+        plan
+    };
+    #[cfg(not(feature = "native-fonts"))]
+    let plan = {
+        let _ = (options, control);
+        let fonts = font_environment::ExportFontEnvironment::from_svg(svg)?;
+        let plan = fonts.plan;
+        opt.fontdb = fonts.fontdb;
+        opt.font_family = fonts.default_family;
+        opt.font_resolver = fonts.resolver;
+        plan
+    };
     opt.image_href_resolver = data_url_only_image_href_resolver();
     Ok(plan)
 }
@@ -3203,7 +3328,10 @@ fn data_url_only_image_href_resolver() -> usvg::ImageHrefResolver<'static> {
     }
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
     usvg::FontResolver {
         select_font: Box::new(move |font, fontdb| {
@@ -3227,7 +3355,10 @@ fn browser_like_pdf_font_resolver() -> usvg::FontResolver<'static> {
     }
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn select_font_case_insensitively(
     font: &usvg::Font,
     fontdb: &usvg::fontdb::Database,
@@ -3282,7 +3413,10 @@ fn select_font_case_insensitively(
     query_font_family(fontdb, usvg::fontdb::Family::Serif, weight, stretch, style)
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn query_named_font_family_case_insensitively(
     fontdb: &usvg::fontdb::Database,
     requested_name: &str,
@@ -3314,7 +3448,10 @@ fn query_named_font_family_case_insensitively(
     })
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn query_font_family(
     fontdb: &usvg::fontdb::Database,
     family: usvg::fontdb::Family<'_>,
@@ -3331,7 +3468,10 @@ fn query_font_family(
     })
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
     let sans = first_font_family(fontdb, |face| !face.monospaced)
         .or_else(|| first_font_family(fontdb, |_| true));
@@ -3354,14 +3494,20 @@ fn configure_fontdb_generic_families(fontdb: &mut usvg::fontdb::Database) {
     }
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn raster_default_font_family(fontdb: &usvg::fontdb::Database) -> Option<String> {
     query_normal_font_family(fontdb, usvg::fontdb::Family::SansSerif)
         .or_else(|| query_normal_font_family(fontdb, usvg::fontdb::Family::Serif))
         .or_else(|| first_font_family(fontdb, |_| true))
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn query_browser_like_fallback_font(
     font: &usvg::Font,
     fontdb: &usvg::fontdb::Database,
@@ -3411,7 +3557,10 @@ fn query_browser_like_pdf_fallback_font(
     fontdb.query(&query)
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn query_normal_font_family(
     fontdb: &usvg::fontdb::Database,
     family: usvg::fontdb::Family<'_>,
@@ -3429,7 +3578,10 @@ fn query_normal_font_family(
         .and_then(face_family_name)
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn first_font_family<F>(fontdb: &usvg::fontdb::Database, mut predicate: F) -> Option<String>
 where
     F: FnMut(&usvg::fontdb::FaceInfo) -> bool,
@@ -3440,7 +3592,10 @@ where
         .and_then(face_family_name)
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
     face.families
         .iter()
@@ -3449,7 +3604,10 @@ fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
         .map(|(family, _)| family.clone())
 }
 
-#[cfg(all(test, any(feature = "png", feature = "jpeg")))]
+#[cfg(any(
+    feature = "native-fonts",
+    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+))]
 fn font_requests_monospace(font: &usvg::Font) -> bool {
     font.families().iter().any(|family| match family {
         usvg::FontFamily::Monospace => true,
@@ -3477,15 +3635,6 @@ fn pdf_font_requests_monospace(font: &usvg::Font) -> bool {
         }
         _ => false,
     })
-}
-
-#[cfg(all(test, any(feature = "png", feature = "jpeg", feature = "pdf")))]
-#[derive(Debug, Clone, Copy)]
-struct RgbaColor {
-    red: u8,
-    green: u8,
-    blue: u8,
-    alpha: u8,
 }
 
 /// Returns whether the native exporters can interpret a background color.

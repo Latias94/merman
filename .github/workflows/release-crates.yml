@@ -101,7 +101,7 @@ jobs:
       reused_evidence: ${{ steps.evidence.outputs.reusable }}
       version: ${{ needs.validate-inputs.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           fetch-depth: 0
@@ -134,7 +134,7 @@ jobs:
           echo "Tag version: $VERSION"
 
       - name: Check out trusted preflight evidence verifier
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: .preflight-tooling
@@ -156,7 +156,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: aarch64-linux-android,wasm32-unknown-unknown
 
@@ -211,7 +211,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
@@ -228,13 +228,13 @@ jobs:
           python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Setup Node
         if: ${{ needs.preflight.outputs.reused_evidence != 'true' }}
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           package-manager-cache: false
@@ -270,9 +270,9 @@ jobs:
     permissions:
       contents: read
     env:
-      TYPST_CLI_VERSION: "0.15.0"
+      TYPST_CLI_VERSION: "0.15.1"
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
@@ -285,21 +285,21 @@ jobs:
           test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: wasm-tools
+          tool: wasm-tools@1.261.0
 
       - name: Install wasm-opt
-        uses: sigoden/install-binary@7eb4b088aedf19fe9b2bc6c6bbdc12379ffb355c # v1.2.0
+        uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
-          tag: version_131
+          tag: version_133
 
       - name: Download Typst
         shell: bash
@@ -340,14 +340,14 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           path: source
           persist-credentials: false
 
       - name: Checkout trusted release operator
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           path: trusted
@@ -380,7 +380,7 @@ jobs:
           echo "Publishing verified source commit and tree: $current_sha $current_tree"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Select prior crates.io publication attempt
         id: recovery
@@ -418,7 +418,7 @@ jobs:
         id: download-recovery
         if: ${{ steps.recovery.outputs.run_id != '' }}
         continue-on-error: true
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: crates-io-receipts-${{ needs.preflight.outputs.source_sha }}-attempt-${{ steps.recovery.outputs.attempt }}
           path: recovery-receipts
@@ -469,7 +469,7 @@ jobs:
 
       - name: Upload crates.io receipts
         if: ${{ always() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: crates-io-receipts-${{ needs.preflight.outputs.source_sha }}-attempt-${{ github.run_attempt }}
           path: source/target/crates-io-receipts/*.json

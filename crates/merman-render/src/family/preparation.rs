@@ -1342,16 +1342,22 @@ fn prepare_ishikawa_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
+    let inherited_font_stack = crate::family::InheritedFontStackPlan::resolve_property_local(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     let layout = crate::ishikawa::layout_ishikawa_diagram_typed(
         &model,
         meta.effective_config.as_value(),
+        inherited_font_stack.font_family_css(),
         execution.text_measurer(),
     )?;
-    let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve(
+    let text_theme = crate::ishikawa::IshikawaTextThemePlan::resolve_with_font_stack(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout,
         execution.work_meter_ref(),
+        inherited_font_stack,
     )?;
     Ok(BuiltinFamilyArtifact::Ishikawa(Box::new(
         IshikawaFamilyArtifact {

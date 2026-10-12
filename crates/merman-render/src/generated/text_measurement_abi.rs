@@ -74,10 +74,13 @@ pub enum TextMeasurementOperation {
     CanvasMeasureTextWidth = 16,
     CreateTextMiddleBBoxYOffset = 17,
     RawBBoxHeight = 18,
+    RawBBoxYOffset = 19,
+    RawMiddleBBoxYOffset = 20,
+    RawHangingBBoxYOffset = 21,
 }
 
 impl TextMeasurementOperation {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 22] = [
         Self::Measure,
         Self::ComputedLength,
         Self::BBoxX,
@@ -97,6 +100,9 @@ impl TextMeasurementOperation {
         Self::CanvasMeasureTextWidth,
         Self::CreateTextMiddleBBoxYOffset,
         Self::RawBBoxHeight,
+        Self::RawBBoxYOffset,
+        Self::RawMiddleBBoxYOffset,
+        Self::RawHangingBBoxYOffset,
     ];
 
     pub(crate) const fn index(self) -> usize {
@@ -138,7 +144,7 @@ struct TextMeasurementOperationDescriptor {
     accepts_signed_length: bool,
 }
 
-const TEXT_MEASUREMENT_OPERATION_DESCRIPTORS: [TextMeasurementOperationDescriptor; 19] = [
+const TEXT_MEASUREMENT_OPERATION_DESCRIPTORS: [TextMeasurementOperationDescriptor; 22] = [
     TextMeasurementOperationDescriptor { external_name: "measure", result_kind: TextMeasurementResultKind::Metrics, accepts_signed_length: false },
     TextMeasurementOperationDescriptor { external_name: "computed-length", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: false },
     TextMeasurementOperationDescriptor { external_name: "bbox-x", result_kind: TextMeasurementResultKind::HorizontalExtents, accepts_signed_length: false },
@@ -158,4 +164,7 @@ const TEXT_MEASUREMENT_OPERATION_DESCRIPTORS: [TextMeasurementOperationDescripto
     TextMeasurementOperationDescriptor { external_name: "canvas-measure-text-width", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: false },
     TextMeasurementOperationDescriptor { external_name: "create-text-middle-bbox-y-offset", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: true },
     TextMeasurementOperationDescriptor { external_name: "raw-bbox-height", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: false },
+    TextMeasurementOperationDescriptor { external_name: "raw-bbox-y-offset", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: true },
+    TextMeasurementOperationDescriptor { external_name: "raw-middle-bbox-y-offset", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: true },
+    TextMeasurementOperationDescriptor { external_name: "raw-hanging-bbox-y-offset", result_kind: TextMeasurementResultKind::Length, accepts_signed_length: true },
 ];

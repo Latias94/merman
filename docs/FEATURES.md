@@ -1,6 +1,7 @@
 # Choosing Merman capabilities
 
-This page documents the `0.8.0` feature interface and current source-tree feature selections. The [October 6 publication snapshot](release/PUBLISH_ORDER.md#080-publication-snapshot) records the published workspace and independently released language packages. Current source-branch compiled-theme work remains experimental and requires a matching artifact. Registry channels publish independently; workspace path snippets are for source-tree development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host migration and the [stable upgrade guide](release/V070_TO_V080_UPGRADE_GUIDE.md) when starting from `0.7.0`.
+This page documents Merman `0.9.0` capabilities. Explicit family selection and default facade ELK remain as in 0.8.0; use the [upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for changed models and output defaults. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
+Compiled-theme authoring remains experimental and requires a matching artifact; registry channels publish independently.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select built-in parser, model, and output implementations. Selected
@@ -35,6 +36,7 @@ The public capability leaves are:
 | `png`, `jpeg`, `pdf` | Independent binary exports | None |
 | `layout-cytoscape`, `layout-elk` | Mermaid-compatible layout engines | Each implies `svg` |
 | `math` | Math-label rendering | Implies `svg` |
+| `native-fonts` | Explicit font contexts for shared text measurement and native painting | Facade and CLI forward SVG; no codec requirement |
 | `system-clock`, `system-timezone`, `system-random`, `system-timing` | Optional native adapters | None; compiled separately and selected explicitly at runtime |
 | `icons`, `markdown`, `network-icons`, `parallel-markdown`, `rustdoc`, `shell-completions` | Compiled CLI tool commands | None or descriptor-declared workflow implications; the CLI Cargo manifest owns their forwarding |
 
@@ -68,6 +70,106 @@ select their own direct leaf set instead.
 
 ## Pick a workflow
 
+### Optional CLI Fonts
+
+The current-source default CLI build and official release profile include
+`native-fonts` and `system-fonts`. Ordinary CLI Mermaid SVG, PNG, JPEG, and PDF
+output defaults to deterministic text measurement, without creating a native font
+context or discovering system fonts for layout. Compiling these capabilities keeps
+native rendering available without activating it for every invocation. CLI contract
+6 reports compiled font support separately from the default measurement and discovery
+policy. PNG/JPEG/PDF painting can still load system fonts through the existing codec
+path; deterministic measurement does not guarantee binary export without discovery.
+
+Explicit `--font-file` or `--font-dir` sources automatically select native
+measurement with a closed font set, even with `--font-measurement native`; add
+`--font-system on` to allow system fallback. Without explicit sources,
+`--font-measurement native` explicitly permits system discovery when `system-fonts`
+is compiled. `--font-system on` explicitly selects system fonts and native
+measurement. `--font-measurement deterministic` explicitly selects the default
+layout without font sources. `fontFamily` selects among available faces, not a
+file, and alone does not enable native-context discovery. `--runtime native`
+controls other system adapters and alone does not enable native-context discovery.
+
+Fixed font files avoid full system catalogue discovery and provide the faster,
+reproducible native route when font contents and Mermaid configuration are pinned.
+System catalogue discovery is a separate cost from actual-font text measurement.
+System-font output is host-dependent. Rust library, FFI, ASCII, and committed
+Rustdoc generation defaults remain unchanged. For a minimal CLI build with
+explicit fonts and SVG output:
+
+```powershell
+cargo run -p merman-cli --no-default-features --features diagram-flowchart,native-fonts -- mmdc -i diagram.mmd -o diagram.svg --font-file fonts/MyFont-Regular.ttf --font-file fonts/MyFont-Bold.ttf --font-system off
+```
+
+Add `png`, `jpeg`, or `pdf` individually for binary output. `native-fonts` alone
+does not enable codecs or system discovery. Cargo features are additive: legacy
+binary exports compile usvg system discovery to preserve existing library/export
+behavior, even when an explicit-font operation uses `--font-system off`. This
+compiled availability does not activate native-context discovery for ordinary CLI
+Mermaid layout; legacy codec painting can still acquire system fonts.
+The separate CLI `system-fonts` feature permits the native context's discovery
+route only when requested through native/system font options. Minimal builds with
+only `native-fonts` retain deterministic defaults and require explicit fonts for
+native measurement. Dependency feature union does not grant the CLI that
+permission. `capabilities --json` reports the compiled dependency capability and
+the CLI runtime policy separately.
+
+The opt-in `experimental-system-font-query` feature selects Fontique-backed,
+on-demand system discovery in CLI builds. It is not part of the default or
+official release recipe. System metadata queries are managed by the platform
+and may map font files outside Merman's scan budgets; actual selected bytes
+still use bounded immutable snapshots shared by measurement and painting.
+Explicit-only requests stay closed. Library callers must explicitly choose
+`NativeFontOptions::load_platform`; ordinary `load` retains bounded discovery.
+See the [candidate plan](plans/2026-10-10-system-font-query-candidate.md) for
+validation scope and remaining platform/fallback requirements.
+
+`--font-file` and `--font-dir` are repeatable and preserve argument order.
+Directories use bounded, stable traversal and skip discovered symlinks. Earlier
+equal family/style/weight faces take precedence. TTF, OTF, and TTC sources are
+supported; fonts are never fetched from a network. Font loading does not change
+Mermaid `fontFamily`: select your family in Mermaid configuration as well.
+Missing families use the same resolver for measurement and painting.
+
+Explicit sources select native measurement automatically. The shared backend
+handles all 22 text-measurement protocol operations across layout, wrapping,
+SVG bounds, and computed lengths. Diagram families use this backend through
+Merman's existing measurement routes: it is not limited to titles or to one
+diagram family. Font-driven node and label sizing, advances, horizontal/vertical
+bounds, and wrapping probes use the selected font context; Merman retains its
+existing whitespace and line-breaking rules. Fixed diagram geometry and CSS
+line-height rules are not replaced with glyph bounds. Missing-glyph requests
+explicitly fall back to deterministic measurement. This is not browser pixel
+parity, and arbitrary HTML/CSS typography remains outside the native contract.
+Explicit sources with `--font-measurement deterministic` are
+rejected for Mermaid input. Custom `--css-file` and `themeCSS` are also rejected
+with native Mermaid measurement because they can change typography after layout.
+Parser-owned declarations such as letter spacing, CSS font shorthand and custom
+line height are rejected when the measurement protocol cannot represent them.
+Flowchart native mode requires an effective `px` theme font size (the equivalent
+default numeric `16` is accepted); ambiguous numeric/unit spellings and a root
+bold `fontWeight` are rejected where existing layout and CSS disagree. Set bold
+or italic on supported node/class declarations instead.
+For unsupported typography, use explicit compatibility measurement rather than
+silently claiming native layout. ASCII, parser/analysis, library defaults and
+host-owned FFI measurement policies are unchanged.
+
+SVG output does not embed fonts or convert text to outlines. Consumers must have
+the same fonts to reproduce measured geometry. Raw SVG supports explicit fonts
+only for PNG/JPEG/PDF conversion and rejects `--font-measurement`; conversion
+does not relayout existing geometry. Respect font redistribution and embedding
+licenses. Cousine fixtures are test-only and are not production assets.
+
+Rust hosts load `merman::svg::export::NativeFontOptions` and install the resulting
+context with `SvgEnvironment::with_native_font_context`. Typed binary rendering
+reuses that context automatically. Direct exporters use the same context via
+`RasterOptions::with_font_context` or `PdfOptions::with_font_context`. Hosts
+implementing a custom low-level measurement route must call `context.check()`
+at their fallible output boundary, since the host measurement protocol otherwise
+turns errors into fallback. Font bytes and bounded caches belong to the requesting
+operation or batch and never accumulate user fonts in a process-global cache.
+
 | Workflow | Recommended dependency or package | Typical feature selection |
 | --- | --- | --- |
 | Deterministic SVG in Rust | `merman` | Defaults (`all-diagrams + complete-svg-elk`), or `default-features = false, features = ["all-diagrams", "svg"]` for basic SVG |
@@ -95,7 +197,7 @@ a supported Node transport or fallback.
 
 ## Select diagram families
 
-These selectors were published in `0.8.0-alpha.7` and remain part of `0.8.0` and the current source. Packages at alpha.6 and earlier predate this source and typed-API migration. Default facade, CLI, and Rustdoc users retain all built-in families.
+These selectors were introduced in `0.8.0-alpha.7` and are included in the published `0.8.0` release. Packages at alpha.6 and earlier predate this source and typed-API migration. Default facade, CLI, and Rustdoc users retain all built-in families.
 Low-level crates keep empty defaults. Existing `default-features = false` consumers must add
 `all-diagrams` to retain the previous language surface, or list the families they require.
 `complete-svg` alone selects outputs and engines, not languages.
@@ -283,14 +385,14 @@ complete SVG aggregate and should not be added to every native SDK without a pro
 ## CLI
 
 `merman-cli` is the browserless Mermaid CLI replacement. Its normal default includes all diagram families,
-SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, local Iconify loading,
+SVG, analysis, ASCII, PNG, JPEG, PDF, Cytoscape and ELK layouts, math, explicit native fonts, local Iconify loading,
 Markdown conversion, native adapters, network icons, parallel Markdown, and shell completions. `rustdoc` is included in source defaults and the standard archive.
 The `cli-release` artifact selects the same default capabilities explicitly. Both closures include the
-EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7 and `0.8.0` include ELK in both recipes.
+EPL-2.0 ELK implementation and its notices. Alpha.6 source defaults excluded ELK while its release archives included it; alpha.7, 0.8.0, and 0.9.0 include ELK in both recipes.
 Compiled native adapters never change the default runtime policy:
 
 ```sh
-cargo install --git https://github.com/Latias94/merman --locked merman-cli
+cargo install merman-cli --version 0.9.0 --locked
 printf 'flowchart TD\n  A --> B\n' | merman-cli render - --output diagram.svg
 
 merman-cli render --runtime deterministic diagram.mmd
@@ -323,7 +425,7 @@ Use `--no-default-features --features all-diagrams,markdown` for a sequential al
 
 ## Rustdoc
 
-Rustdoc has two independently distributed static-SVG workflows. The `0.8.0` source default
+Rustdoc has two independently distributed static-SVG workflows. The `0.9.0` source default
 and release archive retain the deterministic CLI `build/check` authoring workflow, as in
 alpha.7. It enables SVG rendering with Cytoscape and math;
 it does not make `merman-rustdoc` a dependency. Generated Markdown and its portable receipt are
@@ -333,7 +435,7 @@ in its normal/build Cargo graph, supports crate-level docs, and makes diagram up
 
 The `merman-rustdoc` package remains the independent one-step attribute workflow. Its default
 features compile all diagram families, SVG, Cytoscape, and ELK into the proc-macro host. Math is
-optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults apply to the published alpha.7 and `0.8.0` macro. Alpha.6 enabled math and excluded ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
+optional: add `math` or select `complete-svg-elk` for SVG, both layouts, and math. These defaults apply from alpha.7 through 0.9.0. Alpha.6 enabled math and excluded ELK by default. The `merman` facade default is `all-diagrams + complete-svg-elk`
 and continues to include math.
 
 The macro default includes the EPL-2.0 ELK closure. Optional dependency gating keeps the renderer
@@ -403,28 +505,33 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter's `0.8.0` publication is recorded in the [October 6 snapshot](release/PUBLISH_ORDER.md#080-publication-snapshot); use `flutter pub add 'merman:^0.8.0'` and `Merman.open()` for that package. Current source-only APIs require a matching build. Android consumes the
+Flutter `0.9.0` uses `flutter pub add 'merman:0.9.0'` and `Merman.open()`; see the [Flutter guide](../platforms/flutter/README.md). Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
-transport API 1 rather than C ABI 3. Apple consumes the matching
+transport API 2 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
 artifact profile. The [Flutter](../platforms/flutter/README.md),
 [Android](../platforms/android/README.md), [Apple](../platforms/apple/README.md), and
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
 and lifecycle rules; there is no interchangeable generic native binary SDK.
 
-Typst is an independently released package. Verify the registry version before installing; the
-source tree currently prepares the `0.3.0` wrapper:
+Typst is independently versioned. Use the `0.5.0` wrapper with Typst `0.15.0` or later:
 
-```typst
-#import "@preview/merman:0.3.0": mermaid
+````typst
+#import "@preview/merman:0.5.0": mermaid
 
 #mermaid(```mermaid
 flowchart TD
   Source --> Document
 ```)
-```
+````
 
-The published `0.3.0` Typst wrapper was built from Merman `0.8.0-alpha.6`, requires Typst `0.15.0`, and includes SVG, analysis, Cytoscape, and ELK. This package rebuild removes ICU4X collation data and generated font-metric tables from the production WASM closure while retaining the deterministic Unicode-aware measurement fallback. Use Typst's registry package for normal installs; build locally with `--package-path` only when testing a source snapshot. The package includes the ELK dependency closure and its accompanying EPL-2.0 notices; Math is not advertised until its pure-WASM font, license, import, and parity admission is complete. The source package always enforces its constrained resource policy; caller options may tighten it but cannot replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md) for the published/source version boundary.
+The `0.5.0` wrapper bundles Merman `0.9.0` with Mermaid `12.1.0` compatibility, SVG,
+analysis, Cytoscape, and ELK. It uses deterministic text measurement; Typst's actual glyph
+metrics are not measured automatically, and math rendering is unavailable. The package ships
+ELK's EPL-2.0 notices and enforces a constrained resource policy that caller options may tighten.
+Use the registry package for normal installs and local `--package-path` builds for source testing.
+See the [Typst package guide](../distribution/typst/merman/README.md) for examples and its
+[version mapping](../distribution/typst/merman/README.md#version-mapping) for bundled Merman versions.
 
 Native bindings expose the same flat runtime catalog. The catalog contains stable
 `capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported

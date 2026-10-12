@@ -18,7 +18,19 @@ artifact-profile-required = true
 
 [features]
 default = []
+native-fonts = [
+    "dep:merman-core",
+    "dep:merman-render",
+    "dep:rustybuzz",
+    "dep:sha2",
+    "dep:thiserror",
+    "dep:unicase",
+    "dep:usvg",
+]
+system-fonts = ["dep:usvg", "usvg/system-fonts"]
+experimental-system-font-query = ["native-fonts", "system-fonts", "dep:fontique", "dep:unicode-script"]
 png = [
+    "system-fonts",
     "dep:cssparser",
     "dep:data-url",
     "dep:merman-core",
@@ -33,6 +45,7 @@ png = [
     "dep:usvg",
 ]
 jpeg = [
+    "system-fonts",
     "dep:cssparser",
     "dep:data-url",
     "dep:image",
@@ -48,6 +61,7 @@ jpeg = [
     "dep:usvg",
 ]
 pdf = [
+    "system-fonts",
     "dep:data-url",
     "dep:krilla",
     "dep:krilla-svg",
@@ -64,6 +78,7 @@ pdf = [
 [dependencies]
 cssparser = { workspace = true, optional = true }
 data-url = { workspace = true, optional = true }
+fontique = { workspace = true, optional = true }
 image = { workspace = true, optional = true }
 krilla = { workspace = true, optional = true }
 krilla-svg = { workspace = true, optional = true }
@@ -71,12 +86,15 @@ merman-core = { workspace = true, optional = true }
 merman-render = { workspace = true, optional = true }
 quick-xml = { workspace = true, optional = true }
 resvg = { workspace = true, optional = true, features = ["raster-images"] }
+rustybuzz = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
 svgtypes = { workspace = true, optional = true }
 thiserror = { workspace = true, optional = true }
 tiny-skia = { workspace = true, optional = true }
 ttf-parser = { workspace = true, optional = true }
 unicase = { workspace = true, optional = true }
-usvg = { workspace = true, optional = true, features = ["system-fonts", "text"] }
+unicode-script = { workspace = true, optional = true }
+usvg = { workspace = true, optional = true, features = ["text"] }
 
 [dev-dependencies]
 base64.workspace = true

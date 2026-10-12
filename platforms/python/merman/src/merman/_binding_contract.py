@@ -44,6 +44,10 @@ CAPABILITY_SPECS = (
         "implication_ids": ("svg",),
     },
     {
+        "id": "native-fonts",
+        "implication_ids": (),
+    },
+    {
         "id": "network-icons",
         "implication_ids": (),
     },

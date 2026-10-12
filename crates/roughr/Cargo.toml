@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "roughr-merman"
-version = "0.12.3"
+version = "0.12.4"
 authors = ["orhanbalci@gmail.com <orhanbalci@gmail.com>"]
 build = false
 publish = true
@@ -40,7 +40,7 @@ default = ["legacy-compat"]
 host-random = [
     "dep:rand",
     "dep:getrandom",
-    "getrandom/js",
+    "getrandom/wasm_js",
 ]
 legacy-compat = ["host-random", "dep:svgtypes_0_11"]
 
@@ -60,7 +60,7 @@ default-features = false
 features = ["std"]
 
 [dependencies.rand]
-version = "0.8"
+version = "0.10.3"
 optional = true
 
 [dependencies.svgtypes]
@@ -72,6 +72,6 @@ version = "0.11"
 optional = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies.getrandom]
-version = "0.2"
-features = ["js"]
+version = "0.4.3"
+features = ["wasm_js"]
 optional = true

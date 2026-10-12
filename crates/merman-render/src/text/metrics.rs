@@ -11,7 +11,7 @@ use super::{
     mermaid_xhtml_label_plain_text, round_to_1_64_px, trim_html_collapsible_ascii_whitespace, wrap,
 };
 use crate::environment::{
-    BuiltinInlineHtmlWidth, BuiltinTextMeasurementOperationCarrier, InlineHtmlMeasurementCarrier,
+    BuiltinHtmlLineWidth, BuiltinTextMeasurementOperationCarrier, InlineHtmlMeasurementCarrier,
     TextMeasurementOperation,
 };
 
@@ -42,7 +42,9 @@ pub(crate) fn measure_xhtml_label_fragment(
     max_width: Option<f64>,
     wrap_mode: WrapMode,
 ) -> TextMetrics {
-    if let Some(plain_text) = mermaid_xhtml_label_plain_text(fragment) {
+    if let Some(plain_text) = mermaid_xhtml_label_plain_text(fragment)
+        && !plain_text.contains('<')
+    {
         measurer.measure_wrapped(&plain_text, style, max_width, wrap_mode)
     } else {
         measure_html_with_inline_styles(measurer, fragment, style, max_width, wrap_mode)
@@ -126,7 +128,9 @@ fn measure_inline_run_width_px<M: TextMeasurer + ?Sized>(
     wrap_mode: WrapMode,
     svg_advance: bool,
 ) -> f64 {
-    if svg_advance && wrap_mode != WrapMode::HtmlLike {
+    if wrap_mode == WrapMode::HtmlLike {
+        measurer.measure_html_line_width_px(text, style)
+    } else if svg_advance {
         measurer.measure_svg_text_computed_length_px(text, style)
     } else {
         measurer.measure_wrapped(text, style, None, wrap_mode).width
@@ -584,9 +588,7 @@ fn measure_inline_fragments_with_break_width_px<M: TextMeasurer + ?Sized>(
         stats.record_source_slice(&text);
         let run_style = inline_text_style(style, first_run.bold, first_run.italic, first_run.code);
         stats.record_backend_request(text.len());
-        width += measurer
-            .measure_wrapped(&text, &run_style, None, WrapMode::HtmlLike)
-            .width;
+        width += measurer.measure_html_line_width_px(&text, &run_style);
         index = end;
     }
     width
@@ -595,12 +597,12 @@ fn measure_inline_fragments_with_break_width_px<M: TextMeasurer + ?Sized>(
 #[derive(Debug, Clone)]
 struct BuiltinInlineGroupWidth {
     style: InlineStyleKey,
-    width: BuiltinInlineHtmlWidth,
+    width: BuiltinHtmlLineWidth,
 }
 
 struct BuiltinInlineWidthProfiles {
     carrier: InlineHtmlMeasurementCarrier,
-    initial: [Option<BuiltinInlineHtmlWidth>; 8],
+    initial: [Option<BuiltinHtmlLineWidth>; 8],
 }
 
 impl BuiltinInlineWidthProfiles {
@@ -617,7 +619,7 @@ impl BuiltinInlineWidthProfiles {
         style: InlineStyleKey,
         base_style: &TextStyle,
         stats: &mut InlineHtmlPlanningStats,
-    ) -> BuiltinInlineHtmlWidth {
+    ) -> BuiltinHtmlLineWidth {
         let initial = &mut self.initial[style.index()];
         if initial.is_none() {
             let run_style = style.resolve(base_style);
@@ -1342,11 +1344,15 @@ mod inline_planning_tests {
                 .lock()
                 .expect("host call log lock")
                 .push((request.operation, request.text.to_string()));
-            Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
-                width: request.text.len() as f64,
-                height: request.style.font_size,
-                line_count: 1,
-            })))
+            if request.operation == TextMeasurementOperation::CanvasMeasureTextWidth {
+                Ok(Some(HostTextMeasurement::Length(request.text.len() as f64)))
+            } else {
+                Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                    width: request.text.len() as f64,
+                    height: request.style.font_size,
+                    line_count: 1,
+                })))
+            }
         }
     }
 
@@ -2034,11 +2040,10 @@ mod inline_planning_tests {
         );
 
         let calls = calls.lock().expect("host call log lock").clone();
-        assert!(
-            calls
-                .iter()
-                .all(|(operation, _)| *operation == TextMeasurementOperation::Wrapped)
-        );
+        assert_eq!(calls[0].0, TextMeasurementOperation::Wrapped);
+        assert!(calls[1..].iter().all(|(operation, _)| {
+            *operation == TextMeasurementOperation::CanvasMeasureTextWidth
+        }));
         assert_eq!(
             calls
                 .iter()
@@ -2255,7 +2260,7 @@ mod inline_planning_tests {
         let summary = &report.entries()[0];
         assert_eq!(
             summary.provenance().operation,
-            TextMeasurementOperation::Wrapped
+            TextMeasurementOperation::CanvasMeasureTextWidth
         );
         assert!(
             (3..=6).contains(&summary.count()),
@@ -2648,6 +2653,111 @@ mod inline_planning_tests {
             }
         }
     }
+}
+
+/// Finds retained inline HTML typography that the caller's measurement policy cannot represent.
+/// Admission uses the same Markdown projection and HTML normalization as SVG emission.
+#[doc(hidden)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub fn unsupported_html_label_style(
+    label: &str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+    unsupported_properties: &[&str],
+    control: &merman_core::OperationControl,
+) -> Result<Option<String>, merman_core::OperationCancelled> {
+    use cssparser::{Delimiter, Parser};
+    use quick_xml::{Reader, events::Event};
+
+    control.checkpoint()?;
+    let html = if label_type == "markdown" {
+        let decoded = crate::entities::decode_mermaid_entities_for_render_text(label);
+        let decoded = if decoded.contains("\\\\") {
+            std::borrow::Cow::Owned(decoded.replace("\\\\", "\\"))
+        } else {
+            decoded
+        };
+        let markdown_auto_wrap = config
+            .as_value()
+            .get("markdownAutoWrap")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true);
+        super::mermaid_markdown_to_html_label_fragment(
+            decoded.trim_end_matches('\n'),
+            markdown_auto_wrap,
+        )
+    } else {
+        crate::flowchart::flowchart_non_markdown_label_for_html(label, label_type)
+    };
+    // Sanitizer-removed attributes and encoded angle brackets cannot affect rendered typography.
+    let html = crate::xml::normalize_html_fragment_for_xhtml(
+        &merman_core::sanitize::sanitize_text(&html, config),
+    );
+    let mut tags = Reader::from_str(&html);
+    tags.config_mut().check_end_names = false;
+    tags.config_mut().allow_unmatched_ends = true;
+    loop {
+        control.checkpoint()?;
+        let opening = match tags.read_event() {
+            Ok(Event::Start(opening) | Event::Empty(opening)) => opening,
+            Ok(Event::Eof) | Err(_) => break,
+            _ => continue,
+        };
+        let Some(style) = opening
+            .html_attributes()
+            .with_checks(false)
+            .filter_map(Result::ok)
+            .find(|attr| attr.key.as_ref().eq_ignore_ascii_case("style"))
+        else {
+            continue;
+        };
+        let style = merman_core::entities::decode_html_entities_to_unicode(style.value.as_ref());
+        let element = opening.name().as_ref().to_ascii_lowercase();
+        let mut declarations = Parser::new(&style);
+        while !declarations.is_exhausted() {
+            control.checkpoint()?;
+            let declaration = declarations.parse_until_after(Delimiter::Semicolon, |declaration| {
+                let property = declaration.expect_ident_cloned()?.to_ascii_lowercase();
+                declaration.expect_colon()?;
+                let first = declaration.next().ok().cloned();
+                let inherits = matches!(
+                    &first,
+                    Some(cssparser::Token::Ident(value)) if value.eq_ignore_ascii_case("inherit")
+                ) && (declaration.is_exhausted()
+                    || (declaration.try_parse(cssparser::parse_important).is_ok()
+                        && declaration.is_exhausted()));
+                while declaration.next().is_ok() {}
+                // Inheritance can override the intrinsic emphasis or code face modeled below.
+                let overrides_element = match element.as_str() {
+                    "strong" | "b" => matches!(property.as_str(), "font-weight" | "font"),
+                    "em" | "i" => matches!(property.as_str(), "font-style" | "font"),
+                    "code" => matches!(property.as_str(), "font-family" | "font"),
+                    _ => false,
+                };
+                Ok::<_, cssparser::ParseError<()>>((
+                    property,
+                    first.is_some(),
+                    inherits && !overrides_element,
+                ))
+            });
+            control.checkpoint()?;
+            if let Ok((property, true, false)) = declaration
+                && (matches!(
+                    property.as_str(),
+                    "font-size" | "font-family" | "font-weight" | "font-style"
+                ) || unsupported_properties
+                    .iter()
+                    .any(|name| property.eq_ignore_ascii_case(name)))
+            {
+                return Ok(Some(property));
+            }
+        }
+    }
+    Ok(None)
 }
 
 pub fn measure_html_with_inline_styles(

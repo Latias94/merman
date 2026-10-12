@@ -31,7 +31,9 @@ pub use editor_language::{
 };
 
 #[cfg(all(feature = "svg", target_arch = "wasm32"))]
-use merman_bindings_core::{TextStyle, WrapMode};
+use merman_bindings_core::TextStyle;
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+use merman_bindings_core::WrapMode;
 
 /// Breaking API version for the wasm-bindgen transport.
 ///
@@ -623,7 +625,7 @@ thread_local! {
     static HOST_TEXT_MEASURE_CALLBACK: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 #[derive(Debug, Serialize)]
 struct WasmHostTextMeasureRequest<'a> {
     operation: &'static str,
@@ -641,6 +643,42 @@ struct WasmHostTextMeasureRequest<'a> {
     wrap_mode: &'static str,
     direction: &'static str,
     white_space: &'static str,
+}
+
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
+fn wasm_host_text_measure_request(
+    request: merman_bindings_core::HostTextMeasurementRequest<'_>,
+) -> Result<WasmHostTextMeasureRequest<'_>, merman_bindings_core::HostTextMeasurementError> {
+    use merman_bindings_core::HostTextWhiteSpaceCode;
+
+    let transport = merman_bindings_core::host_text_measurement_transport_fields(request);
+    let white_space = match transport.white_space {
+        code if code == HostTextWhiteSpaceCode::Normal.external_code() => "normal",
+        code if code == HostTextWhiteSpaceCode::Nowrap.external_code() => "nowrap",
+        code if code == HostTextWhiteSpaceCode::BreakSpaces.external_code() => "break-spaces",
+        _ => {
+            return Err(merman_bindings_core::HostTextMeasurementError::new(
+                "unknown shared text white-space code",
+            ));
+        }
+    };
+    Ok(WasmHostTextMeasureRequest {
+        operation: request.operation.external_name(),
+        phase: wasm_measurement_phase(request.phase),
+        text: request.text,
+        font_family: request.style.font_family.as_deref(),
+        font_size: request.style.font_size,
+        font_weight: request.style.font_weight.as_deref(),
+        font_style: request.style.font_style.as_deref().unwrap_or("normal"),
+        max_width: request.max_width,
+        has_max_width: request.max_width.is_some(),
+        line_height: transport.line_height,
+        letter_spacing: 0.0,
+        word_spacing: 0.0,
+        wrap_mode: wasm_wrap_mode(request.wrap_mode),
+        direction: "auto",
+        white_space,
+    })
 }
 
 #[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
@@ -701,23 +739,7 @@ impl WasmHostTextMeasurer {
         &self,
         request: merman_bindings_core::HostTextMeasurementRequest<'_>,
     ) -> merman_bindings_core::HostMeasurementResult {
-        let external_request = WasmHostTextMeasureRequest {
-            operation: request.operation.external_name(),
-            phase: wasm_measurement_phase(request.phase),
-            text: request.text,
-            font_family: request.style.font_family.as_deref(),
-            font_size: request.style.font_size,
-            font_weight: request.style.font_weight.as_deref(),
-            font_style: request.style.font_style.as_deref().unwrap_or("normal"),
-            max_width: request.max_width,
-            has_max_width: request.max_width.is_some(),
-            line_height: wasm_line_height(request.style, request.wrap_mode),
-            letter_spacing: 0.0,
-            word_spacing: 0.0,
-            wrap_mode: wasm_wrap_mode(request.wrap_mode),
-            direction: "auto",
-            white_space: wasm_white_space(request.max_width, request.wrap_mode),
-        };
+        let external_request = wasm_host_text_measure_request(request)?;
         let external_request = serde_wasm_bindgen::to_value(&external_request)
             .map_err(|err| merman_bindings_core::HostTextMeasurementError::new(err.to_string()))?;
 
@@ -784,7 +806,7 @@ fn js_error_message(err: &JsValue) -> String {
         .unwrap_or_else(|| "host text measurer callback failed".to_string())
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> &'static str {
     match phase {
         merman_bindings_core::TextMeasurementPhase::Layout => "layout",
@@ -794,30 +816,12 @@ fn wasm_measurement_phase(phase: merman_bindings_core::TextMeasurementPhase) -> 
     }
 }
 
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
+#[cfg(all(feature = "svg", any(target_arch = "wasm32", test)))]
 fn wasm_wrap_mode(wrap_mode: WrapMode) -> &'static str {
     match wrap_mode {
         WrapMode::SvgLike => "svg-like",
         WrapMode::SvgLikeSingleRun => "svg-like-single-run",
         WrapMode::HtmlLike => "html-like",
-    }
-}
-
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
-fn wasm_line_height(style: &TextStyle, wrap_mode: WrapMode) -> f64 {
-    let factor = match wrap_mode {
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => 1.1,
-        WrapMode::HtmlLike => 1.5,
-    };
-    style.font_size.max(1.0) * factor
-}
-
-#[cfg(all(feature = "svg", target_arch = "wasm32"))]
-fn wasm_white_space(max_width: Option<f64>, wrap_mode: WrapMode) -> &'static str {
-    match wrap_mode {
-        WrapMode::HtmlLike if max_width.is_some() => "break-spaces",
-        WrapMode::HtmlLike => "nowrap",
-        WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => "normal",
     }
 }
 
@@ -1056,8 +1060,83 @@ mod tests {
                 (16, "canvas-measure-text-width"),
                 (17, "create-text-middle-bbox-y-offset"),
                 (18, "raw-bbox-height"),
+                (19, "raw-bbox-y-offset"),
+                (20, "raw-middle-bbox-y-offset"),
+                (21, "raw-hanging-bbox-y-offset"),
             ]
         );
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn wasm_host_request_preserves_tspan_whitespace_and_wrap_contract() {
+        use merman_bindings_core::{
+            HostTextMeasurementRequest,
+            TextMeasurementOperation::{
+                CanvasMeasureTextWidth, Measure, TspanBBoxHeight, TspanBBoxWidth,
+            },
+            TextMeasurementPhase, TextStyle,
+        };
+
+        let style = TextStyle {
+            font_family: Some("Test Font".to_string()),
+            font_size: 16.0,
+            font_weight: Some("600".to_string()),
+            font_style: Some("italic".to_string()),
+        };
+        for (operation, wrap_mode, max_width, white_space) in [
+            (TspanBBoxWidth, WrapMode::HtmlLike, None, "break-spaces"),
+            (TspanBBoxHeight, WrapMode::HtmlLike, None, "break-spaces"),
+            (
+                TspanBBoxWidth,
+                WrapMode::HtmlLike,
+                Some(80.0),
+                "break-spaces",
+            ),
+            (Measure, WrapMode::HtmlLike, None, "nowrap"),
+            (Measure, WrapMode::HtmlLike, Some(80.0), "break-spaces"),
+            (CanvasMeasureTextWidth, WrapMode::HtmlLike, None, "nowrap"),
+            (TspanBBoxWidth, WrapMode::SvgLike, None, "normal"),
+            (Measure, WrapMode::SvgLike, Some(80.0), "normal"),
+            (TspanBBoxWidth, WrapMode::SvgLikeSingleRun, None, "normal"),
+            (Measure, WrapMode::SvgLikeSingleRun, Some(80.0), "normal"),
+        ] {
+            let projected = wasm_host_text_measure_request(HostTextMeasurementRequest {
+                operation,
+                phase: TextMeasurementPhase::SvgBBox,
+                text: "a  b",
+                style: &style,
+                max_width,
+                wrap_mode,
+            })
+            .expect("request projection");
+            let (expected_wrap_mode, line_height) = match wrap_mode {
+                WrapMode::HtmlLike => ("html-like", 24.0),
+                WrapMode::SvgLike => ("svg-like", 17.6),
+                WrapMode::SvgLikeSingleRun => ("svg-like-single-run", 17.6),
+            };
+            assert_eq!(
+                serde_json::to_value(projected).expect("serialize projected request"),
+                serde_json::json!({
+                    "operation": operation.external_name(),
+                    "phase": "svg-bbox",
+                    "text": "a  b",
+                    "font_family": "Test Font",
+                    "font_size": 16.0,
+                    "font_weight": "600",
+                    "font_style": "italic",
+                    "max_width": max_width,
+                    "has_max_width": max_width.is_some(),
+                    "line_height": line_height,
+                    "letter_spacing": 0.0,
+                    "word_spacing": 0.0,
+                    "wrap_mode": expected_wrap_mode,
+                    "direction": "auto",
+                    "white_space": white_space,
+                }),
+                "{operation:?}, {wrap_mode:?}, max_width={max_width:?}"
+            );
+        }
     }
 
     #[cfg(feature = "svg")]

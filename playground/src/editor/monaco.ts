@@ -1,8 +1,10 @@
 import { loader } from "@monaco-editor/react";
 import type { IDisposable } from "monaco-editor";
-import * as monacoApi from "monaco-editor/esm/vs/editor/editor.api.js";
-import "monaco-editor/esm/vs/editor/editor.all.js";
-import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import * as monacoApi from "monaco-editor/editor";
+import "monaco-editor/features/register.all";
+// Monaco 0.57's feature bundle only registers viewport semantic tokens.
+import "monaco-editor/editor/contrib/semanticTokens/browser/documentSemanticTokens.js";
+import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import { registerWorkbenchEditorThemes } from "./workbench-editor-theme";
 
 export const localMonaco = monacoApi as typeof import("monaco-editor");

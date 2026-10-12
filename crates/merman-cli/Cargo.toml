@@ -37,6 +37,7 @@ features = [
     "layout-elk",
     "markdown",
     "math",
+    "native-fonts",
     "network-icons",
     "parallel-markdown",
     "pdf",
@@ -45,6 +46,7 @@ features = [
     "shell-completions",
     "svg",
     "system-clock",
+    "system-fonts",
     "system-random",
     "system-timezone",
     "system-timing",
@@ -315,6 +317,7 @@ default = [
     "layout-elk",
     "markdown",
     "math",
+    "native-fonts",
     "network-icons",
     "parallel-markdown",
     "pdf",
@@ -323,6 +326,7 @@ default = [
     "shell-completions",
     "svg",
     "system-clock",
+    "system-fonts",
     "system-random",
     "system-timezone",
     "system-timing",
@@ -344,6 +348,9 @@ svg = [
     "dep:same-file",
     "merman/svg",
 ]
+native-fonts = ["svg", "merman/native-fonts"]
+system-fonts = ["native-fonts", "merman/system-fonts"]
+experimental-system-font-query = ["system-fonts", "merman/experimental-system-font-query"]
 ascii = ["dep:atomic-write-file", "dep:ctrlc", "dep:same-file", "merman/ascii"]
 png = ["svg", "dep:merman-render", "merman/png"]
 jpeg = ["svg", "dep:merman-render", "merman/jpeg"]
@@ -415,6 +422,7 @@ merman-render.workspace = true
 png.workspace = true
 roxmltree.workspace = true
 tempfile = "3.27.0"
+usvg = { workspace = true, features = ["text"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 libc.workspace = true

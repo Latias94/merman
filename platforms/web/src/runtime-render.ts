@@ -231,6 +231,17 @@ function measureWithBrowserProbes(
       return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").width) };
     case "raw-bbox-height":
       return { kind: "length", length: Math.max(0, svgBBox(probes, request, "direct").height) };
+    case "raw-bbox-y-offset":
+      return { kind: "length", length: svgBBox(probes, request, "direct").y };
+    case "raw-middle-bbox-y-offset":
+    case "raw-hanging-bbox-y-offset": {
+      const text = prepareSvgText(probes, request, "direct", "start");
+      text.setAttribute(
+        "dominant-baseline",
+        request.operation === "raw-middle-bbox-y-offset" ? "middle" : "hanging"
+      );
+      return { kind: "length", length: text.getBBox().y };
+    }
     case "bounding-client-rect-width": {
       const text = prepareSvgText(probes, request, "direct", "start");
       return { kind: "length", length: Math.max(0, text.getBoundingClientRect().width) };
@@ -273,6 +284,9 @@ function emptyMeasurement(request: HostTextMeasureRequest): HostTextMeasureResul
     case "tspan-bbox-height":
     case "simple-bbox-height":
     case "raw-bbox-height":
+    case "raw-bbox-y-offset":
+    case "raw-middle-bbox-y-offset":
+    case "raw-hanging-bbox-y-offset":
     case "create-text-bbox-y-offset":
     case "create-text-middle-bbox-y-offset":
       return { kind: "length", length: 0 };
@@ -560,6 +574,7 @@ function prepareSvgText(
   anchor: "start" | "middle"
 ): SVGTextElement {
   const element = shape === "direct" ? probes.directText : probes.tspanText;
+  element.removeAttribute("dominant-baseline");
   applySvgTextStyle(element, request);
   element.setAttribute("x", "0");
   element.setAttribute("y", "0");

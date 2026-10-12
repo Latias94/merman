@@ -153,7 +153,7 @@ Native previews should measure with the same `TextPaint`/`StaticLayout` configur
 display; WebView previews should use a prepared DOM/canvas cache rather than block a render thread
 on UI work. Construction never invokes the callback.
 
-The independent text-measurement protocol has 19 operations (`0..18`). Construct handled results
+The independent text-measurement protocol has 22 operations (`0..21`). Construct handled results
 with `MermanTextMeasureResult.metrics`, `.length`, `.horizontalExtents`, or
 `.wrappedWithRawWidth`; each factory validates its required fields. Return `null` when a request
 cannot be answered accurately and Merman falls back per request. Callback exceptions are cleared at

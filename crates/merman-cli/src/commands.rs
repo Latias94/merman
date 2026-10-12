@@ -11,6 +11,7 @@ use crate::io::{read_input, write_stdout_line};
 use crate::output::LocalPreflight;
 use crate::resources::ResolvedResourcePolicy;
 use crate::runtime::{ExecutionContext, SharedWriter};
+#[cfg(feature = "analysis")]
 use serde::Serialize;
 use serde_json::Value;
 

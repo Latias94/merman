@@ -103,23 +103,25 @@ that patch once. Preparation and pre-apply failures leave the caller unchanged. 
 generated projections or copy partial files from the disposable worktree; fix the owner failure and
 rerun the same command.
 
-README files are ordinary documentation and are not generated version projections. Before immutable preflight, perform a release-state documentation pass across the root README, every package README shipped by an authorized surface, and the closest installation guides:
+README files are ordinary documentation and are not generated version projections. Before
+immutable preflight, prepare the root README, every package README shipped by an authorized
+surface, and the closest installation guides for the target release:
 
-- Make the latest published registry or GitHub Release version explicit when the source tree is ahead of it.
-- Use the exact target prerelease version in Cargo dependency examples that will ship inside the target crate or archive; do not leave a moving default-branch Git dependency in release-facing examples.
-- Keep source-only Git commands only when the surrounding text labels them as source installs and the command pins a reviewed 40-character commit.
-- Remove stale future tense such as “after this version is published”, old published baselines, and candidate wording once external publication evidence exists.
-- Review package-local READMEs included by `cargo package`, cargo-dist, npm, Python, Flutter, Apple, Android, Typst, or VSIX packaging, not only the repository root README.
+- Write the final user instructions before packaging: target version, minimum toolchain, supported capabilities, and copyable install/import/run examples.
+- Use the exact target prerelease version in release-facing dependency examples. Label source-only Git installs and pin a reviewed 40-character commit.
+- Present normal use directly, without waiting-for-publication conditions such as “after this version is published” or “before publication, build locally”. Keep local builds in contributor/development sections.
+- Keep the root README focused on onboarding. Put detailed migrations in upgrade guides, and candidate status, pending channels, registry availability, source identities, and publication receipts in release records. Target-version usage examples do not assert registry acceptance.
+- Inspect the README bytes in the prepared crate, archive, or package before freezing its source. Complete the user documentation in this step rather than planning a post-publication README fix.
 
 Use a broad README version search before preflight and again after every publication or recovery:
 
 ```bash
 rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
-  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|[Aa]fter .*is available|[Bb]efore publication|not yet published|git\s*=\s*"https://github\.com/Latias94/merman' \
   README.md CHANGELOG.md crates distribution docs platforms tools
 ```
 
-Classify every match instead of blindly replacing it. Historical reports may retain historical wording; current installation guidance must match the intended release state. A cancelled or completed release has no generated README mode to restore, but a successful or partially recovered publication can require a new documentation commit so `main` stops describing an already-published version as unavailable.
+Classify every match instead of blindly replacing it. Historical reports retain their dated context. Current user guides describe the target package; release records describe which surfaces are prepared, accepted, or still pending. A cancelled release leaves ordinary source documentation in place; update it to match the next intended package when that target changes.
 
 VS Code, Typst, and `roughr-merman` have independent version axes. Update them only when that surface is being released, and preserve their bundled Merman provenance.
 
@@ -283,29 +285,25 @@ For registry observation or recovery, read [Registry Propagation And Recovery](.
 
 Download the exact attempt's `crates-io-receipts-<source-sha>-attempt-<N>` artifact for inspection. Every derived topological batch needs both its prepared receipt and a `complete` result with matching package checksums. A missing batch, an unresolved acceptance state, or a conflicting checksum leaves delivery incomplete. The owning publisher checks both crates.io and Cargo's sparse index; a successful API lookup alone is insufficient. Read-only evidence inspection does not authorize another upload.
 
-### Post-Publication Documentation Reconciliation
+### Publication Verification And Documentation Recovery
 
-Treat each registry and artifact channel independently. After any successful publication or
-recovery, query the owning registry or GitHub Release, update current installation commands and
-availability prose only for the surfaces that actually published, and move
-`docs/release/PUBLISH_ORDER.md` from candidate state to the published workspace baseline when the
-Rust release lands. Rerun the broad README version search above and account for every match.
+After publication or recovery, query each owning registry or GitHub Release independently and
+record observed versions, checksums, availability, and receipts in `docs/release/PUBLISH_ORDER.md`.
+The README and install examples should already describe the frozen target package. Audit them
+for missed preparation defects; any correction to an immutable package takes effect in a later
+release. Keep pending channels explicit in the release record.
 
 For npm groups, query every member's exact version integrity and complete dist-tag map, compare the
 integrity with the verified package-group manifest, and verify the requested tag before declaring
 the group released. First publications can expose registry-assigned tags beyond the requested tag;
 record the observed state instead of assuming the requested tag is the only one. Confirm that the
-published tarball already contains the dated package-local changelog, then update current README
-availability prose. If the immutable tarball shipped stale documentation, record that defect and
+published tarball contains the prepared README and dated package-local changelog.
+If the immutable tarball shipped stale documentation, record that defect and
 fix the source for the next version instead of claiming the registry artifact was corrected.
 Also query npm provenance attestations for every member. Do not treat an embedded
 `artifacts/provenance.json` file as an npm attestation; if a manual bootstrap has none, state that
 boundary in current release documentation and direct users to the verified package-group artifact
 and release record instead.
-
-Do not report the release complete while a current README installation command names an older
-workspace prerelease or current prose says the published target is unavailable. Commit the
-documentation reconciliation before completion, or report it as explicit unfinished release work.
 
 ## Recovery
 

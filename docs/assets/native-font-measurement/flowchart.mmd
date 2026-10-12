@@ -1,0 +1,4 @@
+flowchart TD
+    A[Start a long-running background task] --> B{Did the build finish successfully?}
+    B -->|Yes| C[Publish release artifacts to the registry]
+    B -->|No| D[Collect logs and notify the on-call engineer]

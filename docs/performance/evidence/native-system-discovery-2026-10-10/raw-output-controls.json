@@ -1,0 +1,14 @@
+[
+  {
+    "family": "flowchart",
+    "raw_stdout_sha256": "97a476b792e1c1773ae7893cb7f1ce0278cc766c88faec874463a5ccd8d7cd84"
+  },
+  {
+    "family": "er",
+    "raw_stdout_sha256": "e4f39a53fbe65d256c8ef5fdb6dc68c0b5a9de8bd46a39325972329c247c65b0"
+  },
+  {
+    "family": "sequence",
+    "raw_stdout_sha256": "eb73ae6759ee061b69dfbc3b0c782efe9a0f6f52d84fb5aefda1f3b51d492fac"
+  }
+]

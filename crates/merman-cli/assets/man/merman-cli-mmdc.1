@@ -1,10 +1,10 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH MERMAN-CLI-MMDC 1 2026-08-15 "Merman 0.8.0" "Merman CLI Manual"
+.TH MERMAN-CLI-MMDC 1 2026-08-15 "Merman 0.9.0" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-mmdc \- Render through the pinned mmdc\-compatible interface
 .SH SYNOPSIS
-\fBmerman\-cli mmdc\fR [\fB\-i\fR|\fB\-\-input\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-a\fR|\fB\-\-artefacts\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-e\fR|\fB\-\-outputFormat\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-backgroundColor\fR] [\fB\-C\fR|\fB\-\-cssFile\fR] [\fB\-f\fR|\fB\-\-pdfFit\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-p\fR|\fB\-\-puppeteerConfigFile\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-iconPacks\fR] [\fB\-\-iconPacksNamesAndUrls\fR] [\fB\-c\fR|\fB\-\-configFile\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svgId\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
+\fBmerman\-cli mmdc\fR [\fB\-i\fR|\fB\-\-input\fR] [\fB\-o\fR|\fB\-\-output\fR] [\fB\-a\fR|\fB\-\-artefacts\fR] [\fB\-j\fR|\fB\-\-jobs\fR] [\fB\-e\fR|\fB\-\-outputFormat\fR] [\fB\-\-svg\-pipeline\fR] [\fB\-b\fR|\fB\-\-backgroundColor\fR] [\fB\-C\fR|\fB\-\-cssFile\fR] [\fB\-f\fR|\fB\-\-pdfFit\fR] [\fB\-q\fR|\fB\-\-quiet\fR] [\fB\-p\fR|\fB\-\-puppeteerConfigFile\fR] [\fB\-s\fR|\fB\-\-scale\fR] [\fB\-\-raster\-fit\-width\fR] [\fB\-\-raster\-fit\-height\fR] [\fB\-\-raster\-max\-width\fR] [\fB\-\-raster\-max\-height\fR] [\fB\-\-raster\-max\-pixels\fR] [\fB\-\-raster\-unbounded\fR] [\fB\-\-pdf\-filter\-scale\fR] [\fB\-\-pdf\-max\-filter\-image\-pixels\fR] [\fB\-\-pdf\-filter\-images\-unbounded\fR] [\fB\-\-embedded\-image\-max\-bytes\fR] [\fB\-\-embedded\-image\-max\-total\-bytes\fR] [\fB\-\-embedded\-image\-max\-pixels\fR] [\fB\-\-embedded\-image\-max\-total\-pixels\fR] [\fB\-\-embedded\-images\-unbounded\fR] [\fB\-\-allow\-network\fR] [\fB\-\-allow\-private\-network\fR] [\fB\-\-iconPacks\fR] [\fB\-\-iconPacksNamesAndUrls\fR] [\fB\-c\fR|\fB\-\-configFile\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-font\-file\fR] [\fB\-\-font\-dir\fR] [\fB\-\-font\-measurement\fR] [\fB\-\-font\-system\fR] [\fB\-\-math\-renderer\fR] [\fB\-w\fR|\fB\-\-width\fR] [\fB\-H\fR|\fB\-\-height\fR] [\fB\-I\fR|\fB\-\-svgId\fR] [\fB\-\-hand\-drawn\-seed\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-\-operation\-timeout\-ms\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR]
 .SH DESCRIPTION
 Render through the pinned mmdc\-compatible interface
 .SH OPTIONS
@@ -206,6 +206,35 @@ Override the local "today" date for time\-dependent diagrams
 .TP
 \fB\-\-fixed\-local\-offset\-minutes\fR \fI<FIXED_LOCAL_OFFSET_MINUTES>\fR
 Override the local timezone offset in minutes for time\-dependent diagrams
+.SH "NATIVE FONTS"
+.TP
+\fB\-\-font\-file\fR \fI<PATH>\fR
+Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence
+.TP
+\fB\-\-font\-dir\fR \fI<PATH>\fR
+Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable
+.TP
+\fB\-\-font\-measurement\fR \fI<FONT_MEASUREMENT>\fR
+Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+deterministic
+.IP \(bu 2
+native
+.RE
+.TP
+\fB\-\-font\-system\fR \fI<FONT_SYSTEM>\fR
+Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested
+.sp
+\fIPossible values:\fR
+.RS 14
+.IP \(bu 2
+off
+.IP \(bu 2
+on
+.RE
 .SH "DETERMINISTIC RENDERING"
 .TP
 \fB\-\-hand\-drawn\-seed\fR \fI<HAND_DRAWN_SEED>\fR
@@ -243,4 +272,4 @@ Examples:
 
 More options: `merman\-cli mmdc \-\-help` shows advanced compatibility, renderer, resource, and security controls.
 .SH VERSION
-v0.8.0
+v0.9.0

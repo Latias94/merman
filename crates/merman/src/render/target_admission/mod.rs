@@ -80,11 +80,19 @@ pub enum TargetFontSource {
     Embedded,
     System,
     Mixed,
+    /// Caller-owned native font context; not a theme-retained or ambient-system classification.
+    NativeContext,
 }
 
 #[cfg(feature = "svg")]
 impl TargetFontSource {
-    pub const ALL: &'static [Self] = &[Self::None, Self::Embedded, Self::System, Self::Mixed];
+    pub const ALL: &'static [Self] = &[
+        Self::None,
+        Self::Embedded,
+        Self::System,
+        Self::Mixed,
+        Self::NativeContext,
+    ];
 
     pub const fn id(self) -> &'static str {
         match self {
@@ -92,6 +100,7 @@ impl TargetFontSource {
             Self::Embedded => "embedded",
             Self::System => "system",
             Self::Mixed => "mixed",
+            Self::NativeContext => "native-context",
         }
     }
 }
@@ -535,7 +544,14 @@ fn prepared_text_font_source(evidence: &RenderEvidence) -> TargetFontSource {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn export_font_source(fonts: merman_export::ExportFontPlan) -> TargetFontSource {
-    target_font_source(fonts.used_embedded_fonts(), fonts.used_system_fonts())
+    if matches!(
+        fonts.source_mode(),
+        merman_export::ExportFontMode::NativeContext
+    ) {
+        TargetFontSource::NativeContext
+    } else {
+        target_font_source(fonts.used_embedded_fonts(), fonts.used_system_fonts())
+    }
 }
 
 #[cfg(feature = "svg")]
