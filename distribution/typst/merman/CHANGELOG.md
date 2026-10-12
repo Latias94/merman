@@ -4,18 +4,19 @@ The Typst package has its own version axis; its bundled Merman version is record
 
 ## [0.5.0] - Unreleased
 
-This entry prepares the wrapper bundling Merman 0.9.0 relative to published 0.4.0. It does not announce Typst Universe availability. Plugin ABI 2 and minimum Typst 0.15.0 remain unchanged. [PR #194](https://github.com/Latias94/merman/pull/194)
+Bundles Merman 0.9.0. Existing rendering functions, figures, profiles, and raw-block handlers remain compatible with 0.4.0; plugin ABI 2, options schema 2, and minimum Typst 0.15.0 are unchanged. Update your import to `@preview/merman:0.5.0` when the package becomes available. [PR #194](https://github.com/Latias94/merman/pull/194)
 
 ### Changed
 
-- SVG leaves the canvas background unset. Use `background: "white"` when opaque artwork is needed; the surrounding Typst page controls presentation otherwise. [PR #180](https://github.com/Latias94/merman/pull/180)
-- Deep diagram ownership and cleanup are safer across valid, malformed, cancelled, and resource-rejected input, while the wrapper's Mermaid JSON and plugin ABI remain compatible. [PR #191](https://github.com/Latias94/merman/pull/191)
+- SVG backgrounds are transparent. Use `background: "white"` when opaque artwork is needed; otherwise the Typst page shows through. [PR #180](https://github.com/Latias94/merman/pull/180)
 
 ### Fixed
 
-- Unicode HTML labels wrap hyphens, slashes, soft hyphens, and whitespace consistently without losing decoded label text. [PR #192](https://github.com/Latias94/merman/pull/192), [PR #193](https://github.com/Latias94/merman/pull/193)
-- Class and ER hollow relationship markers remain hollow in resvg-safe output. [PR #182](https://github.com/Latias94/merman/pull/182)
-- Block children reflect later metadata updates and repeated composite declarations retain their first child list and columns. [PR #191](https://github.com/Latias94/merman/pull/191)
+- Long HTML labels wrap consistently between layout and exported SVG, respecting inherited whitespace rules, preserved newlines, non-breaking spaces, and selected soft hyphens. Decoded angle brackets remain literal text during measurement. Thanks [@kossoy](https://github.com/kossoy) for the report. [PR #192](https://github.com/Latias94/merman/pull/192), [PR #193](https://github.com/Latias94/merman/pull/193), [issue #190](https://github.com/Latias94/merman/issues/190)
+- Markdown code spans and escaped markup follow each diagram’s label rules: XHTML labels keep literal angle brackets, while Flowchart HTML labels follow Mermaid’s raw-token behavior. Review affected document snapshots. [PR #193](https://github.com/Latias94/merman/pull/193)
+- Deeply nested diagrams are safer to parse and clean up after malformed input, cancellation, or a resource-limit error. Mermaid JSON and plugin ABI remain compatible. [PR #191](https://github.com/Latias94/merman/pull/191)
+- Hollow Class and ER relationship markers stay hollow in Typst documents. Thanks [@glowcouch](https://github.com/glowcouch) for the report. [PR #182](https://github.com/Latias94/merman/pull/182), [issue #181](https://github.com/Latias94/merman/issues/181)
+- Block children reflect later style, class, and type updates; repeated composite declarations retain their first child list and columns. [PR #191](https://github.com/Latias94/merman/pull/191)
 
 ## [0.4.0] - 2026-10-09
 

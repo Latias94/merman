@@ -6,9 +6,11 @@ Published `@preview/merman:0.4.0` remains the 2026-10-09 package bundling Merman
 
 ## User contract
 
-The candidate retains plugin ABI 2 and the minimum Typst 0.15.0 declared by its package. Use the [package README](../../distribution/typst/merman/README.md) for imports and rendering options. The prepared documentation uses `@preview/merman:0.5.0`; local staging belongs in development instructions and is not evidence of registry availability.
+The candidate retains the existing rendering functions, figures, profiles, and raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0 declared by its package. Use the [package README](../../distribution/typst/merman/README.md) for imports and rendering options. The prepared documentation uses `@preview/merman:0.5.0`; local staging belongs in development instructions and is not evidence of registry availability.
 
-Relative to the 0.4.0 bundle, Merman 0.9.0 corrects Unicode HTML wrapping and resvg-safe hollow markers, leaves the core SVG canvas unset unless explicitly requested, and improves deep diagram cleanup and Block metadata consistency. Use `#mermaid(source, background: "white")` when the document needs opaque artwork. The plugin remains a deterministic, system-independent WASM surface; CLI native font discovery is not a Typst capability.
+Relative to the 0.4.0 bundle, Merman 0.9.0 corrects Unicode HTML wrapping, decoded whitespace and Markdown code/escaped-text handling, and resvg-safe hollow markers, leaves the core SVG canvas unset unless explicitly requested, and improves deep diagram cleanup and Block metadata consistency. Use `#mermaid(source, background: "white")` when the document needs opaque artwork. The plugin remains a deterministic, system-independent WASM surface; CLI native font discovery is not a Typst capability.
+
+ELK defaults, the top-level Mermaid `layout` setting, and Dagre recipes already belong to the published 0.4.0 package. They are not new 0.5.0 migrations. Review snapshots containing long labels, preserved newlines, non-breaking spaces, soft hyphens, or Markdown code/escaped markup.
 
 The Typst package does not expose the native ABI or the new edge-geometry operation. Its five callable ABI operations and capability catalog remain the authority. The development smoke interpreter upgrade is a tool change, not an added Typst runtime feature.
 

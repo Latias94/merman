@@ -62,6 +62,12 @@ CLI capabilities retain outer schema 2 and advance `cli_contract_version` from 5
 
 Native `render -e` and `batch -e` are removed in 0.9.0 as scheduled by 0.8.x. Replace `merman-cli render diagram.mmd -e png` with `merman-cli render diagram.mmd -f png`, and use `-f` / `--format` for `batch` too. The pinned `merman-cli mmdc -e/--outputFormat` interface remains supported.
 
+## Labels and Typst documents
+
+Review snapshots containing long HTML labels, preserved newlines, non-breaking spaces, soft hyphens, Markdown code spans, or escaped tags. Layout and exported SVG now share wrapping and decoded-text semantics. XHTML label paths keep literal angle brackets; Flowchart HTML labels follow Mermaid's raw-token handling. See [PR #192](https://github.com/Latias94/merman/pull/192) and [PR #193](https://github.com/Latias94/merman/pull/193).
+
+Typst `@preview/merman:0.5.0` keeps 0.4.0's rendering functions, figures, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Upgrade the import once the package is published and review the [package changelog](../../distribution/typst/merman/CHANGELOG.md). Use `background: "white"` for opaque artwork. ELK defaults and Dagre opt-in recipes already shipped in 0.4.0; this update does not add another default-layout migration or native-font measurement.
+
 ## Edge geometry and terminal output
 
 Use the SVG-capable `edge-geometry-json` operation or typed `RenderTarget::EdgeGeometryJson` for clipped points and painted label centers in Flowchart, Swimlane, and Agentflow. `layout-json` still returns pre-paint layout coordinates. Other families return an empty edge list. The operation observes SVG output admission as well as layout-work limits. Web packages with rendering expose `edgeGeometryJson`, `edgeGeometryObject`, and `edgeGeometryJsonWithTextMeasurer`.
@@ -77,6 +83,8 @@ Rust uses `with_node_padding`, `with_node_padding_x`, and `with_node_padding_y`.
 ## Binding artifacts and callbacks
 
 Keep generated wrappers and native/WASM artifacts from one release. Native ABI 3, UniFFI API 7, Android JNI API 2, Web transport API 5, Options JSON schema 2, and ASCII report schema 3 remain unchanged. An unchanged transport number does not make arbitrary artifact versions interchangeable; query the installed runtime catalog before using additive operations.
+
+Custom host measurers now receive decoded HTML line-width candidates through `CanvasMeasureTextWidth` in the `Wrap` phase and must return a length. Update callbacks that only handled wrapped-metrics requests; preserve the full candidate text instead of interpreting decoded angle brackets as markup.
 
 Text-measurement protocol 1 adds signed length operations `raw-bbox-y-offset` (19), `raw-middle-bbox-y-offset` (20), and `raw-hanging-bbox-y-offset` (21). Update exhaustive custom callback handlers and preserve signed results; inspect [host measurement](../bindings/HOST_TEXT_MEASUREMENT.md) for result tagging, whitespace, and unsupported-operation behavior. Native CLI font flags do not add native font discovery to browser or default mobile/Python artifacts.
 

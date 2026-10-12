@@ -188,12 +188,13 @@ To explicitly use the fonts installed on the current machine instead:
 merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 ```
 
-System discovery can dominate short CLI calls when many fonts are installed.
-In one exploratory Windows SVG probe, complete-process medians were about
-43–46 ms with the default and 46–53 ms with a fixed font; the previous
-system-discovery default took about 1.45–1.47 seconds. These small-Flowchart
-observations are host-specific, use warm filesystem caches and do not predict
-PNG/JPEG/PDF latency. See the [runtime-policy report and raw samples](../../docs/performance/cli_font_runtime_policy_2026-10-12.md).
+Explicit font files added roughly 2–7 ms per invocation in two small Windows
+Flowchart SVG probes: about 43–46 ms with default measurement and 46–53 ms with
+fixed fonts, using warm filesystem caches. These observations do not predict
+large-diagram or PNG/JPEG/PDF latency. System-font discovery can add much more
+work; supply the fonts used by your document when precise wrapping and node
+bounds matter. The [saved measurements](../../docs/performance/cli_font_runtime_policy_2026-10-12.md)
+record this particular probe.
 
 `fontFamily` alone does not enable actual-font measurement. Use
 `--font-measurement deterministic` to explicitly select the default layout without
