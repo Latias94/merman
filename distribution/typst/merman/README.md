@@ -44,7 +44,7 @@ The API and example sections below describe the `0.5.0` package.
 
 ## Upgrading from 0.4.0
 
-The wrapper retains its rendering functions, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Update the package import to `@preview/merman:0.5.0`; the bundled engine moves from Merman 0.8.0 to 0.9.0. Review long-label wrapping, Markdown code/escaped markup, hollow relationship markers, and Block metadata in document snapshots. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md) for the corresponding fixes and PRs.
+The wrapper retains its rendering functions, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Update the package import to `@preview/merman:0.5.0`; the bundled engine moves from Merman 0.8.0 to 0.9.0. Unicode line breaking improves long-label wrapping, and the embedded SVG path adapts Mermaid's marker CSS selectors for Typst compatibility. Review affected labels, Markdown code/escaped markup, hollow relationship markers, and Block metadata in document snapshots. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md) for the corresponding fixes and PRs.
 
 The ELK layout defaults and Dagre recipes already shipped in 0.4.0. Upgrading from 0.4.0 does not introduce another default-layout migration; users upgrading from 0.3.0 can use [Choose a Layout](#choose-a-layout).
 

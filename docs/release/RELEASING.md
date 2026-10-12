@@ -223,7 +223,7 @@ without AI assistance. Prepare the complete patch and PR description for that re
 
 ## 0.9.0 Preparation Checklist
 
-Workspace 0.9.0 was published on 2026-10-12 from `f754a3c3077d35d2a372c2fec04f9e9b87db1c3f` after immutable preflight. The [publication snapshot](PUBLISH_ORDER.md#090-publication-snapshot) records Rust, CLI/LSP, and independent-prerequisite receipts. Typst wrapper 0.5.0 is prepared with the same intended publication date and remains pending separate Universe submission. Other package channels have their own publication owners.
+Workspace 0.9.0 was published on 2026-10-12 from `f754a3c3077d35d2a372c2fec04f9e9b87db1c3f` after immutable preflight. The [publication snapshot](PUBLISH_ORDER.md#090-publication-snapshot) records Rust, CLI/LSP, and independent-prerequisite receipts. Typst wrapper 0.5.0 was submitted independently on 2026-10-13 in [Universe PR #6098](https://github.com/typst/packages/pull/6098); package checks passed, and registry acceptance remains pending. Its [preparation record](TYPST_050_PREPARATION.md) binds the refreshed documentation to the frozen 0.9.0 runtime. Other package channels have their own publication owners.
 
 - [x] Complete independent roughr 0.12.4 public-API and published-consumer compatibility checks, then separately authorize its publication and confirm registry visibility.
 - [x] Complete independent Tree-sitter 0.3.1 generator/runtime/language, package, and provenance checks, then separately authorize prerequisite publication and confirm registry visibility before workspace dependents.
@@ -250,7 +250,10 @@ Completed items below have owner or registry evidence in the
 - [x] Publish and verify the Android AAR after native, JVM and Maven staging checks.
 - [x] Publish the Apple XCFramework archive and matching checksum after its owner gates pass.
 - [x] Verify Scoop's main-bucket 0.9.0 archive URL/checksum and update user installation guidance.
-- [ ] Confirm the official Homebrew bot update passes platform checks and that the formula and bottles expose 0.9.0.
+- [x] Submit the frozen Typst 0.5.0 package with the separately authorized documentation refresh and pass the Universe package checks.
+- [ ] Confirm Typst Universe acceptance and registry availability of `@preview/merman:0.5.0`.
+- [x] Confirm the official Homebrew bot update passed platform checks and merged with the 0.9.0 source and bottle entries.
+- [ ] Confirm the public Homebrew formula API exposes 0.9.0 after propagation.
 - [ ] Confirm upstream acceptance and registry propagation of the updated WinGet 0.9.0 submission.
 
 ## Release Evidence
