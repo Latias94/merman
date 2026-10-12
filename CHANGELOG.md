@@ -29,6 +29,7 @@ For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/releas
 
 ### Fixed
 
+- Playground loading and failed-load messages are centered within their panels, including while the editor module loads. [#194](https://github.com/Latias94/merman/pull/194)
 - Long paths and words in HTML labels now wrap after hyphens and at supported Unicode break opportunities instead of overflowing their nodes. Preserved newlines, non-breaking spaces, and soft hyphens behave consistently between layout and exported SVG, including Typst and image/PDF output. Thanks [@kossoy](https://github.com/kossoy) for the report. [#192](https://github.com/Latias94/merman/pull/192), [#193](https://github.com/Latias94/merman/pull/193), [issue #190](https://github.com/Latias94/merman/issues/190)
 - Markdown code spans and escaped markup now follow each diagram’s label rules. XHTML labels preserve literal angle brackets; Flowchart HTML labels follow Mermaid’s raw-token handling. Review snapshots containing code or escaped tags. [#193](https://github.com/Latias94/merman/pull/193)
 - Deeply nested diagrams are handled safely through parsing, cloning, maintained JSON export, and cleanup, including errors and cancellation. Existing resource limits still apply. [#191](https://github.com/Latias94/merman/pull/191)
