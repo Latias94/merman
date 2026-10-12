@@ -4,6 +4,7 @@ use crate::model::{
     IshikawaSubGroupLayout, IshikawaTextLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
+use crate::theme::PresentationTheme;
 use crate::{Error, Result};
 use merman_core::diagrams::ishikawa::{
     IshikawaDiagramRenderModel, IshikawaNodeRenderModel as IshikawaNode,
@@ -58,6 +59,9 @@ pub(crate) fn layout_ishikawa_diagram_typed(
         })?;
     let mut ctx = LayoutCtx {
         cfg: cfg.clone(),
+        font_family: PresentationTheme::new(effective_config)
+            .ishikawa()
+            .font_family,
         measurer,
         records: &model.nodes,
         bounds: BoundsAcc::new(),
@@ -193,6 +197,7 @@ fn count_descendants(records: &[IshikawaNode], root: usize, seen: &mut [bool]) -
 
 struct LayoutCtx<'a> {
     cfg: IshikawaLayoutSettings,
+    font_family: String,
     measurer: &'a dyn TextMeasurer,
     records: &'a [IshikawaNode],
     bounds: BoundsAcc,
@@ -618,24 +623,35 @@ fn text_layout(
 ) -> IshikawaTextLayout {
     let lines = split_lines(text);
     let line_height = ctx.cfg.font_size * 1.05;
-    let measure_style = ishikawa_text_measure_style(class_name, ctx.cfg.font_size);
+    let measure_style =
+        ishikawa_text_measure_style(class_name, ctx.cfg.font_size, &ctx.font_family);
     let horizontal = ishikawa_text_bbox_x(ctx, &lines, &measure_style, class_name, anchor);
     let width = horizontal.left + horizontal.right;
     let single_height = ishikawa_text_bbox_height_px(class_name, ctx.cfg.font_size);
-    let height = if lines.is_empty() {
+    let compatibility_height = if lines.is_empty() {
         single_height
     } else {
         (((lines.len() - 1) as f64 * line_height) + single_height).max(single_height)
     };
 
     let min_x = x - horizontal.left;
-    let min_y = match vertical_mode {
+    let compatibility_min_y = match vertical_mode {
         VerticalMode::Middle => {
-            y - height / 2.0 - ishikawa_middle_bbox_y_offset_px(class_name, ctx.cfg.font_size)
+            y - compatibility_height / 2.0
+                - ishikawa_middle_bbox_y_offset_px(class_name, ctx.cfg.font_size)
         }
-        VerticalMode::Baseline => y - height,
+        VerticalMode::Baseline => y - compatibility_height,
         VerticalMode::Hanging => y,
     };
+    let (min_y, height) = ishikawa_measured_vertical_bounds(
+        ctx.measurer,
+        &lines,
+        &measure_style,
+        line_height,
+        y,
+        vertical_mode,
+    )
+    .unwrap_or((compatibility_min_y, compatibility_height));
 
     IshikawaTextLayout {
         text: text.to_string(),
@@ -655,15 +671,53 @@ fn text_layout(
     }
 }
 
-fn ishikawa_text_measure_style(class_name: &str, font_size: f64) -> TextStyle {
+fn ishikawa_measured_vertical_bounds(
+    measurer: &dyn TextMeasurer,
+    lines: &[String],
+    style: &TextStyle,
+    line_height: f64,
+    y: f64,
+    vertical_mode: VerticalMode,
+) -> Option<(f64, f64)> {
+    if lines.is_empty() {
+        return None;
+    }
+    let first_baseline = y - lines.len().saturating_sub(1) as f64 * line_height / 2.0;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for (index, line) in lines.iter().enumerate() {
+        let offset = match vertical_mode {
+            VerticalMode::Middle => {
+                measurer.measure_svg_raw_text_middle_bbox_y_offset_px(line, style)?
+            }
+            VerticalMode::Baseline => {
+                measurer.measure_svg_raw_text_bbox_y_offset_px(line, style)?
+            }
+            VerticalMode::Hanging => {
+                measurer.measure_svg_raw_text_hanging_bbox_y_offset_px(line, style)?
+            }
+        };
+        let height = measurer
+            .measure_svg_raw_text_bbox_height_px(line, style)
+            .max(0.0);
+        let row_y = first_baseline + index as f64 * line_height + offset;
+        min_y = min_y.min(row_y);
+        max_y = max_y.max(row_y + height);
+    }
+    Some((min_y, (max_y - min_y).max(0.0)))
+}
+
+fn ishikawa_text_measure_style(class_name: &str, font_size: f64, font_family: &str) -> TextStyle {
     if class_name == "ishikawa-head-label" {
         TextStyle {
+            font_family: Some(font_family.to_string()),
             font_size: 14.0,
             font_weight: Some("600".to_string()),
             ..Default::default()
         }
     } else {
         TextStyle {
+            font_family: Some(font_family.to_string()),
             font_size,
             ..Default::default()
         }
@@ -863,5 +917,117 @@ impl BoundsAcc {
             max_x: self.max_x + padding,
             max_y: self.max_y + padding,
         })
+    }
+}
+
+#[cfg(test)]
+mod font_style_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn text_measurement_uses_the_render_theme_family_and_head_weight() {
+        let config = json!({
+            "fontFamily": "Cousine, sans-serif",
+            "themeVariables": {"fontFamily": "Different, sans-serif"}
+        });
+        let family = PresentationTheme::new(&config).ishikawa().font_family;
+        assert_eq!(family, "Cousine, sans-serif");
+
+        let head = ishikawa_text_measure_style("ishikawa-head-label", 18.0, &family);
+        assert_eq!(head.font_family.as_deref(), Some(family.as_str()));
+        assert_eq!(head.font_size, 14.0);
+        assert_eq!(head.font_weight.as_deref(), Some("600"));
+
+        let cause = ishikawa_text_measure_style("ishikawa-label cause", 18.0, &family);
+        assert_eq!(cause.font_family.as_deref(), Some(family.as_str()));
+        assert_eq!(cause.font_size, 18.0);
+        assert_eq!(cause.font_weight, None);
+    }
+
+    #[test]
+    fn multiline_vertical_geometry_uses_profile_bbox_offsets_and_actual_row_spacing() {
+        struct VerticalProbe;
+
+        impl TextMeasurer for VerticalProbe {
+            fn measure(&self, _text: &str, _style: &TextStyle) -> crate::text::TextMetrics {
+                panic!("SVG vertical facts must not use generic measurement")
+            }
+
+            fn measure_svg_raw_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+                40.0
+            }
+
+            fn measure_svg_raw_text_bbox_y_offset_px(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> Option<f64> {
+                Some(-30.0)
+            }
+
+            fn measure_svg_raw_text_middle_bbox_y_offset_px(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> Option<f64> {
+                Some(-18.0)
+            }
+
+            fn measure_svg_raw_text_hanging_bbox_y_offset_px(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> Option<f64> {
+                Some(2.0)
+            }
+        }
+
+        let lines = vec!["Alpha".to_string(), "Beta".to_string()];
+        let style = TextStyle::default();
+        assert_eq!(
+            ishikawa_measured_vertical_bounds(
+                &VerticalProbe,
+                &lines,
+                &style,
+                21.0,
+                100.0,
+                VerticalMode::Middle,
+            ),
+            Some((71.5, 61.0))
+        );
+        assert_eq!(
+            ishikawa_measured_vertical_bounds(
+                &VerticalProbe,
+                &lines,
+                &style,
+                21.0,
+                100.0,
+                VerticalMode::Baseline,
+            ),
+            Some((59.5, 61.0))
+        );
+        assert_eq!(
+            ishikawa_measured_vertical_bounds(
+                &VerticalProbe,
+                &lines,
+                &style,
+                21.0,
+                100.0,
+                VerticalMode::Hanging,
+            ),
+            Some((91.5, 61.0))
+        );
+        assert!(
+            ishikawa_measured_vertical_bounds(
+                &crate::text::DeterministicTextMeasurer::default(),
+                &lines,
+                &style,
+                21.0,
+                100.0,
+                VerticalMode::Middle,
+            )
+            .is_none()
+        );
     }
 }

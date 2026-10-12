@@ -24,6 +24,9 @@ object MermanTextMeasurementOperation {
     const val CANVAS_MEASURE_TEXT_WIDTH: Int = 16
     const val CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET: Int = 17
     const val RAW_BBOX_HEIGHT: Int = 18
+    const val RAW_BBOX_Y_OFFSET: Int = 19
+    const val RAW_MIDDLE_BBOX_Y_OFFSET: Int = 20
+    const val RAW_HANGING_BBOX_Y_OFFSET: Int = 21
 
     val ALL: IntArray = intArrayOf(
         MEASURE,
@@ -45,6 +48,9 @@ object MermanTextMeasurementOperation {
         CANVAS_MEASURE_TEXT_WIDTH,
         CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET,
         RAW_BBOX_HEIGHT,
+        RAW_BBOX_Y_OFFSET,
+        RAW_MIDDLE_BBOX_Y_OFFSET,
+        RAW_HANGING_BBOX_Y_OFFSET,
     )
 
     fun externalName(code: Int): String? = when (code) {
@@ -67,6 +73,9 @@ object MermanTextMeasurementOperation {
         CANVAS_MEASURE_TEXT_WIDTH -> "canvas-measure-text-width"
         CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET -> "create-text-middle-bbox-y-offset"
         RAW_BBOX_HEIGHT -> "raw-bbox-height"
+        RAW_BBOX_Y_OFFSET -> "raw-bbox-y-offset"
+        RAW_MIDDLE_BBOX_Y_OFFSET -> "raw-middle-bbox-y-offset"
+        RAW_HANGING_BBOX_Y_OFFSET -> "raw-hanging-bbox-y-offset"
         else -> null
     }
 
@@ -90,12 +99,18 @@ object MermanTextMeasurementOperation {
         CANVAS_MEASURE_TEXT_WIDTH -> MermanTextMeasurementResultKind.LENGTH
         CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET -> MermanTextMeasurementResultKind.LENGTH
         RAW_BBOX_HEIGHT -> MermanTextMeasurementResultKind.LENGTH
+        RAW_BBOX_Y_OFFSET -> MermanTextMeasurementResultKind.LENGTH
+        RAW_MIDDLE_BBOX_Y_OFFSET -> MermanTextMeasurementResultKind.LENGTH
+        RAW_HANGING_BBOX_Y_OFFSET -> MermanTextMeasurementResultKind.LENGTH
         else -> null
     }
 
     fun acceptsSignedLength(code: Int): Boolean = when (code) {
         CREATE_TEXT_BBOX_Y_OFFSET -> true
         CREATE_TEXT_MIDDLE_BBOX_Y_OFFSET -> true
+        RAW_BBOX_Y_OFFSET -> true
+        RAW_MIDDLE_BBOX_Y_OFFSET -> true
+        RAW_HANGING_BBOX_Y_OFFSET -> true
         else -> false
     }
 }

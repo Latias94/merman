@@ -7,7 +7,7 @@ registry metadata maintained by Homebrew, Scoop, or WinGet.
 ## Canonical release profile
 
 The standard CLI release is defined by the `cli-release` entry in
-`capabilities/artifact-profiles-v2.json`. Its 20 direct features must match in two places:
+`capabilities/artifact-profiles-v2.json`. Its direct features must match in two places:
 
 - `cli-release.cargo.features`;
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
@@ -31,10 +31,19 @@ layout accepted by `scripts/verify_cli_release_archive.py`.
 
 ## CLI contract migration
 
-Complete releases governed by this source contract report capability document schema 2 and CLI
-contract 5. Contract 5 retains contract 4's `-f/--format` native spelling, text-first `lint`,
-narrowed `detect`, and feature-gated top-level `rustdoc` workflow. It adds the ASCII capability
-subcontract and the Plain JSON stderr failure channel selected by `--ascii-report`. The standard
+Complete releases governed by the current source contract report capability document schema 2
+and CLI contract 6. Default source builds and the official release profile include `native-fonts`
+and `system-fonts`, while ordinary Mermaid SVG/PNG/JPEG/PDF output defaults to deterministic
+measurement without a native font context or system discovery for layout. PNG/JPEG/PDF painting
+can still load system fonts through the existing codec path. Explicit font files/directories
+enable native measurement with a closed set; `--font-measurement native` without sources or
+`--font-system on` explicitly requests system discovery when available. Fixed font contents
+and configuration avoid catalogue discovery for faster, reproducible native output. See the [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+
+Contract 6 retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
+`rustdoc` workflow, the ASCII capability subcontract, and the Plain JSON stderr failure channel
+selected by `--ascii-report`. Rust library, FFI, ASCII, and committed Rustdoc generation defaults
+remain unchanged. Published tags keep their own contract and verifier. The standard
 release command inventory is `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
 `lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`.
 The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
@@ -272,10 +281,11 @@ Formula's command or capability contract. Starting at `0.8.0`, a release tag wit
 is invalid and cannot fall back to the current branch's implementation. The installed binary's
 capability schema and digest must also match that tag's declared capability authority.
 
-Formula versions below `0.8.0` retain the legacy binary-only contract. The `0.8.x` release line must
-expose CLI contract 5, match the complete `cli-release` capability set, install four Homebrew
-completion files, and install all 15 standard-profile man pages. A later release line may
-advance the contract through its tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
+Formula versions below `0.8.0` retain the legacy binary-only contract. For `0.8.0` and later,
+verify the CLI contract declared by the selected release tag, match that tag's complete
+`cli-release` capability set, install four Homebrew completion files, and install all 15
+standard-profile man pages. Current-source CLI contract 6 does not redefine historical tags'
+contract 5; a new release advances the contract through its own tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
 `homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
 rather than falling back to the weaker check.
 
@@ -285,8 +295,8 @@ Use this shape when preparing the upstream Formula change for `0.8.0`:
 def install
   features = %w[
     all-diagrams analysis ascii icons jpeg layout-cytoscape layout-elk markdown math
-    network-icons parallel-markdown pdf png rustdoc shell-completions svg
-    system-clock system-random system-timezone system-timing
+    native-fonts network-icons parallel-markdown pdf png rustdoc shell-completions svg
+    system-clock system-fonts system-random system-timezone system-timing
   ]
 
   args = std_cargo_args(path: "crates/merman-cli", features:)

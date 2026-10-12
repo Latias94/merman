@@ -198,3 +198,91 @@ pub(super) fn foreign_object_html_wrapping<E>(
     checkpoint()?;
     Ok(width)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{foreign_object_html_wrapping, wrap_html_text};
+    use crate::text::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText};
+    use crate::text::{DeterministicTextMeasurer, TextStyle};
+    use std::convert::Infallible;
+
+    #[test]
+    fn break_spaces_fallback_reuses_layout_lines_with_trailing_spaces() {
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(|text, _| text.len() as f64);
+        let mut checkpoint = || Ok::<_, Infallible>(());
+        let text = NormalizedHtmlText::single_mode(
+            "iiii iiii iiii iiii iiii iiii",
+            HtmlWhiteSpace::BreakSpaces,
+        );
+        let lines = wrap_html_text(
+            &text,
+            Some(9.5),
+            measurer.as_ref(),
+            &TextStyle::default(),
+            &mut checkpoint,
+        )
+        .unwrap();
+        let lines = lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(lines, ["iiii ", "iiii ", "iiii ", "iiii ", "iiii iiii"]);
+    }
+
+    #[test]
+    fn normal_fallback_keeps_existing_trimmed_line_behavior() {
+        let measurer =
+            DeterministicTextMeasurer::default().with_width_callback(|text, _| text.len() as f64);
+        let mut checkpoint = || Ok::<_, Infallible>(());
+        let text = NormalizedHtmlText::single_mode(
+            "iiii iiii iiii iiii iiii iiii",
+            HtmlWhiteSpace::Normal,
+        );
+        let lines = wrap_html_text(
+            &text,
+            Some(9.5),
+            measurer.as_ref(),
+            &TextStyle::default(),
+            &mut checkpoint,
+        )
+        .unwrap();
+        let lines = lines
+            .iter()
+            .map(|line| line.text.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(lines, ["iiii iiii", "iiii iiii", "iiii iiii"]);
+    }
+
+    #[test]
+    fn nowrap_remains_unwrapped_and_break_spaces_errors_propagate() {
+        let mut checkpoint = || Ok::<_, Infallible>(());
+        let width = foreign_object_html_wrapping(
+            r#"<foreignObject width="9.5">"#,
+            r#"<div style="white-space: nowrap; width: 9.5px">iiii iiii</div>"#,
+            &mut checkpoint,
+        )
+        .unwrap();
+        let measurer = DeterministicTextMeasurer::default();
+        let text = NormalizedHtmlText::single_mode("iiii iiii", HtmlWhiteSpace::Nowrap);
+        let lines = wrap_html_text(
+            &text,
+            width,
+            &measurer,
+            &TextStyle::default(),
+            &mut checkpoint,
+        )
+        .unwrap();
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0].text, "iiii iiii");
+        let mut checkpoint = || Err::<(), _>("canceled");
+        let result = wrap_html_text(
+            &text,
+            width,
+            &measurer,
+            &TextStyle::default(),
+            &mut checkpoint,
+        );
+        assert_eq!(result.unwrap_err(), "canceled");
+    }
+}

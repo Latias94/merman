@@ -5,7 +5,7 @@
     "version": "0.8.0",
     "merman_version": "0.8.0",
     "mermaid_version": "12.1.0",
-    "capability_digest": "sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d",
+    "capability_digest": "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed",
     "profile": "rustdoc-static-v1"
   },
   "inputs": [

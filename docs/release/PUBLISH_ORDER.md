@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-06 (Asia/Shanghai)
+Last updated: 2026-10-12 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -119,13 +119,23 @@ implied by the presence of the source crates. Registry tarballs are immutable; i
 prerelease contains a moving sibling requirement, the correction takes effect only in a later
 release (or a new compatibility line), not by editing the already-published version in this tree.
 
+## Typst 0.4.0 publication
+
+Verified on 2026-10-12 (Asia/Shanghai): [Typst Universe](https://typst.app/universe/package/merman)
+lists `@preview/merman:0.4.0` as published on 2026-10-09. Its version mapping identifies
+Merman `0.8.0`, Typst plugin ABI `2`, and a minimum Typst version of `0.15.0`.
+Normal users can import the registry package directly; `--package-path` is for testing local builds.
+This registry observation does not assert a byte-for-byte comparison with a new source build.
+The published package still contains preparation-time README wording; the current source README
+corrects its installation guidance without changing the already-published WASM artifact.
+
 ## Typst Package Surface
 
 The Typst wrapper is an independent publication surface. `@preview/merman:0.3.0` was published to Typst Universe on 2026-09-01 from the Merman `0.8.0-alpha.6` source line and Typst compiler `0.15.0`. It is not published by crates.io: `merman-typst-plugin@0.8.0-alpha.6` is the Cargo transport crate, while `@preview/merman:0.3.0` is the user-facing Typst package containing the frozen wrapper, size-optimized WASM artifact, and third-party legal materials. Build provenance remains in the private artifact directory and is not part of the registry package.
 
 Version `0.3.0` is the first Typst package rebuilt after the text-measurement closure reduction. ICU4X collation data and generated font-metric tables are no longer linked into the production artifact; the plugin keeps deterministic measurement and the existing ABI 2 exports. The package version changes because the shipped implementation closure and size characteristics are materially different, while the wrapper protocol remains compatible.
 
-For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. The 0.3.0 submission is complete; after any future submission, query the registry for the exact package and update the package README and this file with observed publication evidence.
+For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, the Typst size matrix, `build-typst-package --profile publish`, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
 
 ## Publish Order
 

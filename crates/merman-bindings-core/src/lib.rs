@@ -133,7 +133,7 @@ pub use render::{edge_geometry_json, layout_json, render_svg};
 #[cfg(feature = "svg")]
 pub use text_measurement::{
     HostTextMeasurementRecord, HostTextMeasurementResultKind, HostTextMeasurementTransportFields,
-    decode_host_text_measurement, host_text_measurement_transport_fields,
+    HostTextWhiteSpaceCode, decode_host_text_measurement, host_text_measurement_transport_fields,
 };
 pub use transport_contract::{BindingTransportExposureSpec, BindingTransportKey};
 

@@ -259,24 +259,34 @@ For a stable release following several prereleases, make the pending stable entr
 
 For workspace-coupled packages, keep the target package entry at `Unreleased` during preparation and stamp it with the same intended tag date as the root entry immediately before immutable preflight. For an authorized channel-only publication, keep the root entry at `Unreleased` but stamp the channel's package-local entry before building its immutable package artifact. Each projection should contain only user-visible behavior, migrations, compatibility notes, and performance claims verified for that surface. Independently versioned surfaces keep their own version and publication date.
 
-README files are ordinary source documentation and `release-version.py` never rewrites them. Before immutable preflight, review the root README, every package README shipped by an authorized surface, and the closest installation guides. Release-facing Cargo dependency examples should use the exact target prerelease version instead of a moving default-branch Git dependency. Source-only Git commands must be labeled as source installs and pin a reviewed full commit. Remove stale statements that an already-published version is unavailable, old published baselines, and future tense such as “after this version is published”. Historical reports may retain historical wording. Confirm publication through the owning package registry or artifact workflow before recommending a released install command, and repeat this documentation pass after any partial-release recovery.
+README files are ordinary source documentation and `release-version.py` never rewrites them.
+Before immutable preflight, finish the root README, each shipped package README, and the closest
+installation guides with the target version, minimum toolchain, supported capabilities, and final
+install/import/run examples. Describe normal use directly rather than conditioning it on a later
+publication; keep local source builds in development sections. Release-facing Cargo examples use
+exact target prerelease versions, and source-only Git installs pin a reviewed full commit.
+Inspect the README bytes in each prepared package before freezing the source so the published
+artifact already contains usable documentation.
+
+Track candidate status, pending channels, source identities, and verified registry availability in
+release records such as `PUBLISH_ORDER.md`. Preparing a target-version install example is source
+work, not publication evidence or authorization to publish. Historical reports retain dated context.
 
 A focused audit command is:
 
 ```bash
 rg -n --glob '**/README.md' --glob '**/CHANGELOG.md' \
-  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|git\s*=\s*"https://github\.com/Latias94/merman' \
+  '0\.[0-9]+\.[0-9]+-(alpha|beta|rc)\.[0-9]+|\[[^]]+\] - Unreleased|published registry packages can still|candidate from Git|[Aa]fter .*is published|[Ww]hen .*is published|[Aa]fter .*is available|[Bb]efore publication|not yet published|git\s*=\s*"https://github\.com/Latias94/merman' \
   README.md CHANGELOG.md crates distribution docs platforms tools
 ```
 
 Classify each match rather than applying a repository-wide mechanical rewrite. Package-local READMEs included in crates, cargo-dist archives, npm tarballs, wheels, Flutter packages, Apple/Android bundles, Typst packages, or VSIX files are part of the release experience even though they are not version authorities.
 
-After publication or recovery, query each owning registry and GitHub Release independently, then
-repeat the README audit and update `PUBLISH_ORDER.md` from candidate state to the published
-baseline. Do not imply that npm, PyPI, pub.dev, Android, Apple, Typst, crates.io, and GitHub binaries
-move in lockstep. The release is not operationally complete while a current install command names
-an older version or current prose still describes an externally published target as unavailable;
-commit the documentation reconciliation or report it as explicit unfinished release work.
+After publication or recovery, query each owning registry and GitHub Release independently and
+record accepted versions, checksums, availability, and receipts in `PUBLISH_ORDER.md`. User guides
+should already describe the frozen target package. Check for preparation defects and correct the
+source for the next release if an immutable artifact contains stale documentation. Registry
+channels remain independent; pending delivery belongs in the release record.
 
 For Web and Node npm groups, verify every package member's exact registry integrity and complete
 dist-tag map against the downloaded package-group manifest. npm Trusted Publisher can publish under
@@ -490,7 +500,7 @@ manifest remains private to `target/typst-wasm-artifacts/`; the package transact
 verified artifact to an in-memory frozen wrapper/license source snapshot and must fail before
 replacing the prior version if live source or any staged byte changes.
 
-These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.3.0` are separate publication surfaces; publishing the crate does not publish the wrapper. The 0.3.0 wrapper was published on 2026-09-01 after the exact alpha.6 source candidate passed its owner gates. For a later version, retain the generated package and private artifact receipt, verify the registry's exact package version after acceptance, and only then change current installation guidance from a local `--package-path` candidate to the registry package.
+These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.4.0` are separate publication surfaces; publishing the crate does not publish the wrapper. The 0.4.0 wrapper was published on 2026-10-09, bundling Merman 0.8.0; see the [dated publication record](PUBLISH_ORDER.md#typst-040-publication). For a later version, prepare the final registry import and usage examples before packaging; keep `--package-path` in development guidance. Retain the generated package and private artifact receipt, then verify the registry's exact version after acceptance and record that evidence in `PUBLISH_ORDER.md`.
 
 ## Tag And Push
 

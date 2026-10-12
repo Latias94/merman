@@ -15,7 +15,10 @@ mod whitespace;
 mod wrap;
 
 pub(crate) use create_text::non_markdown_svg_words;
-pub use deterministic::DeterministicTextMeasurer;
+pub use deterministic::{
+    DeterministicTextMeasurer, WrappedTextLayout, try_measure_wrapped_text,
+    try_measure_wrapped_text_with_line_metrics,
+};
 pub use flowchart_parity::{flowchart_html_has_inline_style_tags, flowchart_html_line_height_px};
 pub(crate) use heuristic::{append_text_width_em, estimate_text_width_em};
 pub(crate) use html_wrap::HtmlWhiteSpace;
@@ -35,13 +38,21 @@ pub(crate) use measure::{
     MERMAID_CREATE_TEXT_DEFAULT_WIDTH_PX, measure_mermaid_text_dimensions,
     measure_mermaid_text_dimensions_with_checkpoint,
 };
+#[doc(hidden)]
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub use metrics::unsupported_html_label_style;
 pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
 pub(crate) use metrics::{
     measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
     mermaid_markdown_to_wrapped_word_lines,
 };
 pub(crate) use svg_metrics::{
-    svg_title_bbox_vertical_extents_px, svg_wrapped_first_line_bbox_height_px,
+    svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
+    svg_wrapped_first_line_bbox_height_px,
 };
 pub use types::{TextMetrics, TextStyle, WrapMode};
 pub(crate) use whitespace::{

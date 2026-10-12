@@ -20,7 +20,10 @@ impl HostTextMeasurer for FixedTextMeasurer {
         Ok(Some(match request.operation {
             TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::SimpleBBoxWidth
-            | TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
+            | TextMeasurementOperation::ComputedLength
+            | TextMeasurementOperation::CanvasMeasureTextWidth => {
+                HostTextMeasurement::Length(width)
+            }
             TextMeasurementOperation::RawBBoxHeight
             | TextMeasurementOperation::SimpleBBoxHeight => HostTextMeasurement::Length(20.0),
             _ => HostTextMeasurement::Metrics(merman_render::text::TextMetrics {
@@ -42,7 +45,10 @@ impl HostTextMeasurer for WidthAwareTextMeasurer {
         Ok(Some(match request.operation {
             TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::SimpleBBoxWidth
-            | TextMeasurementOperation::ComputedLength => HostTextMeasurement::Length(width),
+            | TextMeasurementOperation::ComputedLength
+            | TextMeasurementOperation::CanvasMeasureTextWidth => {
+                HostTextMeasurement::Length(width)
+            }
             TextMeasurementOperation::RawBBoxHeight
             | TextMeasurementOperation::SimpleBBoxHeight => HostTextMeasurement::Length(20.0),
             _ => HostTextMeasurement::Metrics(merman_render::text::TextMetrics {

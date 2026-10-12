@@ -663,6 +663,10 @@ pub(crate) enum RuntimePolicyKind {
 #[cfg(any(feature = "svg", feature = "ascii"))]
 #[derive(Debug, Clone, Default, ClapArgs)]
 pub(crate) struct RenderCliArgs {
+    #[cfg(feature = "native-fonts")]
+    #[command(flatten)]
+    pub(crate) fonts: FontCliArgs,
+
     #[cfg(feature = "svg")]
     /// First-party presentation profile applied below explicit Mermaid configuration.
     #[arg(
@@ -751,6 +755,99 @@ pub(crate) struct LayoutRenderCliArgs {
     pub(crate) container_height: Option<f64>,
 }
 
+#[cfg(feature = "native-fonts")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum FontMeasurementKind {
+    Deterministic,
+    Native,
+}
+
+#[cfg(feature = "native-fonts")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub(crate) enum FontSystemKind {
+    Off,
+    On,
+}
+
+#[cfg(feature = "native-fonts")]
+#[derive(Debug, Clone)]
+pub(crate) enum FontSource {
+    File(PathBuf),
+    Directory(PathBuf),
+}
+
+#[cfg(feature = "native-fonts")]
+#[derive(Debug, Clone, Default)]
+pub(crate) struct FontCliArgs {
+    pub(crate) sources: Vec<FontSource>,
+    pub(crate) measurement: Option<FontMeasurementKind>,
+    pub(crate) system: Option<FontSystemKind>,
+}
+
+#[cfg(feature = "native-fonts")]
+#[derive(ClapArgs)]
+struct FontArgumentDefinitions {
+    /// Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence.
+    #[arg(long = "font-file", value_name = "PATH", value_hint = ValueHint::FilePath, help_heading = "Native fonts")]
+    font_file: Vec<PathBuf>,
+    /// Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable.
+    #[arg(long = "font-dir", value_name = "PATH", value_hint = ValueHint::DirPath, help_heading = "Native fonts")]
+    font_dir: Vec<PathBuf>,
+    /// Select shared text measurement: deterministic by default; native enables actual fonts and system discovery when no explicit sources are supplied.
+    #[arg(long = "font-measurement", value_enum, help_heading = "Native fonts")]
+    font_measurement: Option<FontMeasurementKind>,
+    /// Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested.
+    #[arg(long = "font-system", value_enum, help_heading = "Native fonts")]
+    font_system: Option<FontSystemKind>,
+}
+
+#[cfg(feature = "native-fonts")]
+impl clap::Args for FontCliArgs {
+    fn augment_args(command: clap::Command) -> clap::Command {
+        FontArgumentDefinitions::augment_args(command)
+    }
+
+    fn augment_args_for_update(command: clap::Command) -> clap::Command {
+        FontArgumentDefinitions::augment_args_for_update(command)
+    }
+}
+
+#[cfg(feature = "native-fonts")]
+impl clap::FromArgMatches for FontCliArgs {
+    fn from_arg_matches(matches: &clap::ArgMatches) -> Result<Self, clap::Error> {
+        let mut sources = Vec::new();
+        for (name, directory) in [("font_file", false), ("font_dir", true)] {
+            if let (Some(indices), Some(paths)) =
+                (matches.indices_of(name), matches.get_many::<PathBuf>(name))
+            {
+                sources.extend(indices.zip(paths).map(|(index, path)| {
+                    (
+                        index,
+                        if directory {
+                            FontSource::Directory(path.clone())
+                        } else {
+                            FontSource::File(path.clone())
+                        },
+                    )
+                }));
+            }
+        }
+        sources.sort_by_key(|(index, _)| *index);
+        Ok(Self {
+            sources: sources.into_iter().map(|(_, source)| source).collect(),
+            measurement: matches
+                .get_one::<FontMeasurementKind>("font_measurement")
+                .copied(),
+            system: matches.get_one::<FontSystemKind>("font_system").copied(),
+        })
+    }
+
+    fn update_from_arg_matches(&mut self, matches: &clap::ArgMatches) -> Result<(), clap::Error> {
+        *self = Self::from_arg_matches(matches)?;
+        Ok(())
+    }
+}
+
 #[cfg(feature = "svg")]
 impl LayoutRenderCliArgs {
     pub(crate) fn into_render_args(self) -> RenderCliArgs {
@@ -761,6 +858,8 @@ impl LayoutRenderCliArgs {
             container_height: self.container_height,
             svg_id: None,
             hand_drawn_seed: None,
+            #[cfg(feature = "native-fonts")]
+            fonts: FontCliArgs::default(),
         }
     }
 }
@@ -811,6 +910,10 @@ pub(crate) struct MmdcParseCliArgs {
 #[cfg(feature = "svg")]
 #[derive(Debug, Clone, ClapArgs)]
 pub(crate) struct MmdcRenderCliArgs {
+    #[cfg(feature = "native-fonts")]
+    #[command(flatten)]
+    pub(crate) fonts: FontCliArgs,
+
     /// First-party presentation profile applied below explicit Mermaid configuration.
     #[arg(
         long = "presentation-profile",
@@ -879,6 +982,8 @@ impl Default for MmdcRenderCliArgs {
             container_height: 600.0,
             svg_id: None,
             hand_drawn_seed: None,
+            #[cfg(feature = "native-fonts")]
+            fonts: FontCliArgs::default(),
         }
     }
 }

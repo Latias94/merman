@@ -38,15 +38,29 @@ const EMPTY_DEFAULT_PACKAGES: &[&str] = &[
     "merman-wasm",
 ];
 const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
-    ("merman", &["complete-svg", "complete-svg-elk"]),
+    (
+        "merman",
+        &[
+            "complete-svg",
+            "complete-svg-elk",
+            "system-fonts",
+            "experimental-system-font-query",
+        ],
+    ),
     ("merman-analysis", &[]),
     ("merman-android-jni", &["native-runtime"]),
     ("merman-ascii", &[]),
     ("merman-bindings-core", &["native-runtime"]),
-    ("merman-cli", &[]),
+    (
+        "merman-cli",
+        &["system-fonts", "experimental-system-font-query"],
+    ),
     ("merman-core", &["operation-deadlines", "test-support"]),
     ("merman-editor-core", &[]),
-    ("merman-export", &[]),
+    (
+        "merman-export",
+        &["system-fonts", "experimental-system-font-query"],
+    ),
     ("merman-ffi", &["native-runtime"]),
     ("merman-lsp", &["stdio"]),
     ("merman-render", &[]),
@@ -138,10 +152,12 @@ const FEATURE_FORWARDING_CONTRACTS: &[FeatureForwardingContract] = &[
             "layout-cytoscape",
             "layout-elk",
             "math",
+            "native-fonts",
             "pdf",
             "png",
             "svg",
             "system-clock",
+            "system-fonts",
             "system-random",
             "system-timezone",
             "system-timing",
@@ -873,6 +889,15 @@ impl FeatureGraph {
                 cli.manifest_path.display()
             )));
         }
+        if ["native-fonts", "system-fonts"]
+            .iter()
+            .any(|feature| !published_features.contains(*feature))
+        {
+            return Err(matrix_error(format!(
+                "{}: published cargo-dist recipe must retain `native-fonts` and `system-fonts` for actual-font measurement; found {published_features:?}",
+                cli.manifest_path.display()
+            )));
+        }
         if cli_defaults != published_features {
             return Err(matrix_error(format!(
                 "{}: CLI default must equal the published cargo-dist recipe; expected {published_features:?}, found {cli_defaults:?}",
@@ -1557,6 +1582,7 @@ mod tests {
         "layout-elk",
         "markdown",
         "math",
+        "native-fonts",
         "network-icons",
         "parallel-markdown",
         "pdf",
@@ -1565,6 +1591,7 @@ mod tests {
         "shell-completions",
         "svg",
         "system-clock",
+        "system-fonts",
         "system-random",
         "system-timezone",
         "system-timing",
@@ -1580,6 +1607,7 @@ mod tests {
         "layout-elk",
         "markdown",
         "math",
+        "native-fonts",
         "network-icons",
         "parallel-markdown",
         "pdf",
@@ -1588,6 +1616,7 @@ mod tests {
         "shell-completions",
         "svg",
         "system-clock",
+        "system-fonts",
         "system-random",
         "system-timezone",
         "system-timing",
@@ -1928,6 +1957,32 @@ mod tests {
                 .contains("published cargo-dist recipe must retain explicit `layout-elk`"),
             "{error}"
         );
+    }
+
+    #[test]
+    fn cli_release_and_defaults_cannot_jointly_disable_actual_font_measurement() {
+        for removed in ["native-fonts", "system-fonts"] {
+            let mut graph = product_contract_graph();
+            let cli = graph.packages.get_mut("merman-cli").unwrap();
+            cli.features
+                .get_mut("default")
+                .unwrap()
+                .retain(|feature| feature != removed);
+            let release_features = CLI_RELEASE_FEATURES
+                .iter()
+                .filter(|feature| **feature != removed)
+                .copied()
+                .collect::<Vec<_>>();
+            cli.metadata["dist"]["features"] = serde_json::json!(release_features);
+
+            let error = graph.validate_product_feature_contracts().unwrap_err();
+            assert!(
+                error
+                    .to_string()
+                    .contains("must retain `native-fonts` and `system-fonts`"),
+                "{error}"
+            );
+        }
     }
 
     #[test]

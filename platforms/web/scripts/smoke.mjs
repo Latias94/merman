@@ -25,6 +25,12 @@ const editorRuntimeExports = fullPackage.runtimeExportNames.filter((name) =>
 
 const packageSmokeCases = webPackages;
 
+if (args.length === 1 && args[0] === "--pure-dist") {
+  await runPureDistSmoke();
+  console.log("@mermanjs/web pure dist smoke passed");
+  process.exit(0);
+}
+
 if (args.length === 0) {
   await runPureDistSmoke();
   for (const descriptor of packageSmokeCases) {
@@ -1074,6 +1080,12 @@ function hostTextMeasurementResult(request) {
       return { kind: "length", length: 1 };
     case "create-text-middle-bbox-y-offset":
       return { kind: "length", length: -1 };
+    case "raw-bbox-y-offset":
+      return { kind: "length", length: -height };
+    case "raw-middle-bbox-y-offset":
+      return { kind: "length", length: -height * 0.75 };
+    case "raw-hanging-bbox-y-offset":
+      return { kind: "length", length: -height * 0.2 };
     case "bbox-x":
     case "bbox-x-with-ascii-overhang":
     case "title-bbox-x":
@@ -1674,7 +1686,56 @@ async function runPureDistSmoke() {
   assert.equal(textMeasurementAbi.MERMAN_TEXT_MEASUREMENT_PROTOCOL_VERSION, 1);
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ code }) => code),
-    Array.from({ length: 19 }, (_, code) => code)
+    Array.from({ length: 22 }, (_, code) => code)
+  );
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS
+      .slice(0, 19)
+      .map(({ code, name }) => [code, name]),
+    [
+      [0, "measure"],
+      [1, "computed-length"],
+      [2, "bbox-x"],
+      [3, "bbox-x-with-ascii-overhang"],
+      [4, "title-bbox-x"],
+      [5, "simple-bbox-width"],
+      [6, "raw-bbox-width"],
+      [7, "tspan-bbox-width"],
+      [8, "tspan-bbox-height"],
+      [9, "wrap-probe-bbox-width"],
+      [10, "simple-bbox-height"],
+      [11, "wrapped"],
+      [12, "wrapped-with-raw-width"],
+      [13, "bounding-client-rect-width"],
+      [14, "create-text-bbox-y-offset"],
+      [15, "mermaid-calculate-text-dimensions"],
+      [16, "canvas-measure-text-width"],
+      [17, "create-text-middle-bbox-y-offset"],
+      [18, "raw-bbox-height"],
+    ]
+  );
+  assert.deepEqual(
+    textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.slice(19),
+    [
+      {
+        code: 19,
+        name: "raw-bbox-y-offset",
+        resultKind: "length",
+        acceptsSignedLength: true,
+      },
+      {
+        code: 20,
+        name: "raw-middle-bbox-y-offset",
+        resultKind: "length",
+        acceptsSignedLength: true,
+      },
+      {
+        code: 21,
+        name: "raw-hanging-bbox-y-offset",
+        resultKind: "length",
+        acceptsSignedLength: true,
+      },
+    ]
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_RESULT_KINDS.map(({ code }) => code),
@@ -1684,13 +1745,19 @@ async function runPureDistSmoke() {
     new Set(
       textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS.map(({ name }) => name)
     ).size,
-    19
+    22
   );
   assert.deepEqual(
     textMeasurementAbi.HOST_TEXT_MEASUREMENT_OPERATIONS
       .filter(({ acceptsSignedLength }) => acceptsSignedLength)
       .map(({ name }) => name),
-    ["create-text-bbox-y-offset", "create-text-middle-bbox-y-offset"]
+    [
+      "create-text-bbox-y-offset",
+      "create-text-middle-bbox-y-offset",
+      "raw-bbox-y-offset",
+      "raw-middle-bbox-y-offset",
+      "raw-hanging-bbox-y-offset",
+    ]
   );
   svgSafety.assertSelfContainedSvgForDom('<svg xmlns="http://www.w3.org/2000/svg" />');
   assert.throws(
@@ -1837,6 +1904,7 @@ function parseCli(inputArgs) {
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     console.error(smokeUsage());
+    console.error("       node scripts/smoke.mjs --pure-dist");
     process.exit(2);
   }
 }

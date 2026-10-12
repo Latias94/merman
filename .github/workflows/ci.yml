@@ -235,12 +235,12 @@ jobs:
         with:
           cache-targets: false
 
-      - name: Install CLI asset validators
+      - name: Install CLI build dependencies and asset validators
         timeout-minutes: 10
         run: |
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish libfontconfig1-dev mandoc pkg-config zsh
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
@@ -427,6 +427,15 @@ jobs:
         with:
           cache-targets: false
 
+      - name: Install Linux font build dependencies
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config
+
       - name: Verify pinned Mermaid reference before runtime install
         if: matrix.parity
         run: cargo run --locked -p xtask -- verify-mermaid-reference
@@ -477,6 +486,30 @@ jobs:
       - name: Compile workspace on pull-request host runners
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
         run: cargo check --workspace --all-targets --locked
+
+      - name: Test explicit native fonts on every host
+        shell: bash
+        run: |
+          cargo nextest run --locked -p merman-export --no-default-features --features native-fonts --cargo-quiet
+          cargo nextest run --locked -p merman --features native-fonts --test native_font_context --test native_font_families --test native_flowchart_typography --test native_swimlane_typography --test native_font_wrapping --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features svg,diagram-flowchart,native-fonts,markdown,parallel-markdown --test native_fonts_contract --cargo-quiet
+          cargo nextest run --locked -p merman --no-default-features --features diagram-flowchart,native-fonts,png,jpeg,pdf --test native_font_context --cargo-quiet
+
+      - name: Test bounded system font policy on every host
+        shell: bash
+        run: |
+          cargo nextest run --locked -p merman-export --no-default-features --features native-fonts,system-fonts --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,system-fonts --test native_fonts_contract --cargo-quiet
+          cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,png --test native_fonts_contract --cargo-quiet
+
+      - name: Test experimental platform font query on every host
+        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet
+
+      - name: Test platform font host contracts on every host
+        run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context --run-ignored only --cargo-quiet
+
+      - name: Test experimental platform font CLI contracts on every host
+        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,system-fonts,experimental-system-font-query --test native_fonts_contract --cargo-quiet
 
       - name: Test host-sensitive contracts on pull requests
         if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')

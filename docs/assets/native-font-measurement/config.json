@@ -1,0 +1,12 @@
+{
+  "fontFamily": "Fira Code",
+  "htmlLabels": false,
+  "themeVariables": {
+    "fontFamily": "Fira Code"
+  },
+  "sequence": {
+    "actorFontFamily": "Fira Code",
+    "messageFontFamily": "Fira Code",
+    "noteFontFamily": "Fira Code"
+  }
+}

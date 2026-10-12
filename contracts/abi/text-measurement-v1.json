@@ -254,6 +254,30 @@
       "code": 18,
       "result_kind": "length",
       "accepts_signed_length": false
+    },
+    {
+      "id": "raw_bbox_y_offset",
+      "external_name": "raw-bbox-y-offset",
+      "rust_variant": "RawBBoxYOffset",
+      "code": 19,
+      "result_kind": "length",
+      "accepts_signed_length": true
+    },
+    {
+      "id": "raw_middle_bbox_y_offset",
+      "external_name": "raw-middle-bbox-y-offset",
+      "rust_variant": "RawMiddleBBoxYOffset",
+      "code": 20,
+      "result_kind": "length",
+      "accepts_signed_length": true
+    },
+    {
+      "id": "raw_hanging_bbox_y_offset",
+      "external_name": "raw-hanging-bbox-y-offset",
+      "rust_variant": "RawHangingBBoxYOffset",
+      "code": 21,
+      "result_kind": "length",
+      "accepts_signed_length": true
     }
   ]
 }

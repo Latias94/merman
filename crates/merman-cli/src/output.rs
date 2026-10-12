@@ -878,6 +878,21 @@ fn render_inputs(
             &common.cwd,
         )?);
     }
+    #[cfg(feature = "native-fonts")]
+    for source in &common.render.fonts.sources {
+        inputs.push(match source {
+            crate::cli::FontSource::File(path) => {
+                ProtectedInput::inspect("font input", InputRole::Auxiliary, path, &common.cwd)?
+            }
+            crate::cli::FontSource::Directory(path) => ProtectedInput::inspect_path(
+                "font directory input",
+                InputRole::Auxiliary,
+                path,
+                &common.cwd,
+                true,
+            )?,
+        });
+    }
     if let Some(path) = puppeteer_config {
         inputs.push(ProtectedInput::inspect(
             "Puppeteer configuration file",
@@ -903,6 +918,7 @@ fn render_inputs(
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
 #[derive(Debug)]
 struct ProtectedInput {
+    directory: bool,
     role: &'static str,
     requested: PathBuf,
     absolute: PathBuf,
@@ -918,6 +934,16 @@ impl ProtectedInput {
         input_role: InputRole,
         requested: &Path,
         cwd: &Path,
+    ) -> Result<Self, CliError> {
+        Self::inspect_path(role, input_role, requested, cwd, false)
+    }
+
+    fn inspect_path(
+        role: &'static str,
+        input_role: InputRole,
+        requested: &Path,
+        cwd: &Path,
+        directory: bool,
     ) -> Result<Self, CliError> {
         let absolute = anchored_absolute(requested, cwd);
         let lexical = lexical_absolute(requested, cwd);
@@ -937,7 +963,12 @@ impl ProtectedInput {
                 ));
             }
         };
-        if !metadata.is_file() {
+        if directory && !metadata.is_dir() {
+            return Err(CliError::InvalidInput(format!(
+                "{resource} is not a directory"
+            )));
+        }
+        if !directory && !metadata.is_file() {
             return Err(input_error(
                 input_role,
                 InputReadError::NotRegularFile { resource },
@@ -950,6 +981,7 @@ impl ProtectedInput {
                 CliError::file(FileOperation::InspectIdentity, requested, source)
             })?);
         Ok(Self {
+            directory,
             role,
             requested: requested.to_path_buf(),
             absolute,
@@ -978,6 +1010,7 @@ impl ProtectedInput {
             ));
         }
         Ok(Self {
+            directory: false,
             role,
             requested: requested.to_path_buf(),
             absolute,
@@ -1543,7 +1576,7 @@ fn preflight_file_target(
     let absolute = anchored_absolute(requested, cwd);
     let lexical = lexical_absolute(requested, cwd);
     for input in inputs {
-        if lexical == input.lexical {
+        if lexical == input.lexical || (input.directory && lexical.starts_with(&input.lexical)) {
             return Err(alias_error(requested, input, "output target"));
         }
     }
@@ -1551,6 +1584,7 @@ fn preflight_file_target(
     let target = inspect_file_target(requested, &absolute, missing_parent)?;
     for input in inputs {
         if target.canonical == input.canonical
+            || (input.directory && target.canonical.starts_with(&input.canonical))
             || target
                 .identity
                 .as_ref()
@@ -1559,7 +1593,77 @@ fn preflight_file_target(
             return Err(alias_error(requested, input, "output target"));
         }
     }
+    #[cfg(feature = "native-fonts")]
+    if let Some(directory) = inputs.iter().find(|input| input.directory)
+        && let Some(identity) = &target.identity
+        && has_multiple_hard_links(&target.canonical, identity)?
+    {
+        return Err(CliError::InvalidOutput(format!(
+            "output target {} has multiple hard links while font directory input {} is protected; choose a new or singly linked output file",
+            safe_path(requested),
+            safe_path(&directory.requested)
+        )));
+    }
     Ok(target)
+}
+
+#[cfg(all(feature = "native-fonts", unix))]
+fn has_multiple_hard_links(path: &Path, _identity: &same_file::Handle) -> Result<bool, CliError> {
+    use std::os::unix::fs::MetadataExt;
+
+    std::fs::metadata(path)
+        .map(|metadata| metadata.nlink() > 1)
+        .map_err(|source| CliError::file(FileOperation::InspectIdentity, path, source))
+}
+
+#[cfg(all(feature = "native-fonts", windows))]
+fn has_multiple_hard_links(path: &Path, identity: &same_file::Handle) -> Result<bool, CliError> {
+    use std::os::windows::io::AsRawHandle;
+
+    // Keep this query available without the optional Markdown Windows dependency.
+    #[repr(C)]
+    #[derive(Default)]
+    struct FileStandardInfo {
+        allocation_size: i64,
+        end_of_file: i64,
+        number_of_links: u32,
+        delete_pending: u8,
+        directory: u8,
+    }
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetFileInformationByHandleEx(
+            file: *mut std::ffi::c_void,
+            information_class: i32,
+            information: *mut std::ffi::c_void,
+            size: u32,
+        ) -> i32;
+    }
+    let mut information = FileStandardInfo::default();
+    // SAFETY: the protected handle stays open; FILE_STANDARD_INFO has its documented
+    // C layout, and the API receives a writable buffer of the matching size.
+    let success = unsafe {
+        GetFileInformationByHandleEx(
+            identity.as_raw_handle(),
+            1, // FileStandardInfo
+            std::ptr::from_mut(&mut information).cast(),
+            std::mem::size_of::<FileStandardInfo>() as u32,
+        )
+    };
+    if success == 0 {
+        return Err(CliError::file(
+            FileOperation::InspectIdentity,
+            path,
+            std::io::Error::last_os_error(),
+        ));
+    }
+    Ok(information.number_of_links > 1)
+}
+
+#[cfg(all(feature = "native-fonts", not(any(unix, windows))))]
+fn has_multiple_hard_links(_path: &Path, _identity: &same_file::Handle) -> Result<bool, CliError> {
+    // Without a portable link-count query, existing targets cannot be proven safe.
+    Ok(true)
 }
 
 #[cfg(any(feature = "analysis", feature = "svg", feature = "ascii"))]
@@ -1640,6 +1744,16 @@ fn preflight_numbered_namespace(
     for (input_index, input) in inputs.iter().enumerate() {
         if input_index % NUMBERED_PREFLIGHT_CHECKPOINT_INTERVAL == 0 {
             crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
+        }
+        if input.directory
+            && (lexical_directory.starts_with(&input.lexical)
+                || canonical_directory.starts_with(&input.canonical))
+        {
+            return Err(alias_error(
+                namespace.directory(),
+                input,
+                "reserved Markdown output",
+            ));
         }
         let lexical_match = input
             .lexical

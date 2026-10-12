@@ -7,6 +7,23 @@ This guide explains how native hosts should use Merman's text-measurement callba
 remaining headless-rendering limits are. It complements the exact C ABI contract in
 [`FFI_PROTOCOL.md`](FFI_PROTOCOL.md#host-text-measurement).
 
+## Native CLI And Library Policy
+
+The default CLI graphical path now resolves system fonts before layout; explicit
+font files provide a closed, reproducible alternative. This product default does
+not change `SvgEnvironment::deterministic()` or authorize discovery in bindings.
+FFI, UniFFI, and WASM retain their host-independent defaults and callback conflict
+rules. The runtime clock/random policy is not a font-discovery permission.
+
+Rust hosts can supply a `NativeFontContext` to the facade. Typed PNG/JPEG/PDF
+requests normalize it across layout and painting: an options-only context is
+installed into a default measurement environment, different contexts are rejected,
+and explicit host measurement is never silently replaced. Direct raw-SVG exports
+remain painting-only. Native binding codec builds without a native font service
+still use compatibility layout and legacy system painting; a future shared
+binding-core font service must address this rather than duplicating transport
+logic. Browser hosts should keep measuring through their display stack.
+
 ## Problem
 
 Mermaid measures many labels inside a browser after CSS, font loading, fallback, shaping, and
@@ -167,6 +184,9 @@ The stable operation mapping is:
 | 16 | `canvas-measure-text-width` | `length` |
 | 17 | `create-text-middle-bbox-y-offset` | `length` (signed) |
 | 18 | `raw-bbox-height` | `length` |
+| 19 | `raw-bbox-y-offset` | `length` (signed) |
+| 20 | `raw-middle-bbox-y-offset` | `length` (signed) |
+| 21 | `raw-hanging-bbox-y-offset` | `length` (signed) |
 
 The four stable result kinds are `metrics` (`width`, `height`, `line_count`), `length` (`length`),
 `horizontal-extents` (`bbox_left`, `bbox_right`), and `wrapped-with-raw-width` (metrics plus an
@@ -179,7 +199,7 @@ to let Merman fall back for that single request. Operation 14,
 17, `create-text-middle-bbox-y-offset`, mirrors the same formatted text after Architecture's outer
 label group contributes inherited `dominant-baseline="middle"`. The middle baseline changes
 `getBBox().y` according to the resolved font's baseline and x-height, so operation 14 is not a valid
-answer for operation 17. Both operations carry a finite signed `length`; other lengths and all
+answer for operation 17. These offsets and operations 19 through 21 carry a finite signed `length`; other lengths and all
 metric/extents dimensions must be non-negative. A handled result with the wrong kind, missing
 required fields, an invalid/non-finite value, or zero metric lines is recorded as `Invalid`; a
 callback exception/error is recorded as `Error`; an unsupported result is recorded as `Missing`.
@@ -199,6 +219,14 @@ Operation 18, `raw-bbox-height`, reads the non-negative `height` from
 `<text>TEXT_CONTENT</text>.getBBox()` with the requested font style. It intentionally uses direct
 text content, not a `<tspan>` and not a Mermaid text-construction helper, so hosts must preserve
 that DOM shape or leave the operation unhandled.
+
+Operations 19 through 21 read the signed `y` from direct `<text x="0" y="0">TEXT_CONTENT</text>`
+bounds, using the ordinary, `dominant-baseline="middle"`, or `dominant-baseline="hanging"`
+baseline respectively. They do not construct a tspan or apply Mermaid's formatted-text `-10.1`
+offset. Preserve the requested font style and baseline, and clear baseline state between probes.
+If a host cannot reproduce the exact baseline, it must leave that operation unhandled. Existing
+codes 0 through 18 and all result shapes remain unchanged; these operations extend protocol 1
+without changing the separately versioned transport APIs.
 
 Request string pointers are valid only during the callback. Copy or decode them immediately if the
 host text API needs owned strings.

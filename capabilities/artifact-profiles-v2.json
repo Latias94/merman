@@ -4,7 +4,7 @@
   "capability_authority": {
     "path": "capabilities/feature-surface-v1.json",
     "schema_version": 1,
-    "digest": "sha256:6e1bc8cb3a1516a79009d22fe7d256e3d7dc4ee47a64ac4a9af9521374f3912d"
+    "digest": "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed"
   },
   "profiles": [
     {
@@ -135,15 +135,40 @@
       }
     },
     {
+      "id": "cli-native-fonts",
+      "description": "SVG CLI with deterministic measurement by default, opt-in explicit native fonts, and no binary codecs or system discovery.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-cli",
+        "manifest": "crates/merman-cli/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["diagram-flowchart", "native-fonts"],
+        "target": {
+          "name": "merman-cli",
+          "kinds": ["bin"],
+          "crate_types": ["bin"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "diagram_families": ["flowchart"],
+        "capabilities": ["native-fonts", "svg"],
+        "runtime_ids": ["native-fonts", "svg"],
+        "outputs": ["svg"]
+      }
+    },
+    {
       "id": "cli-release",
-      "description": "Current complete command-line release build with explicit ELK and math/font closures.",
+      "description": "Complete command-line release build with ELK, math, and compiled native-fonts/system-fonts capabilities; Mermaid graphical output defaults to deterministic measurement without font discovery, with native fonts and bounded system discovery available through runtime opt-in.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-cli",
         "manifest": "crates/merman-cli/Cargo.toml",
         "profile": "dist",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
         "target": {
           "name": "merman-cli",
           "kinds": ["bin"],
@@ -162,13 +187,13 @@
         "diagram_families": ["agentflow", "architecture", "block", "c4", "class", "cynefin", "er", "eventmodeling", "flowchart", "gantt", "gitGraph", "info", "ishikawa", "journey", "kanban", "mindmap", "packet", "pie", "quadrantChart", "radar", "railroad", "requirement", "sankey", "sequence", "state", "swimlane", "timeline", "treeView", "treemap", "usecase", "venn", "wardley", "xychart", "zenuml"],
         "capabilities": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
-          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc",
+          "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc",
           "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
         "runtime_ids": [
           "analysis", "ascii", "icons", "jpeg", "layout-cytoscape", "layout-elk",
-          "markdown", "math", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc",
+          "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc",
           "shell-completions", "svg", "system-clock", "system-random", "system-timezone",
           "system-timing"
         ],
@@ -581,6 +606,31 @@
         "capabilities": ["jpeg"],
         "runtime_ids": ["jpeg"],
         "outputs": ["jpeg"]
+      }
+    },
+    {
+      "id": "rust-export-native-fonts",
+      "description": "Explicit-font services without binary codecs or system discovery.",
+      "semantic_target": "native",
+      "cargo": {
+        "package": "merman-export",
+        "manifest": "crates/merman-export/Cargo.toml",
+        "profile": "release",
+        "default_features": false,
+        "features": ["native-fonts"],
+        "target": {
+          "name": "merman_export",
+          "kinds": ["lib"],
+          "crate_types": ["lib"],
+          "required_features": []
+        },
+        "build_target": { "kind": "host" }
+      },
+      "expected": {
+        "diagram_families": [],
+        "capabilities": ["native-fonts"],
+        "runtime_ids": ["native-fonts"],
+        "outputs": []
       }
     },
     {

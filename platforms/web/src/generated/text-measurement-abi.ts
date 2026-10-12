@@ -68,6 +68,9 @@ export const HOST_TEXT_MEASUREMENT_OPERATIONS = [
   { code: 16, name: "canvas-measure-text-width", resultKind: "length", acceptsSignedLength: false },
   { code: 17, name: "create-text-middle-bbox-y-offset", resultKind: "length", acceptsSignedLength: true },
   { code: 18, name: "raw-bbox-height", resultKind: "length", acceptsSignedLength: false },
+  { code: 19, name: "raw-bbox-y-offset", resultKind: "length", acceptsSignedLength: true },
+  { code: 20, name: "raw-middle-bbox-y-offset", resultKind: "length", acceptsSignedLength: true },
+  { code: 21, name: "raw-hanging-bbox-y-offset", resultKind: "length", acceptsSignedLength: true },
 ] as const;
 
 export type HostTextMeasurementOperation =

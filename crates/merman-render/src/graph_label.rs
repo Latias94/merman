@@ -895,6 +895,16 @@ pub(crate) fn flowchart_label_metrics_for_layout(
                         height: 0.0,
                         line_count: 0,
                     }
+                } else if label_for_metrics.contains('<') {
+                    // Decoded text can contain literal markup. Keep its original HTML fragment
+                    // so the wrapped-text normalizer cannot reinterpret it as a second tag.
+                    crate::text::measure_html_with_inline_styles(
+                        measurer,
+                        &html,
+                        style,
+                        max_width_px,
+                        wrap_mode,
+                    )
                 } else {
                     measurer.measure_wrapped(&label_for_metrics, style, max_width_px, wrap_mode)
                 }

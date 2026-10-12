@@ -180,8 +180,46 @@ fn mermaid_markdown_paragraph_to_fragment(
         token_index: usize,
     }
 
+    #[derive(Clone, Copy)]
+    enum InlineFragmentKind {
+        Code,
+        Html,
+        LiteralText { escaped: bool },
+    }
+
     let s = label.replace("\r\n", "\n");
-    let chars: Vec<char> = s.chars().collect();
+    // Reuse the Markdown parser for opaque inline ranges. Mermaid emits unsupported code as
+    // node.raw (including backticks) and escapes as node.text. HTML preserves both verbatim;
+    // the XHTML projection escapes their literal text for direct XML insertion.
+    let mut inline_fragments: Vec<(std::ops::Range<usize>, InlineFragmentKind)> = Vec::new();
+    for (event, mut range) in
+        pulldown_cmark::Parser::new_ext(&s, mermaid_markdown_block_options()).into_offset_iter()
+    {
+        let kind = match event {
+            pulldown_cmark::Event::Code(_) => InlineFragmentKind::Code,
+            pulldown_cmark::Event::InlineHtml(_) => InlineFragmentKind::Html,
+            pulldown_cmark::Event::Text(_) => {
+                // Pulldown's escaped text ranges omit the preceding backslash. Include it in
+                // the consumed range, without consuming a backslash owned by an earlier event.
+                let escaped = range.start > 0
+                    && s.as_bytes()[range.start - 1] == b'\\'
+                    && inline_fragments
+                        .last()
+                        .is_none_or(|(previous, _)| previous.end < range.start);
+                if !escaped && !s[range.clone()].contains(['<', '>']) {
+                    continue;
+                }
+                if escaped {
+                    range.start -= 1;
+                }
+                InlineFragmentKind::LiteralText { escaped }
+            }
+            _ => continue,
+        };
+        inline_fragments.push((range, kind));
+    }
+    let mut inline_fragments = inline_fragments.into_iter().peekable();
+    let (byte_offsets, chars): (Vec<_>, Vec<_>) = s.char_indices().unzip();
     let mut tokens: Vec<String> = Vec::with_capacity(16);
     tokens.push("<p>".to_string());
 
@@ -199,14 +237,57 @@ fn mermaid_markdown_paragraph_to_fragment(
     };
 
     let mut stack: Vec<Delim> = Vec::new();
-    let mut in_code_span = false;
     let mut i = 0usize;
     while i < chars.len() {
         let ch = chars[i];
 
-        if ch == '\n' && in_code_span {
-            text_buf.push(ch);
-            i += 1;
+        if let Some((range, kind)) = inline_fragments.peek()
+            && range.start <= byte_offsets[i]
+            && byte_offsets[i] < range.end
+        {
+            let mut raw = &s[byte_offsets[i]..range.end];
+            match kind {
+                InlineFragmentKind::Code => {
+                    flush_text(&mut tokens, &mut text_buf);
+                    tokens.push(if xhtml {
+                        escape_xml_text_preserving_entities(raw)
+                    } else {
+                        raw.to_string()
+                    });
+                }
+                InlineFragmentKind::Html => {
+                    flush_text(&mut tokens, &mut text_buf);
+                    if raw.eq_ignore_ascii_case("<br>")
+                        || raw.eq_ignore_ascii_case("<br/>")
+                        || raw.eq_ignore_ascii_case("<br />")
+                        || raw.eq_ignore_ascii_case("</br>")
+                        || raw.eq_ignore_ascii_case("</br/>")
+                        || raw.eq_ignore_ascii_case("</br />")
+                        || raw.eq_ignore_ascii_case("</br >")
+                    {
+                        tokens.push(if xhtml { "<br/>" } else { "<br />" }.to_string());
+                    } else {
+                        tokens.push(raw.to_string());
+                    }
+                }
+                InlineFragmentKind::LiteralText { escaped } => {
+                    if *escaped && byte_offsets[i] == range.start {
+                        raw = raw.strip_prefix('\\').unwrap_or(raw);
+                    }
+                    let literal = if xhtml {
+                        escape_xml_text_preserving_entities(raw)
+                    } else {
+                        raw.to_string()
+                    };
+                    if markdown_auto_wrap {
+                        text_buf.push_str(&literal);
+                    } else {
+                        text_buf.push_str(&literal.replace(' ', "&nbsp;"));
+                    }
+                }
+            }
+            i = byte_offsets.partition_point(|offset| *offset < range.end);
+            inline_fragments.next();
             continue;
         }
 
@@ -220,48 +301,6 @@ fn mermaid_markdown_paragraph_to_fragment(
             while i < chars.len() && chars[i] == ' ' {
                 i += 1;
             }
-            continue;
-        }
-
-        if ch == '`' {
-            text_buf.push(ch);
-            in_code_span = !in_code_span;
-            i += 1;
-            continue;
-        }
-
-        if in_code_span {
-            if ch == ' ' && !markdown_auto_wrap {
-                text_buf.push_str("&nbsp;");
-            } else {
-                text_buf.push(ch);
-            }
-            i += 1;
-            continue;
-        }
-
-        if ch == '<'
-            && let Some(end_rel) = chars[i..].iter().position(|c| *c == '>')
-        {
-            let end = i + end_rel;
-            flush_text(&mut tokens, &mut text_buf);
-            let mut tag = String::new();
-            for c in &chars[i..=end] {
-                tag.push(*c);
-            }
-            if tag.eq_ignore_ascii_case("<br>")
-                || tag.eq_ignore_ascii_case("<br/>")
-                || tag.eq_ignore_ascii_case("<br />")
-                || tag.eq_ignore_ascii_case("</br>")
-                || tag.eq_ignore_ascii_case("</br/>")
-                || tag.eq_ignore_ascii_case("</br />")
-                || tag.eq_ignore_ascii_case("</br >")
-            {
-                tokens.push(if xhtml { "<br/>" } else { "<br />" }.to_string());
-            } else {
-                tokens.push(tag);
-            }
-            i = end + 1;
             continue;
         }
 
@@ -475,7 +514,11 @@ fn mermaid_markdown_to_label_fragment(
     out
 }
 
-/// Approximate the final browser DOM fragment that Mermaid HTML labels produce for Markdown.
+/// Project Markdown to Mermaid's HTML label fragment before sanitization and DOM insertion.
+///
+/// Unsupported code tokens retain node.raw, including backticks, and escaped text retains
+/// node.text without the backslash. Their angle brackets may therefore become HTML elements
+/// when the fragment is inserted with innerHTML, matching the pinned markdownToHTML source.
 pub(crate) fn mermaid_markdown_to_html_label_fragment(
     markdown: &str,
     markdown_auto_wrap: bool,
@@ -524,6 +567,10 @@ fn escape_xml_text_preserving_entities(raw: &str) -> String {
 }
 
 /// XHTML-safe projection for direct `<foreignObject>` insertion.
+///
+/// Code retains its raw Markdown spelling, including backticks, as literal text. Escaped angle
+/// brackets stay text; only parsed raw HTML events can introduce elements. This differs from
+/// Mermaid's HTML projection, which may reinterpret code and escaped text through innerHTML.
 pub(crate) fn mermaid_markdown_to_xhtml_label_fragment(
     markdown: &str,
     markdown_auto_wrap: bool,
@@ -778,6 +825,199 @@ mod tests {
         assert_eq!(
             mermaid_markdown_to_xhtml_label_fragment(input, true),
             "<p>inline: `**not bold**`</p>"
+        );
+    }
+
+    #[test]
+    fn label_fragments_preserve_raw_code_with_projection_specific_angles() {
+        // Mermaid's markdownToHTML returns node.raw for unsupported codespan tokens. HTML
+        // insertion may interpret their tags; XHTML keeps them as literal XML-safe text.
+        for (input, expected_html, expected_xhtml) in [
+            (
+                "Literal: `<span style='font-size:64px'>AVAVAV</span>`",
+                "<p>Literal: `<span style='font-size:64px'>AVAVAV</span>`</p>",
+                "<p>Literal: `&lt;span style='font-size:64px'&gt;AVAVAV&lt;/span&gt;`</p>",
+            ),
+            (
+                "中文😀: ``<span style='font-size:64px'>`**literal**`</span>``",
+                "<p>中文😀: ``<span style='font-size:64px'>`**literal**`</span>``</p>",
+                "<p>中文😀: ``&lt;span style='font-size:64px'&gt;`**literal**`&lt;/span&gt;``</p>",
+            ),
+            (
+                "` first  line\n<span>second line</span> `",
+                "<p>` first  line\n<span>second line</span> `</p>",
+                "<p>` first  line\n&lt;span&gt;second line&lt;/span&gt; `</p>",
+            ),
+            (
+                "`<br/>` and **bold**",
+                "<p>`<br/>` and <strong>bold</strong></p>",
+                "<p>`&lt;br/&gt;` and <strong>bold</strong></p>",
+            ),
+        ] {
+            assert_eq!(
+                mermaid_markdown_to_html_label_fragment(input, true),
+                expected_html
+            );
+            assert_eq!(
+                mermaid_markdown_to_xhtml_label_fragment(input, true),
+                expected_xhtml
+            );
+        }
+
+        let input = "` first  line\n<span>second line</span> `";
+        assert_eq!(
+            mermaid_markdown_to_html_label_fragment(input, false),
+            "<p>` first  line\n<span>second line</span> `</p>"
+        );
+        assert_eq!(
+            mermaid_markdown_to_xhtml_label_fragment(input, false),
+            "<p>` first  line\n&lt;span&gt;second line&lt;/span&gt; `</p>"
+        );
+    }
+
+    #[test]
+    fn label_fragments_project_escaped_angle_text_according_to_output_mode() {
+        for (input, expected_html, expected_xhtml) in [
+            (
+                r"Literal: \<span style='font-size:64px'>AVAVAV\</span>",
+                "<p>Literal: <span style='font-size:64px'>AVAVAV</span></p>",
+                "<p>Literal: &lt;span style='font-size:64px'&gt;AVAVAV&lt;/span&gt;</p>",
+            ),
+            (
+                r"中文😀: \<span>literal\</span> <span>raw</span>",
+                "<p>中文😀: <span>literal</span> <span>raw</span></p>",
+                "<p>中文😀: &lt;span&gt;literal&lt;/span&gt; <span>raw</span></p>",
+            ),
+            (
+                r"\<br/> and **bold**",
+                "<p><br/> and <strong>bold</strong></p>",
+                "<p>&lt;br/&gt; and <strong>bold</strong></p>",
+            ),
+            (
+                r"**\<span>literal\</span>**",
+                "<p><strong><span>literal</span></strong></p>",
+                "<p><strong>&lt;span&gt;literal&lt;/span&gt;</strong></p>",
+            ),
+            (
+                r"\*literal\* and **bold**",
+                "<p>*literal* and <strong>bold</strong></p>",
+                "<p>*literal* and <strong>bold</strong></p>",
+            ),
+            (r"\path < 2", r"<p>\path < 2</p>", r"<p>\path &lt; 2</p>"),
+            (
+                "before\n  1 < 2 `<span>literal</span>` <span>raw</span>",
+                "<p>before<br/>1 < 2 `<span>literal</span>` <span>raw</span></p>",
+                "<p>before<br/>1 &lt; 2 `&lt;span&gt;literal&lt;/span&gt;` <span>raw</span></p>",
+            ),
+        ] {
+            assert_eq!(
+                mermaid_markdown_to_html_label_fragment(input, true),
+                expected_html
+            );
+            assert_eq!(
+                mermaid_markdown_to_xhtml_label_fragment(input, true),
+                expected_xhtml
+            );
+        }
+
+        let input = r"\<span style='font-size:64px'>literal\</span>";
+        assert_eq!(
+            mermaid_markdown_to_html_label_fragment(input, false),
+            "<p><span&nbsp;style='font-size:64px'>literal</span></p>"
+        );
+        assert_eq!(
+            mermaid_markdown_to_xhtml_label_fragment(input, false),
+            "<p>&lt;span\u{00a0}style='font-size:64px'&gt;literal&lt;/span&gt;</p>"
+        );
+    }
+
+    #[test]
+    fn label_fragments_keep_raw_html_after_unmatched_backticks() {
+        let input = "unmatched ` **bold** <span style='font-size:64px'>raw</span>";
+        let expected =
+            "<p>unmatched ` <strong>bold</strong> <span style='font-size:64px'>raw</span></p>";
+        assert_eq!(
+            mermaid_markdown_to_html_label_fragment(input, true),
+            expected
+        );
+        assert_eq!(
+            mermaid_markdown_to_xhtml_label_fragment(input, true),
+            expected
+        );
+    }
+
+    #[test]
+    fn label_fragments_preserve_raw_blocks_with_projection_specific_angles() {
+        for (input, expected_html, expected_xhtml) in [
+            (
+                "    <span style='font-size:64px'>literal</span>",
+                "    <span style='font-size:64px'>literal</span>",
+                "    &lt;span style='font-size:64px'&gt;literal&lt;/span&gt;",
+            ),
+            (
+                "```html\n<span style='font-size:64px'>literal</span>\n```",
+                "```html <span style='font-size:64px'>literal</span> ```",
+                "```html &lt;span style='font-size:64px'&gt;literal&lt;/span&gt; ```",
+            ),
+            (
+                "# <span style='font-size:64px'>heading</span>",
+                "# <span style='font-size:64px'>heading</span>",
+                "# &lt;span style='font-size:64px'&gt;heading&lt;/span&gt;",
+            ),
+        ] {
+            assert_eq!(
+                mermaid_markdown_to_html_label_fragment(input, true),
+                expected_html
+            );
+            assert_eq!(
+                mermaid_markdown_to_xhtml_label_fragment(input, true),
+                expected_xhtml
+            );
+        }
+    }
+
+    #[test]
+    fn label_fragment_structure_distinguishes_html_insertion_from_xhtml_literals() {
+        let input = "`<span style='font-size:64px'>code</span>` ";
+        let input = format!(
+            "{input}{}",
+            r"\<span>escaped\</span> <span style='font-size:64px'>raw</span>"
+        );
+        let html = mermaid_markdown_to_html_label_fragment(&input, true);
+        assert_eq!(
+            html,
+            "<p>`<span style='font-size:64px'>code</span>` <span>escaped</span> <span style='font-size:64px'>raw</span></p>"
+        );
+        // These balanced HTML tags are also XML-compatible: parsing them demonstrates the
+        // elements produced by insertion without adding another Markdown interpreter.
+        let html_document = roxmltree::Document::parse(&html).unwrap();
+        let html_spans: Vec<_> = html_document
+            .descendants()
+            .filter(|node| node.has_tag_name("span"))
+            .collect();
+        assert_eq!(html_spans.len(), 3, "{html}");
+        assert_eq!(html_spans[0].text(), Some("code"));
+        assert_eq!(html_spans[0].attribute("style"), Some("font-size:64px"));
+        assert_eq!(html_spans[1].text(), Some("escaped"));
+        assert_eq!(html_spans[2].text(), Some("raw"));
+        assert_eq!(html_spans[2].attribute("style"), Some("font-size:64px"));
+        assert_eq!(
+            mermaid_xhtml_label_text_content(&html).as_deref(),
+            Some("`code` escaped raw")
+        );
+
+        let fragment = mermaid_markdown_to_xhtml_label_fragment(&input, true);
+        let document = roxmltree::Document::parse(&fragment).unwrap();
+        let spans: Vec<_> = document
+            .descendants()
+            .filter(|node| node.has_tag_name("span"))
+            .collect();
+        assert_eq!(spans.len(), 1, "{fragment}");
+        assert_eq!(spans[0].text(), Some("raw"));
+        assert_eq!(spans[0].attribute("style"), Some("font-size:64px"));
+        assert_eq!(
+            mermaid_xhtml_label_text_content(&fragment).as_deref(),
+            Some("`<span style='font-size:64px'>code</span>` <span>escaped</span> raw")
         );
     }
 

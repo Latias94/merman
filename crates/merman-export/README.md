@@ -18,6 +18,35 @@ The crate has no default features. Enable only the formats the application emits
 | `png` | Bounded PNG bitmap | `svg_to_png`, `prepare_raster`, `RasterOptions`, `RasterPlan` |
 | `jpeg` | Bounded JPEG bitmap | `svg_to_jpeg`, `prepare_raster`, `RasterOptions`, `RasterPlan` |
 | `pdf` | Vector PDF with bounded localized raster work | `svg_to_pdf`, `svg_to_pdf_with_options`, `prepare_pdf`, `PdfOptions` |
+| `native-fonts` | Explicit font services, independent of output codecs | `NativeFontOptions`, `NativeFontContext`, `NativeFontLimits` |
+| `system-fonts` | Compile usvg system discovery; legacy codecs also select this | `system_font_discovery_available` |
+| `experimental-system-font-query` | Opt-in platform-managed discovery, not a bounded metadata scan | `NativeFontOptions::load_platform` |
+
+The optional native context uses bounded explicit TTF/OTF/TTC sources and shared
+font selection. Install it through the facade's
+`SvgEnvironment::with_native_font_context` for shared layout, wrapping, SVG
+bounds, and computed-length measurement across diagram families, with automatic
+reuse by typed binary outputs. All 22 measurement protocol operations are
+supported; missing-glyph requests explicitly retain deterministic fallback.
+This does not promise browser pixel parity or arbitrary HTML/CSS typography.
+Direct exporters set
+the same context with `RasterOptions::with_font_context` or
+`PdfOptions::with_font_context`. Without a context, existing system-font export
+behavior remains unchanged. With `system-fonts` compiled, the new context supports
+bounded system discovery through `NativeFontOptions::with_system_fonts(true)`;
+library callers opt in explicitly. Selected bytes are snapshotted and verified
+before measurement and painting. Metadata discovery reads one font file temporarily
+under the cumulative scan-byte budget; the independent resident-byte budget applies
+when a selected file is snapshotted, so discovery can inspect larger system collections.
+The resident-byte budget does not cap temporary scan buffers or process peak memory.
+See [CLI font coverage and limitations](../../docs/FEATURES.md#optional-cli-fonts).
+
+Experimental `load_platform` replaces only authorized system discovery with
+Fontique queries. Its internal platform metadata/file mappings do not inherit
+Merman's scan budgets or preemptive cancellation. Selected font snapshots remain
+bounded; all ordinary `load` and default-feature behavior remains unchanged.
+The context identity describes policy and initially admitted bytes, not a
+cross-process content hash of every subsequently selected platform font.
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 

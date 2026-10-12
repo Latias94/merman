@@ -6,14 +6,7 @@ Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
 ## Quick Start
 
-After `0.4.0` is available on Typst Universe, import it with:
-
-```typst
-#import "@preview/merman:0.4.0": mermaid
-```
-
-Before publication, build the package from this repository and pass its parent package root with
-`typst compile --package-path <package-root> document.typ`; the import remains:
+Package `0.4.0` is published on [Typst Universe](https://typst.app/universe/package/merman). Save the following as `document.typ`:
 
 ```typst
 #import "@preview/merman:0.4.0": mermaid
@@ -23,6 +16,12 @@ flowchart TD
   A[Write Mermaid] --> B[Render with merman]
   B --> C[Embed SVG in Typst]
 ")
+```
+
+Compile it to PDF:
+
+```sh
+typst compile document.typ document.pdf
 ```
 
 Upgrading from `0.3.0`? Mermaid 12 changed the default layout of flowcharts and several other graph families to ELK. To keep Dagre, see [Choose a Layout](#choose-a-layout); no custom plugin build is needed.

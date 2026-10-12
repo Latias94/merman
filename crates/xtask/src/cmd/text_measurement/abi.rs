@@ -11,14 +11,14 @@ const DESCRIPTOR_PATH: &str = "contracts/abi/text-measurement-v1.json";
 const TEXT_MEASUREMENT_PROTOCOL_ID: &str = "merman-text-measurement";
 const TEXT_MEASUREMENT_PROTOCOL_SCHEMA_VERSION: u32 = 1;
 const TEXT_MEASUREMENT_PROTOCOL_VERSION: u32 = 1;
-const TEXT_MEASUREMENT_OPERATION_COUNT: usize = 19;
+const TEXT_MEASUREMENT_OPERATION_COUNT: usize = 22;
 const TEXT_MEASUREMENT_RESULT_KIND_COUNT: usize = 4;
 const TEXT_MEASUREMENT_WRAP_MODE_COUNT: usize = 3;
 const TEXT_MEASUREMENT_DIRECTION_COUNT: usize = 1;
 const TEXT_MEASUREMENT_WHITE_SPACE_COUNT: usize = 3;
 const TEXT_MEASUREMENT_PHASE_COUNT: usize = 4;
 const TEXT_MEASUREMENT_V1_PROTOCOL_SHA256: &str =
-    "86f824a5217b4eabe41e914e42e7ab046617b1c94ea085b398a63d8fa278098f";
+    "5ede3d42b2d7ff3c378cf756ffe87cf570488f66027f102e1c34b2c3503e125c";
 
 const GENERATED_OUTPUTS: &[(&str, ArtifactKind)] = &[
     (
@@ -1247,7 +1247,7 @@ mod tests {
         assert_eq!(descriptor.schema_version, 1);
         assert_eq!(descriptor.protocol_id, TEXT_MEASUREMENT_PROTOCOL_ID);
         assert_eq!(descriptor.protocol_version, 1);
-        assert_eq!(descriptor.operations.len(), 19);
+        assert_eq!(descriptor.operations.len(), 22);
         assert_eq!(descriptor.result_kinds.len(), 4);
         assert_eq!(descriptor.wrap_modes.len(), 3);
         assert_eq!(descriptor.directions.len(), 1);
@@ -1262,7 +1262,7 @@ mod tests {
                 .into_iter()
                 .map(|operation| operation.code)
                 .collect::<Vec<_>>(),
-            (0..19).collect::<Vec<_>>()
+            (0..22).collect::<Vec<_>>()
         );
         assert_eq!(
             sorted_result_kinds(&descriptor)
@@ -1293,7 +1293,7 @@ mod tests {
         assert!(validate_descriptor(&duplicate_external_name).is_err());
 
         let mut gap = committed_descriptor();
-        gap.operations[18].code = 19;
+        gap.operations[21].code = 22;
         assert!(validate_descriptor(&gap).is_err());
 
         let mut unknown = committed_descriptor();

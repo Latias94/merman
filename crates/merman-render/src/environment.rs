@@ -5,7 +5,7 @@ use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
 use crate::svg::IconRegistry;
 use crate::text::{
     DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
-    append_text_width_em, estimate_text_width_em, is_html_collapsible_ascii_whitespace,
+    append_text_width_em, estimate_text_width_em,
 };
 use crate::{RenderCapability, RenderCapabilityPolicy};
 use merman_core::runtime::{OperationContext, OperationTiming, RuntimePolicy, RuntimePolicyError};
@@ -227,7 +227,7 @@ impl BuiltinTextMeasurementOperationCarrier {
             (
                 BuiltinTextMeasurementProfile::Deterministic,
                 TextMeasurementPhase::Wrap,
-                TextMeasurementOperation::Wrapped,
+                TextMeasurementOperation::CanvasMeasureTextWidth,
             ) => Some(BuiltinHtmlLineWidth::deterministic(style, 0.0)),
             _ => None,
         }
@@ -259,11 +259,9 @@ impl InlineHtmlMeasurementCarrier {
         self.builtin.is_some()
     }
 
-    pub(crate) fn begin_inline_html_width(
-        self,
-        style: &TextStyle,
-    ) -> Option<BuiltinInlineHtmlWidth> {
-        self.builtin.map(|_| BuiltinInlineHtmlWidth::new(style))
+    pub(crate) fn begin_inline_html_width(self, style: &TextStyle) -> Option<BuiltinHtmlLineWidth> {
+        self.builtin
+            .map(|_| BuiltinHtmlLineWidth::deterministic(style, 0.0))
     }
 }
 
@@ -437,11 +435,6 @@ impl BuiltinInlineRawLineWidth {
         }
     }
 
-    fn push_char(&mut self, ch: char) {
-        let mut encoded = [0_u8; 4];
-        self.push_text(ch.encode_utf8(&mut encoded));
-    }
-
     fn width_px(&self) -> f64 {
         (self.committed_em + estimate_text_width_em(&self.pending_grapheme)) * self.font_size
     }
@@ -449,205 +442,6 @@ impl BuiltinInlineRawLineWidth {
     fn reset(&mut self) {
         self.committed_em = 0.0;
         self.pending_grapheme.clear();
-    }
-}
-
-#[derive(Debug, Clone)]
-struct BuiltinNormalizedTextWidth {
-    line: BuiltinInlineRawLineWidth,
-    max_width_px: f64,
-    pending_blank_width_px: f64,
-    line_index: usize,
-    line_has_non_whitespace: bool,
-}
-
-impl BuiltinNormalizedTextWidth {
-    fn new(line: BuiltinInlineRawLineWidth) -> Self {
-        Self {
-            line,
-            max_width_px: 0.0,
-            pending_blank_width_px: 0.0,
-            line_index: 0,
-            line_has_non_whitespace: false,
-        }
-    }
-
-    fn push_char(&mut self, ch: char) {
-        if ch == '\n' {
-            self.finish_line();
-            return;
-        }
-
-        if !is_html_collapsible_ascii_whitespace(ch) && !self.line_has_non_whitespace {
-            // Completed whitespace-only lines cease to be trailing as soon as a later visible
-            // scalar arrives. This mirrors `normalized_text_lines` trimming only the final blank
-            // suffix while retaining interior whitespace-only lines.
-            self.max_width_px = self.max_width_px.max(self.pending_blank_width_px);
-            self.pending_blank_width_px = 0.0;
-            self.line_has_non_whitespace = true;
-        }
-        self.line.push_char(ch);
-    }
-
-    fn push_text(&mut self, text: &str) {
-        let mut start = 0usize;
-        for (index, ch) in text.char_indices() {
-            if ch != '\n' {
-                continue;
-            }
-            self.push_line_segment(&text[start..index]);
-            self.finish_line();
-            start = index + ch.len_utf8();
-        }
-        self.push_line_segment(&text[start..]);
-    }
-
-    fn push_line_segment(&mut self, text: &str) {
-        if text.is_empty() {
-            return;
-        }
-        if !self.line_has_non_whitespace
-            && text
-                .chars()
-                .any(|ch| !is_html_collapsible_ascii_whitespace(ch))
-        {
-            self.max_width_px = self.max_width_px.max(self.pending_blank_width_px);
-            self.pending_blank_width_px = 0.0;
-            self.line_has_non_whitespace = true;
-        }
-        self.line.push_text(text);
-    }
-
-    fn finish_line(&mut self) {
-        let width = self.line.width_px();
-        if self.line_index == 0 || self.line_has_non_whitespace {
-            self.max_width_px = self.max_width_px.max(width);
-        } else {
-            self.pending_blank_width_px = self.pending_blank_width_px.max(width);
-        }
-        self.line_index = self.line_index.saturating_add(1);
-        self.line_has_non_whitespace = false;
-        self.line.reset();
-    }
-
-    fn finished_width_px(&self) -> f64 {
-        if self.line_index == 0 || self.line_has_non_whitespace {
-            self.max_width_px.max(self.line.width_px())
-        } else {
-            // `DeterministicTextMeasurer::normalized_text_lines` removes the trailing blank
-            // suffix, but always retains the first logical line (already committed above).
-            self.max_width_px
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum InlineHtmlBreakState {
-    AfterLt,
-    AfterB,
-    AfterBr,
-    AfterSlash,
-}
-
-#[derive(Debug, Clone)]
-struct PendingInlineHtmlBreak {
-    state: InlineHtmlBreakState,
-    literal: BuiltinNormalizedTextWidth,
-}
-
-/// Exact streaming width state for a qualified built-in HTML measurement route.
-///
-/// Mermaid's pinned `createText.ts:addHtmlSpan` decodes HTML into a real span, so a valid `<br>`
-/// contributes a DOM line break before `getBoundingClientRect()`. This state follows the selected
-/// built-in backend's grapheme accumulation order and its existing `normalized_text_lines`
-/// behavior, without retaining or rescanning the potentially unbounded whitespace in an
-/// incomplete tag. It intentionally recognizes only ASCII space, tab, CR, and LF inside `<br>`;
-/// the wider ECMAScript `\s` set and browser text shaping remain bounded browser residuals.
-#[derive(Debug, Clone)]
-pub(crate) struct BuiltinInlineHtmlWidth {
-    normalized: BuiltinNormalizedTextWidth,
-    pending_break: Option<PendingInlineHtmlBreak>,
-    #[cfg(test)]
-    pub(crate) pushed_chunks: usize,
-}
-
-impl BuiltinInlineHtmlWidth {
-    fn new(style: &TextStyle) -> Self {
-        Self {
-            normalized: BuiltinNormalizedTextWidth::new(BuiltinInlineRawLineWidth::new(style)),
-            pending_break: None,
-            #[cfg(test)]
-            pushed_chunks: 0,
-        }
-    }
-
-    pub(crate) fn push_text(&mut self, text: &str) {
-        #[cfg(test)]
-        {
-            self.pushed_chunks = self.pushed_chunks.saturating_add(1);
-        }
-        if self.pending_break.is_none() && !text.contains('<') {
-            self.normalized.push_text(text);
-            return;
-        }
-        for ch in text.chars() {
-            self.push_char(ch);
-        }
-    }
-
-    fn push_char(&mut self, ch: char) {
-        let mut current = Some(ch);
-        while let Some(ch) = current.take() {
-            let Some(mut pending) = self.pending_break.take() else {
-                if ch == '<' {
-                    let mut literal = self.normalized.clone();
-                    literal.push_char(ch);
-                    self.pending_break = Some(PendingInlineHtmlBreak {
-                        state: InlineHtmlBreakState::AfterLt,
-                        literal,
-                    });
-                } else {
-                    self.normalized.push_char(ch);
-                }
-                continue;
-            };
-
-            match pending.state {
-                InlineHtmlBreakState::AfterLt if matches!(ch, 'b' | 'B') => {
-                    pending.literal.push_char(ch);
-                    pending.state = InlineHtmlBreakState::AfterB;
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterB if matches!(ch, 'r' | 'R') => {
-                    pending.literal.push_char(ch);
-                    pending.state = InlineHtmlBreakState::AfterBr;
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterBr if matches!(ch, ' ' | '\t' | '\r' | '\n') => {
-                    pending.literal.push_char(ch);
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterBr if ch == '/' => {
-                    pending.literal.push_char(ch);
-                    pending.state = InlineHtmlBreakState::AfterSlash;
-                    self.pending_break = Some(pending);
-                }
-                InlineHtmlBreakState::AfterBr | InlineHtmlBreakState::AfterSlash if ch == '>' => {
-                    self.normalized.push_char('\n');
-                }
-                _ => {
-                    self.normalized = pending.literal;
-                    current = Some(ch);
-                }
-            }
-        }
-    }
-
-    pub(crate) fn width_px(&self) -> f64 {
-        self.pending_break.as_ref().map_or_else(
-            || self.normalized.finished_width_px(),
-            |pending| pending.literal.finished_width_px(),
-        )
     }
 }
 
@@ -915,6 +709,16 @@ pub type HostMeasurementResult = Result<Option<HostTextMeasurement>, HostTextMea
 /// recorded as [`HostFallbackReason::Invalid`].
 pub trait HostTextMeasurer: Send + Sync {
     fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult;
+
+    /// Measures within the active render operation. Existing host adapters may ignore control;
+    /// native adapters use it to checkpoint bounded shaping and wrapping work.
+    fn measure_with_control(
+        &self,
+        request: HostTextMeasurementRequest<'_>,
+        _control: &OperationControl,
+    ) -> HostMeasurementResult {
+        self.measure(request)
+    }
 }
 
 #[derive(Clone)]
@@ -1045,6 +849,12 @@ impl CancelledTextMeasurement for f64 {
     }
 }
 
+impl CancelledTextMeasurement for Option<f64> {
+    fn cancelled() -> Self {
+        None
+    }
+}
+
 impl CancelledTextMeasurement for (f64, f64) {
     fn cancelled() -> Self {
         (0.0, 0.0)
@@ -1085,6 +895,9 @@ impl RoutedTextMeasurer<'_> {
             | TextMeasurementOperation::SimpleBBoxWidth
             | TextMeasurementOperation::RawBBoxWidth
             | TextMeasurementOperation::RawBBoxHeight
+            | TextMeasurementOperation::RawBBoxYOffset
+            | TextMeasurementOperation::RawMiddleBBoxYOffset
+            | TextMeasurementOperation::RawHangingBBoxYOffset
             | TextMeasurementOperation::BoundingClientRectWidth
             | TextMeasurementOperation::TspanBBoxWidth
             | TextMeasurementOperation::TspanBBoxHeight
@@ -1105,7 +918,14 @@ impl RoutedTextMeasurer<'_> {
         &self,
         operation: TextMeasurementOperation,
     ) -> Option<BuiltinTextMeasurementOperationCarrier> {
-        let phase = self.phase_for(operation);
+        self.builtin_operation_carrier_for_phase(self.phase_for(operation), operation)
+    }
+
+    fn builtin_operation_carrier_for_phase(
+        &self,
+        phase: TextMeasurementPhase,
+        operation: TextMeasurementOperation,
+    ) -> Option<BuiltinTextMeasurementOperationCarrier> {
         match &self.policy.routes[phase.index()] {
             TextMeasurementRouteConfig::Profile(profile) => {
                 profile
@@ -1147,7 +967,7 @@ impl RoutedTextMeasurer<'_> {
             TextMeasurementRouteConfig::Host {
                 backend, fallback, ..
             } => {
-                let attempt = backend.measure(request);
+                let attempt = backend.measure_with_control(request, self.work_meter.control());
                 if let Some(cancelled) = self.controlled_cancellation_value() {
                     return cancelled;
                 }
@@ -1233,20 +1053,26 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
 
     #[allow(private_interfaces)]
     fn begin_html_line_width(&self, style: &TextStyle) -> Option<BuiltinHtmlLineWidth> {
-        self.builtin_operation_carrier(TextMeasurementOperation::Wrapped)
-            .and_then(|carrier| carrier.into_html_line_width(style))
+        self.builtin_operation_carrier_for_phase(
+            TextMeasurementPhase::Wrap,
+            TextMeasurementOperation::CanvasMeasureTextWidth,
+        )
+        .and_then(|carrier| carrier.into_html_line_width(style))
     }
 
     fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        // A candidate is already decoded, single-line text. Use its raw advance without
+        // normalizing it as a complete HTML label, while retaining the Wrap route and callbacks.
         self.resolve(
-            self.request(
-                TextMeasurementOperation::Wrapped,
+            HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::CanvasMeasureTextWidth,
+                phase: TextMeasurementPhase::Wrap,
                 text,
                 style,
-                None,
-                WrapMode::HtmlLike,
-            ),
-            |measurement| decode_host_metrics(measurement).map(|metrics| metrics.width),
+                max_width: None,
+                wrap_mode: WrapMode::HtmlLike,
+            },
+            decode_host_length,
             |profile| profile.measure_html_line_width_px(text, style),
         )
     }
@@ -1381,6 +1207,56 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
         )
     }
 
+    fn measure_svg_raw_text_bbox_y_offset_px(&self, text: &str, style: &TextStyle) -> Option<f64> {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            |value| decode_host_length(value).map(Some),
+            |profile| profile.measure_svg_raw_text_bbox_y_offset_px(text, style),
+        )
+    }
+
+    fn measure_svg_raw_text_middle_bbox_y_offset_px(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> Option<f64> {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawMiddleBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            |value| decode_host_length(value).map(Some),
+            |profile| profile.measure_svg_raw_text_middle_bbox_y_offset_px(text, style),
+        )
+    }
+
+    fn measure_svg_raw_text_hanging_bbox_y_offset_px(
+        &self,
+        text: &str,
+        style: &TextStyle,
+    ) -> Option<f64> {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::RawHangingBBoxYOffset,
+                text,
+                style,
+                None,
+                WrapMode::SvgLike,
+            ),
+            |value| decode_host_length(value).map(Some),
+            |profile| profile.measure_svg_raw_text_hanging_bbox_y_offset_px(text, style),
+        )
+    }
+
     fn measure_svg_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
         self.resolve(
             self.request(
@@ -1406,6 +1282,20 @@ impl TextMeasurer for RoutedTextMeasurer<'_> {
             ),
             decode_host_length,
             |profile| profile.measure_svg_tspan_text_bbox_height_px(text, style),
+        )
+    }
+
+    fn measure_svg_preserved_tspan_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.resolve(
+            self.request(
+                TextMeasurementOperation::TspanBBoxWidth,
+                text,
+                style,
+                None,
+                WrapMode::HtmlLike,
+            ),
+            decode_host_length,
+            |profile| profile.measure_svg_preserved_tspan_text_bbox_width_px(text, style),
         )
     }
 
@@ -2038,6 +1928,9 @@ mod tests {
                 (16, "canvas-measure-text-width"),
                 (17, "create-text-middle-bbox-y-offset"),
                 (18, "raw-bbox-height"),
+                (19, "raw-bbox-y-offset"),
+                (20, "raw-middle-bbox-y-offset"),
+                (21, "raw-hanging-bbox-y-offset"),
             ]
         );
     }
@@ -2267,6 +2160,40 @@ mod tests {
 
     struct OperationAwareHost {
         operations: Arc<Mutex<Vec<TextMeasurementOperation>>>,
+    }
+
+    #[test]
+    fn preserved_tspan_width_reuses_operation_seven_with_explicit_whitespace_mode() {
+        struct PreservedTspanHost;
+
+        impl HostTextMeasurer for PreservedTspanHost {
+            fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+                assert_eq!(request.operation, TextMeasurementOperation::TspanBBoxWidth);
+                assert_eq!(request.operation.external_code(), 7);
+                assert_eq!(request.phase, TextMeasurementPhase::SvgBBox);
+                assert_eq!(request.text, "a  b");
+                assert_eq!(request.max_width, None);
+                assert_eq!(request.wrap_mode, WrapMode::HtmlLike);
+                Ok(Some(HostTextMeasurement::Length(37.5)))
+            }
+        }
+
+        let policy = TextMeasurementPolicy::host_display_with_fallback(
+            identity("test.preserved-tspan-host", "v1", &[]),
+            Arc::new(PreservedTspanHost),
+            [TextMeasurementPhase::SvgBBox],
+            deterministic_profile(),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(policy)
+            .begin_session()
+            .expect("begin render session");
+        assert_eq!(
+            session
+                .text_measurer(TextMeasurementPhase::Layout)
+                .measure_svg_preserved_tspan_text_bbox_width_px("a  b", &TextStyle::default()),
+            37.5,
+        );
     }
 
     impl HostTextMeasurer for OperationAwareHost {
@@ -2666,7 +2593,7 @@ mod tests {
     }
 
     #[test]
-    fn builtin_inline_stream_matches_backend_order_and_supported_br_normalization() {
+    fn builtin_inline_stream_preserves_decoded_candidates_and_backend_order() {
         fn assert_cases(
             backend: &dyn TextMeasurer,
             carrier: InlineHtmlMeasurementCarrier,
@@ -2675,9 +2602,7 @@ mod tests {
         ) {
             for (text, chunks) in cases {
                 assert_eq!(chunks.concat(), *text);
-                let expected = backend
-                    .measure_wrapped(text, style, None, WrapMode::HtmlLike)
-                    .width;
+                let expected = backend.measure_html_line_width_px(text, style);
                 let mut streamed = carrier
                     .begin_inline_html_width(style)
                     .expect("built-in carrier starts a streaming width");
@@ -2741,9 +2666,8 @@ mod tests {
         );
         let long_whitespace = " ".repeat(8_192);
         let long_break = format!("wide<br{long_whitespace}/>tail");
-        let expected = DeterministicTextMeasurer::default()
-            .measure_wrapped(&long_break, &style, None, WrapMode::HtmlLike)
-            .width;
+        let expected =
+            DeterministicTextMeasurer::default().measure_html_line_width_px(&long_break, &style);
         let mut streamed = deterministic_carrier
             .begin_inline_html_width(&style)
             .expect("deterministic carrier starts a streaming width");
@@ -2917,11 +2841,15 @@ mod tests {
     }
 
     #[test]
-    fn builtin_html_line_stream_uses_wrapped_owner_and_keeps_opaque_routes_observable() {
+    fn builtin_html_line_stream_uses_wrap_canvas_route_and_keeps_opaque_routes_observable() {
         let style = TextStyle::default();
         for (phase, operation) in [
             (
-                TextMeasurementPhase::ComputedLength,
+                TextMeasurementPhase::Layout,
+                TextMeasurementOperation::CanvasMeasureTextWidth,
+            ),
+            (
+                TextMeasurementPhase::Wrap,
                 TextMeasurementOperation::Wrapped,
             ),
             (
@@ -2953,7 +2881,7 @@ mod tests {
                     .text_measurer(default_phase)
                     .begin_html_line_width(&style)
                     .is_some(),
-                "Wrapped always belongs to the Wrap phase"
+                "decoded HTML candidates always belong to the Wrap phase"
             );
         }
 
@@ -2973,6 +2901,21 @@ mod tests {
         let custom_wrap = custom_wrap_session.text_measurer(TextMeasurementPhase::ComputedLength);
         assert!(custom_wrap.begin_html_line_width(&style).is_none());
         assert!(custom_wrap.begin_svg_text_computed_length(&style).is_some());
+
+        let custom_layout_session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(
+                TextMeasurementPolicy::deterministic()
+                    .with_profile_for_phase(TextMeasurementPhase::Layout, custom.clone()),
+            )
+            .begin_session()
+            .expect("begin custom Layout session");
+        assert!(
+            custom_layout_session
+                .text_measurer(TextMeasurementPhase::Layout)
+                .begin_html_line_width(&style)
+                .is_some(),
+            "the ordinary Canvas Layout route does not own decoded HTML candidates"
+        );
 
         let custom_computed_session = RenderEnvironment::deterministic()
             .with_text_measurement_policy(
@@ -3013,7 +2956,7 @@ mod tests {
     }
 
     #[test]
-    fn decoded_html_line_probe_keeps_wrapped_host_routing_and_fallback_provenance() {
+    fn decoded_html_line_probe_keeps_wrap_canvas_host_routing_and_fallback_provenance() {
         struct DecodedLineHost {
             calls: Arc<AtomicUsize>,
             measurement: Option<HostTextMeasurement>,
@@ -3022,7 +2965,10 @@ mod tests {
         impl HostTextMeasurer for DecodedLineHost {
             fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
                 self.calls.fetch_add(1, Ordering::Relaxed);
-                assert_eq!(request.operation, TextMeasurementOperation::Wrapped);
+                assert_eq!(
+                    request.operation,
+                    TextMeasurementOperation::CanvasMeasureTextWidth
+                );
                 assert_eq!(request.phase, TextMeasurementPhase::Wrap);
                 assert_eq!(request.text, "a<br>b");
                 assert_eq!(request.max_width, None);
@@ -3037,7 +2983,7 @@ mod tests {
             DeterministicTextMeasurer::default().measure_html_line_width_px(text, &style);
         for (measurement, expected, outcome) in [
             (
-                Some(HostTextMeasurement::Metrics(metrics(73.25))),
+                Some(HostTextMeasurement::Length(73.25)),
                 73.25,
                 TextMeasurementRouteOutcome::Host,
             ),
@@ -3047,7 +2993,7 @@ mod tests {
                 TextMeasurementRouteOutcome::Fallback(HostFallbackReason::Missing),
             ),
             (
-                Some(HostTextMeasurement::Length(100.0)),
+                Some(HostTextMeasurement::Metrics(metrics(100.0))),
                 fallback_width,
                 TextMeasurementRouteOutcome::Fallback(HostFallbackReason::Invalid),
             ),
@@ -3071,7 +3017,10 @@ mod tests {
             assert_eq!(report.entries().len(), 1);
             let provenance = report.entries()[0].provenance();
             assert_eq!(provenance.phase, TextMeasurementPhase::Wrap);
-            assert_eq!(provenance.operation, TextMeasurementOperation::Wrapped);
+            assert_eq!(
+                provenance.operation,
+                TextMeasurementOperation::CanvasMeasureTextWidth
+            );
             match outcome {
                 TextMeasurementRouteOutcome::Host => {
                     assert_eq!(provenance.source, TextMeasurementSource::Host);
@@ -3086,12 +3035,15 @@ mod tests {
         }
 
         let custom_session = RenderEnvironment::deterministic()
-            .with_text_measurement_policy(TextMeasurementPolicy::uniform(
-                TextMeasurementProfile::new(
-                    identity("test.specialized-decoded-line", "v1", &[]),
-                    Arc::new(SpecializedProfile),
+            .with_text_measurement_policy(
+                TextMeasurementPolicy::deterministic().with_profile_for_phase(
+                    TextMeasurementPhase::Wrap,
+                    TextMeasurementProfile::new(
+                        identity("test.specialized-decoded-line", "v1", &[]),
+                        Arc::new(SpecializedProfile),
+                    ),
                 ),
-            ))
+            )
             .begin_session()
             .expect("begin custom decoded line session");
         assert_eq!(
@@ -3101,6 +3053,64 @@ mod tests {
             13.0,
             "a custom profile retains its complete wrapped-measurement default"
         );
+    }
+
+    #[test]
+    fn decoded_html_line_cancellation_skips_fallback_and_future_wrap_probes() {
+        struct CancellingDecodedLineHost(Arc<AtomicUsize>);
+
+        impl HostTextMeasurer for CancellingDecodedLineHost {
+            fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+                panic!("decoded line requests must carry the active session control");
+            }
+
+            fn measure_with_control(
+                &self,
+                request: HostTextMeasurementRequest<'_>,
+                control: &OperationControl,
+            ) -> HostMeasurementResult {
+                assert_eq!(request.phase, TextMeasurementPhase::Wrap);
+                assert_eq!(
+                    request.operation,
+                    TextMeasurementOperation::CanvasMeasureTextWidth
+                );
+                self.0.fetch_add(1, Ordering::Relaxed);
+                control.cancel();
+                Ok(None)
+            }
+        }
+
+        let control = OperationControl::new();
+        let host_calls = Arc::new(AtomicUsize::new(0));
+        let fallback_calls = Arc::new(AtomicUsize::new(0));
+        let fallback = TextMeasurementProfile::new(
+            identity("test.cancelled-html-line-fallback", "v1", &[]),
+            Arc::new(CountingFallback(Arc::clone(&fallback_calls))),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display_with_fallback(
+                identity("test.cancelling-html-line", "v1", &[]),
+                Arc::new(CancellingDecodedLineHost(Arc::clone(&host_calls))),
+                [TextMeasurementPhase::Wrap],
+                fallback,
+            ))
+            .begin_session_with_control(control)
+            .expect("begin controlled decoded line session");
+        let measurer = session
+            .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Postprocess);
+        let style = TextStyle::default();
+        assert_eq!(measurer.measure_html_line_width_px("a<br>b", &style), 0.0);
+        assert_eq!(
+            measurer.measure_html_line_width_px("next candidate", &style),
+            0.0
+        );
+        assert_eq!(host_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(fallback_calls.load(Ordering::Relaxed), 0);
+        assert!(session.text_measurement_report().entries().is_empty());
+        assert!(matches!(
+            session.checkpoint(OperationPhase::Postprocess),
+            Err(crate::Error::Cancelled(_))
+        ));
     }
 
     #[test]
@@ -3280,6 +3290,46 @@ mod tests {
     struct CancellingMissingHost {
         calls: Arc<AtomicUsize>,
         control: OperationControl,
+    }
+
+    struct ActiveOperationHost;
+
+    impl HostTextMeasurer for ActiveOperationHost {
+        fn measure(&self, _request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            panic!("session must provide its canonical control");
+        }
+
+        fn measure_with_control(
+            &self,
+            _request: HostTextMeasurementRequest<'_>,
+            control: &OperationControl,
+        ) -> HostMeasurementResult {
+            control.cancel();
+            Ok(None)
+        }
+    }
+
+    #[test]
+    fn host_adapter_receives_the_active_session_control() {
+        let control = OperationControl::new();
+        let policy = TextMeasurementPolicy::host_display(
+            identity("test.active-operation", "v1", &[]),
+            Arc::new(ActiveOperationHost),
+            TextMeasurementPhase::ALL,
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(policy)
+            .begin_session_with_control(control.clone())
+            .expect("begin session");
+        let metrics = session
+            .controlled_text_measurer(TextMeasurementPhase::Layout, OperationPhase::Layout)
+            .measure("label", &TextStyle::default());
+        assert_eq!(metrics.width, 0.0);
+        assert!(
+            control
+                .terminal_checkpoint_at(OperationPhase::Layout)
+                .is_err()
+        );
     }
 
     impl HostTextMeasurer for CancellingMissingHost {

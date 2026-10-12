@@ -431,6 +431,10 @@ fn config_file_theme_variables_and_theme_css_affect_svg() {
             "-",
             "-I",
             "cli-theme-config",
+            #[cfg(feature = "native-fonts")]
+            "--font-measurement",
+            #[cfg(feature = "native-fonts")]
+            "deterministic",
             "-c",
             config.to_string_lossy().as_ref(),
         ],
