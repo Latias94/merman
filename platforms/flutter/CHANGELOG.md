@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.9.0] - Unreleased
+## [0.9.0] - 2026-10-12
 
 Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and native artifacts paired.
 
