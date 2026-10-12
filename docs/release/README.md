@@ -4,7 +4,7 @@ Use this index to choose an upgrade path by the version you have installed. Merm
 
 ## Merman 0.9.0
 
-Start with the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) and [changelog](../../CHANGELOG.md#090---unreleased) for changed APIs, CLI commands, rendered output, and binding callbacks.
+Start with the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) and [changelog](../../CHANGELOG.md) for changed APIs, CLI commands, rendered output, and binding callbacks.
 
 Typst wrapper 0.5.0 bundles Merman 0.9.0; wrapper 0.4.0 bundles Merman 0.8.0. Roughr uses version 0.12.4, Tree-sitter uses 0.3.1, and the VS Code extension uses 0.1.0.
 
