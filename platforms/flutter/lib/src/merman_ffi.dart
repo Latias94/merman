@@ -2428,12 +2428,60 @@ Iterable<({String key, String prefix, String value})> _rawOptionsMembers(
   }
 }
 
-({String? request, String? policy}) _oneShotOptionsJson(String? optionsJson) {
+({String? request, String? constructor}) _oneShotOptionsJson(
+  String? optionsJson, {
+  MermanRuntimeCatalog? runtimeCatalog,
+  bool projectResourceProfile = false,
+}) {
   if (optionsJson == null || optionsJson.trim().isEmpty) {
-    return (request: null, policy: null);
+    return (request: null, constructor: null);
   }
   _asObject(jsonDecode(optionsJson), 'options_json');
   String? policy;
+  final profileValues = <String>[];
+
+  void collectResourceProfiles(String object) {
+    for (final member in _rawOptionsMembers(object)) {
+      if (member.key == 'profile') profileValues.add(member.value);
+    }
+  }
+
+  void collect(String object, {required bool wrappers}) {
+    for (final member in _rawOptionsMembers(object)) {
+      final value = member.value;
+      if (member.key == 'resources' && value.trimLeft().startsWith('{')) {
+        collectResourceProfiles(value);
+      }
+      if (wrappers &&
+          (member.key == 'analysis' || member.key == 'merman') &&
+          value.trimLeft().startsWith('{')) {
+        collect(value, wrappers: false);
+      }
+    }
+  }
+
+  if (projectResourceProfile) collect(optionsJson, wrappers: true);
+  final profile = profileValues.length == 1
+      ? jsonDecode(profileValues.single)
+      : null;
+  // Ambiguous or unknown profiles stay entirely in the request for Rust admission.
+  final projectProfile =
+      profile is String &&
+      runtimeCatalog?.resourceProfilesById.containsKey(profile) == true;
+
+  String projectResources(String object) {
+    if (!projectProfile) return object;
+    final members = <String>[];
+    var changed = false;
+    for (final member in _rawOptionsMembers(object)) {
+      if (member.key == 'profile') {
+        changed = true;
+        continue;
+      }
+      members.add('${member.prefix}${member.value}');
+    }
+    return changed ? '{${members.join(',')}}' : object;
+  }
 
   String project(String object, {required bool wrappers}) {
     final members = <String>[];
@@ -2450,6 +2498,10 @@ Iterable<({String key, String prefix, String value})> _rawOptionsMembers(
         continue;
       }
       var value = member.value;
+      if (member.key == 'resources' && value.trimLeft().startsWith('{')) {
+        value = projectResources(value);
+        changed |= value != member.value;
+      }
       if (wrappers &&
           (member.key == 'analysis' || member.key == 'merman') &&
           value.trimLeft().startsWith('{')) {
@@ -2463,13 +2515,20 @@ Iterable<({String key, String prefix, String value})> _rawOptionsMembers(
   }
 
   var request = project(optionsJson, wrappers: true);
-  if (policy == null) return (request: optionsJson, policy: null);
+  if (policy == null && !projectProfile) {
+    return (request: optionsJson, constructor: null);
+  }
   // Keep the original byte charge: removing constructor fields must not let the
   // authoring request bypass the shared max_options_json_bytes preflight.
   final removedBytes =
       utf8.encode(optionsJson).length - utf8.encode(request).length;
   if (removedBytes > 0) request += ' ' * removedBytes;
-  return (request: request, policy: '{"runtime_policy":$policy}');
+  final constructorFields = <String>[];
+  if (policy != null) constructorFields.add('"runtime_policy":$policy');
+  if (projectProfile) {
+    constructorFields.add('"resources":{"profile":${profileValues.single}}');
+  }
+  return (request: request, constructor: '{${constructorFields.join(',')}}');
 }
 
 /// Discovery and one-shot facade for Flutter and standalone Dart hosts.
@@ -2531,11 +2590,15 @@ class Merman {
         ? null
         : optionsJson;
     final authoringOptions = authoring
-        ? _oneShotOptionsJson(rawOptionsJson)
+        ? _oneShotOptionsJson(
+            rawOptionsJson,
+            runtimeCatalog: runtimeCatalog,
+            projectResourceProfile: true,
+          )
         : null;
     final engine = _native.createEngine(
       runtimeCatalog: runtimeCatalog,
-      optionsJson: authoring ? authoringOptions!.policy : rawOptionsJson,
+      optionsJson: authoring ? authoringOptions!.constructor : rawOptionsJson,
       services: const MermanEngineServices(),
     );
     try {

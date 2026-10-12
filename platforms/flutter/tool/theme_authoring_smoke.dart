@@ -228,6 +228,49 @@ void _checkAuthoringRuntimePolicies(
   }
 }
 
+void _checkAuthoringResourceProfiles(
+  Merman oneShot,
+  MermanEngine engine,
+  Map<MermanOperation, String> inputs,
+) {
+  for (final input in inputs.entries) {
+    final baseline = oneShot.execute(input.key, input.value);
+    final encodedBudget = input.key == MermanOperation.exportThemePresetJson
+        ? utf8.encode(jsonEncode(baseline.jsonObject)).length
+        : utf8.encode(input.value).length;
+    final profiles = [
+      '{"resources":{"profile":"trusted-native"}}',
+      '{"analysis":{"resources":{"profile":"unbounded-for-trusted-input"}}}',
+      '{"merman":{"resources":{"profile":"constrained","limits":{"max_theme_encoded_bytes":$encodedBudget}}}}',
+    ];
+    for (final options in profiles) {
+      final result = oneShot.execute(
+        input.key,
+        input.value,
+        optionsJson: options,
+      );
+      _expectJson(
+        result.jsonObject,
+        baseline.jsonObject,
+        '${input.key.operationId} one-shot profile',
+      );
+    }
+    for (final options in [
+      '{"resources":{"profile":"trusted-native"}}',
+      '{"analysis":{"resources":{"profile":"unbounded-for-trusted-input"}}}',
+    ]) {
+      try {
+        engine.execute(input.key, input.value, optionsJson: options);
+      } on MermanException {
+        continue;
+      }
+      throw StateError(
+        '${input.key.operationId}: request widened reusable engine',
+      );
+    }
+  }
+}
+
 void main(List<String> args) {
   if (args.length > 1) {
     throw ArgumentError(
@@ -249,6 +292,13 @@ void main(List<String> args) {
   try {
     _checkRawRecipeAdmission(oneShot, engine);
     _checkAuthoringRuntimePolicies(oneShot, {
+      MermanOperation.materializeThemeJson: read('light.definition.json'),
+      MermanOperation.describeThemeSupportJson: jsonEncode(
+        support.first['query'],
+      ),
+      MermanOperation.exportThemePresetJson: 'editor-light',
+    });
+    _checkAuthoringResourceProfiles(oneShot, engine, {
       MermanOperation.materializeThemeJson: read('light.definition.json'),
       MermanOperation.describeThemeSupportJson: jsonEncode(
         support.first['query'],
