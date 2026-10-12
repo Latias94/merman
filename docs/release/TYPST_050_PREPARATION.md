@@ -14,20 +14,22 @@ ELK defaults, the top-level Mermaid `layout` setting, and Dagre recipes already 
 
 The Typst package does not expose the native ABI or the new edge-geometry operation. Its five callable ABI operations and capability catalog remain the authority. The development smoke interpreter upgrade is a tool change, not an added Typst runtime feature.
 
-## Local preparation validation
+## Preparation validation
 
 On 2026-10-12, the exact `typst-wasm` recipe passed the unchanged size limits with Rust 1.95.0 and Binaryen 133: raw 13,936,547, optimized/stripped 8,822,440, gzip 3,433,230, and Brotli 2,552,937 bytes. The prepared 0.5.0 package passed interpreter validation, then compiled 21 fixtures and verified one expected diagnostic on each of Typst 0.15.0 and 0.15.1. The API fixture checked bundled Merman 0.9.0. The Wasmi 2 host dispatcher migration includes a long-loop regression and passed the real package run.
 
-These are local preparation results. The approved intended publication date is 2026-10-12, and the package changelog is dated accordingly. Final-source package rebuild, immutable preflight, and registry submission still need their owner evidence; retain the exact package and receipt from that source rather than reusing the earlier staging result.
+The final package source is `f754a3c3077d35d2a372c2fec04f9e9b87db1c3f`, also tagged as workspace v0.9.0. The approved intended publication date is 2026-10-12, and the package changelog is dated accordingly. It was rebuilt from that source, with staged README and changelog bytes matching their source files, then passed 21 compiled fixtures and one expected diagnostic on each of Typst 0.15.0 and 0.15.1. The local optimized WASM digest is `d16db86a2290777a86094f6289c23ac9c8b16c59097c618044e5540958df1495`.
+
+[Immutable workspace preflight 38242910387, attempt 2](https://github.com/Latias94/merman/actions/runs/38242910387) passed all 24 jobs. The separate [Linux Typst owner job](https://github.com/Latias94/merman/actions/runs/38250149414/job/114826095865) passed generated-profile and closure checks, size budgets, package construction, interpreter validation, and all 21 fixtures plus the expected diagnostic. Its host-specific WASM measurements were raw 13,932,914, optimized/stripped 8,819,309, gzip 3,431,334, and Brotli 2,553,400 bytes; do not treat them as byte-identical to the local Windows artifact. Retain the exact chosen package and private receipt for submission. Universe submission and acceptance remain pending even though the workspace crates and CLI/LSP have shipped.
 
 ## Owner checklist
 
-- [ ] Confirm wrapper 0.5.0, bundled workspace 0.9.0, ABI 2, compiler minimum, and final reviewed source SHA.
-- [ ] Run generated-profile verification and the exact `typst-wasm` dependency-closure check.
-- [ ] Run the Typst artifact size matrix and inspect the owner report.
-- [ ] Build the `publish` package from the reviewed source and inspect the staged README, changelog, legal material, and exact WASM digest.
-- [ ] Run the full Typst package smoke and example suite with the admitted interpreter/toolchain.
-- [ ] Freeze the private artifact receipt and final package source; require new evidence after any source change.
+- [x] Confirm wrapper 0.5.0, bundled workspace 0.9.0, ABI 2, compiler minimum, and final reviewed source SHA.
+- [x] Run generated-profile verification and the exact `typst-wasm` dependency-closure check.
+- [x] Run the Typst artifact size matrix and inspect the owner report.
+- [x] Build the `publish` package from the reviewed source and inspect the staged README, changelog, legal material, and exact WASM digest.
+- [x] Run the full Typst package smoke and example suite with the admitted interpreter/toolchain.
+- [x] Freeze the private artifact receipt and final package source; require new evidence after any source change.
 - [ ] Obtain explicit Typst shipping authorization separately from workspace shipping.
 - [ ] Submit the frozen package once, then verify exact registry version and observed publication date before updating status.
 

@@ -182,17 +182,17 @@ versions on its own publication schedule.
 
 ## 0.9.0 Preparation Checklist
 
-The selected workspace target is 0.9.0, with an approved intended tag date of 2026-10-12. The root and workspace-coupled package headings are dated for immutable preflight; Typst wrapper 0.5.0 has the same intended publication date. [PUBLISH_ORDER.md](PUBLISH_ORDER.md#090-preparation) records owner status and the last published stable baseline. A dated changelog is not registry publication evidence.
+Workspace 0.9.0 was published on 2026-10-12 from `f754a3c3077d35d2a372c2fec04f9e9b87db1c3f` after immutable preflight. The [publication snapshot](PUBLISH_ORDER.md#090-publication-snapshot) records Rust, CLI/LSP, and independent-prerequisite receipts. Typst wrapper 0.5.0 is prepared with the same intended publication date and remains pending separate Universe submission. Other package channels have their own publication owners.
 
-- [ ] Complete independent roughr 0.12.4 public-API and published-consumer compatibility checks, then separately authorize its publication and confirm registry visibility.
-- [ ] Complete independent Tree-sitter 0.3.1 generator/runtime/language, package, and provenance checks, then separately authorize prerequisite publication and confirm registry visibility before workspace dependents.
-- [ ] Validate the final 0.9.0 version projection and source graph after all dependency updates.
-- [ ] Inspect target READMEs, package-local changelogs, the 0.8.0 migration, closest install guides, and the [dependency policy](../DEPENDENCY_POLICY.md); verify packaged documentation bytes.
-- [ ] Retain complete Cargo/npm candidate audits, compatibility exceptions, and new legal/advisory results without borrowing historical passes.
-- [ ] Complete native, Web/Node, CLI/LSP, FFI, and Typst artifact/profile/package-size owner gates on the final source.
-- [ ] Prepare Typst wrapper 0.5.0 with Merman 0.9.0 and plugin ABI 2, keeping the published 0.4.0 mapping unchanged; follow the [Typst checklist](TYPST_050_PREPARATION.md).
-- [ ] Set the approved intended tag date, commit all source/documentation projections, freeze the reviewed 40-character SHA, and run immutable preflight.
-- [ ] Obtain explicit shipping authorization for the exact source/version/channel/surface set, then record registry and artifact receipts separately for each owner.
+- [x] Complete independent roughr 0.12.4 public-API and published-consumer compatibility checks, then separately authorize its publication and confirm registry visibility.
+- [x] Complete independent Tree-sitter 0.3.1 generator/runtime/language, package, and provenance checks, then separately authorize prerequisite publication and confirm registry visibility before workspace dependents.
+- [x] Validate the final 0.9.0 version projection and source graph after all dependency updates.
+- [x] Inspect target READMEs, package-local changelogs, the 0.8.0 migration, closest install guides, and the [dependency policy](../DEPENDENCY_POLICY.md); verify packaged documentation bytes.
+- [x] Retain complete Cargo/npm candidate audits, compatibility exceptions, and new legal/advisory results without borrowing historical passes.
+- [x] Complete native, Web/Node, CLI/LSP, FFI, and Typst artifact/profile/package-size owner gates on the final source.
+- [x] Prepare Typst wrapper 0.5.0 with Merman 0.9.0 and plugin ABI 2, keeping the published 0.4.0 mapping unchanged; follow the [Typst checklist](TYPST_050_PREPARATION.md).
+- [x] Set the approved intended tag date, commit all source/documentation projections, freeze the reviewed 40-character SHA, and run immutable preflight.
+- [x] Publish the authorized Rust workspace, CLI/LSP, and independent prerequisites; record their registry and artifact receipts. Typst and other package channels retain separate shipping authorization and owner runs.
 
 A completed prerequisite publication does not publish workspace 0.9.0. A workspace publication does not publish Typst, VS Code, or the separately owned package channels. No checklist item is marked complete without the owner's recorded result.
 
