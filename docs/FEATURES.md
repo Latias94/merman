@@ -1,6 +1,6 @@
 # Choosing Merman capabilities
 
-This page documents the `0.8.0` source candidate. The latest published workspace release at this checkpoint is `0.8.0-alpha.7` (2026-09-30); its explicit family selections and ELK product defaults also apply here. Registry channels publish independently, so verify the exact package version and provenance before copying an install command; workspace path snippets are for source-tree development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host migration and the [stable upgrade guide](release/V070_TO_V080_UPGRADE_GUIDE.md) when starting from `0.7.0`.
+This page documents the current source tree. The published `0.8.0` Rust release includes explicit family selection and ELK in the default facade build; unreleased additions are identified below. Registry channels publish independently, so check the [versioned release index](release/README.md) and the exact package version before copying an install command. Workspace path snippets are for source-tree development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select built-in parser, model, and output implementations. Selected
@@ -196,7 +196,7 @@ a supported Node transport or fallback.
 
 ## Select diagram families
 
-These selectors were published in `0.8.0-alpha.7` and remain part of the `0.8.0` source candidate. Packages at alpha.6 and earlier predate this source and typed-API migration. Default facade, CLI, and Rustdoc users retain all built-in families.
+These selectors were introduced in `0.8.0-alpha.7` and are included in the published `0.8.0` release. Packages at alpha.6 and earlier predate this source and typed-API migration. Default facade, CLI, and Rustdoc users retain all built-in families.
 Low-level crates keep empty defaults. Existing `default-features = false` consumers must add
 `all-diagrams` to retain the previous language surface, or list the families they require.
 `complete-svg` alone selects outputs and engines, not languages.
@@ -504,7 +504,7 @@ their package-specific notices and source provenance are part of the release con
 generated APIs keep those operation names for custom current-contract libraries; inspect the runtime catalog and handle typed
 missing-capability errors before exposing optional output choices.
 
-Flutter's verified alpha.7 publication uses `flutter pub add 'merman:^0.8.0-alpha.7'` and `Merman.open()`; see the [dated publication snapshot](release/PUBLISH_ORDER.md#alpha7-publication-snapshot). The `0.8.0` source candidate is not yet a pub.dev release. Android consumes the
+Flutter's published `0.8.0` package uses `flutter pub add 'merman:0.8.0'` and `Merman.open()`; see the [dated publication snapshot](release/PUBLISH_ORDER.md#080-publication-snapshot). Android consumes the
 matching release AAR through `implementation(files(...))`; its Kotlin surface is direct JNI
 transport API 1 rather than C ABI 3. Apple consumes the matching
 XCFramework through the local Swift package; C and C++ build the source-only `c-abi-native`
@@ -513,11 +513,10 @@ artifact profile. The [Flutter](../platforms/flutter/README.md),
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
 and lifecycle rules; there is no interchangeable generic native binary SDK.
 
-Typst is an independently released package. Verify the registry version before installing; the
-source tree currently prepares the `0.3.0` wrapper:
+Typst is independently versioned. Use the published `0.4.0` wrapper with Typst `0.15.0` or later:
 
 ```typst
-#import "@preview/merman:0.3.0": mermaid
+#import "@preview/merman:0.4.0": mermaid
 
 #mermaid(```mermaid
 flowchart TD
@@ -525,7 +524,13 @@ flowchart TD
 ```)
 ```
 
-The published `0.3.0` Typst wrapper was built from Merman `0.8.0-alpha.6`, requires Typst `0.15.0`, and includes SVG, analysis, Cytoscape, and ELK. This package rebuild removes ICU4X collation data and generated font-metric tables from the production WASM closure while retaining the deterministic Unicode-aware measurement fallback. Use Typst's registry package for normal installs; build locally with `--package-path` only when testing a source snapshot. The package includes the ELK dependency closure and its accompanying EPL-2.0 notices; Math is not advertised until its pure-WASM font, license, import, and parity admission is complete. The source package always enforces its constrained resource policy; caller options may tighten it but cannot replace it with an unbounded profile. See the [Typst package guide](../distribution/typst/merman/README.md) for the published/source version boundary.
+The `0.4.0` wrapper bundles Merman `0.8.0` with Mermaid `12.1.0` compatibility, SVG,
+analysis, Cytoscape, and ELK. It uses deterministic text measurement; Typst's actual glyph
+metrics are not measured automatically, and math rendering is unavailable. The package ships
+ELK's EPL-2.0 notices and enforces a constrained resource policy that caller options may tighten.
+Use the registry package for normal installs and local `--package-path` builds for source testing.
+See the [Typst package guide](../distribution/typst/merman/README.md) for examples and the
+[dated publication record](release/PUBLISH_ORDER.md#typst-040-publication) for version provenance.
 
 Native bindings expose the same flat runtime catalog. The catalog contains stable
 `capability_ids`, `operation_ids`, and `output_ids`. Do not infer capabilities from exported

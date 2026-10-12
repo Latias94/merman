@@ -243,3 +243,29 @@ matches explicit deterministic SVG hashes, and deterministic/explicit-font SVG
 hashes are unchanged across the policy revision. Historical measurement records
 remain intact. The Changelog includes font-family configuration, file/directory
 examples and the recommendation to use fixed local fonts for layout accuracy.
+
+
+## Documentation and release preparation
+
+The complete CI run [38198585396](https://github.com/Latias94/merman/actions/runs/38198585396)
+passed on code commit `720b5bd46d1fe84a7abb0e6cab29c43ec83cb446`: 56 successful jobs and
+one policy-selected skip. This includes Linux workspace tests, SVG DOM comparison and Chromium
+root-viewport checks, Windows/macOS native owners, Web, Apple, Flutter, and VS Code packaging.
+The Performance workflow passed its selected contract lanes; benchmark execution was skipped.
+
+README history shows deliberate homepage simplification on 2026-07-27 (`1349fcf09`) and
+Rust-library positioning on 2026-08-13 (`766454e7e`). Later additions accumulated release,
+migration, lifecycle, feature, and font details. The project overview now has 141 lines rather
+than 335, with rendered examples ahead of a complete Rust quick start, a short CLI entry,
+integration links, and compatibility/license boundaries. Detailed font guidance remains in
+the CLI README and Changelog. Entry guides were reconciled with the published 0.8.0 baseline.
+
+Typst Universe was checked on 2026-10-12 and lists wrapper 0.4.0 as published on 2026-10-09,
+bundling Merman 0.8.0 and requiring Typst 0.15.0. Its source README now starts with direct
+registry usage; local builds remain in Development. The release skill and public release guide
+require final user documentation before source freeze and package inspection. Registry
+availability and publication receipts stay in release records.
+
+The documentation follow-up checked 110 repository link targets, fenced code, README anchors,
+and whitespace. An independent review checked the onboarding path and release-preparation
+rules. No compiled code or artifact profiles changed in this documentation follow-up.
