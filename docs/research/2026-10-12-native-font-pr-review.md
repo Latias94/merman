@@ -179,3 +179,13 @@ cases (11 intentionally ignored host cases). All-feature CLI Clippy passed again
 An independent correctness review confirmed the separate budget ownership and
 selected-source enforcement. Documentation clarifies that resident byte limits
 exclude temporary whole-file scan buffers and do not describe peak RSS.
+
+All five local Web/WASM packages were rebuilt through the descriptor-owned npm
+pipeline and passed input freshness, assembled-package validation, package and
+same-process smoke, and DOM-safety smoke. The complete Web script suite then
+identified two upstream integration test projections: complete renderer closures
+must include `merman-unicode-linebreak`, and the interactive layout ceiling is
+14,100,000 (as owned by Rust and generated contracts), rather than the old 800,000.
+The precise expected closures and exact/plus-one boundary assertions were aligned
+without changing production policy. The final suite passed 129 cases with two
+platform-specific skips and no failures.

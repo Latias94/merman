@@ -17,7 +17,7 @@ test("interactive resource tightening accepts the generated Rust layout-work cei
       { profile: "interactive" },
       {
         profile: "interactive",
-        limits: { max_layout_work_units: 800_000 },
+        limits: { max_layout_work_units: 14_100_000 },
       },
     ),
   );
@@ -27,10 +27,10 @@ test("interactive resource tightening accepts the generated Rust layout-work cei
         { profile: "interactive" },
         {
           profile: "interactive",
-          limits: { max_layout_work_units: 800_001 },
+          limits: { max_layout_work_units: 14_100_001 },
         },
       ),
-    /maximum 800000/,
+    /maximum 14100000/,
   );
 });
 
