@@ -310,7 +310,9 @@ mod tests {
             std::process::id(),
             std::thread::current().id()
         ));
-        fs::create_dir_all(&root).unwrap();
+        fs::create_dir(&root).unwrap();
+        // Resolve host temp-directory aliases before constructing a regular font source.
+        let root = fs::canonicalize(root).unwrap();
         // Dot segments keep the candidate path distinct from its canonical registry key.
         let path = root.join(".").join("font.ttf");
         let bytes = fs::read(

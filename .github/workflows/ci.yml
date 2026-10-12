@@ -235,12 +235,12 @@ jobs:
         with:
           cache-targets: false
 
-      - name: Install CLI asset validators
+      - name: Install CLI build dependencies and asset validators
         timeout-minutes: 10
         run: |
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish libfontconfig1-dev mandoc pkg-config zsh
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
@@ -426,6 +426,15 @@ jobs:
         uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
+
+      - name: Install Linux font build dependencies
+        if: runner.os == 'Linux'
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          sudo apt-get "${apt_options[@]}" update --error-on=any
+          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config
 
       - name: Verify pinned Mermaid reference before runtime install
         if: matrix.parity

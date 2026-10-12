@@ -782,6 +782,51 @@ class PlannerTests(unittest.TestCase):
                 svg_parity=True,
             )
 
+
+class WorkflowFontDependenciesTests(unittest.TestCase):
+    def test_linux_font_query_owners_install_dependencies_before_checks(self) -> None:
+        workflow = (
+            Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"
+        ).read_text(encoding="utf-8")
+        for owner, next_owner, setup_name, command in (
+            (
+                "cli-contracts",
+                "nix-cli-package",
+                "Install CLI build dependencies and asset validators",
+                "cargo clippy --locked -p merman-cli --all-targets --all-features -- -D warnings",
+            ),
+            (
+                "build-test",
+                "node-contracts",
+                "Install Linux font build dependencies",
+                "cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --cargo-quiet",
+            ),
+        ):
+            with self.subTest(owner=owner):
+                job = workflow.split(f"\n  {owner}:\n", 1)[1].split(
+                    f"\n  {next_owner}:\n", 1
+                )[0]
+                setup = job.split(f"- name: {setup_name}\n", 1)[1].split(
+                    "\n      - ", 1
+                )[0]
+                installs = [
+                    line
+                    for line in setup.splitlines()
+                    if "sudo apt-get " in line and " install " in line
+                ]
+                self.assertEqual(len(installs), 1)
+                packages = installs[0].split("--yes ", 1)[1].split()
+                self.assertTrue({"libfontconfig1-dev", "pkg-config"}.issubset(packages))
+                self.assertIn("timeout-minutes: 10", setup)
+                self.assertIn("Acquire::Retries=3", setup)
+                self.assertIn("Acquire::http::Timeout=30", setup)
+                self.assertIn("Acquire::https::Timeout=30", setup)
+                self.assertIn("update --error-on=any", setup)
+                self.assertLess(job.index(f"- name: {setup_name}"), job.index(command))
+                if owner == "build-test":
+                    self.assertIn("if: runner.os == 'Linux'", setup)
+
+
 class GateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.plan = plan_changes(
