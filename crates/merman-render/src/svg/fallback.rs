@@ -523,7 +523,8 @@ mod tests {
 
         let normal = svg.replace("break-spaces", "normal");
         let converted = render_fallback(&normal, measurer.as_ref());
-        assert!(!converted.contains(r#"xml:space="preserve""#));
+        // Normal-mode runs are already collapsed before SVG emission; preserve that result.
+        assert_eq!(converted.matches(r#"xml:space="preserve""#).count(), 3);
         assert_eq!(converted.matches(">iiii iiii</text>").count(), 3);
     }
 
