@@ -1095,7 +1095,7 @@ fn workflow_completions() {
             let render = bash_completion_options(&script, "render");
             assert!(
                 render.contains("-f") && !render.contains("-e"),
-                "native completion must expose -f without deprecated -e: {render:?}"
+                "native completion must expose -f and omit removed -e: {render:?}"
             );
             let mmdc = bash_completion_options(&script, "mmdc");
             assert!(

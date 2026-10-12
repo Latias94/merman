@@ -2,13 +2,9 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.8.0` default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, math, icons, completions, and native runtime adapters. The `0.9.0` default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
-Installation examples below pin published `0.8.0`. The [optional actual-font
-measurement guide](#explicit-fonts) describes the current source candidate;
-those font options are not a claim about previously published binaries. Use a
-reviewed source build for the new font support, and check `merman-cli --version`
-and `merman-cli capabilities --json` for your installed binary.
+Installation examples target `0.9.0`. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) for changed APIs and output defaults.
 
 The command line has four explicit workflows:
 
@@ -21,10 +17,10 @@ The command line has four explicit workflows:
 
 ## Install
 
-This guide targets the published `merman-cli 0.8.0` Rust crate. Match the documentation and generated artifacts to the version installed in your project. Install with cargo-binstall:
+This guide targets `merman-cli 0.9.0`. Match the documentation and generated artifacts to the version installed in your project. Install with cargo-binstall:
 
 ```sh
-cargo binstall merman-cli@0.8.0
+cargo binstall merman-cli@0.9.0
 ```
 
 Merman's cargo-binstall metadata uses the repository's cargo-dist archive, disables third-party QuickInstall artifacts, and retains `cargo install` as a fallback when an official archive is unavailable. Check `merman-cli --version` before relying on the API or output schema in this guide.
@@ -52,10 +48,10 @@ The source default includes ELK; alpha.6 source defaults omitted it. Project rel
 | `cargo binstall merman-cli@VERSION` | `0.8.0-alpha.5` and later: project release archive, with source fallback | Not installed | Selected registry version; its own metadata governs |
 | GitHub shell or PowerShell installer | Project release archive | Not installed | `0.8.0-alpha.5` and later |
 | Direct GitHub archive | Project release archive | Bundled under `completions/` and `man/` | `0.8.0-alpha.5` and later |
-| Homebrew formula | Formula source build or Homebrew bottle | Current `0.8.0` formula installs only the executable; completion and man integration pending upstream | External stable channel; selected formula version governs |
+| Homebrew formula | Formula source build or Homebrew bottle | Controlled by the selected formula; inspect its support-asset installation | External stable channel; selected formula version governs |
 | Repository Nix package | Built from locked repository source | Bash, Zsh, Fish, PowerShell, Elvish, and man pages installed | First-party source interface, not a registry package |
 | `cargo install` | Built from crates.io, Git, or a checkout | Not installed | Registry or source revision selected by the user |
-| Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Stable 0.8.0 manifests submitted; upstream review pending |
+| Scoop and WinGet | Verified Windows x86_64 release archive | Not installed | Upstream manifests govern availability; see the dated [release record](../../docs/release/PUBLISH_ORDER.md) |
 
 Nix users can run `nix run . -- --version` or `nix profile install .` from a checkout at the exact accepted preflight commit. This source package is separate from the precompiled Linux archive compatibility claim.
 
@@ -222,7 +218,7 @@ for painting only and cannot relayout existing geometry. See
 
 Root-level render flags no longer belong to the advertised command tree. Keeping native and compatibility arguments in separate parsers gives each workflow its own defaults, validation, help, completion output, input rules, and publication guarantees without breaking existing root-level `mmdc` scripts.
 
-| Existing or upstream syntax | Preferred explicit syntax |
+| Upstream syntax or former 0.8.x native spelling | Current explicit syntax |
 | --- | --- |
 | `mmdc -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` |
 | `merman-cli -i diagram.mmd -o diagram.svg` | `merman-cli mmdc -i diagram.mmd -o diagram.svg` |
@@ -237,7 +233,7 @@ An invocation whose first argument is an option owned by `mmdc`, such as `-i` or
 
 Bare root inputs and native-only root options exit `2` with a targeted message pointing to `mmdc`, `render`, and `batch`. New scripts should choose an explicit subcommand.
 
-Native `render -e` and `batch -e` are hidden aliases for `-f/--format` during `0.8.x`. Their bounded migration warnings remain visible even with `--quiet`, and the aliases are removed in `v0.9.0`. This does not affect `merman-cli mmdc -e/--outputFormat`, which remains part of the pinned compatibility interface.
+Native `render` and `batch` use `-f/--format`; their former `-e` aliases are removed in 0.9.0. The separate `merman-cli mmdc -e/--outputFormat` interface remains part of the pinned compatibility contract. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) when migrating native scripts from 0.8.x.
 
 The `mmdc` subcommand is a release-pinned compatibility snapshot. This release follows the supported command behavior of `@mermaid-js/mermaid-cli@11.16.0`; future changes are tied to an explicit Mermaid baseline update. See the [compatibility register](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for exact coverage and deliberate browserless divergences.
 
@@ -427,9 +423,9 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.8.0` release defaults to the standard diagram CLI with `all-diagrams`.
+The `0.9.0` release defaults to the standard diagram CLI with `all-diagrams`.
 The Rustdoc authoring command remains available in the default and release builds, as in the
-published alpha.7 archives. The commands below target `0.8.0`.
+published alpha.7 archives. The commands below target `0.9.0`.
 For a slim current-source binary, disable defaults and select the required `diagram-*` families
 plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families
 explicitly:
@@ -450,7 +446,7 @@ explicitly:
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.8.0 --locked \
+cargo install merman-cli --version 0.9.0 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 
@@ -607,7 +603,7 @@ omitted commands, options, and values stay omitted. A build without that feature
 
 ## License
 
-Merman's own code is licensed under either Apache-2.0 or MIT at your option. The `0.8.0`
+Merman's own code is licensed under either Apache-2.0 or MIT at your option. The `0.9.0`
 Cargo default and the `cli-release` archive include the EPL-2.0 ELK implementation and the
 math/font closure. Explicit lean source builds can exclude ELK by disabling default features.
 Release archives include

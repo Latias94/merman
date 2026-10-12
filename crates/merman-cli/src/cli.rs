@@ -1140,7 +1140,6 @@ pub(crate) struct NativeRenderOptions {
     /// Output format. Defaults to the first compiled output format.
     #[arg(
         short = 'f',
-        short_alias = 'e',
         long = "format",
         value_enum,
         help_heading = "Render input and output"
@@ -1161,7 +1160,6 @@ pub(crate) struct BatchRenderOptions {
     /// Output format. Defaults to SVG.
     #[arg(
         short = 'f',
-        short_alias = 'e',
         long = "format",
         value_enum,
         help_heading = "Batch output"
