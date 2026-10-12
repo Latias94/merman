@@ -49,6 +49,7 @@ pub struct NativeFontLimits {
     pub max_cache_bytes: usize,
     /// Metadata discovery is separate from resident font bytes.
     pub max_system_files: usize,
+    /// Cumulative temporary discovery reads; selected snapshots use `max_bytes` instead.
     pub max_system_scan_bytes: usize,
     pub max_system_faces: usize,
     pub max_system_cmap_bytes: usize,

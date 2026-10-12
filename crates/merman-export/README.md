@@ -35,7 +35,11 @@ the same context with `RasterOptions::with_font_context` or
 behavior remains unchanged. With `system-fonts` compiled, the new context supports
 bounded system discovery through `NativeFontOptions::with_system_fonts(true)`;
 library callers opt in explicitly. Selected bytes are snapshotted and verified
-before measurement and painting. See [CLI font coverage and limitations](../../docs/FEATURES.md#optional-cli-fonts).
+before measurement and painting. Metadata discovery reads one font file temporarily
+under the cumulative scan-byte budget; the independent resident-byte budget applies
+when a selected file is snapshotted, so discovery can inspect larger system collections.
+The resident-byte budget does not cap temporary scan buffers or process peak memory.
+See [CLI font coverage and limitations](../../docs/FEATURES.md#optional-cli-fonts).
 
 Experimental `load_platform` replaces only authorized system discovery with
 Fontique queries. Its internal platform metadata/file mappings do not inherit

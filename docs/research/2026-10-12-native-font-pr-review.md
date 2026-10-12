@@ -167,3 +167,15 @@ layout-snapshot cases with all diagrams, both optional layout engines and math.
 Formatting and diff whitespace checks passed. Corrections are recorded in
 `3ef2c52bd` (platform/prerequisite/projection contracts) and the following focused
 render-test/snapshot commit; remote owners rerun after publication.
+
+A second CI run (`38192873616`, head `d64a98db9`) passed Flutter platform
+verification and reached a further macOS default-discovery failure: a 188,589,668
+byte system collection was compared with the 67,108,864 byte resident budget
+while scanning metadata. Discovery now uses only its cumulative temporary
+scan-byte budget; selected snapshots retain the independent resident check. No
+default limit was raised. The new controlled-font regression failed on the old
+code, then passed together with all 46 bounded-font and 115 experimental/codec
+cases (11 intentionally ignored host cases). All-feature CLI Clippy passed again.
+An independent correctness review confirmed the separate budget ownership and
+selected-source enforcement. Documentation clarifies that resident byte limits
+exclude temporary whole-file scan buffers and do not describe peak RSS.

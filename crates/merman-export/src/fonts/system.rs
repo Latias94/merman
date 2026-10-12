@@ -201,11 +201,8 @@ impl Discovery<'_> {
     fn file(&mut self, path: &Path) -> Result<(), NativeFontError> {
         self.files = self.files.saturating_add(1);
         check_limit("system-files", self.files, self.limits.max_system_files)?;
-        let remaining = self
-            .limits
-            .max_system_scan_bytes
-            .saturating_sub(self.bytes)
-            .min(self.limits.max_bytes);
+        // Discovery buffers are temporary; selected snapshots enforce the residency limit.
+        let remaining = self.limits.max_system_scan_bytes.saturating_sub(self.bytes);
         let bytes = read_bounded(path, remaining, self.control, OperationPhase::Admission)?;
         self.bytes = self.bytes.saturating_add(bytes.len());
         let digest = Sha256::digest(&bytes).to_vec();
@@ -719,6 +716,46 @@ mod tests {
             assert!(probe(&context, "AV").is_err());
             assert!(context.check().is_err());
         }
+    }
+
+    #[test]
+    fn discovery_uses_scan_budget_while_selected_bytes_use_residency_budget() {
+        let root = Root::new();
+        let font = root.copy("Cousine-Regular.ttf");
+        let byte_count = usize::try_from(fs::metadata(&font).unwrap().len()).unwrap();
+        let limits = NativeFontLimits {
+            max_bytes: byte_count - 1,
+            max_system_scan_bytes: byte_count,
+            ..Default::default()
+        };
+        let fonts = context(&root, limits.clone(), &OperationControl::new()).unwrap();
+        assert_eq!(fonts.resident_font_bytes(), 0);
+        fonts.check().unwrap();
+        assert!(probe(&fonts, "AV").is_err());
+        assert!(matches!(
+            fonts.check(),
+            Err(NativeFontError::Limit {
+                resource: "system-font-bytes",
+                actual,
+                limit,
+            }) if actual == byte_count && limit == byte_count - 1
+        ));
+        assert_eq!(fonts.resident_font_bytes(), 0);
+        assert!(matches!(
+            context(
+                &root,
+                NativeFontLimits {
+                    max_system_scan_bytes: byte_count - 1,
+                    ..limits
+                },
+                &OperationControl::new(),
+            ),
+            Err(NativeFontError::Limit {
+                resource: "system-font-bytes",
+                actual,
+                limit,
+            }) if actual == byte_count && limit == byte_count - 1
+        ));
     }
 
     #[test]
