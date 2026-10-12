@@ -1,0 +1,169 @@
+{
+  "diagramType": "flowchart-v2",
+  "model": {
+    "keyword": "flowchart",
+    "accDescr": null,
+    "accTitle": null,
+    "classDefs": {},
+    "direction": "LR",
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": []
+    },
+    "vertexCalls": [
+      "Browse",
+      "Stock",
+      "Cart",
+      "Stock",
+      "Cart",
+      "Stock",
+      "Unavailable"
+    ],
+    "nodes": [
+      {
+        "id": "Browse",
+        "label": "Browse Products",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Stock",
+        "label": "Item in Stock?",
+        "labelType": "text",
+        "layoutShape": "diamond",
+        "shape": "diamond",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Cart",
+        "label": "Add to Cart",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Unavailable",
+        "label": "Out of Stock",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": "square",
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [
+      {
+        "id": "L_Browse_Stock_0",
+        "from": "Browse",
+        "to": "Stock",
+        "label": null,
+        "labelType": "text",
+        "type": "arrow_point",
+        "arrow": "-->",
+        "length": 1,
+        "animation": null,
+        "isUserDefinedId": false,
+        "stroke": "normal",
+        "animate": null,
+        "style": [],
+        "interpolate": null,
+        "classes": []
+      },
+      {
+        "id": "L_Stock_Cart_0",
+        "from": "Stock",
+        "to": "Cart",
+        "label": "Yes",
+        "labelType": "text",
+        "type": "arrow_point",
+        "arrow": "-->",
+        "length": 1,
+        "animation": null,
+        "isUserDefinedId": false,
+        "stroke": "normal",
+        "animate": null,
+        "style": [],
+        "interpolate": null,
+        "classes": []
+      },
+      {
+        "id": "L_Stock_Unavailable_0",
+        "from": "Stock",
+        "to": "Unavailable",
+        "label": "No",
+        "labelType": "text",
+        "type": "arrow_point",
+        "arrow": "-->",
+        "length": 1,
+        "animation": null,
+        "isUserDefinedId": false,
+        "stroke": "normal",
+        "animate": null,
+        "style": [],
+        "interpolate": null,
+        "classes": []
+      }
+    ],
+    "subgraphs": [
+      {
+        "id": "Checkout",
+        "title": "Checkout",
+        "dir": null,
+        "labelType": "text",
+        "classes": [],
+        "styles": [],
+        "nodes": [
+          "Cart"
+        ]
+      }
+    ],
+    "tooltips": {},
+    "type": "flowchart-v2"
+  }
+}

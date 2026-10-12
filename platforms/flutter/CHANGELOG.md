@@ -8,6 +8,8 @@ Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and 
 
 - SVG-capable operations add `edge-geometry-json` for Flowchart, Swimlane, and Agentflow clipped edge points and painted label centers. `layout-json` keeps its pre-paint coordinates; inspect the installed operation catalog. [PR #174](https://github.com/Latias94/merman/pull/174), [PR #177](https://github.com/Latias94/merman/pull/177)
 - Flowchart, Swimlane, and State ASCII/Unicode node padding accepts independent X/Y overrides, including zero, separately from graph spacing. [PR #188](https://github.com/Latias94/merman/pull/188)
+- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
+- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
 ### Upgrade
 
@@ -21,6 +23,10 @@ Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and 
 - ASCII/Unicode output preserves loop-back contacts, transition labels, compound frames, Sequence spacing, and diamond shoulders. Resource ceilings retain their existing meanings. [PR #179](https://github.com/Latias94/merman/pull/179), [PR #188](https://github.com/Latias94/merman/pull/188)
 
 See the [package guide](README.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
+
+### Breaking changes
+
+- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
 
 ## [0.8.0] - 2026-10-06
 
@@ -49,15 +55,6 @@ This is the cumulative migration from the 0.7.0 package to 0.8.0, including chan
 ### Further reading
 
 - Follow the [stable upgrade guide](../../docs/release/V070_TO_V080_UPGRADE_GUIDE.md#bindings-and-package-channels) and [root changelog](../../CHANGELOG.md). Published alpha sections below remain historical contracts; native Rust timings do not measure Dart/Flutter transport performance.
-
-### Breaking changes
-
-- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
-
-### Added
-
-- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
-- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
 ## [0.8.0-alpha.7] - 2026-09-30
 

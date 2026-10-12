@@ -3976,12 +3976,17 @@ note right of A : terminal note text
             .iter()
             .map(|node| node.text().unwrap_or_default())
             .collect::<Vec<_>>()
-            .join(" "),
+            .concat(),
         "terminal note text",
         "the complete State note must survive fallback wrapping: {fallback}"
     );
+    assert!(!fallback_text.is_empty(), "State note has a text terminal");
     for line in fallback_text {
         assert_eq!(line.attribute("fill"), Some("#fef3c7"));
+        assert_eq!(
+            line.attribute(("http://www.w3.org/XML/1998/namespace", "space")),
+            Some("preserve")
+        );
     }
 }
 

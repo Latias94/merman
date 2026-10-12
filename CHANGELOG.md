@@ -41,6 +41,14 @@ For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/releas
 
 - Updated Playground math-rendering and source-map dependencies to resolve the audited vulnerable versions. [#169](https://github.com/Latias94/merman/pull/169), [#194](https://github.com/Latias94/merman/pull/194)
 
+### Theme integration
+
+- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract.
+- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct.
+- Binding Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline.
+- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary.
+- Added bounded theme resource admission and preserved the exact artifact/family/output qualification scope for alpha presets; catalog availability is not an all-family portability guarantee.
+
 ## [0.8.0] - 2026-10-06
 
 `0.8.0` summarizes changes since **0.7.0 (2026-06-09)**, including seven alphas, and targets Mermaid `12.1.0`. Rust crates and CLI/LSP archives are published; other package channels publish independently. Start with the upgrade path and three checks below, then read the sections relevant to your integration.
@@ -91,14 +99,6 @@ Published alpha sections below remain historical records. Their intermediate fea
 - Default Android, Apple, Python, and Flutter artifacts include SVG, Cytoscape/ELK, ASCII, analysis, validation, and document analysis, while omitting math, PNG/JPEG/PDF, and native runtime adapters. Discover capabilities from the loaded artifact and use a matching custom build when necessary; Rust defaults do not define SDK contents.
 - Kept both network icons and the Rustdoc authoring command in default CLI builds and official archives after reviewing their costs. Narrow builds can select different capabilities; the [comparison report](docs/release/V070_TO_V080_RELEASE_REPORT.md) separates executable size, installed footprint, and cold-process startup evidence.
 - Diagram-local colors and fonts pass through a common CSS-value boundary. Safe `themeVariables` and fonts work from directives/frontmatter, while host security policy still controls `themeCSS` and locked fields. Presentation profiles, Mermaid themes, host site config, and SVG pipelines have separate owners. [#28](https://github.com/Latias94/merman/pull/28) [#138](https://github.com/Latias94/merman/pull/138)
-
-### Theme integration
-
-- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract.
-- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct.
-- Advanced binding Options JSON to schema `3`, UniFFI to API `7`, and the Typst theme operation surface to ABI `3`; native C, Android, Web/WASM, and Node transport boundaries remain unchanged.
-- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary.
-- Added theme resource budgets, including `max_prepared_text_retained_bytes`, and preserved the exact artifact/family/output qualification scope for alpha presets.
 
 ### Fixed
 
