@@ -182,7 +182,7 @@ versions on its own publication schedule.
 
 ## 0.9.0 Preparation Checklist
 
-The selected workspace target is 0.9.0. This is preparation only; [PUBLISH_ORDER.md](PUBLISH_ORDER.md#090-preparation) records owner status and the last published stable baseline. Keep root and workspace-coupled package headings at `[0.9.0] - Unreleased` until the intended tag date is approved for immutable preflight.
+The selected workspace target is 0.9.0, with an approved intended tag date of 2026-10-12. The root and workspace-coupled package headings are dated for immutable preflight; Typst wrapper 0.5.0 has the same intended publication date. [PUBLISH_ORDER.md](PUBLISH_ORDER.md#090-preparation) records owner status and the last published stable baseline. A dated changelog is not registry publication evidence.
 
 - [ ] Complete independent roughr 0.12.4 public-API and published-consumer compatibility checks, then separately authorize its publication and confirm registry visibility.
 - [ ] Complete independent Tree-sitter 0.3.1 generator/runtime/language, package, and provenance checks, then separately authorize prerequisite publication and confirm registry visibility before workspace dependents.

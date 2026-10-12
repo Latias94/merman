@@ -4,7 +4,7 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.9.0] - Unreleased
+## [0.9.0] - 2026-10-12
 
 Version `0.9.0` retains UniFFI API 7 from 0.8.0. Keep the generated wrapper and native artifacts paired.
 

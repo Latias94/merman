@@ -18,7 +18,7 @@ The Typst package does not expose the native ABI or the new edge-geometry operat
 
 On 2026-10-12, the exact `typst-wasm` recipe passed the unchanged size limits with Rust 1.95.0 and Binaryen 133: raw 13,936,547, optimized/stripped 8,822,440, gzip 3,433,230, and Brotli 2,552,937 bytes. The prepared 0.5.0 package passed interpreter validation, then compiled 21 fixtures and verified one expected diagnostic on each of Typst 0.15.0 and 0.15.1. The API fixture checked bundled Merman 0.9.0. The Wasmi 2 host dispatcher migration includes a long-loop regression and passed the real package run.
 
-These are local preparation results. Final source freeze, dated package documentation, immutable preflight, and registry submission still need their owner evidence.
+These are local preparation results. The approved intended publication date is 2026-10-12, and the package changelog is dated accordingly. Final-source package rebuild, immutable preflight, and registry submission still need their owner evidence; retain the exact package and receipt from that source rather than reusing the earlier staging result.
 
 ## Owner checklist
 
