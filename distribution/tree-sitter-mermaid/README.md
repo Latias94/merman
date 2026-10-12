@@ -210,6 +210,18 @@ npm run check:wasm --prefix distribution/tree-sitter-mermaid
 npm run test:wasm --prefix distribution/tree-sitter-mermaid
 ```
 
+Regenerate both parser sources and language WASM after changing the version in `tree-sitter.json`:
+the pinned generator embeds that version in `TSLanguage.metadata`.
+
+`metadata/provenance.json` pins the [WASI SDK 34 release](https://github.com/WebAssembly/wasi-sdk/releases/tag/wasi-sdk-34)
+and its LLVM commit. The official Windows compiler reports `23.1.0-rc3`; Linux and macOS report
+`23.1.0-wasi-sdk` because the [SDK build configuration](https://github.com/WebAssembly/wasi-sdk/blob/wasi-sdk-34/cmake/wasi-sdk-toolchain.cmake#L81-L91)
+overrides `LLVM_VERSION_SUFFIX` only outside Windows. Generation verifies the SDK's `VERSION`
+and the exact host-specific compiler banner, including the LLVM commit. `-fno-ident` prevents
+that banner from entering the WASM producers section; `--no-wasm-opt` excludes unpinned optimizers.
+Freshness checks compare complete source and WASM bytes without normalization or host-specific
+artifact hashes.
+
 See the [development guide] and [release guide] for grammar ownership, generation, testing, and
 publication details.
 

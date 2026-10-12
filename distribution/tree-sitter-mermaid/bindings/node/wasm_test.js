@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const { readFile } = require('node:fs/promises');
 const { Language, Parser } = require('web-tree-sitter');
+const grammar = require('../../tree-sitter.json');
 
 const languagePromise = (async () => {
   await Parser.init();
@@ -19,6 +20,8 @@ test('language WASM excludes platform-specific compiler metadata', async () => {
 test('language WASM loads with ABI 15 and parses Mermaid', async () => {
   const language = await languagePromise;
   assert.equal(language.abiVersion, 15);
+  const [major_version, minor_version, patch_version] = grammar.metadata.version.split('.').map(Number);
+  assert.deepEqual(language.metadata, { major_version, minor_version, patch_version });
 
   const parser = new Parser();
   parser.setLanguage(language);

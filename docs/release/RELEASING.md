@@ -240,12 +240,14 @@ Preparation or pre-apply validation failures leave the caller worktree unchanged
 reported owner failure, keep the release worktree clean, and rerun the same command; do not copy
 partial files out of the disposable worktree or hand-edit generated locks.
 
-After the version projection succeeds, regenerate the CLI completions and manual pages from the
-selected package version, then verify their byte-for-byte source gate:
+After the version projection succeeds, regenerate the CLI completions, manual pages, and
+Playground catalog from the selected package version, then verify their source gates:
 
 ```sh
 python3 scripts/generate_cli_assets.py --write
 python3 scripts/generate_cli_assets.py --check
+cargo run -p xtask -- gen-playground-example-catalog
+cargo run -p xtask -- verify-playground-example-catalog
 ```
 
 The gate discovers workspace members and validates their inherited package versions, internal workspace dependency requirements, `Cargo.lock`, Web package and lock metadata, the Playground's local Web lock, the fuzz-workspace lock, Python's PEP 440 projection, and Android and Flutter manifests. For a prerelease, every coupled root workspace dependency must use the exact Cargo requirement `=X.Y.Z-alpha.N`, `=X.Y.Z-beta.N`, or `=X.Y.Z-rc.N`; stable releases continue to use the ordinary compatible requirement. This permits intentional alpha API breaks without allowing a fresh Cargo resolution to mix sibling release lines.

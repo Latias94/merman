@@ -19,7 +19,8 @@ PROVENANCE = json.loads(
 )
 CLI_VERSION = PROVENANCE["toolchain"]["treeSitterCli"]
 LANGUAGE_ABI = int(PROVENANCE["language"]["abi"])
-WASI_CLANG_VERSION = PROVENANCE["toolchain"]["wasiClang"]
+WASI_CLANG_VERSIONS = PROVENANCE["toolchain"]["wasiClang"]
+WASI_LLVM_COMMIT = PROVENANCE["toolchain"]["wasiLlvmCommit"]
 PARSER_MAX_BYTES = 12 * 1024 * 1024
 WASM_MAX_BYTES = 5 * 1024 * 1024
 SUBPROCESS_TIMEOUT_SECONDS = 15 * 60
@@ -228,14 +229,21 @@ def resolve_wasi_clang(cli: list[str]) -> Path:
         text=True,
         timeout=30,
     ).stdout.splitlines()[0]
-    # Windows SDK builds omit the -wasi-sdk suffix in their Clang banner.
     sdk_version = (clang.parent.parent / "VERSION").read_text(encoding="utf-8").splitlines()[0]
     expected_sdk = PROVENANCE["toolchain"]["wasiSdk"]
     if sdk_version != expected_sdk:
         raise SystemExit(f"expected wasi-sdk {expected_sdk}, found {sdk_version}")
-    clang_version = version.split()[2]
-    if clang_version not in (WASI_CLANG_VERSION, WASI_CLANG_VERSION.removesuffix("-wasi-sdk")):
-        raise SystemExit(f"expected clang version {WASI_CLANG_VERSION}, found {version}")
+    # SDK 34 overrides LLVM_VERSION_SUFFIX only on non-Windows hosts. Both
+    # official banners identify the same LLVM source commit; pin the full identity.
+    clang_version = WASI_CLANG_VERSIONS.get(sys.platform)
+    if clang_version is None:
+        raise SystemExit(f"unsupported wasi-sdk host: {sys.platform}")
+    expected_banner = (
+        f"clang version {clang_version} "
+        f"(https://github.com/llvm/llvm-project {WASI_LLVM_COMMIT})"
+    )
+    if version != expected_banner:
+        raise SystemExit(f"expected {expected_banner}, found {version}")
     return clang
 
 

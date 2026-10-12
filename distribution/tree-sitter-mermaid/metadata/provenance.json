@@ -17,7 +17,12 @@
     "nodeRuntime": "0.25.1",
     "webRuntime": "0.27.1",
     "wasiSdk": "34.0",
-    "wasiClang": "23.1.0-rc3-wasi-sdk"
+    "wasiClang": {
+      "win32": "23.1.0-rc3",
+      "linux": "23.1.0-wasi-sdk",
+      "darwin": "23.1.0-wasi-sdk"
+    },
+    "wasiLlvmCommit": "895aa2c896ada719451be2e3673c83da8ddf1141"
   },
   "sources": [
     {
