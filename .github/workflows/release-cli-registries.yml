@@ -76,7 +76,7 @@ jobs:
             --version "$RELEASE_VERSION" --repo-root release-source --output-dir candidates
           # Keep the artifact/source receipt beside the generated registry manifests.
           cp release-assets/release-verification.json candidates/
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: cli-registry-candidates-${{ steps.release.outputs.version }}
           path: candidates
@@ -87,7 +87,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 15
     steps:
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: cli-registry-candidates-${{ needs.prepare.outputs.version }}
           path: candidates
@@ -115,7 +115,7 @@ jobs:
             --manifest "candidates/winget/manifests/l/Latias94/MermanCLI/$env:RELEASE_VERSION" `
             --disable-interactivity
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: winget-validated-${{ needs.prepare.outputs.version }}
           path: |
@@ -128,7 +128,7 @@ jobs:
     runs-on: windows-2025
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v8.0.1
+      - uses: actions/download-artifact@v8.0.2
         with:
           name: cli-registry-candidates-${{ needs.prepare.outputs.version }}
           path: candidates
@@ -149,7 +149,7 @@ jobs:
               -SchemaFile scoop-schema/schema.json)) {
             throw "The Scoop manifest does not match the official schema."
           }
-      - uses: actions/upload-artifact@v7.0.1
+      - uses: actions/upload-artifact@v7.0.2
         with:
           name: scoop-validated-${{ needs.prepare.outputs.version }}
           path: |

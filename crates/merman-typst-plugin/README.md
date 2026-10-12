@@ -4,6 +4,8 @@
 
 > **Implementation transport:** Typst authors should import the [`@preview/merman`](https://typst.app/universe/package/merman) package. Do not load this raw WebAssembly artifact or depend on the Rust crate directly; the Typst wrapper owns package versioning, options, error presentation, and artifact loading.
 
+Typst wrapper `0.5.0` bundles this transport from Merman `0.9.0`; wrapper `0.4.0` bundles Merman `0.8.0`. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
+
 ## Typst Plugin ABI 2
 
 The current Typst plugin ABI version is `2`. It is independent from native ABI 3 and from the shared binding options schema. The WebAssembly module has a closed host surface that distinguishes callable ABI operations from linker metadata.

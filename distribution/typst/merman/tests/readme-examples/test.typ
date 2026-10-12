@@ -1,4 +1,4 @@
-#import "@preview/merman:0.4.0": mermaid, mermaid-profile, mermaid-svg, show-mermaid-blocks
+#import "@preview/merman:0.5.0": mermaid, mermaid-profile, mermaid-svg, show-mermaid-blocks
 
 #set text(font: "Arial", size: 13pt)
 

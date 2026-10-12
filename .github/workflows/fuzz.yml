@@ -157,11 +157,11 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
       - name: Install Rust nightly
-        uses: dtolnay/rust-toolchain@1.97.1
-        with:
-          toolchain: ${{ env.FUZZ_NIGHTLY }}
-          components: rust-src
+        run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2
@@ -301,7 +301,7 @@ jobs:
 
       - name: Upload fuzz artifacts
         if: always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: fuzz-artifacts-${{ matrix.target }}
           path: |

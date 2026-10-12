@@ -542,10 +542,10 @@ The language package retains this implementation as an additional behavior refer
 
 The language package uses the pinned generator and copies its generated support headers.
 
-- Version: `0.27.0`
+- Version: `0.27.1`
 - Source: <https://github.com/tree-sitter/tree-sitter.git>
-- Source ref: `v0.27.0`
-- Source commit: `6070dbfefd326bd735e5683eb128cc1b57dad0c0`
+- Source ref: `v0.27.1`
+- Source commit: `10eb5ac119eec9cb4267a8e035066473983f5f3a`
 - Source path: `.`
 - Relationship: `copied`, `generated`
 - License expression: `MIT`

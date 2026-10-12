@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "lib": ["dom", "dom.iterable", "esnext"],
+    "types": ["node", "vite/client"],
     "allowJs": true,
     "target": "ES2020",
     "useDefineForClassFields": true,

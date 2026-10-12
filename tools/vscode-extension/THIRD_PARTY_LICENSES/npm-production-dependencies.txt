@@ -1,7 +1,7 @@
 Merman npm production dependency licenses
 Package: merman-vscode
 Generator: npm ls --omit=dev --parseable --all / Merman license report
-package-lock.json SHA-256: cafcea2e9f387e2d48b3c8bec0c3e7ab1a33b054d30328c8ad9bd0dd7520ad18
+package-lock.json SHA-256: 603055a8f5f0104e54d05f8c3027a98466893742af67b7f2979830be1f211d85
 
 The following npm package may be included in this product:
 
@@ -157,11 +157,11 @@ IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 The following npm packages may be included in this product:
 
- - vscode-jsonrpc@9.0.1
- - vscode-languageclient@10.1.0
- - vscode-languageserver-protocol@3.18.2
- - vscode-languageserver-textdocument@1.0.13
- - vscode-languageserver-types@3.18.0
+ - vscode-jsonrpc@9.0.3
+ - vscode-languageclient@10.1.2
+ - vscode-languageserver-protocol@3.18.4
+ - vscode-languageserver-textdocument@1.0.15
+ - vscode-languageserver-types@3.18.4
 
 These packages each contain the following license:
 

@@ -2,6 +2,8 @@
 
 Merman for VS Code provides local Mermaid authoring backed by `merman-lsp` and `merman-cli`. It is designed for Tree-sitter-backed syntax highlighting plus parser-backed diagnostics, completion, hover, symbols, rename, references, code actions, preview, and export without login, telemetry, cloud sync, or remote AI.
 
+Extension version `0.1.0` bundles the Merman `0.9.0` CLI and LSP binaries. See the [extension changelog](CHANGELOG.md) and [runtime migration](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md).
+
 ## What it supports
 
 - Mermaid source files: `.mmd`, `.mermaid`
@@ -27,7 +29,7 @@ Merman for VS Code provides local Mermaid authoring backed by `merman-lsp` and `
 
 ### Packaged install
 
-Install the platform-specific VSIX produced by the GitHub workflow. Each VSIX includes its matching runtime binaries, so normal use does not require Rust. The extension is not currently published to the VS Code Marketplace.
+Install the platform-specific VSIX produced by the GitHub workflow for your operating system and architecture. Each VSIX includes its matching runtime binaries, so normal use does not require Rust.
 
 ### Extension development
 
@@ -159,7 +161,7 @@ target="$(node -p "process.platform + '-' + process.arch")"
 npm run package -- --target "$target" --out "merman-vscode-${target}.vsix"
 ```
 
-`npm run package` expects `npm run prepare:binaries` to have populated `bin/<platform>-<arch>/`, and the `--target` argument should match that platform key. Use this wrapper instead of invoking `vsce package` directly. The unpublished extension owns an independent version track beginning at `0.1.0`; the workspace version identifies the bundled `merman-lsp` and `merman-cli` binaries for provenance and does not determine the VSIX version. The development-only Cargo fallbacks are disabled by default so a packaged VSIX does not silently depend on a Rust workspace.
+`npm run package` expects `npm run prepare:binaries` to have populated `bin/<platform>-<arch>/`, and the `--target` argument should match that platform key. Use this wrapper instead of invoking `vsce package` directly. The extension uses an independent version track beginning at `0.1.0`; the workspace version identifies the bundled `merman-lsp` and `merman-cli` binaries for provenance and does not determine the VSIX version. The development-only Cargo fallbacks are disabled by default so a packaged VSIX does not silently depend on a Rust workspace.
 
 The GitHub Actions workflow `.github/workflows/vscode-extension.yml` runs the same package smoke on Linux, macOS, and Windows. Each artifact contains one platform-specific VSIX file, such as:
 
@@ -170,4 +172,4 @@ The GitHub Actions workflow `.github/workflows/vscode-extension.yml` runs the sa
 
 The GitHub artifact envelope is named `merman-vscode-<extension-version>-runtime-<runtime-version>-<runtime-channel>-<source-sha>-<target>`. This keeps the independently versioned extension, its bundled Merman runtime, and the exact source revision observable without rewriting the VSIX manifest.
 
-Marketplace publication remains a future release step. Before enabling it, verify that `package.json` has the intended `publisher`, stable manifest `version`, `preview` status, repository links, and changelog entry, then run `npm run verify:vsix -- --vsix <file> --platform <target> --target <target>`. Keep the changelog under `Unreleased` until the first `0.1.0` publication is intentionally prepared. The extension is packaged with runtime binaries for the platform that built it, so distribute the matching artifact for the target host.
+Verify a packaged VSIX with `npm run verify:vsix -- --vsix <file> --platform <target> --target <target>`. Each VSIX includes runtime binaries for its operating system and architecture; distribute the matching artifact for the target host.

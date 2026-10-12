@@ -2,13 +2,12 @@
 
 Render supported Mermaid diagram families as ASCII or Unicode text in a browser.
 
-This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
-matter.
+Pin an exact package version when reproducible installs matter.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-ascii@alpha
+npm install @mermanjs/web-ascii@0.9.0
 ```
 
 ```ts

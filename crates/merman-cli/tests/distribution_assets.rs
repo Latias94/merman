@@ -65,7 +65,7 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
     );
     assert!(
         !render.contains("-e"),
-        "deprecated native -e must stay hidden from completion"
+        "removed native -e must not appear in render completion"
     );
 
     let batch = bash_options(&script, "batch");
@@ -75,7 +75,7 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
     );
     assert!(
         !batch.contains("-e"),
-        "deprecated batch -e must stay hidden from completion"
+        "removed native -e must not appear in batch completion"
     );
 
     let mmdc = bash_options(&script, "mmdc");

@@ -1,4 +1,4 @@
-#import "@preview/merman:0.4.0": (
+#import "@preview/merman:0.5.0": (
   analyze-mermaid,
   mermaid,
   mermaid-figure,
@@ -200,6 +200,11 @@
 )
 
 #let capabilities = merman-capabilities()
+#assert.eq(
+  capabilities.package_version,
+  "0.9.0",
+  message: "Typst package 0.5.0 must bundle Merman 0.9.0",
+)
 #assert.eq(capabilities.schema_version, 1)
 #assert.eq(capabilities.transport_api_version, 2)
 #assert(

@@ -4,13 +4,12 @@ The complete browser SDK for SVG rendering, analysis, ASCII output, and parser-b
 intelligence. Start here when evaluating Merman or when one browser realm needs more than one
 workflow.
 
-This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
-matter.
+Pin an exact package version when reproducible installs matter.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web@alpha
+npm install @mermanjs/web@0.9.0
 ```
 
 ```ts

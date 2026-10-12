@@ -124,7 +124,7 @@ jobs:
           cache-targets: false
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -207,7 +207,7 @@ jobs:
         run: npm run smoke:vsix -- --vsix "merman-vscode-${{ matrix.target }}.vsix"
 
       - name: Upload VSIX
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: merman-vscode-${{ steps.vsix.outputs.extension_version }}-runtime-${{ steps.vsix.outputs.runtime_version }}-${{ steps.vsix.outputs.runtime_channel }}-${{ steps.vsix.outputs.source_sha }}-${{ matrix.target }}
           path: tools/vscode-extension/merman-vscode-${{ matrix.target }}.vsix

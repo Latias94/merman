@@ -1,14 +1,13 @@
 # Package Surfaces
 
-This guide describes the supported package and artifact choices. It is not a live registry-status
-database; verify a specific version at its owning registry or GitHub Release before recommending an
-installation command.
+Choose a package or artifact for the environment where you use Merman. Match generated wrappers
+and native or WASM artifacts to the same Merman version.
 
-## Current Release
+## Release versions
 
-Merman `0.8.0` Rust crates and CLI/LSP archives are published with Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. This baseline transition adds no diagram family, Cargo feature, FFI version, or editor-facts schema version beyond alpha.7. Direct consumers of low-level ELK Rust crates must update edge and label initializers; see the [alpha.7 to 0.8.0 upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md).
+Merman `0.9.0` retains Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0` compatibility. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for changes to APIs, commands, and rendered output.
 
-The independent Tree-sitter `0.3.0` distribution is published on crates.io, npm, and GitHub Releases. Other channels publish separately; the [publication snapshot](PUBLISH_ORDER.md#080-publication-snapshot) records verified delivery and recovery status.
+Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
 ## Choose A Surface
 
@@ -26,7 +25,7 @@ The independent Tree-sitter `0.3.0` distribution is published on crates.io, npm,
 | Native Node.js / static-site SVG rendering | `@mermanjs/node` | npm package group (alpha) |
 | Python host integration | `merman` | PyPI and release wheels |
 | Flutter/Dart host integration | `merman` | pub.dev |
-| Android host integration | `io.merman:merman-android` | GitHub Release AAR |
+| Android host integration | `merman-android-<tag>.aar` | GitHub Release AAR |
 | Apple host integration | `Merman.xcframework` | GitHub Release asset or local SwiftPM package |
 | Binding source integration | `merman-bindings-core`, `merman-ffi`, `merman-uniffi`, `merman-wasm` | crates.io source crates; native artifacts are separate owner surfaces |
 | Typst plugin package | `distribution/typst/merman` | manual Typst registry submission |
@@ -100,8 +99,7 @@ The repository-owned delivery routes are:
    before it is enabled.
 10. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
     `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
-11. Typst Universe publication for `@preview/merman:0.4.0` (published 2026-10-09, bundling Merman `0.8.0`); this wrapper has
-    an independent version axis and is not published by the crates.io workflow or a workspace tag.
+11. Typst Universe submission for `@preview/merman:0.5.0`, bundling Merman `0.9.0`; wrapper `0.4.0` bundles Merman `0.8.0`. The wrapper has an independent version axis and is not published by the crates.io workflow or a workspace tag.
 
 The source-crate route and native-artifact routes must be audited separately. Publishing
 `merman-ffi` or `merman-uniffi` to crates.io does not publish an Android AAR, Apple XCFramework,

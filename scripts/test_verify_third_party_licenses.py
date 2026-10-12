@@ -333,7 +333,7 @@ def web_rust_report_fixture(root: Path, profile: dict[str, object]) -> dict[str,
         "artifact_profile": profile,
         "generator": {
             "name": "cargo-about",
-            "version": "0.9.1",
+            "version": "0.9.2",
             "command_profile": "artifact-profile-runtime",
             "offline": True,
             "cargo_lock_sha256": verify.sha256(root / "Cargo.lock"),

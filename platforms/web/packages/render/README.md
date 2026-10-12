@@ -3,13 +3,12 @@
 Render Mermaid diagrams to SVG in a browser with Cytoscape and ELK layouts plus math support,
 without shipping the analysis, editor, or ASCII workflows from the complete SDK.
 
-This package is published on npm's `alpha` dist-tag. Pin an exact version when reproducible installs
-matter.
+Pin an exact package version when reproducible installs matter.
 
 ## Quick start
 
 ```sh
-npm install @mermanjs/web-render@alpha
+npm install @mermanjs/web-render@0.9.0
 ```
 
 ```ts

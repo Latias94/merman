@@ -347,12 +347,12 @@ export function validateScopedRustReport(
   );
   if (
     generator.name !== "cargo-about" ||
-    generator.version !== "0.9.1" ||
+    generator.version !== "0.9.2" ||
     generator.command_profile !== "artifact-profile-runtime" ||
     generator.offline !== true
   ) {
     throw new Error(
-      `Rust dependency report ${artifactScope} must use pinned offline cargo-about 0.9.1.`,
+      `Rust dependency report ${artifactScope} must use pinned offline cargo-about 0.9.2.`,
     );
   }
   const expectedGeneratorInputs = {

@@ -43,7 +43,7 @@ export async function sha256Hex(
     globalThis.crypto?.subtle ?? null,
 ): Promise<string> {
   const digest = subtle
-    ? new Uint8Array(await subtle.digest("SHA-256", bytes))
+    ? new Uint8Array(await subtle.digest("SHA-256", new Uint8Array(bytes)))
     : sha256(bytes);
   return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join(
     "",
@@ -56,7 +56,7 @@ async function importEngineModule<T extends object>(
 ): Promise<T> {
   installEphemeralStorageFacades();
   const url = URL.createObjectURL(
-    new Blob([sourceBytes], { type: "text/javascript" })
+    new Blob([new Uint8Array(sourceBytes)], { type: "text/javascript" })
   );
   try {
     const module = (await import(/* @vite-ignore */ url)) as Record<

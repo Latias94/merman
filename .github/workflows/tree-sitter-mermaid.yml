@@ -15,7 +15,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -28,9 +28,9 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: nextest
+          tool: nextest@0.9.148
 
       - name: Install grammar toolchain
         run: |
@@ -53,7 +53,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -89,7 +89,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -120,7 +120,7 @@ jobs:
 
       - name: Install pinned WASI SDK
         id: wasi-sdk
-        uses: bytecodealliance/setup-wasi-sdk-action@77d09f3df1e8da344d8403cf8631af8977938b4c # v1.0.0
+        uses: bytecodealliance/setup-wasi-sdk-action@v1.0.0
         with:
           version: ${{ steps.wasi-version.outputs.version }}
           add-to-path: false
@@ -140,7 +140,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm

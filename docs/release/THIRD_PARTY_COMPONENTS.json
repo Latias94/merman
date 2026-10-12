@@ -19,7 +19,7 @@
       "artifact_scope": "web-analysis",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-analysis.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.1 exact web-analysis dependency closure",
+      "owner": "cargo-about 0.9.2 exact web-analysis dependency closure",
       "required": true,
       "format": "json"
     },
@@ -27,7 +27,7 @@
       "artifact_scope": "web-ascii",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-ascii.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.1 exact web-ascii dependency closure",
+      "owner": "cargo-about 0.9.2 exact web-ascii dependency closure",
       "required": true,
       "format": "json"
     },
@@ -35,7 +35,7 @@
       "artifact_scope": "web-editor",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-editor.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.1 exact web-editor dependency closure",
+      "owner": "cargo-about 0.9.2 exact web-editor dependency closure",
       "required": true,
       "format": "json"
     },
@@ -43,7 +43,7 @@
       "artifact_scope": "web-full",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-full.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.1 exact web-full dependency closure",
+      "owner": "cargo-about 0.9.2 exact web-full dependency closure",
       "required": true,
       "format": "json"
     },
@@ -51,7 +51,7 @@
       "artifact_scope": "web-render",
       "path": "platforms/web/legal/rust-cargo-dependencies/web-render.json",
       "projection_path": "THIRD_PARTY_LICENSES/rust-cargo-dependencies.json",
-      "owner": "cargo-about 0.9.1 exact web-render dependency closure",
+      "owner": "cargo-about 0.9.2 exact web-render dependency closure",
       "required": true,
       "format": "json"
     }
@@ -978,11 +978,11 @@
     {
       "id": "tree-sitter-generator",
       "name": "Tree-sitter",
-      "version": "0.27.0",
+      "version": "0.27.1",
       "source": {
         "repository": "https://github.com/tree-sitter/tree-sitter.git",
-        "ref": "v0.27.0",
-        "commit": "6070dbfefd326bd735e5683eb128cc1b57dad0c0",
+        "ref": "v0.27.1",
+        "commit": "10eb5ac119eec9cb4267a8e035066473983f5f3a",
         "path": "."
       },
       "relationships": [
@@ -997,7 +997,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/tree-sitter/LICENSE",
           "sha256": "c5cfb43042b6b72045f4ba997834d0a7786d2793d91680868b5815b39f14fc78",
-          "source_url": "https://raw.githubusercontent.com/tree-sitter/tree-sitter/6070dbfefd326bd735e5683eb128cc1b57dad0c0/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/tree-sitter/tree-sitter/10eb5ac119eec9cb4267a8e035066473983f5f3a/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }
@@ -1071,7 +1071,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "b8f335d6c79d80cb2fd58cee71a7a69faa3f452c739655c0bf4aa4973e015334"
+          "sha256": "2467a707f4cd3a22ceffb2ae5a3fbd01f56a4314d34af4535b4d191221223632"
         },
         {
           "type": "pinned-file",
@@ -1122,7 +1122,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "b8f335d6c79d80cb2fd58cee71a7a69faa3f452c739655c0bf4aa4973e015334"
+          "sha256": "2467a707f4cd3a22ceffb2ae5a3fbd01f56a4314d34af4535b4d191221223632"
         },
         {
           "type": "pinned-file",
@@ -1163,7 +1163,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "b8f335d6c79d80cb2fd58cee71a7a69faa3f452c739655c0bf4aa4973e015334"
+          "sha256": "2467a707f4cd3a22ceffb2ae5a3fbd01f56a4314d34af4535b4d191221223632"
         },
         {
           "type": "pinned-file",

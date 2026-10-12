@@ -1,4 +1,4 @@
-#import "@preview/merman:0.4.0": mermaid, mermaid-svg
+#import "@preview/merman:0.5.0": mermaid, mermaid-svg
 #import "../../src/options.typ": config-with-context-width, context-host-theme, mermaid-profile, render-config
 #import "../../src/units.typ": context-width-css-px, typst-length-to-css-px
 
