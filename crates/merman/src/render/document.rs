@@ -33,12 +33,19 @@ pub struct SvgOutput {
 /// layout, SVG emission, or terminal finalization. Completing the document does not enforce the
 /// standalone-SVG receipt: each terminal target owns its own admission decision, so a
 /// host-dependent SVG cannot preempt an otherwise portable native projection.
+/// A native font context selected for layout is retained for every native projection. Export
+/// options can share that exact context but cannot replace it or add one after layout completed.
 #[derive(Debug, PartialEq, Eq)]
 pub struct RenderedDocument {
     svg: merman_render::svg::StandaloneSvgArtifact,
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
     standalone_svg_admission: TargetAdmissionReceipt,
+    #[cfg(all(
+        feature = "native-fonts",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    native_fonts: Option<merman_export::NativeFontContext>,
 }
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
@@ -140,6 +147,11 @@ impl RenderedDocument {
             merman_render::svg::ResvgCompatibleSvg,
         >,
         required_capabilities: Vec<merman_render::RenderCapability>,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        native_fonts: Option<merman_export::NativeFontContext>,
     ) -> Self {
         let (svg, family) = completion.into_output_and_report();
         let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
@@ -150,6 +162,11 @@ impl RenderedDocument {
             evidence,
             portability,
             standalone_svg_admission,
+            #[cfg(all(
+                feature = "native-fonts",
+                any(feature = "png", feature = "jpeg", feature = "pdf")
+            ))]
+            native_fonts,
         }
     }
 
@@ -207,6 +224,8 @@ impl RenderedDocument {
         options: &merman_export::RasterOptions,
         control: OperationControl,
     ) -> Result<PreparedPngExport<'_>, RenderError> {
+        #[cfg(feature = "native-fonts")]
+        let options = &self.raster_options(options, &control)?;
         let export = merman_export::prepare_raster_controlled(self.sealed_svg(), options, control)
             .map_err(map_export_error)?;
         let report = export.report_for_output(merman_export::RasterOutputKind::Png);
@@ -234,6 +253,8 @@ impl RenderedDocument {
         options: &merman_export::RasterOptions,
         control: OperationControl,
     ) -> Result<PreparedJpegExport<'_>, RenderError> {
+        #[cfg(feature = "native-fonts")]
+        let options = &self.raster_options(options, &control)?;
         let export = merman_export::prepare_raster_controlled(self.sealed_svg(), options, control)
             .map_err(map_export_error)?;
         let report = export.report_for_output(merman_export::RasterOutputKind::Jpeg);
@@ -290,6 +311,8 @@ impl RenderedDocument {
         options: &merman_export::PdfOptions,
         control: OperationControl,
     ) -> Result<PreparedPdfExport<'_>, RenderError> {
+        #[cfg(feature = "native-fonts")]
+        let options = &self.pdf_options(options, &control)?;
         let export = merman_export::prepare_pdf_controlled(self.sealed_svg(), options, control)
             .map_err(map_export_error)?;
         let report = export.report();
@@ -307,6 +330,45 @@ impl RenderedDocument {
         control: OperationControl,
     ) -> Result<PdfOutput, RenderError> {
         self.prepare_pdf_export(options, control)?.encode()
+    }
+
+    #[cfg(all(
+        feature = "native-fonts",
+        any(feature = "png", feature = "jpeg", feature = "pdf")
+    ))]
+    fn export_font_context(
+        &self,
+        painting: Option<&merman_export::NativeFontContext>,
+        control: &OperationControl,
+    ) -> Result<Option<merman_export::NativeFontContext>, RenderError> {
+        crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Export)?;
+        super::environment::resolve_native_font_context(
+            self.native_fonts.as_ref(),
+            painting,
+            super::environment::NativeFontMeasurementState::Completed,
+        )
+    }
+
+    #[cfg(all(feature = "native-fonts", any(feature = "png", feature = "jpeg")))]
+    fn raster_options(
+        &self,
+        options: &merman_export::RasterOptions,
+        control: &OperationControl,
+    ) -> Result<merman_export::RasterOptions, RenderError> {
+        let mut options = options.clone();
+        options.font_context = self.export_font_context(options.font_context.as_ref(), control)?;
+        Ok(options)
+    }
+
+    #[cfg(all(feature = "native-fonts", feature = "pdf"))]
+    fn pdf_options(
+        &self,
+        options: &merman_export::PdfOptions,
+        control: &OperationControl,
+    ) -> Result<merman_export::PdfOptions, RenderError> {
+        let mut options = options.clone();
+        options.font_context = self.export_font_context(options.font_context.as_ref(), control)?;
+        Ok(options)
     }
 
     #[cfg(feature = "pdf")]

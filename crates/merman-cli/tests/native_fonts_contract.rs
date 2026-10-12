@@ -783,6 +783,107 @@ fn native_measurement_rejects_post_layout_css_without_output() {
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[test]
+fn native_mermaid_binary_exports_paint_with_the_font_used_for_layout() {
+    let source = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Native font painting: iii WWW mmm]\n";
+    let font = font();
+    let context = merman::svg::export::NativeFontOptions::default()
+        .with_font_file(&font)
+        .load(&merman::OperationControl::new())
+        .unwrap();
+    let output = merman::Renderer::new()
+        .render(merman::RenderRequest::document(
+            source,
+            merman::OperationControl::new(),
+            merman::SvgRequest {
+                environment: merman::SvgEnvironment::deterministic()
+                    .with_native_font_context(context.clone())
+                    .unwrap(),
+                options: merman::svg::SvgRenderOptions {
+                    diagram_id: Some("native-export".to_owned()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        ))
+        .unwrap();
+    let merman::RenderOutput::Document(Some(document)) = output else {
+        panic!("expected a completed native-font document");
+    };
+    let formats = [
+        #[cfg(feature = "png")]
+        "png",
+        #[cfg(feature = "jpeg")]
+        "jpeg",
+        #[cfg(feature = "pdf")]
+        "pdf",
+    ];
+    for format in formats {
+        let output = run_with_stdin(
+            &[
+                "render",
+                "--format",
+                format,
+                "--svg-id",
+                "native-export",
+                "--font-file",
+                &font,
+                "--font-system",
+                "off",
+            ],
+            source,
+        );
+        assert!(
+            output.status.success(),
+            "{format}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let (expected, fonts) = match format {
+            #[cfg(feature = "png")]
+            "png" => {
+                let options = merman::svg::export::RasterOptions::default()
+                    .with_font_context(context.clone());
+                let (bytes, report) =
+                    merman::svg::export::svg_to_png_with_report(document.sealed_svg(), &options)
+                        .unwrap();
+                (bytes, report.fonts())
+            }
+            #[cfg(feature = "jpeg")]
+            "jpeg" => {
+                let options = merman::svg::export::RasterOptions::default()
+                    .with_font_context(context.clone());
+                let (bytes, report) =
+                    merman::svg::export::svg_to_jpeg_with_report(document.sealed_svg(), &options)
+                        .unwrap();
+                (bytes, report.fonts())
+            }
+            #[cfg(feature = "pdf")]
+            "pdf" => {
+                let options =
+                    merman::svg::export::PdfOptions::default().with_font_context(context.clone());
+                let (bytes, report) =
+                    merman::svg::export::svg_to_pdf_with_report(document.sealed_svg(), &options)
+                        .unwrap();
+                (bytes, report.fonts())
+            }
+            _ => unreachable!("only compiled codecs are tested"),
+        };
+        assert_eq!(
+            fonts.source_mode(),
+            merman::svg::export::ExportFontMode::NativeContext
+        );
+        assert!(
+            !fonts.unresolved_font_request(),
+            "fixture must use the selected font"
+        );
+        assert_eq!(
+            output.stdout, expected,
+            "{format} must paint the same sealed scene with the selected font"
+        );
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+#[test]
 fn raw_svg_fonts_are_conversion_only_and_each_compiled_codec_works() {
     let input = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="80"><text x="10" y="40" font-family="Cousine">Native font</text></svg>"#;
     let font = font();

@@ -12,6 +12,17 @@ pub(super) enum FontCandidate {
     },
 }
 
+impl FontCandidate {
+    fn export_source(&self) -> NativeExportFontSource {
+        match self {
+            // Loaded faces originate from the caller-owned database. Discovery-backed faces
+            // always cross the bounded file admission path below.
+            Self::Loaded(_) => NativeExportFontSource::Caller,
+            Self::File { .. } => NativeExportFontSource::System,
+        }
+    }
+}
+
 pub(super) enum ExpectedFace {
     Bounded {
         metadata: FaceInfo,
@@ -120,22 +131,25 @@ pub(super) fn resolver(
                 provider
                     .select(font, &select_control)?
                     .map(|candidate| {
-                        select_context.0.sources.materialize(
-                            candidate,
-                            database,
-                            &select_context.0.limits,
-                            &select_control,
-                        )
+                        let source = candidate.export_source();
+                        select_context
+                            .0
+                            .sources
+                            .materialize(
+                                candidate,
+                                database,
+                                &select_context.0.limits,
+                                &select_control,
+                            )
+                            .inspect(|id| {
+                                if let Some(observer) = &select_observer {
+                                    observer.admit(*id, source);
+                                }
+                            })
                     })
                     .transpose()
             })();
-            let id = resolve_or_record(&select_context, result);
-            if id.is_some()
-                && let Some(observer) = &select_observer
-            {
-                observer.mark_system_face();
-            }
-            id
+            resolve_or_record(&select_context, result)
         }),
         select_fallback: Box::new(move |character, excluded, database| {
             let result = (|| {
@@ -159,12 +173,16 @@ pub(super) fn resolver(
                     &excluded_faces,
                     &control,
                     &mut |candidate| {
+                        let source = candidate.export_source();
                         let id = context.0.sources.materialize(
                             candidate,
                             database,
                             &context.0.limits,
                             &control,
                         )?;
+                        if let Some(observer) = &observer {
+                            observer.admit(id, source);
+                        }
                         if excluded.contains(&id) {
                             return Ok(None);
                         }
@@ -188,13 +206,7 @@ pub(super) fn resolver(
                     },
                 )
             })();
-            let id = resolve_or_record(&context, result);
-            if id.is_some()
-                && let Some(observer) = &observer
-            {
-                observer.mark_system_face();
-            }
-            id
+            resolve_or_record(&context, result)
         }),
     }
 }

@@ -168,12 +168,39 @@ fn architecture_uses_native_canvas_advances() {
 
 #[cfg(feature = "diagram-info")]
 #[test]
-fn fixed_size_info_canvas_does_not_invent_text_measurement() {
+fn info_native_viewport_measurement_preserves_default_geometry() {
     let output = render("info", Some(font_context()));
-    assert!(output.evidence().measurement().entries().is_empty());
+    assert_native_without_fallback(&output, "info");
+    let entries = output.evidence().measurement().entries();
+    assert_eq!(
+        entries.len(),
+        2,
+        "Info measures only the version text bounds"
+    );
+    for operation in [
+        TextMeasurementOperation::BBoxX,
+        TextMeasurementOperation::RawBBoxHeight,
+    ] {
+        let entry = entries
+            .iter()
+            .find(|entry| entry.provenance().operation == operation)
+            .expect("Info viewport records each version text bound");
+        assert_eq!(entry.provenance().phase, TextMeasurementPhase::SvgBBox);
+        assert_eq!(entry.count(), 1);
+    }
     let document = roxmltree::Document::parse(output.svg()).expect("valid info SVG");
     assert_eq!(document.root_element().attribute("viewBox"), None);
-    assert_eq!(layout("info", Some(font_context())), layout("info", None));
+    let native_layout = layout("info", Some(font_context()));
+    assert_eq!(native_layout, layout("info", None));
+    assert_eq!(
+        native_layout["InfoDiagram"]["bounds"],
+        serde_json::json!({
+            "min_x": 0.0,
+            "min_y": 0.0,
+            "max_x": 400.0,
+            "max_y": 100.0,
+        })
+    );
 }
 
 #[test]

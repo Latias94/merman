@@ -478,3 +478,242 @@ mod binary_context_contract {
         }
     }
 }
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+mod document_context_contract {
+    use super::*;
+    use merman::svg::export::{ExportFontMode, NativeFontContext};
+
+    const SOURCE: &str = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Measured and painted with Cousine]\n";
+
+    fn document(environment: SvgEnvironment, source: &str) -> merman::RenderedDocument {
+        let output = Renderer::new()
+            .render(RenderRequest::document(
+                source,
+                OperationControl::new(),
+                SvgRequest {
+                    environment,
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let merman::RenderOutput::Document(Some(document)) = output else {
+            panic!("expected a completed graphical document");
+        };
+        document
+    }
+
+    fn prepare_errors(
+        document: &merman::RenderedDocument,
+        painting: NativeFontContext,
+        control: OperationControl,
+    ) -> Vec<merman::RenderError> {
+        vec![
+            #[cfg(feature = "png")]
+            document
+                .prepare_png_export(
+                    &merman::svg::export::RasterOptions::default()
+                        .with_font_context(painting.clone()),
+                    control.clone(),
+                )
+                .err()
+                .expect("PNG must reject a conflicting context"),
+            #[cfg(feature = "jpeg")]
+            document
+                .prepare_jpeg_export(
+                    &merman::svg::export::RasterOptions::default()
+                        .with_font_context(painting.clone()),
+                    control.clone(),
+                )
+                .err()
+                .expect("JPEG must reject a conflicting context"),
+            #[cfg(feature = "pdf")]
+            document
+                .prepare_pdf_export(
+                    &merman::svg::export::PdfOptions::default().with_font_context(painting.clone()),
+                    control.clone(),
+                )
+                .err()
+                .expect("PDF must reject a conflicting context"),
+        ]
+    }
+
+    #[test]
+    fn default_document_exports_inherit_the_exact_native_painting_context() {
+        let context = context(Default::default(), &OperationControl::new());
+        let document = document(
+            SvgEnvironment::deterministic()
+                .with_native_font_context(context.clone())
+                .unwrap(),
+            SOURCE,
+        );
+        let digest = document.document_digest();
+        let evidence = document.evidence().clone();
+
+        #[cfg(feature = "png")]
+        {
+            let inherited = document
+                .prepare_png_export(&Default::default(), OperationControl::new())
+                .unwrap();
+            assert_eq!(
+                inherited.export_report().fonts().source_mode(),
+                ExportFontMode::NativeContext
+            );
+            assert!(!inherited.export_report().fonts().unresolved_font_request());
+            let actual = inherited.encode().unwrap();
+            let options =
+                merman::svg::export::RasterOptions::default().with_font_context(context.clone());
+            let explicit = document
+                .export_png(&options, OperationControl::new())
+                .unwrap();
+            let expected =
+                merman::svg::export::svg_to_png(document.sealed_svg(), &options).unwrap();
+            assert_eq!(actual.bytes(), expected);
+            assert_eq!(actual.bytes(), explicit.bytes());
+            assert_eq!(actual.admission().document_digest(), digest);
+        }
+        #[cfg(feature = "jpeg")]
+        {
+            let inherited = document
+                .prepare_jpeg_export(&Default::default(), OperationControl::new())
+                .unwrap();
+            assert_eq!(
+                inherited.export_report().fonts().source_mode(),
+                ExportFontMode::NativeContext
+            );
+            assert!(!inherited.export_report().fonts().unresolved_font_request());
+            let actual = inherited.encode().unwrap();
+            let options =
+                merman::svg::export::RasterOptions::default().with_font_context(context.clone());
+            let explicit = document
+                .export_jpeg(&options, OperationControl::new())
+                .unwrap();
+            let expected =
+                merman::svg::export::svg_to_jpeg(document.sealed_svg(), &options).unwrap();
+            assert_eq!(actual.bytes(), expected);
+            assert_eq!(actual.bytes(), explicit.bytes());
+            assert_eq!(actual.admission().document_digest(), digest);
+        }
+        #[cfg(feature = "pdf")]
+        {
+            let inherited = document
+                .prepare_pdf_export(&Default::default(), OperationControl::new())
+                .unwrap();
+            assert_eq!(
+                inherited.export_report().fonts().source_mode(),
+                ExportFontMode::NativeContext
+            );
+            assert!(!inherited.export_report().fonts().unresolved_font_request());
+            let actual = inherited.encode().unwrap();
+            let options =
+                merman::svg::export::PdfOptions::default().with_font_context(context.clone());
+            let explicit = document
+                .export_pdf(&options, OperationControl::new())
+                .unwrap();
+            let expected =
+                merman::svg::export::svg_to_pdf_with_options(document.sealed_svg(), &options)
+                    .unwrap();
+            assert_eq!(actual.bytes(), expected);
+            assert_eq!(actual.bytes(), explicit.bytes());
+            assert_eq!(actual.admission().document_digest(), digest);
+        }
+        assert_eq!(document.document_digest(), digest);
+        assert_eq!(document.evidence(), &evidence);
+    }
+
+    #[test]
+    fn completed_document_rejects_independent_native_contexts_before_export() {
+        let measuring = context(Default::default(), &OperationControl::new());
+        let document = document(
+            SvgEnvironment::deterministic()
+                .with_native_font_context(measuring.clone())
+                .unwrap(),
+            SOURCE,
+        );
+        for painting in [
+            context(Default::default(), &OperationControl::new()),
+            measuring.for_operation(&OperationControl::new()),
+        ] {
+            assert_ne!(painting, measuring);
+            for error in prepare_errors(&document, painting, OperationControl::new()) {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("measurement and painting conflict"),
+                    "{error}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn completed_document_cannot_add_native_measurement_or_bypass_typography_admission() {
+        let source = "flowchart LR\nA[Compatible typography]\nstyle A word-spacing:4px\n";
+        for environment in [
+            SvgEnvironment::deterministic(),
+            SvgEnvironment::deterministic()
+                .with_text_measurement_policy(merman::svg::TextMeasurementPolicy::deterministic()),
+        ] {
+            let document = document(environment, source);
+            for error in prepare_errors(
+                &document,
+                context(Default::default(), &OperationControl::new()),
+                OperationControl::new(),
+            ) {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("cannot be added to a completed document"),
+                    "{error}"
+                );
+            }
+            #[cfg(feature = "png")]
+            assert_ne!(
+                document
+                    .prepare_png_export(&Default::default(), OperationControl::new())
+                    .unwrap()
+                    .export_report()
+                    .fonts()
+                    .source_mode(),
+                ExportFontMode::NativeContext,
+            );
+            #[cfg(feature = "jpeg")]
+            assert_ne!(
+                document
+                    .prepare_jpeg_export(&Default::default(), OperationControl::new())
+                    .unwrap()
+                    .export_report()
+                    .fonts()
+                    .source_mode(),
+                ExportFontMode::NativeContext,
+            );
+            #[cfg(feature = "pdf")]
+            assert_ne!(
+                document
+                    .prepare_pdf_export(&Default::default(), OperationControl::new())
+                    .unwrap()
+                    .export_report()
+                    .fonts()
+                    .source_mode(),
+                ExportFontMode::NativeContext,
+            );
+        }
+    }
+
+    #[test]
+    fn document_export_cancellation_precedes_native_context_conflict() {
+        let document = document(SvgEnvironment::deterministic(), SOURCE);
+        let control = OperationControl::new();
+        control.cancel();
+        for error in prepare_errors(
+            &document,
+            context(Default::default(), &OperationControl::new()),
+            control,
+        ) {
+            assert!(
+                matches!(error, merman::RenderError::Cancelled(_)),
+                "{error}"
+            );
+        }
+    }
+}

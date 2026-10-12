@@ -2,7 +2,7 @@ use super::{ExportError, Result};
 use merman_render::__private::PreparedTextLabelId;
 use merman_render::diagram_theme::{FontCatalog, FontCatalogFingerprint, FontSource};
 use merman_render::svg::ResvgCompatibleSvg;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
 
@@ -203,6 +203,8 @@ impl ExportFontPlanSeed {
         Self {
             catalog_fingerprint: svg.font_catalog().fingerprint(),
             source_mode: ExportFontMode::NativeContext,
+            // Native contexts classify faces through the operation-local observer, including
+            // COW-installed discovery faces that are absent from this initial database snapshot.
             system_fonts: context.fontdb_for_export(),
             recorder: Arc::new(FontResolutionRecorder::default()),
             native_export: Some(observer),
@@ -210,6 +212,12 @@ impl ExportFontPlanSeed {
     }
 
     pub(crate) fn finish_with_tree(&self, tree: &usvg::Tree) -> ExportFontPlan {
+        #[cfg(feature = "native-fonts")]
+        let evidence = self.native_export.as_ref().map_or_else(
+            || FinalTreeFontEvidence::collect(tree, &self.system_fonts),
+            |observer| FinalTreeFontEvidence::collect_native(tree, observer),
+        );
+        #[cfg(not(feature = "native-fonts"))]
         let evidence = FinalTreeFontEvidence::collect(tree, &self.system_fonts);
         let unresolved_glyph_fallback = self
             .recorder
@@ -219,7 +227,6 @@ impl ExportFontPlanSeed {
         #[cfg(feature = "native-fonts")]
         let native_facts = self.native_export.as_ref().map(|observer| {
             (
-                observer.used_system_face(),
                 observer.family_fallback_used(),
                 observer.glyph_fallback_used(),
                 observer.unresolved_font_request(),
@@ -227,7 +234,7 @@ impl ExportFontPlanSeed {
             )
         });
         #[cfg(not(feature = "native-fonts"))]
-        let native_facts: Option<(bool, bool, bool, bool, bool)> = None;
+        let native_facts: Option<(bool, bool, bool, bool)> = None;
 
         ExportFontPlan {
             catalog_fingerprint: self.catalog_fingerprint,
@@ -236,20 +243,20 @@ impl ExportFontPlanSeed {
             // Native contexts are explicitly caller-owned, even if their policy permits system
             // discovery. They must never be mistaken for a theme-retained font catalog.
             used_embedded_fonts: false,
-            // Only the installed NativeFontContext resolver can distinguish a discovery-backed
-            // face from an explicit caller file. Do not infer this from the shared fontdb.
-            used_system_fonts: native_facts.map_or(evidence.used_system_fonts, |facts| facts.0),
+            // Native contexts derive this from visible final glyphs and the exact resolver's
+            // operation-local admission record, not from an initial fontdb snapshot.
+            used_system_fonts: evidence.used_system_fonts,
             family_fallback_used: self.recorder.family_fallback_used.load(Ordering::Relaxed)
-                || native_facts.is_some_and(|facts| facts.1),
+                || native_facts.is_some_and(|facts| facts.0),
             glyph_fallback_used: self.recorder.glyph_fallback_used.load(Ordering::Relaxed)
-                || native_facts.is_some_and(|facts| facts.2),
+                || native_facts.is_some_and(|facts| facts.1),
             unresolved_font_request: self
                 .recorder
                 .unresolved_font_request
                 .load(Ordering::Relaxed)
-                || native_facts.is_some_and(|facts| facts.3),
+                || native_facts.is_some_and(|facts| facts.2),
             unresolved_glyph_fallback: unresolved_glyph_fallback
-                || native_facts.is_some_and(|facts| facts.4),
+                || native_facts.is_some_and(|facts| facts.3),
             prepared_label_expected_count: 0,
             prepared_label_verified_count: 0,
             prepared_label_mismatch_count: evidence.prepared_labels.len()
@@ -273,12 +280,45 @@ struct FinalTreeFontEvidence {
 
 impl FinalTreeFontEvidence {
     fn collect(tree: &usvg::Tree, system_fonts: &usvg::fontdb::Database) -> Self {
+        Self::collect_admitted(
+            tree,
+            system_fonts.faces().map(|face| face.id).collect(),
+            BTreeSet::new(),
+        )
+    }
+
+    #[cfg(feature = "native-fonts")]
+    fn collect_native(
+        tree: &usvg::Tree,
+        observer: &crate::fonts::NativeExportFontObserver,
+    ) -> Self {
+        let mut system_faces = BTreeSet::new();
+        let mut caller_faces = BTreeSet::new();
+        for (id, source) in observer.admitted_faces() {
+            match source {
+                crate::fonts::NativeExportFontSource::System => {
+                    system_faces.insert(id);
+                }
+                crate::fonts::NativeExportFontSource::Caller => {
+                    caller_faces.insert(id);
+                }
+            }
+        }
+        Self::collect_admitted(tree, system_faces, caller_faces)
+    }
+
+    fn collect_admitted(
+        tree: &usvg::Tree,
+        system_faces: BTreeSet<usvg::fontdb::ID>,
+        caller_faces: BTreeSet<usvg::fontdb::ID>,
+    ) -> Self {
         let mut evidence = Self::default();
         let mut unclassified_faces = HashSet::new();
         let mut visited_groups = HashSet::new();
         evidence.visit_group(
             tree.root(),
-            system_fonts,
+            &system_faces,
+            &caller_faces,
             &mut unclassified_faces,
             &mut visited_groups,
         );
@@ -289,7 +329,8 @@ impl FinalTreeFontEvidence {
     fn visit_group(
         &mut self,
         group: &usvg::Group,
-        system_fonts: &usvg::fontdb::Database,
+        system_faces: &BTreeSet<usvg::fontdb::ID>,
+        caller_faces: &BTreeSet<usvg::fontdb::ID>,
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
         visited_groups: &mut HashSet<*const usvg::Group>,
     ) {
@@ -298,14 +339,26 @@ impl FinalTreeFontEvidence {
         }
         for node in group.children() {
             match node {
-                usvg::Node::Group(group) => {
-                    self.visit_group(group, system_fonts, unclassified_faces, visited_groups)
+                usvg::Node::Group(group) => self.visit_group(
+                    group,
+                    system_faces,
+                    caller_faces,
+                    unclassified_faces,
+                    visited_groups,
+                ),
+                usvg::Node::Text(text) => {
+                    self.visit_text(text, system_faces, caller_faces, unclassified_faces)
                 }
-                usvg::Node::Text(text) => self.visit_text(text, system_fonts, unclassified_faces),
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
             }
             node.subroots(|subroot| {
-                self.visit_group(subroot, system_fonts, unclassified_faces, visited_groups);
+                self.visit_group(
+                    subroot,
+                    system_faces,
+                    caller_faces,
+                    unclassified_faces,
+                    visited_groups,
+                );
             });
         }
     }
@@ -313,7 +366,8 @@ impl FinalTreeFontEvidence {
     fn visit_text(
         &mut self,
         text: &usvg::Text,
-        system_fonts: &usvg::fontdb::Database,
+        system_faces: &BTreeSet<usvg::fontdb::ID>,
+        caller_faces: &BTreeSet<usvg::fontdb::ID>,
         unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
     ) {
         let prepared_token = PreparedTextLabelId::from_svg_id(text.id());
@@ -330,9 +384,9 @@ impl FinalTreeFontEvidence {
                 if glyph.id.0 == 0 {
                     self.notdef_glyph_count = self.notdef_glyph_count.saturating_add(1);
                 }
-                if system_fonts.face(glyph.font).is_some() {
+                if system_faces.contains(&glyph.font) {
                     self.used_system_fonts = true;
-                } else {
+                } else if !caller_faces.contains(&glyph.font) {
                     unclassified_faces.insert(glyph.font);
                 }
             }
@@ -780,11 +834,27 @@ mod tests {
             &options,
         )
         .expect("explicit native context parses text");
+        let glyph_count = tree
+            .root()
+            .children()
+            .iter()
+            .filter_map(|node| match node {
+                usvg::Node::Text(text) => Some(text),
+                _ => None,
+            })
+            .flat_map(|text| text.layouted().iter())
+            .flat_map(|span| span.positioned_glyphs.iter())
+            .count();
+        assert!(
+            glyph_count > 0,
+            "fixture must exercise an actual native glyph"
+        );
         let plan = seed.finish_with_tree(&tree);
 
         assert_eq!(plan.source_mode(), ExportFontMode::NativeContext);
         assert!(!plan.used_embedded_fonts());
         assert!(!plan.used_system_fonts());
+        assert_eq!(plan.unclassified_face_count(), 0);
         assert!(plan.is_host_dependent());
     }
 }

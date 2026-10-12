@@ -498,6 +498,7 @@ mod tests {
         );
         Ok(NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(loader.database),
+            initial_system_faces: BTreeSet::new(),
             discovery: Some(DiscoveryProvider::Bounded(Arc::new(catalog))),
             sources,
             default_family,
@@ -959,6 +960,90 @@ mod tests {
         assert_eq!(catalog.database.faces().count(), 1);
         assert!(catalog.faces.is_empty());
         assert!(binary_bytes(&catalog.database) > 0);
+    }
+
+    #[test]
+    fn export_observer_classifies_dynamically_admitted_system_glyphs() {
+        let root = Root::new();
+        root.copy("Cousine-Regular.ttf");
+        let control = OperationControl::new();
+        let context = context(&root, NativeFontLimits::default(), &control).unwrap();
+        let source = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20" font-family="Cousine">AVA</text></svg>"#;
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+        let mut options = usvg::Options::default();
+        let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
+            &sealed,
+            &context,
+            observer.clone(),
+        );
+        let tree = usvg::Tree::from_str(source, &options)
+            .expect("bounded system fixture parses through export resolver");
+        let glyphs = tree
+            .root()
+            .children()
+            .iter()
+            .filter_map(|node| match node {
+                usvg::Node::Text(text) => Some(text),
+                _ => None,
+            })
+            .flat_map(|text| text.layouted().iter())
+            .flat_map(|span| span.positioned_glyphs.iter())
+            .collect::<Vec<_>>();
+        assert!(!glyphs.is_empty(), "fixture must shape visible glyphs");
+        let admitted = observer.admitted_faces();
+        assert!(glyphs.iter().all(|glyph| {
+            admitted.get(&glyph.font) == Some(&super::super::NativeExportFontSource::System)
+        }));
+        let plan = seed.finish_with_tree(&tree);
+        assert!(plan.used_system_fonts());
+        assert_eq!(plan.unclassified_face_count(), 0);
+    }
+
+    #[test]
+    fn export_observer_keeps_explicit_faces_caller_owned_with_discovery_enabled() {
+        let root = Root::new();
+        let explicit = root.copy("Cousine-Regular.ttf");
+        let control = OperationControl::new();
+        let mut loader = FontLoader::new(NativeFontLimits::default(), control.clone());
+        loader.file(&explicit).unwrap();
+        let context = context_from_loader(&root, loader, &control).unwrap();
+        let source = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20" font-family="Cousine">AVA</text></svg>"#;
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+        let mut options = usvg::Options::default();
+        let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
+            &sealed,
+            &context,
+            observer.clone(),
+        );
+        let tree = usvg::Tree::from_str(source, &options)
+            .expect("explicit fixture parses through discovery resolver");
+        let glyphs = tree
+            .root()
+            .children()
+            .iter()
+            .filter_map(|node| match node {
+                usvg::Node::Text(text) => Some(text),
+                _ => None,
+            })
+            .flat_map(|text| text.layouted().iter())
+            .flat_map(|span| span.positioned_glyphs.iter())
+            .collect::<Vec<_>>();
+        assert!(!glyphs.is_empty(), "fixture must shape visible glyphs");
+        let admitted = observer.admitted_faces();
+        assert!(glyphs.iter().all(|glyph| {
+            admitted.get(&glyph.font) == Some(&super::super::NativeExportFontSource::Caller)
+        }));
+        let plan = seed.finish_with_tree(&tree);
+        assert!(!plan.used_system_fonts());
+        assert_eq!(plan.unclassified_face_count(), 0);
     }
 
     #[cfg(unix)]

@@ -8,6 +8,56 @@ use merman_render::{
 
 use super::RenderError;
 
+#[cfg(all(
+    feature = "native-fonts",
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+pub(super) enum NativeFontMeasurementState {
+    Default,
+    Explicit,
+    Completed,
+}
+
+#[cfg(all(
+    feature = "native-fonts",
+    any(feature = "png", feature = "jpeg", feature = "pdf")
+))]
+pub(super) fn resolve_native_font_context(
+    measuring: Option<&merman_export::NativeFontContext>,
+    painting: Option<&merman_export::NativeFontContext>,
+    measurement: NativeFontMeasurementState,
+) -> Result<Option<merman_export::NativeFontContext>, RenderError> {
+    let context = match (measuring, painting) {
+        (Some(measuring), Some(painting)) if measuring != painting => {
+            return Err(merman_export::NativeFontError::Measurement(
+                "native font contexts for measurement and painting conflict; share the same context"
+                    .to_owned(),
+            )
+            .into());
+        }
+        (Some(measuring), _) => Some(measuring),
+        (None, Some(painting)) => match measurement {
+            NativeFontMeasurementState::Default => Some(painting),
+            NativeFontMeasurementState::Explicit => {
+                return Err(merman_export::NativeFontError::Measurement(
+                    "native painting font context conflicts with an explicit text measurement policy"
+                        .to_owned(),
+                )
+                .into());
+            }
+            NativeFontMeasurementState::Completed => {
+                return Err(merman_export::NativeFontError::Measurement(
+                    "native painting font context cannot be added to a completed document; select it before text measurement and native admission"
+                        .to_owned(),
+                )
+                .into());
+            }
+        },
+        (None, None) => None,
+    };
+    Ok(context.cloned())
+}
+
 /// SVG-only host services and rendering limits.
 ///
 /// Operation time, timezone, randomness, cancellation, and deadlines deliberately do not live

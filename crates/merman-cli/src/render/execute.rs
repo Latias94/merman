@@ -199,7 +199,7 @@ fn execute_graphical_with_pipeline(
                     ));
                 }
             }
-            match (&prepared.output, output) {
+            match (graphical_output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
                     let (svg, _evidence) = svg.into_parts();
                     #[cfg(feature = "markdown")]

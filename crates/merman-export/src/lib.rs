@@ -3343,18 +3343,6 @@ fn browser_like_font_resolver() -> usvg::FontResolver<'static> {
     }
 }
 
-#[cfg(all(test, feature = "pdf"))]
-fn browser_like_pdf_font_resolver() -> usvg::FontResolver<'static> {
-    usvg::FontResolver {
-        select_font: Box::new(move |font, fontdb| {
-            select_font_case_insensitively(font, fontdb.as_ref())
-                .or_else(|| query_browser_like_pdf_fallback_font(font, fontdb.as_ref()))
-                .or_else(|| fontdb.faces().next().map(|face| face.id))
-        }),
-        select_fallback: usvg::FontResolver::default_fallback_selector(),
-    }
-}
-
 #[cfg(any(
     feature = "native-fonts",
     all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
@@ -3532,31 +3520,6 @@ fn query_browser_like_fallback_font(
     fontdb.query(&query)
 }
 
-#[cfg(all(test, feature = "pdf"))]
-fn query_browser_like_pdf_fallback_font(
-    font: &usvg::Font,
-    fontdb: &usvg::fontdb::Database,
-) -> Option<usvg::fontdb::ID> {
-    let mut families = Vec::with_capacity(3);
-    if pdf_font_requests_monospace(font) {
-        families.push(usvg::fontdb::Family::Monospace);
-        families.push(usvg::fontdb::Family::SansSerif);
-        families.push(usvg::fontdb::Family::Serif);
-    } else {
-        families.push(usvg::fontdb::Family::SansSerif);
-        families.push(usvg::fontdb::Family::Serif);
-        families.push(usvg::fontdb::Family::Monospace);
-    }
-
-    let query = usvg::fontdb::Query {
-        families: &families,
-        weight: usvg::fontdb::Weight(font.weight()),
-        stretch: font.stretch().into(),
-        style: font.style().into(),
-    };
-    fontdb.query(&query)
-}
-
 #[cfg(any(
     feature = "native-fonts",
     all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
@@ -3609,21 +3572,6 @@ fn face_family_name(face: &usvg::fontdb::FaceInfo) -> Option<String> {
     all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
 ))]
 fn font_requests_monospace(font: &usvg::Font) -> bool {
-    font.families().iter().any(|family| match family {
-        usvg::FontFamily::Monospace => true,
-        usvg::FontFamily::Named(name) => {
-            let name = name.to_ascii_lowercase();
-            name.contains("mono")
-                || name.contains("courier")
-                || name.contains("consolas")
-                || name.contains("menlo")
-        }
-        _ => false,
-    })
-}
-
-#[cfg(all(test, feature = "pdf"))]
-fn pdf_font_requests_monospace(font: &usvg::Font) -> bool {
     font.families().iter().any(|family| match family {
         usvg::FontFamily::Monospace => true,
         usvg::FontFamily::Named(name) => {

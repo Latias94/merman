@@ -543,25 +543,24 @@ fn normalize_binary_font_context(
     environment: &mut SvgEnvironment,
     painting: &mut Option<merman_export::NativeFontContext>,
 ) -> Result<(), RenderError> {
-    match (&environment.native_fonts, painting.as_ref()) {
-        (Some(measuring), Some(painting)) if measuring != painting => {
-            return Err(merman_export::NativeFontError::Measurement(
-                "native font contexts for measurement and painting conflict; share the same context".to_owned(),
-            ).into());
-        }
-        (Some(measuring), None) => *painting = Some(measuring.clone()),
-        (None, Some(context)) => {
-            if !environment.text_measurement_is_default {
-                return Err(merman_export::NativeFontError::Measurement(
-                    "native painting font context conflicts with an explicit text measurement policy".to_owned(),
-                ).into());
-            }
-            *environment = environment
-                .clone()
-                .with_native_font_context(context.clone())?;
-        }
-        _ => {}
+    let measurement = if environment.text_measurement_is_default {
+        environment::NativeFontMeasurementState::Default
+    } else {
+        environment::NativeFontMeasurementState::Explicit
+    };
+    let context = environment::resolve_native_font_context(
+        environment.native_fonts.as_ref(),
+        painting.as_ref(),
+        measurement,
+    )?;
+    if environment.native_fonts.is_none()
+        && let Some(context) = &context
+    {
+        *environment = environment
+            .clone()
+            .with_native_font_context(context.clone())?;
     }
+    *painting = context;
     Ok(())
 }
 
@@ -1418,6 +1417,11 @@ fn render_document_target(
     Ok(Some(RenderedDocument::new(
         completion,
         required_capabilities,
+        #[cfg(all(
+            feature = "native-fonts",
+            any(feature = "png", feature = "jpeg", feature = "pdf")
+        ))]
+        request.environment.native_fonts,
     )))
 }
 
@@ -1463,9 +1467,14 @@ fn render_png_target(
     else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    RenderedDocument::new(completion, required_capabilities)
-        .export_png(&request.options, operation.control)
-        .map(Some)
+    RenderedDocument::new(
+        completion,
+        required_capabilities,
+        #[cfg(feature = "native-fonts")]
+        request.svg.environment.native_fonts,
+    )
+    .export_png(&request.options, operation.control)
+    .map(Some)
 }
 
 #[cfg(feature = "jpeg")]
@@ -1478,9 +1487,14 @@ fn render_jpeg_target(
     else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    RenderedDocument::new(completion, required_capabilities)
-        .export_jpeg(&request.options, operation.control)
-        .map(Some)
+    RenderedDocument::new(
+        completion,
+        required_capabilities,
+        #[cfg(feature = "native-fonts")]
+        request.svg.environment.native_fonts,
+    )
+    .export_jpeg(&request.options, operation.control)
+    .map(Some)
 }
 
 #[cfg(feature = "pdf")]
@@ -1493,9 +1507,14 @@ fn render_pdf_target(
     else {
         unreachable!("semantic artifact always produces a sealed SVG or an error")
     };
-    RenderedDocument::new(completion, required_capabilities)
-        .export_pdf(&request.options, operation.control)
-        .map(Some)
+    RenderedDocument::new(
+        completion,
+        required_capabilities,
+        #[cfg(feature = "native-fonts")]
+        request.svg.environment.native_fonts,
+    )
+    .export_pdf(&request.options, operation.control)
+    .map(Some)
 }
 
 #[cfg(all(test, feature = "svg"))]
