@@ -47,8 +47,8 @@ class GenerationTests(unittest.TestCase):
                 )
 
     def test_cli_version_is_exact(self) -> None:
-        validate_cli_version("tree-sitter 0.27.0")
-        with self.assertRaisesRegex(SystemExit, "expected tree-sitter 0.27.0"):
+        validate_cli_version("tree-sitter 0.27.1")
+        with self.assertRaisesRegex(SystemExit, "expected tree-sitter 0.27.1"):
             validate_cli_version("tree-sitter 0.26.12")
 
     def test_generated_source_set_rejects_stale_files(self) -> None:
@@ -89,8 +89,8 @@ class GenerationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             sdk = Path(directory)
             clang = sdk / "bin" / "clang.exe"
-            (sdk / "VERSION").write_text("29.0\n", encoding="utf-8")
-            for banner in ["21.1.4-wasi-sdk", "21.1.4"]:
+            (sdk / "VERSION").write_text("34.0\n", encoding="utf-8")
+            for banner in ["23.1.0-rc3-wasi-sdk", "23.1.0-rc3"]:
                 with patch("scripts.generate.find_wasi_clang", return_value=clang), patch(
                     "scripts.generate.subprocess.run",
                     return_value=subprocess.CompletedProcess([], 0, f"clang version {banner} (LLVM)"),
@@ -99,9 +99,9 @@ class GenerationTests(unittest.TestCase):
             (sdk / "VERSION").write_text("28.0\n", encoding="utf-8")
             with patch("scripts.generate.find_wasi_clang", return_value=clang), patch(
                 "scripts.generate.subprocess.run",
-                return_value=subprocess.CompletedProcess([], 0, "clang version 21.1.4"),
+                return_value=subprocess.CompletedProcess([], 0, "clang version 23.1.0-rc3"),
             ):
-                with self.assertRaisesRegex(SystemExit, "expected wasi-sdk 29.0"):
+                with self.assertRaisesRegex(SystemExit, "expected wasi-sdk 34.0"):
                     resolve_wasi_clang([])
 
     def test_external_tool_timeout_has_a_bounded_failure(self) -> None:

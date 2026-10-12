@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "package": {
     "name": "tree-sitter-mermaid",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "releaseState": "candidate"
   },
   "language": {
@@ -12,12 +12,12 @@
     "querySchemaVersion": 1
   },
   "toolchain": {
-    "treeSitterCli": "0.27.0",
-    "rustRuntime": "0.27.0",
+    "treeSitterCli": "0.27.1",
+    "rustRuntime": "0.27.1",
     "nodeRuntime": "0.25.1",
-    "webRuntime": "0.27.0",
-    "wasiSdk": "29.0",
-    "wasiClang": "21.1.4-wasi-sdk"
+    "webRuntime": "0.27.1",
+    "wasiSdk": "34.0",
+    "wasiClang": "23.1.0-rc3-wasi-sdk"
   },
   "sources": [
     {
@@ -31,10 +31,10 @@
     {
       "id": "tree-sitter",
       "kind": "generator-source",
-      "version": "0.27.0",
+      "version": "0.27.1",
       "repository": "https://github.com/tree-sitter/tree-sitter.git",
-      "ref": "v0.27.0",
-      "commit": "6070dbfefd326bd735e5683eb128cc1b57dad0c0",
+      "ref": "v0.27.1",
+      "commit": "10eb5ac119eec9cb4267a8e035066473983f5f3a",
       "usage": "Pinned generator and generated support headers",
       "license": "MIT",
       "legalComponentId": "tree-sitter-generator"

@@ -406,7 +406,7 @@ jobs:
 
       - name: Upload measurement receipt
         if: ${{ always() }}
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: ${{ matrix.artifact }}
           path: |
@@ -485,7 +485,7 @@ jobs:
 
       - name: Setup Node for Mermaid JS
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.include_mermaid_js }}
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "22"
           cache: npm
@@ -549,7 +549,7 @@ jobs:
           python3 tools/bench/compare_mermaid_renderers.py "${args[@]}"
 
       - name: Upload reference artifacts
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: perf-reference
           path: |

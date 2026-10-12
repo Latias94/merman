@@ -35,7 +35,6 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@2026.09.28.1
         with:
           core: true
-          setup-sandbox: true
 
       - name: Update Homebrew metadata
         shell: bash

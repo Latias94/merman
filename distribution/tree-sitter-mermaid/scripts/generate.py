@@ -20,7 +20,6 @@ PROVENANCE = json.loads(
 CLI_VERSION = PROVENANCE["toolchain"]["treeSitterCli"]
 LANGUAGE_ABI = int(PROVENANCE["language"]["abi"])
 WASI_CLANG_VERSION = PROVENANCE["toolchain"]["wasiClang"]
-WASM_IRREDUCIBLE_CFG_FLAG = "-wasm-disable-fix-irreducible-control-flow-pass"
 PARSER_MAX_BYTES = 12 * 1024 * 1024
 WASM_MAX_BYTES = 5 * 1024 * 1024
 SUBPROCESS_TIMEOUT_SECONDS = 15 * 60
@@ -253,12 +252,14 @@ def build_wasm(package: Path, cli: list[str], destination: Path) -> None:
     run(
         [
             str(clang),
-            "--target=wasm32-unknown-wasi",
+            "--target=wasm32-unknown-wasip1",
             "-o",
             str(output),
             "-fPIC",
             # Platform-specific Clang banners must not enter the producers section.
             "-fno-ident",
+            # Keep compilation independent of unpinned wasm-opt binaries on PATH.
+            "--no-wasm-opt",
             "-shared",
             "-Os",
             "-Wl,--export=tree_sitter_mermaid",
@@ -269,8 +270,6 @@ def build_wasm(package: Path, cli: list[str], destination: Path) -> None:
             "-fvisibility=hidden",
             "-I",
             ".",
-            "-mllvm",
-            WASM_IRREDUCIBLE_CFG_FLAG,
             "parser.c",
             "scanner.c",
         ],

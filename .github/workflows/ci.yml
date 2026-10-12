@@ -109,8 +109,8 @@ jobs:
         env:
           ACTIONLINT_VERSION: 1.7.12
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
-          ZIZMOR_VERSION: 1.29.0
-          ZIZMOR_SHA256: 587b99c2e1b34575c6c8565c2bfde415ca8bc0310f5589f19bc948c8dea10a20
+          ZIZMOR_VERSION: 1.30.1
+          ZIZMOR_SHA256: eee12266b793cb87ad4a7e3af2e72404f8a63e3de5eb099b80bf7b1cfd232a8e
         run: |
           set -euo pipefail
           tools_dir="$RUNNER_TEMP/workflow-tools"
@@ -226,9 +226,9 @@ jobs:
           components: clippy
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: nextest
+          tool: nextest@0.9.148
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2
@@ -266,7 +266,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Nix
-        uses: DeterminateSystems/determinate-nix-action@v3.22.5
+        uses: DeterminateSystems/determinate-nix-action@v3.23.1
 
       - name: Build reusable Nix derivation
         run: |
@@ -404,9 +404,9 @@ jobs:
         run: rustup target add aarch64-linux-android wasm32-unknown-unknown
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: nextest
+          tool: nextest@0.9.148
 
       - name: Free disk space (Ubuntu)
         if: runner.os == 'Linux'
@@ -442,7 +442,7 @@ jobs:
 
       - name: Setup Node for generated Mermaid artifacts
         if: matrix.parity
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -674,7 +674,7 @@ jobs:
 
       - name: Upload SVG parity diagnostic reports
         if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' && always()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: svg-parity-diagnostics-${{ github.run_attempt }}
           path: |
@@ -694,7 +694,7 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -782,7 +782,7 @@ jobs:
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
-      TYPST_CLI_VERSION: "0.15.0"
+      TYPST_CLI_VERSION: "0.15.1"
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -799,16 +799,16 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: wasm-tools
+          tool: wasm-tools@1.261.0
 
       - name: Install wasm-opt
         uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
-          tag: version_131
+          tag: version_133
 
       - name: Download Typst
         shell: bash
@@ -849,7 +849,7 @@ jobs:
 
       - name: Upload Typst package smoke artifacts
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: typst-package-smoke
           path: target/typst-package-smoke
@@ -880,16 +880,16 @@ jobs:
           cache-targets: false
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: wasm-tools
+          tool: wasm-tools@1.261.0
 
       - name: Install wasm-opt
         uses: sigoden/install-binary@v1.2.0
         with:
           repo: WebAssembly/binaryen
           name: wasm-opt
-          tag: version_131
+          tag: version_133
 
       - name: Check WASM size budgets
         run: cargo run --locked -p xtask -- wasm-size-matrix --surface typst --budget-file docs/release/WASM_SIZE_BUDGETS.json
@@ -924,7 +924,7 @@ jobs:
 
       - name: Upload Typst package compatibility artifacts
         if: failure()
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: typst-package-compat-smoke
           path: target/typst-package-smoke
@@ -981,7 +981,7 @@ jobs:
       - name: Setup Flutter
         uses: subosito/flutter-action@v2.23.0
         with:
-          flutter-version: "3.44.9"
+          flutter-version: "3.47.7"
           channel: stable
           cache: true
 

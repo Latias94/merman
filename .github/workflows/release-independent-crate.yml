@@ -27,7 +27,7 @@ jobs:
       package: ${{ steps.release.outputs.package }}
       version: ${{ steps.release.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           persist-credentials: false
@@ -67,7 +67,7 @@ jobs:
       stable_dependent_version: ${{ steps.dependent-versions.outputs.stable_version }}
       prerelease_dependent_version: ${{ steps.dependent-versions.outputs.prerelease_version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ github.workflow_sha }}
           fetch-depth: 0
@@ -81,11 +81,11 @@ jobs:
           printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
           echo "Verified source commit: $source_sha"
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: cargo-semver-checks@0.50.0
+          tool: cargo-semver-checks@0.51.0
       - name: Verify independent crate release metadata
         env:
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
@@ -154,7 +154,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment: crates.io
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.preflight.outputs.source_sha }}
           persist-credentials: false
@@ -170,7 +170,7 @@ jobs:
             exit 1
           }
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@a5f673d0ba8626c3977bb416a1612774bc82181b # 1.95.0
+        uses: dtolnay/rust-toolchain@1.95.0
       - name: Upload independent crate to crates.io
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}

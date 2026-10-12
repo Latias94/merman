@@ -1,5 +1,5 @@
-import "monaco-editor/esm/vs/language/json/monaco.contribution.js";
-import JsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
+import "monaco-editor/languages/features/json/register";
+import JsonWorker from "monaco-editor/languages/features/json/json.worker?worker";
 
 import {
   ensureLocalMonacoConfigured,

@@ -1,8 +1,8 @@
 [versions]
-android-gradle-plugin = "9.2.0"
+android-gradle-plugin = "9.4.1"
 dokka = "2.2.0"
 java = "17"
-ndk = "29.0.14206865"
+ndk = "30.0.16248370"
 
 [plugins]
 android-library = { id = "com.android.library", version.ref = "android-gradle-plugin" }

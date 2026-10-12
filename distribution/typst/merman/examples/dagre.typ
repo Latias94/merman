@@ -1,4 +1,4 @@
-#import "@preview/merman:0.4.0": mermaid, mermaid-profile, show-mermaid-blocks
+#import "@preview/merman:0.5.0": mermaid, mermaid-profile, show-mermaid-blocks
 
 = Dagre layout
 

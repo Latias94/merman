@@ -280,6 +280,7 @@ function metadataWithPackages(entries) {
 }
 
 function declaredCargoFeatures(manifest) {
+  manifest = manifest.replaceAll("\r\n", "\n");
   const marker = "[features]\n";
   const start = manifest.indexOf(marker);
   assert.notEqual(start, -1, "Cargo manifest must contain a [features] section");

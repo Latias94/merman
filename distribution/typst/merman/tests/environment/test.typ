@@ -1,4 +1,4 @@
-#import "@preview/merman:0.4.0": (
+#import "@preview/merman:0.5.0": (
   mermaid-profile,
   mermaid-result,
   merman-capabilities,

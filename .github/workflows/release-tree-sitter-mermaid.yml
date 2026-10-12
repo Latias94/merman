@@ -183,7 +183,7 @@ jobs:
           PY
 
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -196,9 +196,9 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.22
+        uses: taiki-e/install-action@v2.87.27
         with:
-          tool: nextest
+          tool: nextest@0.9.148
 
       - name: Install grammar toolchain
         run: |
@@ -270,7 +270,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -292,7 +292,7 @@ jobs:
             > "$RUNNER_TEMP/tree-sitter-mermaid-prebuild-$TARGET.tar.gz"
 
       - name: Upload prebuild
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: tree-sitter-mermaid-prebuild-${{ matrix.target }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-prebuild-${{ matrix.target }}.tar.gz
@@ -309,7 +309,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
@@ -322,7 +322,7 @@ jobs:
         uses: dtolnay/rust-toolchain@1.95.0
 
       - name: Download native prebuilds from this run
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           pattern: tree-sitter-mermaid-prebuild-*
           path: ${{ runner.temp }}/tree-sitter-mermaid-prebuilds
@@ -364,7 +364,7 @@ jobs:
           (cd "$release_dir" && sha256sum ./* > SHA256SUMS)
 
       - name: Upload release candidate
-        uses: actions/upload-artifact@v7.0.1
+        uses: actions/upload-artifact@v7.0.2
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release/*
@@ -381,7 +381,7 @@ jobs:
       artifact-metadata: write
     steps:
       - name: Download release candidate
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
@@ -412,7 +412,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
       - name: Download release candidate
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
@@ -544,7 +544,7 @@ jobs:
           path: trusted
           persist-credentials: false
       - name: Install Node.js
-        uses: actions/setup-node@v7.0.0
+        uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           registry-url: https://registry.npmjs.org
@@ -553,7 +553,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Download release candidate
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release
@@ -656,7 +656,7 @@ jobs:
       contents: write
     steps:
       - name: Download release candidate
-        uses: actions/download-artifact@v8.0.1
+        uses: actions/download-artifact@v8.0.2
         with:
           name: tree-sitter-mermaid-release-${{ needs.validate-inputs.outputs.version }}
           path: ${{ runner.temp }}/tree-sitter-mermaid-release

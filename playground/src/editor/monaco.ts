@@ -1,8 +1,8 @@
 import { loader } from "@monaco-editor/react";
 import type { IDisposable } from "monaco-editor";
-import * as monacoApi from "monaco-editor/esm/vs/editor/editor.api.js";
-import "monaco-editor/esm/vs/editor/editor.all.js";
-import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import * as monacoApi from "monaco-editor/editor";
+import "monaco-editor/features/register.all";
+import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 import { registerWorkbenchEditorThemes } from "./workbench-editor-theme";
 
 export const localMonaco = monacoApi as typeof import("monaco-editor");
