@@ -74,7 +74,7 @@ For WinGet and Scoop, run the independent [CLI registry candidate workflow](../r
 
 | Surface | Credential |
 | --- | --- |
-| crates.io publish | `CARGO_REGISTRY_TOKEN` secret in the `crates.io` environment |
+| crates.io publish | Trusted Publishing / OIDC for each crate, its owning release workflow, and the `crates.io` environment |
 | crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
 | pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and `flutter-v{{version}}` |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
@@ -87,11 +87,34 @@ Configure required reviewers on those environments if publication should require
 
 Existing Trusted Publisher bindings remain valid across version upgrades with the same package,
 repository, workflow and environment. A newly admitted npm package or PyPI/pub.dev project needs
-its own binding before its first automated upload. The crates.io owners currently use the token
-listed above, including first uploads of new crates; adding a Trusted Publisher does not switch
-these workflows to OIDC. Implement that authentication change before enforcing trusted-only
-publishing. Homebrew, Scoop and WinGet use external repository review and require no registry
-Trusted Publisher binding.
+its own binding before its first automated upload. Homebrew, Scoop and WinGet use external
+repository review and require no registry Trusted Publisher binding.
+
+For crates.io, register owner `Latias94`, repository `merman`, environment `crates.io`, and the
+workflow filename belonging to each crate:
+
+| Crates | Trusted workflow filename |
+| --- | --- |
+| Workspace-coupled crates, including `merman-unicode-linebreak` | `release-crates.yml` |
+| `roughr-merman` | `release-independent-crate.yml` |
+| `tree-sitter-mermaid` | `release-tree-sitter-mermaid.yml` |
+
+The single-crate owners use `rust-lang/crates-io-auth-action` immediately before uploading. The
+workspace operator exchanges a fresh GitHub OIDC token before each actual upload and revokes the
+temporary crates.io token afterwards. This avoids consuming the 30-minute token lifetime during
+package compilation, prior batches or registry propagation. Dry runs and checksum observations
+remain unauthenticated; the operator removes OIDC request credentials from Cargo subprocess
+environments. Authentication failure does not record an attempted upload or fall back to a secret.
+
+An initial upload of a new crate still requires a maintainer API token before its Trusted Publisher
+can be registered. The new `merman-unicode-linebreak 0.9.0` bootstrap already completed through
+the previous token-authenticated owner. Its later versions use the workspace OIDC binding.
+
+The maintainer reported configuring the Rust bindings on 2026-10-13. Local workflow and mocked
+protocol/recovery checks validate this integration without uploading another version; they do not
+prove live token exchange or registry upload. Confirm those on the next new-version publication,
+then remove the old publishing secret and optionally enforce trusted-only uploads. The dedicated
+yank credential remains separate: Trusted Publishing does not authorize incident yanks.
 
 If a crates.io run stops after publishing only part of a release, keep the tag immutable and retain
 the uploaded `crates-io-receipts-*` artifact. Rerun the workflow only from that same immutable tag.

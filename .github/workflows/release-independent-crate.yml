@@ -153,6 +153,9 @@ jobs:
     needs: [validate-inputs, preflight]
     runs-on: ubuntu-24.04
     environment: crates.io
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -171,19 +174,14 @@ jobs:
           }
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
-      - name: Upload independent crate to crates.io
+      - name: Inspect independent crate publication state
+        id: crate-state
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           PACKAGE: ${{ needs.validate-inputs.outputs.package }}
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-
-          [[ -n "${CARGO_REGISTRY_TOKEN:-}" ]] || {
-            echo "::error::CARGO_REGISTRY_TOKEN is not configured in the crates.io environment." >&2
-            exit 1
-          }
 
           actual_version="$(cargo pkgid -p "$PACKAGE" | sed -E 's/.*[#@]//')"
           if [[ "$actual_version" != "$VERSION" ]]; then
@@ -210,13 +208,34 @@ jobs:
               --package "$PACKAGE" \
               --version "$VERSION"
             echo "Skipping $PACKAGE $VERSION because it is already published."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate with crates.io
+        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+        id: crates-auth
+        uses: rust-lang/crates-io-auth-action@v1.0.5
+
+      - name: Upload independent crate to crates.io
+        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.crates-auth.outputs.token }}
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+        run: cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io
+
+      - name: Verify independent crate registry visibility
+        if: ${{ steps.crate-state.outputs.publish == 'true' }}
+        env:
+          PACKAGE: ${{ needs.validate-inputs.outputs.package }}
+          VERSION: ${{ needs.validate-inputs.outputs.version }}
+        run: |
+          set -euo pipefail
 
           for attempt in 1 2 3 4 5 6 7 8 9 10 11 12; do
-            if crate_version_available "$PACKAGE" "$VERSION"; then
+            if (cd "$RUNNER_TEMP" && cargo info "$PACKAGE@$VERSION" --registry crates-io >/dev/null 2>&1); then
               python3 scripts/crates_io_release.py preflight-independent \
                 --package "$PACKAGE" \
                 --version "$VERSION"

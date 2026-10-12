@@ -356,6 +356,21 @@ jobs:
                 self.assertIn("scripts/verify_prerelease_compatibility.py", text)
                 self.assertIn("previous_tag=", text)
 
+    def test_crates_oidc_is_restricted_to_protected_publish_jobs(self) -> None:
+        for filename, publish_job in (
+            ("release-crates.yml", "publish"),
+            ("release-independent-crate.yml", "publish"),
+            ("release-tree-sitter-mermaid.yml", "publish-crates"),
+        ):
+            text = read(WORKFLOW_ROOT / filename)
+            protected = workflow_job(text, publish_job)
+            with self.subTest(workflow=filename):
+                self.assertIn("environment: crates.io", protected)
+                self.assertIn("id-token: write", protected)
+                self.assertNotIn("secrets.CARGO_REGISTRY_TOKEN", protected)
+                if filename != "release-tree-sitter-mermaid.yml":
+                    self.assertNotIn("id-token: write", workflow_job(text, "preflight"))
+
     def test_release_surface_contract_distinguishes_source_crates_from_native_artifacts(
         self,
     ) -> None:
@@ -379,7 +394,7 @@ jobs:
             ),
             WORKFLOW_ROOT / "release-independent-crate.yml": (
                 'cargo semver-checks check-release -p "$PACKAGE" --color always',
-                'cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io --token "$CARGO_REGISTRY_TOKEN"',
+                'cargo publish -p "$PACKAGE" --locked --no-verify --registry crates-io',
             ),
         }
         for path, (semver_command, publication_command) in workflows.items():

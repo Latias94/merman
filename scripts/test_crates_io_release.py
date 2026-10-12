@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager, ExitStack
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 from pathlib import Path
@@ -127,7 +128,7 @@ class CratesIoReceiptTests(unittest.TestCase):
             source_sha=self.SOURCE_SHA,
             source_tree=self.SOURCE_TREE,
             receipts_dir=receipts_dir,
-            registry_token="test-token",
+            registry_token=kwargs.pop("registry_token", "test-token"),
             recovery_receipts_dir=recovery,
             visibility_attempts=2,
             visibility_delay=0,
@@ -521,6 +522,98 @@ class CratesIoReceiptTests(unittest.TestCase):
             result = json.loads((root / "receipts/batch-000-result.json").read_text())
             self.assertEqual(result["packages"][0]["registry"]["status"], "accepted_pending_index")
             self.assertIsNone(result["packages"][0]["registry"]["observed_index_checksum"])
+
+    def test_each_upload_gets_a_fresh_token_after_all_batch_dry_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            items = [self.prepared(root, name) for name in ("alpha", "beta")]
+            plan = publish.PublishPlan((("alpha", "beta"),), ("alpha", "beta"),
+                                       {item.package.name: item.package for item in items})
+            events = []
+            token_count = 0
+
+            @contextmanager
+            def credential():
+                nonlocal token_count
+                token_count += 1
+                token = f"temporary-{token_count}"
+                events.append(("auth", token))
+                try:
+                    yield token
+                finally:
+                    events.append(("revoke", token))
+
+            def run(command, **kwargs):
+                environment = kwargs["env"]
+                if "--dry-run" in command:
+                    self.assertNotIn("CARGO_REGISTRY_TOKEN", environment)
+                    events.append(("dry-run", command[3]))
+                else:
+                    events.append(("upload", environment["CARGO_REGISTRY_TOKEN"]))
+                return publish.subprocess.CompletedProcess(command, 0)
+
+            with self.mocked_release(plan, prepare=sequence(*items), run=run,
+                                     checksum=sequence(None, None, self.DIGEST, self.DIGEST)):
+                self.invoke(root, registry_token=None, token_provider=credential)
+            self.assertEqual(events, [("dry-run", "alpha"), ("dry-run", "beta"),
+                                      ("auth", "temporary-1"), ("upload", "temporary-1"),
+                                      ("revoke", "temporary-1"), ("auth", "temporary-2"),
+                                      ("upload", "temporary-2"), ("revoke", "temporary-2")])
+
+    def test_auth_failure_does_not_mark_an_upload_as_attempted(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            item = self.prepared(root)
+            plan = publish.PublishPlan((("alpha",),), ("alpha",), {"alpha": item.package})
+            provider = mock.Mock(side_effect=RuntimeError("OIDC exchange rejected"))
+            commands = []
+
+            def run(command, **_kwargs):
+                commands.append(command)
+                return publish.subprocess.CompletedProcess(command, 0)
+
+            with self.mocked_release(plan, prepare=sequence(item), run=run,
+                                     checksum=lambda *_args, **_kwargs: None):
+                with self.assertRaisesRegex(RuntimeError, "OIDC exchange rejected"):
+                    self.invoke(root, registry_token=None, token_provider=provider)
+            self.assertTrue(all("--dry-run" in command for command in commands))
+            self.assertFalse((root / "receipts/batch-000-result.json").exists())
+
+    def test_already_published_release_does_not_request_oidc_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            item = self.prepared(root)
+            plan = publish.PublishPlan((("alpha",),), ("alpha",), {"alpha": item.package})
+            provider = mock.Mock()
+            with self.mocked_release(plan, prepare=sequence(item),
+                                     run=mock.Mock(side_effect=AssertionError("No upload is needed")),
+                                     checksum=lambda *_args, **_kwargs: self.DIGEST):
+                self.invoke(root, registry_token=None, token_provider=provider)
+            provider.assert_not_called()
+
+    def test_cli_keeps_oidc_request_credentials_out_of_cargo_subprocesses(self) -> None:
+        credentials = {
+            "ACTIONS_ID_TOKEN_REQUEST_URL": "https://oidc.actions.githubusercontent.com/token",
+            "ACTIONS_ID_TOKEN_REQUEST_TOKEN": "github-request-token",
+        }
+
+        def metadata(*_args, **_kwargs):
+            for key in credentials:
+                self.assertNotIn(key, os.environ)
+            return {"target_directory": str(ROOT / "target")}
+
+        with mock.patch.dict(os.environ, credentials), mock.patch.object(
+            release.sys, "argv", ["release", "publish-receipted", "--trusted-publishing",
+                                  "--source-sha", self.SOURCE_SHA, "--source-tree", self.SOURCE_TREE,
+                                  "--receipts-dir", str(ROOT / "target/receipts")],
+        ), mock.patch.object(release, "require_tool"), mock.patch.object(
+            release, "cargo_metadata", side_effect=metadata,
+        ), mock.patch.object(release, "publish_receipted_release") as publish_release:
+            self.assertEqual(release.main(), 0)
+            with mock.patch.object(release, "trusted_publishing_token") as exchange:
+                publish_release.call_args.kwargs["token_provider"]()
+            exchange.assert_called_once_with(request_url=credentials["ACTIONS_ID_TOKEN_REQUEST_URL"],
+                                             request_token=credentials["ACTIONS_ID_TOKEN_REQUEST_TOKEN"])
 
     def test_repeated_recovery_404_cannot_republish_an_attempted_upload(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

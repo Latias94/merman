@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass
 import hashlib
 import json
@@ -18,6 +20,7 @@ import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from scripts.crates_io_auth import trusted_publishing_token
 from tools.publish import (
     PackageInfo,
     PublishPlan,
@@ -590,7 +593,8 @@ def publish_receipted_release(
     source_sha: str,
     source_tree: str,
     receipts_dir: Path,
-    registry_token: str,
+    registry_token: str | None = None,
+    token_provider: Callable[[], AbstractContextManager[str]] | None = None,
     recovery_receipts_dir: Path | None = None,
     registry_api: str = CRATES_IO_API,
     registry_index: str = CRATES_IO_INDEX,
@@ -605,8 +609,10 @@ def publish_receipted_release(
     repo_root = repo_root.resolve()
     if visibility_attempts < 1 or visibility_delay < 0:
         raise CratesIoPublishError("registry observation requires positive attempts and a non-negative delay")
-    if not registry_token:
+    if not registry_token and token_provider is None:
         raise CratesIoPublishError("crates.io publication requires a registry token")
+    if registry_token and token_provider is not None:
+        raise CratesIoPublishError("choose either a registry token or Trusted Publishing")
     credential_keys = {
         "CARGO_REGISTRY_TOKEN",
         "CARGO_REGISTRIES_CRATES_IO_TOKEN",
@@ -796,27 +802,29 @@ def publish_receipted_release(
 
         for item in prepared:
             _assert_artifact_unchanged(item)
-        publish_environment = dict(os.environ)
-        publish_environment["CARGO_REGISTRY_TOKEN"] = registry_token
         for item in missing:
             name = item.package.name
             print(f"Publishing {name} {item.package.version}")
-            registry[name] = {"status": "publish_started"}
-            record("pending_recovery")
-            completed = run_command(
-                [
-                    "cargo",
-                    "publish",
-                    "-p",
-                    name,
-                    "--locked",
-                    "--no-verify",
-                    "--registry",
-                    "crates-io",
-                ],
-                cwd=repo_root,
-                env=publish_environment,
-            )
+            credential = token_provider() if token_provider is not None else nullcontext(registry_token)
+            with credential as upload_token:
+                publish_environment = dict(os.environ)
+                publish_environment["CARGO_REGISTRY_TOKEN"] = upload_token
+                registry[name] = {"status": "publish_started"}
+                record("pending_recovery")
+                completed = run_command(
+                    [
+                        "cargo",
+                        "publish",
+                        "-p",
+                        name,
+                        "--locked",
+                        "--no-verify",
+                        "--registry",
+                        "crates-io",
+                    ],
+                    cwd=repo_root,
+                    env=publish_environment,
+                )
             assert_release_source(repo_root, source_sha, source_tree)
             _assert_artifact_unchanged(item)
             registry[name] = {
@@ -1017,6 +1025,7 @@ def main() -> int:
     parser.add_argument("--receipts-dir", type=Path)
     parser.add_argument("--recovery-receipts-dir", type=Path)
     parser.add_argument("--observe-only", action="store_true")
+    parser.add_argument("--trusted-publishing", action="store_true")
     parser.add_argument("--publication-run-id")
     parser.add_argument("--publication-attempt", type=int)
     parser.add_argument("--recovery-run-id")
@@ -1035,6 +1044,8 @@ def main() -> int:
     repo_root = args.repo_root.resolve()
     registry_token = os.environ.pop("CARGO_REGISTRY_TOKEN", None)
     os.environ.pop("CARGO_REGISTRIES_CRATES_IO_TOKEN", None)
+    oidc_request_url = os.environ.pop("ACTIONS_ID_TOKEN_REQUEST_URL", None)
+    oidc_request_token = os.environ.pop("ACTIONS_ID_TOKEN_REQUEST_TOKEN", None)
     try:
         require_tool("cargo")
         if args.command == "publish-receipted":
@@ -1076,8 +1087,8 @@ def main() -> int:
         parser.error(
             "publish-receipted requires --source-sha, --source-tree, and --receipts-dir"
         )
-    if not registry_token:
-        print_error("CARGO_REGISTRY_TOKEN is required for crates.io publication")
+    if not registry_token and not args.trusted_publishing:
+        print_error("crates.io publication requires --trusted-publishing or CARGO_REGISTRY_TOKEN")
         return 2
     try:
         publish_receipted_release(
@@ -1087,6 +1098,11 @@ def main() -> int:
             source_tree=args.source_tree,
             receipts_dir=args.receipts_dir,
             registry_token=registry_token,
+            token_provider=(
+                lambda: trusted_publishing_token(
+                    request_url=oidc_request_url, request_token=oidc_request_token,
+                )
+            ) if args.trusted_publishing else None,
             recovery_receipts_dir=args.recovery_receipts_dir,
             registry_api=args.registry_api,
             registry_index=args.registry_index,
@@ -1096,7 +1112,7 @@ def main() -> int:
             publication_run_id=args.publication_run_id, publication_attempt=args.publication_attempt,
             recovery_run_id=args.recovery_run_id, recovery_attempt=args.recovery_attempt,
         )
-    except (CratesIoPublishError, OSError, ValueError) as error:
+    except (RuntimeError, OSError, ValueError) as error:
         print_error(str(error))
         return 1
     return 0
