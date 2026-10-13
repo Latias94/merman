@@ -2,12 +2,48 @@ use super::*;
 use crate::zenuml::{
     ZenumlArrowStyle, ZenumlCommentLayout, ZenumlCreationLayout, ZenumlDiagramLayout,
     ZenumlFragmentLayout, ZenumlLayoutFragmentKind, ZenumlMessageLayout, ZenumlParticipantLayout,
-    ZenumlReturnLayout, ZenumlSelfCallLayout, resolve_zenuml_emojis_in_text, zenuml_emoji_unicode,
+    ZenumlReturnLayout, ZenumlSelfCallLayout, ZenumlTypography, resolve_zenuml_emojis_in_text,
+    zenuml_emoji_unicode,
 };
 use merman_core::diagrams::zenuml::ZenumlDiagramRenderModel;
 
 const FRAME_HEADER_HEIGHT: f64 = 28.0;
 const CONTENT_PADDING: f64 = 10.0;
+
+struct ZenumlTheme<'a> {
+    config: &'a serde_json::Value,
+    typography: ZenumlTypography,
+}
+
+impl<'a> ZenumlTheme<'a> {
+    fn new(config: &'a serde_json::Value) -> Self {
+        Self {
+            config,
+            typography: ZenumlTypography::new(config),
+        }
+    }
+
+    fn color(&self, key: &str, fallback: &str) -> String {
+        config_string(self.config, &["themeVariables", "zenuml", key])
+            .or_else(|| {
+                let inherited = match key {
+                    "actorBackgroundColor"
+                    | "noteBackgroundColor"
+                    | "groupBackgroundColor"
+                    | "mutedSurfaceColor" => "surfaceColor",
+                    "subtleTextColor" | "fragmentTextColor" => "textColor",
+                    "actorBorderColor"
+                    | "noteBorderColor"
+                    | "groupBorderColor"
+                    | "activationBorderColor" => "borderColor",
+                    "activationBackgroundColor" => "mutedSurfaceColor",
+                    _ => return None,
+                };
+                config_string(self.config, &["themeVariables", "zenuml", inherited])
+            })
+            .unwrap_or_else(|| fallback.to_string())
+    }
+}
 
 pub(super) fn render_zenuml_diagram_svg_model(
     layout: &ZenumlDiagramLayout,
@@ -17,10 +53,13 @@ pub(super) fn render_zenuml_diagram_svg_model(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("zenuml");
+    let theme = ZenumlTheme::new(effective_config);
+    let vertical_scale = theme.typography.vertical_scale();
     let content_left = 1.0 + CONTENT_PADDING + layout.frame_border_left;
     let view_width =
         layout.width + content_left + CONTENT_PADDING + layout.frame_border_right + 1.0;
-    let view_height = layout.height + CONTENT_PADDING * 2.0 + FRAME_HEADER_HEIGHT - 1.0;
+    let view_height =
+        layout.height + (CONTENT_PADDING * 2.0 + FRAME_HEADER_HEIGHT - 1.0) * vertical_scale;
     let use_max_width = effective_config
         .get("sequence")
         .and_then(|sequence| sequence.get("useMaxWidth"))
@@ -37,7 +76,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
     options.checkpoint_emit()?;
 
     out.push_str("<defs><style>");
-    out.push_str(&zenuml_css(diagram_id));
+    out.push_str(&zenuml_css(diagram_id, &theme));
     out.push_str("</style></defs>");
     options.checkpoint_emit()?;
     let _ = write!(
@@ -48,7 +87,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
         fmt(view_width - 2.0),
         fmt(view_height - 2.0),
     );
-    let header_y = FRAME_HEADER_HEIGHT + 6.0;
+    let header_y = (FRAME_HEADER_HEIGHT + 6.0) * vertical_scale;
     let _ = write!(
         &mut out,
         r#"<line class="frame-header-line" x1="1" y1="{}" x2="{}" y2="{}"/>"#,
@@ -83,7 +122,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
 
     for group in &layout.groups {
         let rect_x = group.x - 0.5;
-        let rect_y = group.y - 2.0;
+        let rect_y = group.y - 2.0 * vertical_scale;
         let title = (!group.name.is_empty()).then(|| escape_xml(&group.name));
         let _ = write!(
             &mut out,
@@ -91,17 +130,18 @@ pub(super) fn render_zenuml_diagram_svg_model(
             fmt(rect_x),
             fmt(rect_y),
             fmt(group.width + 1.0),
-            fmt(group.height + 1.5),
+            fmt(group.height + 1.5 * vertical_scale),
         );
         if let Some(title) = title {
             let _ = write!(
                 &mut out,
-                r#"<rect x="{}" y="{}" width="{}" height="19.5" class="group-title-bg"/><text x="{}" y="{}" text-anchor="middle" dominant-baseline="middle" class="group-title-text">{}</text>"#,
+                r#"<rect x="{}" y="{}" width="{}" height="{}" class="group-title-bg"/><text x="{}" y="{}" text-anchor="middle" dominant-baseline="middle" class="group-title-text">{}</text>"#,
                 fmt(group.x + 0.5),
                 fmt(rect_y + 0.5),
                 fmt(group.width - 1.0),
+                fmt(19.5 * vertical_scale),
                 fmt(group.x + group.width / 2.0),
-                fmt(group.y + 10.0),
+                fmt(group.y + 10.0 * vertical_scale),
                 title,
             );
         }
@@ -123,7 +163,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
         .iter()
         .filter(|participant| !creation_names.contains(participant.name.as_str()))
     {
-        render_participant(&mut out, participant);
+        render_participant(&mut out, participant, &theme);
     }
     for occurrence in &layout.occurrences {
         let _ = write!(
@@ -138,22 +178,22 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
     }
     for creation in &layout.creations {
-        render_participant(&mut out, &creation.participant);
+        render_participant(&mut out, &creation.participant, &theme);
     }
     for message in &layout.messages {
-        render_message(&mut out, message);
+        render_message(&mut out, message, &theme);
     }
     for self_call in &layout.self_calls {
-        render_self_call(&mut out, self_call);
+        render_self_call(&mut out, self_call, &theme);
     }
     for creation in &layout.creations {
-        render_creation(&mut out, creation);
+        render_creation(&mut out, creation, &theme);
     }
     for returned in &layout.returns {
-        render_return(&mut out, returned);
+        render_return(&mut out, returned, &theme);
     }
     for fragment in &layout.fragments {
-        render_fragment(&mut out, fragment);
+        render_fragment(&mut out, fragment, &theme);
     }
     for divider in &layout.dividers {
         let center_x = divider.width / 2.0;
@@ -165,7 +205,7 @@ pub(super) fn render_zenuml_diagram_svg_model(
             .trim();
         let label = resolve_emoji_in_text(label);
         let rect_width = divider.label_width + 17.0;
-        let rect_height = 27.0;
+        let rect_height = 27.0 * vertical_scale;
         let rect_x = center_x - rect_width / 2.0;
         let rect_y = divider.y - rect_height / 2.0;
         let outer_left = rect_x - 0.5;
@@ -191,14 +231,19 @@ pub(super) fn render_zenuml_diagram_svg_model(
         );
     }
     for comment in &layout.comments {
-        render_comment(&mut out, comment);
+        render_comment(&mut out, comment, &theme);
     }
     out.push_str("</g></svg>");
     options.checkpoint_emit()?;
     root_document.complete(out)
 }
 
-fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
+fn render_participant(
+    out: &mut String,
+    participant: &ZenumlParticipantLayout,
+    theme: &ZenumlTheme<'_>,
+) {
+    let vertical_scale = theme.typography.vertical_scale();
     let y = participant.y;
     let x = participant.x - participant.width / 2.0 + 1.0;
     let fill = participant
@@ -224,13 +269,19 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
         fill,
     );
     if participant.is_starter {
-        render_participant_icon(out, "actor", participant.x - 14.0, y + 8.0);
+        render_participant_icon(
+            out,
+            "actor",
+            participant.x - 14.0 * vertical_scale,
+            y + 8.0 * vertical_scale,
+            vertical_scale,
+        );
         out.push_str("</g>");
         return;
     }
-    let text_y = y + participant.height / 2.0 - 0.25;
+    let text_y = y + participant.height / 2.0 - 0.25 * vertical_scale;
     let label_y = if participant.stereotype.is_some() {
-        text_y + 8.0
+        text_y + 8.0 * vertical_scale
     } else {
         text_y
     };
@@ -245,30 +296,39 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
     let mut text_x = participant.x;
     let mut text_anchor = "middle";
     if let Some(icon) = icon {
-        let emoji_extra = if emoji.is_some() { 20.0 } else { 0.0 };
-        let group_width = 24.0 + 4.0 + 16.0 + participant.label_width + emoji_extra;
-        let group_x = participant.x - group_width / 2.0;
-        let icon_x = group_x + 4.0;
-        let icon_y =
-            y + (participant.height - 24.0) / 2.0 + if icon == "boundary" { 2.75 } else { 0.0 };
-        render_participant_icon(out, icon, icon_x, icon_y);
-        if let Some(emoji) = emoji {
-            let emoji_x = icon_x + 28.0;
-            render_participant_emoji(out, emoji, emoji_x, label_y);
-            text_x = emoji_x + 24.0;
+        let emoji_extra = if emoji.is_some() {
+            20.0 * vertical_scale
         } else {
-            text_x = group_x + 36.0;
+            0.0
+        };
+        let group_width = 44.0 * vertical_scale + participant.label_width + emoji_extra;
+        let group_x = participant.x - group_width / 2.0;
+        let icon_x = group_x + 4.0 * vertical_scale;
+        let icon_y = y
+            + (participant.height - 24.0 * vertical_scale) / 2.0
+            + if icon == "boundary" {
+                2.75 * vertical_scale
+            } else {
+                0.0
+            };
+        render_participant_icon(out, icon, icon_x, icon_y, vertical_scale);
+        if let Some(emoji) = emoji {
+            let emoji_x = icon_x + 28.0 * vertical_scale;
+            render_participant_emoji(out, emoji, emoji_x, label_y);
+            text_x = emoji_x + 24.0 * vertical_scale;
+        } else {
+            text_x = group_x + 36.0 * vertical_scale;
         }
         text_anchor = "start";
     } else if let Some(emoji) = emoji {
-        let group_width = 28.0 + participant.label_width;
+        let group_width = 28.0 * vertical_scale + participant.label_width;
         let inner_width = participant
             .stereotype_width
             .unwrap_or_default()
             .max(group_width);
         let group_x = participant.x - inner_width / 2.0;
         render_participant_emoji(out, emoji, group_x, label_y);
-        text_x = group_x + 24.0;
+        text_x = group_x + 24.0 * vertical_scale;
         text_anchor = "start";
     }
     if let Some(stereotype) = &participant.stereotype {
@@ -279,9 +339,11 @@ fn render_participant(out: &mut String, participant: &ZenumlParticipantLayout) {
         };
         let _ = write!(
             out,
-            r#"<text class="stereotype-label" x="{}" y="{}" text-anchor="middle" dominant-baseline="central" font-size="16" style="fill:#222;">«{}»</text>"#,
+            r#"<text class="stereotype-label" x="{}" y="{}" text-anchor="middle" dominant-baseline="central" font-size="{}" style="fill:{};">«{}»</text>"#,
             fmt(stereotype_x),
-            fmt(text_y - 8.0),
+            fmt(text_y - 8.0 * vertical_scale),
+            fmt(theme.typography.size(16.0)),
+            escape_attr(&theme.color("actorTextColor", "#222")),
             escape_xml(stereotype),
         );
     }
@@ -321,11 +383,11 @@ struct ParticipantIcon {
     attributes: &'static str,
 }
 
-fn render_participant_icon(out: &mut String, key: &str, x: f64, y: f64) {
+fn render_participant_icon(out: &mut String, key: &str, x: f64, y: f64, typography_scale: f64) {
     let Some(icon) = participant_icon(key) else {
         return;
     };
-    let scale = 24.0 / icon.view_box_width.max(icon.view_box_height);
+    let scale = 24.0 * typography_scale / icon.view_box_width.max(icon.view_box_height);
     let content = svg_asset_content(icon.svg);
     let attributes = if icon.attributes.is_empty() {
         String::new()
@@ -416,7 +478,7 @@ fn participant_icon(key: &str) -> Option<ParticipantIcon> {
     })
 }
 
-fn render_message(out: &mut String, message: &ZenumlMessageLayout) {
+fn render_message(out: &mut String, message: &ZenumlMessageLayout, theme: &ZenumlTheme<'_>) {
     let left_to_right = message.from_x < message.to_x;
     let from_x = if left_to_right {
         message.from_x + 1.0
@@ -447,7 +509,14 @@ fn render_message(out: &mut String, message: &ZenumlMessageLayout) {
         fmt(line_y),
         dash,
     );
-    render_arrow_head(out, to_x, line_y, message.is_reverse, message.arrow_style);
+    render_arrow_head(
+        out,
+        to_x,
+        line_y,
+        message.is_reverse,
+        message.arrow_style,
+        theme,
+    );
     let _ = write!(
         out,
         r#"<text class="message-label" x="{}" y="{}" text-anchor="middle"{}>{}</text><text class="seq-number" x="{}" y="{}" text-anchor="end">{}</text></g>"#,
@@ -461,10 +530,11 @@ fn render_message(out: &mut String, message: &ZenumlMessageLayout) {
     );
 }
 
-fn render_self_call(out: &mut String, call: &ZenumlSelfCallLayout) {
+fn render_self_call(out: &mut String, call: &ZenumlSelfCallLayout, theme: &ZenumlTheme<'_>) {
+    let vertical_scale = theme.typography.vertical_scale();
     let asynchronous = call.arrow_style == ZenumlArrowStyle::Open;
-    let label_y = call.y + if asynchronous { 15.0 } else { 12.0 };
-    let svg_y = call.y + if asynchronous { 20.0 } else { 14.0 };
+    let label_y = call.y + (if asynchronous { 15.0 } else { 12.0 }) * vertical_scale;
+    let svg_y = call.y + (if asynchronous { 20.0 } else { 14.0 }) * vertical_scale;
     let path_end = if asynchronous { "L1,15" } else { "L14,15" };
     let arrow_tx = if asynchronous { 0.0 } else { 7.0 };
     let arrow_path = if asynchronous {
@@ -472,28 +542,39 @@ fn render_self_call(out: &mut String, call: &ZenumlSelfCallLayout) {
     } else {
         "M1 1.25 L6.15 4.5 L1 7.75 Z"
     };
-    let arrow_fill = if asynchronous { "none" } else { "#000" };
+    let line_color = theme.color("lineColor", "#000");
+    let arrow_fill = if asynchronous { "none" } else { &line_color };
+    let view_box = if vertical_scale == 1.0 {
+        ""
+    } else {
+        r#" viewBox="0 0 30 24""#
+    };
     let _ = write!(
         out,
-        r##"<g class="message self-call" data-statement="{}"><svg x="{}" y="{}" width="30" height="24"><path d="M0,2 L26,2 Q28,2 28,4 L28,13 Q28,15 26,15 {}" fill="none" stroke="#000" stroke-width="2"/><g transform="translate({}, 10)"><svg height="10" width="7" viewBox="0 0 7 9"><g transform="scale(-1, 1) translate(-7, 0)"><path d="{}" stroke="#000" stroke-linecap="round" fill="{}" stroke-width="2"/></g></svg></g></svg><text x="{}" y="{}" text-anchor="start" class="message-label"{}>{}</text><text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text></g>"##,
+        r##"<g class="message self-call" data-statement="{}"><svg x="{}" y="{}" width="{}" height="{}"{}><path d="M0,2 L26,2 Q28,2 28,4 L28,13 Q28,15 26,15 {}" fill="none" stroke="{}" stroke-width="2"/><g transform="translate({}, 10)"><svg height="10" width="7" viewBox="0 0 7 9"><g transform="scale(-1, 1) translate(-7, 0)"><path d="{}" stroke="{}" stroke-linecap="round" fill="{}" stroke-width="2"/></g></svg></g></svg><text x="{}" y="{}" text-anchor="start" class="message-label"{}>{}</text><text x="{}" y="{}" text-anchor="end" class="seq-number">{}</text></g>"##,
         escape_attr(&call.statement_id),
         fmt(call.x + 1.0),
         fmt(svg_y),
+        fmt(30.0 * vertical_scale),
+        fmt(24.0 * vertical_scale),
+        view_box,
         path_end,
+        escape_attr(&line_color),
         fmt(arrow_tx),
         arrow_path,
-        arrow_fill,
+        escape_attr(&line_color),
+        escape_attr(arrow_fill),
         fmt(call.x + 6.0),
         fmt(label_y),
         style_attr(&call.style),
         escape_xml(&resolve_emoji_in_text(call.label.trim())),
         fmt(call.x - 3.0),
-        fmt(call.y + 12.0),
+        fmt(call.y + 12.0 * vertical_scale),
         escape_xml(&call.number),
     );
 }
 
-fn render_creation(out: &mut String, creation: &ZenumlCreationLayout) {
+fn render_creation(out: &mut String, creation: &ZenumlCreationLayout, theme: &ZenumlTheme<'_>) {
     let message = &creation.message;
     let participant = &creation.participant;
     let reverse = message.to_x < message.from_x;
@@ -508,7 +589,7 @@ fn render_creation(out: &mut String, creation: &ZenumlCreationLayout) {
         message.from_x + 1.0
     };
     let label_x = from_x + (to_x - from_x) / 2.0 + if reverse { 3.5 } else { -3.0 };
-    let label_y = message.y - 3.0;
+    let label_y = message.y - 3.0 * theme.typography.vertical_scale();
     let _ = write!(
         out,
         r#"<g class="creation" data-statement="{}"><line x1="{}" y1="{}" x2="{}" y2="{}" class="message-line" stroke-dasharray="6,4"/>"#,
@@ -531,10 +612,10 @@ fn render_creation(out: &mut String, creation: &ZenumlCreationLayout) {
     );
 }
 
-fn render_return(out: &mut String, returned: &ZenumlReturnLayout) {
+fn render_return(out: &mut String, returned: &ZenumlReturnLayout, theme: &ZenumlTheme<'_>) {
     if returned.is_self {
         let icon_x = returned.from_x + 4.0;
-        let icon_y = returned.y - 12.0;
+        let icon_y = returned.y - 12.0 * theme.typography.vertical_scale();
         let _ = write!(
             out,
             r#"<g class="return return-self" data-statement="{}"><g transform="translate({},{}) scale(0.0234375)"><path d="M256 0C114.84 0 0 114.84 0 256s114.84 256 256 256 256-114.84 256-256S397.16 0 256 0Zm0 469.33c-117.63 0-213.33-95.7-213.33-213.33S138.37 42.67 256 42.67 469.33 138.37 469.33 256 373.63 469.33 256 469.33Z" class="return-icon"/><path d="M288 192h-87.16l27.58-27.58a21.33 21.33 0 1 0-30.17-30.17l-64 64a21.33 21.33 0 0 0 0 30.17l64 64a21.33 21.33 0 0 0 30.17-30.17l-27.58-27.58H288a53.33 53.33 0 0 1 0 106.67h-32a21.33 21.33 0 0 0 0 42.66h32a96 96 0 0 0 0-192Z" class="return-icon"/></g><text x="{}" y="{}" text-anchor="start" class="return-label">{}</text></g>"#,
@@ -586,6 +667,7 @@ fn render_arrow_head(
     tip_y: f64,
     points_left: bool,
     style: ZenumlArrowStyle,
+    theme: &ZenumlTheme<'_>,
 ) {
     let filled = style == ZenumlArrowStyle::Solid;
     let x = if points_left { tip_x } else { tip_x - 7.0 };
@@ -597,13 +679,18 @@ fn render_arrow_head(
     let close = if filled { " Z" } else { "" };
     let _ = write!(
         out,
-        r##"<svg x="{}" y="{}" width="7" height="10" viewBox="0 0 7 9" overflow="visible" class="arrow-head{}"><g{}><path d="M1 1.25 L6.15 4.5 L1 7.75{}" stroke="#000" stroke-linecap="round" stroke-width="2" fill="{}"/></g></svg>"##,
+        r##"<svg x="{}" y="{}" width="7" height="10" viewBox="0 0 7 9" overflow="visible" class="arrow-head{}"><g{}><path d="M1 1.25 L6.15 4.5 L1 7.75{}" stroke="{}" stroke-linecap="round" stroke-width="2" fill="{}"/></g></svg>"##,
         fmt(x),
         fmt(tip_y - 5.0),
         if filled { "" } else { " arrow-open" },
         transform,
         close,
-        if filled { "#000" } else { "none" },
+        escape_attr(&theme.color("lineColor", "#000")),
+        escape_attr(&if filled {
+            theme.color("lineColor", "#000")
+        } else {
+            "none".to_string()
+        }),
     );
 }
 
@@ -643,7 +730,8 @@ fn render_creation_label(
     format!("<tspan{style}>{}</tspan>", escape_xml(label))
 }
 
-fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
+fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout, theme: &ZenumlTheme<'_>) {
+    let vertical_scale = theme.typography.vertical_scale();
     let (class, kind_label) = match fragment.kind {
         ZenumlLayoutFragmentKind::Loop => ("loop", "Loop"),
         ZenumlLayoutFragmentKind::Alternative => ("alt", "Alt"),
@@ -658,7 +746,7 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
     let header_y = fragment.header_y;
     let _ = write!(
         out,
-        r#"<g class="fragment fragment-{}" data-statement="{}"><rect class="fragment-border" x="{}" y="{}" width="{}" height="{}" rx="4"/><rect class="fragment-header" x="{}" y="{}" width="{}" height="25"/>"#,
+        r#"<g class="fragment fragment-{}" data-statement="{}"><rect class="fragment-border" x="{}" y="{}" width="{}" height="{}" rx="4"/><rect class="fragment-header" x="{}" y="{}" width="{}" height="{}"/>"#,
         class,
         escape_attr(&fragment.statement_id),
         fmt(fragment.x + 0.5),
@@ -668,23 +756,30 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
         fmt(header_x),
         fmt(header_y),
         fmt(fragment.width - 2.0),
+        fmt(25.0 * vertical_scale),
     );
-    render_fragment_icon(out, fragment.kind, header_x + 4.0, header_y);
+    render_fragment_icon(
+        out,
+        fragment.kind,
+        header_x + 4.0 * vertical_scale,
+        header_y,
+        theme,
+    );
     let _ = write!(
         out,
         r#"<text x="{}" y="{}" dominant-baseline="central" class="fragment-label">{}</text><text x="{}" y="{}" text-anchor="end" dominant-baseline="central" class="seq-number">{}</text>"#,
-        fmt(header_x + 26.0),
-        fmt(header_y + 12.0),
+        fmt(header_x + 26.0 * vertical_scale),
+        fmt(header_y + 12.0 * vertical_scale),
         kind_label,
         fmt(fragment.x - 3.0),
-        fmt(header_y + 8.0),
+        fmt(header_y + 8.0 * vertical_scale),
         escape_xml(&fragment.number),
     );
     if !fragment.label.is_empty() {
         render_bracketed_label(
             out,
             header_x,
-            header_y + 40.0,
+            header_y + 40.0 * vertical_scale,
             &fragment.label,
             fragment.label_width,
             "fragment-condition",
@@ -704,7 +799,7 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
             render_bracketed_label(
                 out,
                 fragment.x + 1.0,
-                section.y + 16.0,
+                section.y + 16.0 * vertical_scale,
                 inner,
                 section.inner_label_width,
                 "fragment-section-label",
@@ -714,26 +809,32 @@ fn render_fragment(out: &mut String, fragment: &ZenumlFragmentLayout) {
             let background_width = keyword_width + section.detail_width.unwrap_or(0.0) + 16.0;
             let _ = write!(
                 out,
-                r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="20" fill="#fff"/><text x="{}" y="{}" class="fragment-section-label" fill="#222">{}</text><text x="{}" y="{}" class="fragment-section-label" fill="#222">{}</text></g>"##,
+                r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="{}" fill="{}"/><text x="{}" y="{}" class="fragment-section-label" fill="{}">{}</text><text x="{}" y="{}" class="fragment-section-label" fill="{}">{}</text></g>"##,
                 fmt(fragment.x + 1.0),
                 fmt(section.y + 1.0),
                 fmt(background_width),
+                fmt(20.0 * vertical_scale),
+                escape_attr(&theme.color("backgroundColor", "#fff")),
                 fmt(fragment.x + 5.0),
-                fmt(section.y + 16.0),
+                fmt(section.y + 16.0 * vertical_scale),
+                escape_attr(&theme.color("textColor", "#222")),
                 escape_xml(keyword),
                 fmt(fragment.x + 13.0 + keyword_width),
-                fmt(section.y + 16.0),
+                fmt(section.y + 16.0 * vertical_scale),
+                escape_attr(&theme.color("textColor", "#222")),
                 escape_xml(detail),
             );
         } else if !section.label.is_empty() {
             let _ = write!(
                 out,
-                r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="20" fill="#fff"/><text x="{}" y="{}" class="fragment-section-label">{}</text></g>"##,
+                r##"<g opacity="0.65"><rect x="{}" y="{}" width="{}" height="{}" fill="{}"/><text x="{}" y="{}" class="fragment-section-label">{}</text></g>"##,
                 fmt(fragment.x + 1.0),
                 fmt(section.y + 1.0),
                 fmt(section.label_width.unwrap_or(0.0) + 8.0),
+                fmt(20.0 * vertical_scale),
+                escape_attr(&theme.color("backgroundColor", "#fff")),
                 fmt(fragment.x + 5.0),
-                fmt(section.y + 16.0),
+                fmt(section.y + 16.0 * vertical_scale),
                 escape_xml(&section.label),
             );
         }
@@ -767,7 +868,13 @@ fn render_bracketed_label(
     );
 }
 
-fn render_fragment_icon(out: &mut String, kind: ZenumlLayoutFragmentKind, x: f64, y: f64) {
+fn render_fragment_icon(
+    out: &mut String,
+    kind: ZenumlLayoutFragmentKind,
+    x: f64,
+    y: f64,
+    theme: &ZenumlTheme<'_>,
+) {
     let (key, raw, view_box, attributes) = match kind {
         ZenumlLayoutFragmentKind::Alternative => (
             "alt",
@@ -819,12 +926,27 @@ fn render_fragment_icon(out: &mut String, kind: ZenumlLayoutFragmentKind, x: f64
         ),
     };
     let content = svg_asset_content(raw);
+    let attributes = if matches!(
+        kind,
+        ZenumlLayoutFragmentKind::Loop
+            | ZenumlLayoutFragmentKind::TryCatchFinally
+            | ZenumlLayoutFragmentKind::Section
+    ) {
+        format!(
+            r#" fill="{}" stroke="none""#,
+            escape_attr(&theme.color("fragmentTextColor", "#000"))
+        )
+    } else {
+        attributes.to_string()
+    };
     let _ = write!(
         out,
-        r#"<svg class="fragment-icon" data-icon="{}" x="{}" y="{}" width="20" height="24" viewBox="{}"{}>{}</svg>"#,
+        r#"<svg class="fragment-icon" data-icon="{}" x="{}" y="{}" width="{}" height="{}" viewBox="{}"{}>{}</svg>"#,
         key,
         fmt(x),
         fmt(y),
+        fmt(20.0 * theme.typography.vertical_scale()),
+        fmt(24.0 * theme.typography.vertical_scale()),
         view_box,
         attributes,
         content,
@@ -845,7 +967,7 @@ fn svg_asset_content(svg: &'static str) -> &'static str {
     svg[content_start..content_end].trim()
 }
 
-fn render_comment(out: &mut String, comment: &ZenumlCommentLayout) {
+fn render_comment(out: &mut String, comment: &ZenumlCommentLayout, theme: &ZenumlTheme<'_>) {
     let lines = markdown_comment_lines(&comment.text);
     let _ = write!(
         out,
@@ -865,8 +987,9 @@ fn render_comment(out: &mut String, comment: &ZenumlCommentLayout) {
         } else {
             let _ = write!(
                 out,
-                r#"<tspan x="{}" dy="20">{}</tspan>"#,
+                r#"<tspan x="{}" dy="{}">{}</tspan>"#,
                 fmt(comment.x),
+                fmt(20.0 * theme.typography.vertical_scale()),
                 if line.is_empty() { " " } else { line },
             );
         }
@@ -964,12 +1087,52 @@ fn resolve_emoji_in_text(text: &str) -> String {
     resolve_zenuml_emojis_in_text(text)
 }
 
-fn zenuml_css(diagram_id: SvgDiagramId<'_>) -> String {
-    format!(
+fn zenuml_css(diagram_id: SvgDiagramId<'_>, theme: &ZenumlTheme<'_>) -> String {
+    let mut css = format!(
         r#"
-#{diagram_id} .frame-border-outer{{fill:#666}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:#fff}}#{diagram_id} .frame-header-line{{stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:Helvetica,Verdana,serif;font-size:16px;font-weight:600;fill:#222}}#{diagram_id} .participant-box{{fill:#fff;stroke:#666;stroke-width:2}}#{diagram_id} .participant-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .participant-icon{{color:#222}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:#666;stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:16px}}#{diagram_id} .stereotype-label{{font-family:Helvetica,Verdana,serif;font-size:16px;fill:#222}}#{diagram_id} .lifeline{{stroke:#666;stroke-width:1}}#{diagram_id} .message-line{{stroke:#000;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .arrow-head{{fill:#000;stroke:#000;stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:#dedede;stroke:#666;stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:#666;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:#dedede;fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:Helvetica,Verdana,serif;font-size:14px;font-weight:600;fill:#000}}#{diagram_id} .fragment-condition{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .fragment-separator{{stroke:#e5e7eb;stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#000}}#{diagram_id} .return-line{{stroke:#000;stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:#000;stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#222}}#{diagram_id} .return-icon{{fill:#222}}#{diagram_id} .divider-line{{stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-bg{{fill:#fff5ad;stroke:#aa3;stroke-width:1}}#{diagram_id} .divider-label{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333}}#{diagram_id} .comment-text{{font-family:Helvetica,Verdana,serif;font-size:14px;fill:#333;opacity:.5}}#{diagram_id} .seq-number{{font-family:Helvetica,Verdana,serif;font-size:12px;font-weight:100;fill:#6b7280}}#{diagram_id} .group-outline{{fill:none;stroke:#666}}#{diagram_id} .group-title-bg{{fill:#fff;stroke:none}}#{diagram_id} .group-title-text{{font-family:Helvetica,Verdana,serif;font-size:13px;font-weight:400;fill:#222}}
-"#
+#{diagram_id} .frame-border-outer{{fill:{border}}}#{diagram_id} .frame-border-inner,#{diagram_id} .frame-header-bg{{fill:{background}}}#{diagram_id} .frame-header-line{{stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .frame-title{{font-family:{font_family};font-size:{size_16}px;font-weight:600;fill:{text}}}#{diagram_id} .participant-box{{fill:{actor_background};stroke:{actor_border};stroke-width:2}}#{diagram_id} .participant-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .participant-icon{{color:{actor_text}}}#{diagram_id} .participant-icon [fill="currentColor"]:not([stroke]){{stroke:{actor_border};stroke-width:1}}#{diagram_id} .participant-emoji{{font-size:{size_16}px}}#{diagram_id} .stereotype-label{{font-family:{font_family};font-size:{size_16}px;fill:{actor_text}}}#{diagram_id} .lifeline{{stroke:{line};stroke-width:1}}#{diagram_id} .message-line{{stroke:{message_line};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .message-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .arrow-head{{fill:{message_line};stroke:{message_line};stroke-width:2}}#{diagram_id} .arrow-open{{fill:none}}#{diagram_id} .occurrence{{fill:{activation_background};stroke:{activation_border};stroke-width:2;shape-rendering:crispEdges}}#{diagram_id} .fragment-border{{fill:none;stroke:{border};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-header{{fill:{muted_surface};fill-opacity:.498;stroke:none;shape-rendering:crispEdges}}#{diagram_id} .fragment-label{{font-family:{font_family};font-size:{size_14}px;font-weight:600;fill:{fragment_header_text}}}#{diagram_id} .fragment-condition{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .fragment-separator{{stroke:{separator};stroke-width:1;shape-rendering:crispEdges}}#{diagram_id} .fragment-section-label{{font-family:{font_family};font-size:{size_14}px;fill:{fragment_text}}}#{diagram_id} .return-line{{stroke:{message_line};stroke-width:2;stroke-dasharray:6,4;shape-rendering:crispEdges}}#{diagram_id} .return-arrow{{stroke:{message_line};stroke-width:2;fill:none}}#{diagram_id} .return-label{{font-family:{font_family};font-size:{size_14}px;fill:{text}}}#{diagram_id} .return-icon{{fill:{text}}}#{diagram_id} .divider-line{{stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-bg{{fill:{note_background};stroke:{note_border};stroke-width:1}}#{diagram_id} .divider-label{{font-family:{font_family};font-size:{size_14}px;fill:{note_text}}}#{diagram_id} .comment-text{{font-family:{font_family};font-size:{size_14}px;fill:{comment_text};opacity:.5}}#{diagram_id} .seq-number{{font-family:{font_family};font-size:{size_12}px;font-weight:100;fill:{subtle_text}}}#{diagram_id} .group-outline{{fill:none;stroke:{group_border}}}#{diagram_id} .group-title-bg{{fill:{group_background};stroke:none}}#{diagram_id} .group-title-text{{font-family:{font_family};font-size:{size_13}px;font-weight:400;fill:{group_text}}}
+"#,
+        font_family = escape_xml(&theme.typography.css_family()),
+        size_16 = fmt(theme.typography.size(16.0)),
+        size_14 = fmt(theme.typography.size(14.0)),
+        size_12 = fmt(theme.typography.size(12.0)),
+        size_13 = fmt(theme.typography.size(13.0)),
+        border = escape_xml(&theme.color("borderColor", "#666")),
+        background = escape_xml(&theme.color("backgroundColor", "#fff")),
+        text = escape_xml(&theme.color("textColor", "#222")),
+        actor_background = escape_xml(&theme.color("actorBackgroundColor", "#fff")),
+        actor_border = escape_xml(&theme.color("actorBorderColor", "#666")),
+        actor_text = escape_xml(&theme.color("actorTextColor", "#222")),
+        line = escape_xml(&theme.color("lineColor", "#666")),
+        message_line = escape_xml(&theme.color("lineColor", "#000")),
+        activation_background = escape_xml(&theme.color("activationBackgroundColor", "#dedede")),
+        activation_border = escape_xml(&theme.color("activationBorderColor", "#666")),
+        muted_surface = escape_xml(&theme.color("mutedSurfaceColor", "#dedede")),
+        fragment_text = escape_xml(&theme.color("textColor", "#000")),
+        fragment_header_text = escape_xml(&theme.color("fragmentTextColor", "#000")),
+        group_text = escape_xml(&theme.color("groupTextColor", "#222")),
+        separator = escape_xml(&theme.color("borderColor", "#e5e7eb")),
+        note_border = escape_xml(&theme.color("noteBorderColor", "#aa3")),
+        note_background = escape_xml(&theme.color("noteBackgroundColor", "#fff5ad")),
+        note_text = escape_xml(&theme.color("noteTextColor", "#333")),
+        comment_text = escape_xml(&theme.color("subtleTextColor", "#333")),
+        subtle_text = escape_xml(&theme.color("subtleTextColor", "#6b7280")),
+        group_border = escape_xml(&theme.color("groupBorderColor", "#666")),
+        group_background = escape_xml(&theme.color("groupBackgroundColor", "#fff")),
+    );
+    if let Some(color) = config_string(
+        theme.config,
+        &["themeVariables", "zenuml", "fragmentTextColor"],
     )
+    .or_else(|| config_string(theme.config, &["themeVariables", "zenuml", "textColor"]))
+    {
+        let _ = write!(
+            &mut css,
+            "#{diagram_id} .fragment-icon{{color:{}}}",
+            escape_xml(&color)
+        );
+    }
+    css
 }
 
 #[cfg(test)]

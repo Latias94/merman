@@ -29,6 +29,81 @@ fn empty_presentation_preserves_default_effective_config() {
 }
 
 #[test]
+fn partial_background_roles_derive_text_for_their_actual_paint_owner() {
+    let theme = HostTheme::new()
+        .try_with_role(ThemeRole::Canvas, "#ffffff")
+        .unwrap()
+        .try_with_role(ThemeRole::Surface, "#111111")
+        .unwrap()
+        .try_with_role(ThemeRole::ActorBackground, "#eeeeee")
+        .unwrap();
+    let config = effective_config(
+        Presentation::new().with_theme(theme),
+        "C4Context\nPerson(A,\"Reader\")",
+    );
+    assert_eq!(config["c4"]["person_font_color"], "#ffffff");
+    assert_eq!(config["c4"]["relationship_text_color"], "#000000");
+    assert_eq!(
+        config["themeVariables"]["zenuml"]["actorTextColor"],
+        "#000000"
+    );
+    assert_eq!(config["themeVariables"]["textColor"], "#000000");
+
+    let explicit = HostTheme::new()
+        .try_with_role(ThemeRole::Surface, "#111111")
+        .unwrap()
+        .try_with_role(ThemeRole::Text, "#123456")
+        .unwrap();
+    let config = effective_config(
+        Presentation::new().with_theme(explicit),
+        "C4Context\nPerson(A,\"Reader\")",
+    );
+    assert_eq!(config["c4"]["person_font_color"], "#123456");
+}
+
+#[test]
+fn surface_only_roles_do_not_recolor_unmodified_canvas_labels() {
+    let theme = HostTheme::new()
+        .try_with_role(ThemeRole::Surface, "#111111")
+        .unwrap();
+    let config = effective_config(
+        Presentation::new().with_theme(theme),
+        "C4Context\nPerson(A,\"Reader\")",
+    );
+    assert_eq!(config["c4"]["person_font_color"], "#ffffff");
+    assert!(config["c4"].get("relationship_text_color").is_none());
+    assert!(
+        config["themeVariables"]["zenuml"]
+            .get("textColor")
+            .is_none()
+    );
+    assert_eq!(
+        config["themeVariables"]["zenuml"]["actorTextColor"],
+        "#ffffff"
+    );
+    assert_eq!(config["themeVariables"]["wardley"]["axisTextColor"], "#222");
+    assert_eq!(
+        config["themeVariables"]["wardley"]["annotationLabelColor"],
+        "#ffffff"
+    );
+}
+
+#[test]
+fn usecase_shape_specific_fonts_receive_host_typography_before_source_overrides() {
+    let theme = HostTheme::new()
+        .try_with_font_family("Inter, sans-serif")
+        .unwrap()
+        .try_with_font_size("18px")
+        .unwrap();
+    let source = "---\nconfig:\n  usecase:\n    actorFontFamily: Georgia\n---\nusecase-beta\nactor A(Reader)\nB(Open)\nA-->B";
+    let config = effective_config(Presentation::new().with_theme(theme), source);
+    assert_eq!(config["usecase"]["actorFontFamily"], "Georgia");
+    assert_eq!(config["usecase"]["usecaseFontFamily"], "Inter, sans-serif");
+    assert_eq!(config["usecase"]["actorFontSize"], 18.0);
+    assert_eq!(config["usecase"]["usecaseFontSize"], 18.0);
+}
+
+#[test]
 fn theme_catalog_contains_only_the_seven_editor_presets() {
     let ids = theme_preset_descriptors()
         .iter()

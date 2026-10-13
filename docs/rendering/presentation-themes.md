@@ -70,6 +70,17 @@ Bundled theme IDs are `editor-light`, `editor-dark`, `one-dark`, `gruvbox-light`
 
 Bundled presets keep normal and subtle text at a minimum 4.5:1 contrast against their canvas and structural line colors at a minimum 3:1. Palette labels independently choose black or white by the higher WCAG contrast ratio. Sequence actor and label-box variables follow the actor-specific roles, while Gantt done and critical tasks keep a readable neutral fill and express state through their semantic border color.
 
+When a host supplies backgrounds without a `text` role, the compiler chooses black or white for
+the relevant canvas, C4 surface/boundary, or ZenUML actor/note/group background. ZenUML fragment
+headers include the source renderer's translucent fill when choosing their text color. An explicit
+`text`, `actor-text`, or `note-text` role takes precedence over the corresponding inferred color.
+
+Family bridges also cover C4 relationship text and lines, ZenUML's otherwise fixed plugin styles,
+Wardley anchor labels and stage dividers, Gantt axis `currentColor`, XY Chart axis/root styles, and
+Mindmap icon-label backgrounds. C4, ZenUML, Wardley, and Usecase consume host typography through
+their family configuration; XY Chart measures labels with its configured font family. The
+[coverage ledger](diagram-theme-coverage.md) records the remaining family-specific limits.
+
 `merman-modern` is a presentation profile, not a theme preset. It selects Redux/slate Mermaid defaults, Neo look, an ELK default for ordinary Flowcharts, and Merman-owned Flowchart SVG behavior. The profile selects `flowchart.layout: elk`; an explicit scoped `layout: dagre` overrides that aspect. In a build without `layout-elk`, Flowcharts render through Mermaid 12's Dagre fallback while the SVG plan reports the ELK presentation aspect as blocked and the operation as ready. A host policy that denies a compiled ELK backend still blocks the operation.
 
 ## Terminal themes
@@ -142,6 +153,10 @@ Rust callers materialize presentation defaults into an `Engine`, apply explicit 
 to that engine, and pass the resolved render policy through `SvgRequest.presentation`. Bindings
 perform the same structural merge from their separate `presentation` and `site_config` fields.
 Explicit Mermaid configuration and source-local configuration win over presentation defaults.
+This is a field-level merge: override the family-specific font field when that family owns its
+typography, such as `c4.personFontFamily`, `themeVariables.zenuml.fontFamily`,
+`themeVariables.wardley.fontFamily`, or `usecase.actorFontFamily`. A global `fontFamily` does not
+erase more specific family settings.
 
 ## Discovery
 

@@ -39,6 +39,8 @@ pub(super) fn compile(theme: &HostTheme) -> MermaidConfig {
         &mut theme_variables,
         &roles,
         theme.series_palette(),
+        theme.font_family(),
+        theme.font_size(),
     );
 
     if !theme_variables.is_empty() {
@@ -54,10 +56,14 @@ struct ResolvedThemeRoles<'a> {
     surface_alt: Option<&'a str>,
     surface_muted: Option<&'a str>,
     text: Option<&'a str>,
+    surface_text: Option<&'a str>,
+    cluster_text: Option<&'a str>,
+    fragment_text: Option<&'a str>,
     subtle_text: Option<&'a str>,
     border: Option<&'a str>,
     line: Option<&'a str>,
     edge_label_background: Option<&'a str>,
+    edge_label_text: Option<&'a str>,
     commit_label_background: Option<&'a str>,
     cluster_background: Option<&'a str>,
     swimlane_background_odd: Option<&'a str>,
@@ -82,7 +88,23 @@ impl<'a> ResolvedThemeRoles<'a> {
         let surface = role(ThemeRole::Surface);
         let surface_alt = role(ThemeRole::SurfaceAlt).or(surface);
         let surface_muted = role(ThemeRole::SurfaceMuted).or(surface_alt);
-        let text = role(ThemeRole::Text);
+        let explicit_text = role(ThemeRole::Text);
+        let readable = |background: Option<&'a str>| {
+            explicit_text.or_else(|| {
+                background.map(|background| {
+                    readable_text_color(
+                        background,
+                        canvas,
+                        theme.appearance().unwrap_or_default().is_dark(),
+                    )
+                })
+            })
+        };
+        let text = readable(canvas);
+        let surface_text = readable(surface);
+        let cluster_background = role(ThemeRole::ClusterBackground).or(surface_alt);
+        let note_background = role(ThemeRole::NoteBackground).or(surface_alt);
+        let actor_background = role(ThemeRole::ActorBackground).or(surface_alt);
         let subtle_text = role(ThemeRole::SubtleText).or(text);
         let border = role(ThemeRole::Border);
         let line = role(ThemeRole::Line).or(border);
@@ -93,20 +115,32 @@ impl<'a> ResolvedThemeRoles<'a> {
             surface_alt,
             surface_muted,
             text,
+            surface_text,
+            cluster_text: readable(cluster_background),
+            fragment_text: explicit_text
+                .or_else(|| {
+                    surface_muted.map(|background| {
+                        // ZenUML's source fragment header uses fill-opacity: .498,
+                        // over its white frame unless the host supplies a canvas.
+                        readable_text_color_with_opacity(background, canvas, false, 0.498)
+                    })
+                })
+                .or(text),
             subtle_text,
             border,
             line,
             edge_label_background: role(ThemeRole::EdgeLabelBackground).or(canvas),
+            edge_label_text: readable(role(ThemeRole::EdgeLabelBackground).or(canvas)),
             commit_label_background: role(ThemeRole::EdgeLabelBackground).or(surface),
-            cluster_background: role(ThemeRole::ClusterBackground).or(surface_alt),
+            cluster_background,
             swimlane_background_odd: role(ThemeRole::ClusterBackground).or(surface_muted),
             cluster_border: role(ThemeRole::ClusterBorder).or(border),
-            note_background: role(ThemeRole::NoteBackground).or(surface_alt),
+            note_background,
             note_border: role(ThemeRole::NoteBorder).or(border),
-            note_text: role(ThemeRole::NoteText).or(text),
-            actor_background: role(ThemeRole::ActorBackground).or(surface_alt),
+            note_text: role(ThemeRole::NoteText).or(readable(note_background)),
+            actor_background,
             actor_border: role(ThemeRole::ActorBorder).or(border),
-            actor_text: role(ThemeRole::ActorText).or(text),
+            actor_text: role(ThemeRole::ActorText).or(readable(actor_background)),
             activation_background: role(ThemeRole::ActivationBackground).or(surface_muted),
             activation_border: role(ThemeRole::ActivationBorder).or(border),
             error: role(ThemeRole::Error),
@@ -122,8 +156,8 @@ fn put_theme_roles(theme_variables: &mut Map<String, Value>, roles: &ResolvedThe
     put_opt(theme_variables, "mainBkg", roles.surface);
     put_opt(theme_variables, "secondaryColor", roles.surface_alt);
     put_opt(theme_variables, "tertiaryColor", roles.surface_muted);
-    put_opt(theme_variables, "primaryTextColor", roles.text);
-    put_opt(theme_variables, "nodeTextColor", roles.text);
+    put_opt(theme_variables, "primaryTextColor", roles.surface_text);
+    put_opt(theme_variables, "nodeTextColor", roles.surface_text);
     put_opt(theme_variables, "textColor", roles.text);
     put_opt(theme_variables, "titleColor", roles.text);
     put_opt(theme_variables, "secondaryTextColor", roles.subtle_text);
@@ -348,6 +382,8 @@ fn put_diagram_config(
     theme_variables: &mut Map<String, Value>,
     roles: &ResolvedThemeRoles<'_>,
     palette: &[String],
+    font_family: Option<&str>,
+    font_size: Option<&str>,
 ) {
     let mut packet = Map::new();
     put_opt(&mut packet, "startByteColor", roles.line);
@@ -385,6 +421,116 @@ fn put_diagram_config(
     put_opt(&mut radar, "axisColor", roles.line);
     put_opt(&mut radar, "graticuleColor", roles.border);
     put_nonempty_object(root, "radar", radar);
+
+    let mut xy = theme_variables
+        .get("xyChart")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    for key in [
+        "titleColor",
+        "legendTextColor",
+        "xAxisTitleColor",
+        "xAxisLabelColor",
+        "yAxisTitleColor",
+        "yAxisLabelColor",
+    ] {
+        put_opt(&mut xy, key, roles.text);
+    }
+    for key in [
+        "xAxisTickColor",
+        "xAxisLineColor",
+        "yAxisTickColor",
+        "yAxisLineColor",
+    ] {
+        put_opt(&mut xy, key, roles.line);
+    }
+    put_opt(&mut xy, "backgroundColor", roles.canvas);
+    put_nonempty_object(theme_variables, "xyChart", xy);
+
+    let mut wardley = Map::new();
+    // Wardley labels sit on its white default canvas, outside component surfaces.
+    // A surface-only host theme must not inherit the inferred node text color.
+    let wardley_canvas_text = roles.text.or_else(|| roles.surface.map(|_| "#222"));
+    for (key, value) in [
+        ("backgroundColor", roles.canvas),
+        ("axisColor", roles.line),
+        ("axisTextColor", wardley_canvas_text),
+        ("gridColor", roles.border),
+        ("componentFill", roles.surface),
+        ("componentStroke", roles.border),
+        ("componentLabelColor", wardley_canvas_text),
+        ("anchorLabelColor", roles.text),
+        ("stageDividerColor", roles.line),
+        ("linkStroke", roles.line),
+        ("evolutionStroke", roles.line),
+        ("buildFill", roles.surface),
+        ("buildStroke", roles.border),
+        ("buyFill", roles.surface_alt),
+        ("outsourceFill", roles.surface_muted),
+        ("marketFill", roles.surface),
+        ("annotationBackgroundColor", roles.surface),
+        ("annotationLabelColor", roles.surface_text),
+        ("arrowFill", roles.surface),
+    ] {
+        put_opt(&mut wardley, key, value);
+    }
+    put_opt(&mut wardley, "fontFamily", font_family);
+    put_nonempty_object(theme_variables, "wardley", wardley);
+
+    let mut gantt = Map::new();
+    put_opt(&mut gantt, "axisColor", roles.line);
+    put_nonempty_object(theme_variables, "gantt", gantt);
+
+    let mut mindmap = Map::new();
+    put_opt(
+        &mut mindmap,
+        "labelBackgroundColor",
+        roles.edge_label_background,
+    );
+    put_opt(&mut mindmap, "labelTextColor", roles.edge_label_text);
+    put_nonempty_object(theme_variables, "mindmap", mindmap);
+
+    let mut zenuml = Map::new();
+    for (key, value) in [
+        ("backgroundColor", roles.canvas),
+        ("surfaceColor", roles.surface),
+        ("textColor", roles.text),
+        ("borderColor", roles.border),
+        ("lineColor", roles.line),
+        ("mutedSurfaceColor", roles.surface_muted),
+        ("subtleTextColor", roles.subtle_text),
+        ("noteBackgroundColor", roles.note_background),
+        ("noteBorderColor", roles.note_border),
+        ("noteTextColor", roles.note_text),
+        ("actorBackgroundColor", roles.actor_background),
+        ("actorBorderColor", roles.actor_border),
+        ("actorTextColor", roles.actor_text),
+        ("activationBackgroundColor", roles.activation_background),
+        ("activationBorderColor", roles.activation_border),
+        ("groupBackgroundColor", roles.cluster_background),
+        ("groupBorderColor", roles.cluster_border),
+        ("groupTextColor", roles.cluster_text),
+        ("fragmentTextColor", roles.fragment_text),
+    ] {
+        put_opt(&mut zenuml, key, value);
+    }
+    put_opt(&mut zenuml, "fontFamily", font_family);
+    put_opt(&mut zenuml, "fontSize", font_size);
+    put_nonempty_object(theme_variables, "zenuml", zenuml);
+
+    let mut usecase = Map::new();
+    let usecase_font_size = font_size
+        .and_then(|size| crate::config::json_f64_css_px(&Value::String(size.to_owned())))
+        .filter(|size| *size > 0.0)
+        .and_then(serde_json::Number::from_f64);
+    for prefix in ["actor", "usecase"] {
+        put_opt(&mut usecase, &format!("{prefix}FontFamily"), font_family);
+        if let Some(size) = &usecase_font_size {
+            usecase.insert(format!("{prefix}FontSize"), Value::Number(size.clone()));
+        }
+    }
+    put_nonempty_object(root, "usecase", usecase);
 
     let mut eventmodeling = Map::new();
     put_opt(
@@ -460,6 +606,22 @@ fn put_diagram_config(
     ] {
         put_opt(&mut c4, &format!("{prefix}_bg_color"), roles.surface);
         put_opt(&mut c4, &format!("{prefix}_border_color"), roles.border);
+        put_opt(&mut c4, &format!("{prefix}_font_color"), roles.surface_text);
+        put_opt(&mut c4, &format!("{prefix}FontFamily"), font_family);
+        put_opt(&mut c4, &format!("{prefix}FontSize"), font_size);
+    }
+    put_opt(&mut c4, "boundary_bg_color", roles.cluster_background);
+    put_opt(&mut c4, "boundary_border_color", roles.cluster_border);
+    put_opt(
+        &mut c4,
+        "boundary_font_color",
+        roles.cluster_text.or(roles.text),
+    );
+    put_opt(&mut c4, "relationship_text_color", roles.text);
+    put_opt(&mut c4, "relationship_line_color", roles.line);
+    for prefix in ["boundary", "message"] {
+        put_opt(&mut c4, &format!("{prefix}FontFamily"), font_family);
+        put_opt(&mut c4, &format!("{prefix}FontSize"), font_size);
     }
     put_nonempty_object(root, "c4", c4);
 }
@@ -492,6 +654,15 @@ fn merge_object(target: &mut Map<String, Value>, source: &Map<String, Value>) {
 }
 
 fn readable_text_color(color: &str, canvas: Option<&str>, dark: bool) -> &'static str {
+    readable_text_color_with_opacity(color, canvas, dark, 1.0)
+}
+
+fn readable_text_color_with_opacity(
+    color: &str,
+    canvas: Option<&str>,
+    dark: bool,
+    opacity: f64,
+) -> &'static str {
     let Ok(color) = ThemeColor::parse(color.trim()) else {
         return "#ffffff";
     };
@@ -499,7 +670,9 @@ fn readable_text_color(color: &str, canvas: Option<&str>, dark: bool) -> &'stati
     let canvas = canvas
         .and_then(|canvas| ThemeColor::parse(canvas.trim()).ok())
         .map_or(fallback, |canvas| composite_over(&canvas, fallback));
-    let [red, green, blue] = composite_over(&color, canvas);
+    let foreground = composite_over(&color, canvas);
+    let [red, green, blue] =
+        std::array::from_fn(|index| foreground[index] * opacity + canvas[index] * (1.0 - opacity));
     let luminance = relative_luminance(red, green, blue);
     let black_contrast = (luminance + 0.05) / 0.05;
     let white_contrast = 1.05 / (luminance + 0.05);
@@ -555,6 +728,35 @@ mod tests {
         assert_eq!(
             readable_text_color("rgb(0 0 0 / .2)", Some("#ffffff"), false),
             "#000000"
+        );
+    }
+
+    #[test]
+    fn zenuml_fragment_readability_uses_the_translucent_header_background() {
+        let partial = HostTheme::new()
+            .with_appearance(super::super::HostThemeAppearance::Dark)
+            .try_with_role(ThemeRole::SurfaceMuted, "#000000")
+            .unwrap();
+        assert_eq!(
+            compile(&partial).as_value()["themeVariables"]["zenuml"]["fragmentTextColor"],
+            "#000000"
+        );
+        let theme = HostTheme::new()
+            .try_with_role(ThemeRole::Canvas, "#ffffff")
+            .unwrap()
+            .try_with_role(ThemeRole::SurfaceMuted, "#000000")
+            .unwrap();
+        let config = compile(&theme);
+        assert_eq!(
+            config.as_value()["themeVariables"]["zenuml"]["fragmentTextColor"],
+            "#000000"
+        );
+
+        let theme = theme.try_with_role(ThemeRole::Text, "#123456").unwrap();
+        let config = compile(&theme);
+        assert_eq!(
+            config.as_value()["themeVariables"]["zenuml"]["fragmentTextColor"],
+            "#123456"
         );
     }
 

@@ -222,7 +222,7 @@ fn c4_write_text_by_tspan(out: &mut String, text: C4TspanText<'_>) {
             fmt(y)
         );
         for (k, v) in attrs {
-            let _ = write!(out, r#" {k}="{v}""#);
+            let _ = write!(out, r#" {k}="{}""#, escape_attr(v));
         }
         let _ = write!(
             out,
@@ -591,9 +591,9 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             default_border_color,
                         )
                     });
-                let font_color = meta
-                    .and_then(|m| m.font_color.clone())
-                    .unwrap_or_else(|| "#FFFFFF".to_string());
+                let font_color = meta.and_then(|m| m.font_color.clone()).unwrap_or_else(|| {
+                    c4_cfg.color(&format!("{}_font_color", s.type_c4_shape), "#FFFFFF")
+                });
                 let Some(meta) = meta else {
                     return Err(crate::Error::InvalidModel {
                         message: format!("c4: missing model shape {}", s.alias),
@@ -686,10 +686,24 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let meta = boundary_meta.get(b.alias.as_str()).copied();
                 let fill_color = meta
                     .and_then(|m| m.bg_color.clone())
-                    .unwrap_or_else(|| "none".to_string());
+                    .unwrap_or_else(|| c4_cfg.color("boundary_bg_color", "none"));
                 let stroke_color = meta
                     .and_then(|m| m.border_color.clone())
-                    .unwrap_or_else(|| "#444444".to_string());
+                    .unwrap_or_else(|| c4_cfg.color("boundary_border_color", "#444444"));
+                // Mermaid's ordinary boundary writer explicitly paints #444444,
+                // even when its model carries fontColor. Presentation paint is
+                // opt-in and lets that authored color override the themed text.
+                let font_color = if effective_config
+                    .get("c4")
+                    .and_then(|c4| c4.get("boundary_font_color"))
+                    .and_then(serde_json::Value::as_str)
+                    .is_some()
+                {
+                    meta.and_then(|m| m.font_color.clone())
+                        .unwrap_or_else(|| c4_cfg.color("boundary_font_color", "#444444"))
+                } else {
+                    "#444444".to_string()
+                };
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
 
                 out.push_str("<g>");
@@ -734,7 +748,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         font_family: boundary_family,
                         font_size: boundary_size,
                         font_weight: boundary_weight,
-                        attrs: &[("fill", "#444444")],
+                        attrs: &[("fill", &font_color)],
                     },
                 );
                 if let Some(ty) = &b.ty
@@ -753,7 +767,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_family: boundary_family,
                             font_size: boundary_type_size,
                             font_weight: boundary_type_weight,
-                            attrs: &[("fill", "#444444")],
+                            attrs: &[("fill", &font_color)],
                         },
                     );
                 }
@@ -772,7 +786,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_family: boundary_family,
                             font_size: descr_size,
                             font_weight: descr_weight,
-                            attrs: &[("fill", "#444444")],
+                            attrs: &[("fill", &font_color)],
                         },
                     );
                 }
@@ -810,10 +824,39 @@ pub(crate) fn render_c4_diagram_svg_typed(
         let meta = rel_meta.get(&(rel.from.as_str(), rel.to.as_str())).copied();
         let text_color = meta
             .and_then(|m| m.text_color.clone())
-            .unwrap_or_else(|| "#444444".to_string());
+            .unwrap_or_else(|| c4_cfg.color("relationship_text_color", "#444444"));
         let stroke_color = meta
             .and_then(|m| m.line_color.clone())
-            .unwrap_or_else(|| "#444444".to_string());
+            .unwrap_or_else(|| c4_cfg.color("relationship_line_color", "#444444"));
+        // The ordinary Mermaid markers retain their source defaults. A themed
+        // relationship owns matching markers, including an authored line color.
+        let themed_markers = effective_config
+            .get("c4")
+            .and_then(|c4| c4.get("relationship_line_color"))
+            .and_then(serde_json::Value::as_str)
+            .is_some();
+        let arrowhead = if themed_markers {
+            format!("arrowhead-{idx}")
+        } else {
+            "arrowhead".to_string()
+        };
+        let arrowend = if themed_markers {
+            format!("arrowend-{idx}")
+        } else {
+            "arrowend".to_string()
+        };
+        if themed_markers {
+            let _ = write!(
+                &mut out,
+                r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="{}"/></marker><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="{}" stroke="{}"/></marker></defs>"#,
+                escape_attr_display(scoped_svg_id(diagram_id, &arrowhead)),
+                escape_attr(&stroke_color),
+                escape_attr(&stroke_color),
+                escape_attr_display(scoped_svg_id(diagram_id, &arrowend)),
+                escape_attr(&stroke_color),
+                escape_attr(&stroke_color),
+            );
+        }
         let offset_x = rel.offset_x.unwrap_or(0) as f64;
         let offset_y = rel.offset_y.unwrap_or(0) as f64;
 
@@ -831,14 +874,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let _ = write!(
                     &mut out,
                     r#" marker-end="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowhead"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowhead))
                 );
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowend"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowend))
                 );
             }
             out.push_str(r#" style="fill: none;"/>"#);
@@ -865,14 +908,14 @@ pub(crate) fn render_c4_diagram_svg_typed(
                 let _ = write!(
                     &mut out,
                     r#" marker-end="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowhead"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowhead))
                 );
             }
             if rel.rel_type == "birel" || rel.rel_type == "rel_b" {
                 let _ = write!(
                     &mut out,
                     r#" marker-start="{}""#,
-                    escape_attr_display(scoped_svg_url(diagram_id, "arrowend"))
+                    escape_attr_display(scoped_svg_url(diagram_id, &arrowend))
                 );
             }
             out.push_str("/>");

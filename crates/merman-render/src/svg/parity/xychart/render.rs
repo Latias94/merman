@@ -66,7 +66,7 @@ fn vertical_label_font_size(
 pub(crate) fn render_xychart_diagram_svg(
     layout: &XyChartDiagramLayout,
     model: &XyChartDiagramRenderModel,
-    _effective_config: &serde_json::Value,
+    effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     use rustc_hash::FxHashMap;
@@ -197,7 +197,7 @@ pub(crate) fn render_xychart_diagram_svg(
     let data_label_config = if layout.show_data_label {
         Some((
             layout.show_data_label_outside_bar,
-            data_label_color(_effective_config),
+            data_label_color(effective_config),
         ))
     } else {
         None
@@ -232,7 +232,7 @@ pub(crate) fn render_xychart_diagram_svg(
     }
 
     out.push_str("<style>");
-    push_xychart_css(&mut out, diagram_id);
+    out.push_str(&css::info_css_with_config(diagram_id, effective_config));
     out.push_str("</style>");
     options.checkpoint_emit()?;
 

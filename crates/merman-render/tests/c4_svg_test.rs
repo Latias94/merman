@@ -3,6 +3,7 @@ use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::C4DiagramLayout;
+use merman_render::presentation::{HostTheme, HostThemePreset, Presentation, ThemeRole};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 
 fn render_c4_svg_with_environment(source: &str, environment: &RenderEnvironment) -> String {
@@ -37,6 +38,316 @@ fn svg_text_content(node: roxmltree::Node<'_, '_>) -> String {
         .filter(|descendant| descendant.is_text())
         .filter_map(|descendant| descendant.text())
         .collect()
+}
+
+fn render_presentation_c4(source: &str, theme: HostTheme) -> String {
+    let parsed = Presentation::new()
+        .with_theme(theme)
+        .resolve()
+        .materialize_engine(Engine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned()
+}
+
+const PRESENTATION_C4: &str = r#"C4Context
+title Theme coverage
+Boundary(boundary, "Boundary title", "Boundary type") {
+  Person(person, "Person", "Person description")
+  System(system, "System", "System description")
+  Deployment_Node(node, "Node title", "Node type", "Boundary description") {
+    System(child, "Child")
+  }
+}
+System_Ext(external, "External", "External description")
+BiRel(person, system, "Uses", "HTTPS")
+Rel(system, external, "Calls")
+"#;
+
+#[test]
+fn c4_presentation_recolors_element_boundary_relationship_and_marker_paint() {
+    for preset in [HostThemePreset::EditorLight, HostThemePreset::EditorDark] {
+        let theme = HostTheme::from_preset(preset);
+        let text_color = theme.role(ThemeRole::Text).unwrap().to_string();
+        let line_color = theme.role(ThemeRole::Line).unwrap().to_string();
+        for html_labels in [false, true] {
+            let source =
+                format!("---\nconfig:\n  htmlLabels: {html_labels}\n---\n{PRESENTATION_C4}");
+            let svg = render_presentation_c4(&source, theme.clone());
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            for shape in document.descendants().filter(|node| {
+                node.attribute("class").is_some_and(|classes| {
+                    classes.split_whitespace().any(|class| class == "c4-shape")
+                })
+            }) {
+                let label = shape
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label"))
+                    .unwrap();
+                assert_eq!(
+                    label.attribute("style"),
+                    Some(format!("color:{text_color} !important").as_str())
+                );
+                for text in label.descendants().filter(|node| node.has_tag_name("text")) {
+                    assert_eq!(
+                        text.attribute("style"),
+                        Some(format!("fill:{text_color} !important").as_str())
+                    );
+                }
+            }
+            for content in [
+                "Boundary title",
+                "[Boundary type]",
+                "Boundary description",
+                "Uses",
+                "[HTTPS]",
+                "Calls",
+            ] {
+                let text = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && svg_text_content(*node) == content)
+                    .unwrap();
+                assert_eq!(
+                    text.attribute("fill"),
+                    Some(text_color.as_str()),
+                    "{content}"
+                );
+            }
+            for edge in document.descendants().filter(|node| {
+                node.attribute("marker-end").is_some() || node.attribute("marker-start").is_some()
+            }) {
+                assert_eq!(edge.attribute("stroke"), Some(line_color.as_str()));
+                for attribute in ["marker-start", "marker-end"] {
+                    if let Some(url) = edge.attribute(attribute) {
+                        let id = url
+                            .strip_prefix("url(#")
+                            .unwrap()
+                            .strip_suffix(')')
+                            .unwrap();
+                        let marker = document
+                            .descendants()
+                            .find(|node| node.attribute("id") == Some(id))
+                            .unwrap();
+                        let path = marker
+                            .children()
+                            .find(|node| node.has_tag_name("path"))
+                            .unwrap();
+                        assert_eq!(path.attribute("fill"), Some(line_color.as_str()));
+                        assert_eq!(path.attribute("stroke"), Some(line_color.as_str()));
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn c4_presentation_keeps_authored_element_boundary_and_relationship_overrides() {
+    let source = format!(
+        r#"---
+config:
+  c4:
+    system_font_color: '#aabbcc'
+---
+{PRESENTATION_C4}
+UpdateElementStyle(person, $fontColor="red", $bgColor="pink", $borderColor="brown")
+UpdateElementStyle(boundary, $fontColor="yellow", $bgColor="blue", $borderColor="gray")
+UpdateElementStyle(node, $fontColor="yellow")
+UpdateRelStyle(person, system, $textColor="green", $lineColor="purple")
+"#
+    );
+    let svg = render_presentation_c4(&source, HostTheme::from_preset(HostThemePreset::EditorDark));
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for (content, color) in [
+        ("Boundary title", "yellow"),
+        ("Boundary description", "yellow"),
+        ("Uses", "green"),
+        ("[HTTPS]", "green"),
+    ] {
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && svg_text_content(*node) == content)
+            .unwrap();
+        assert_eq!(text.attribute("fill"), Some(color));
+    }
+    for (class, color) in [("c4-person", "red"), ("c4-system", "#aabbcc")] {
+        let shape = document
+            .descendants()
+            .find(|node| {
+                node.attribute("class")
+                    .is_some_and(|classes| classes.split_whitespace().any(|value| value == class))
+            })
+            .unwrap();
+        let label = shape
+            .descendants()
+            .find(|node| node.attribute("class") == Some("label"))
+            .unwrap();
+        assert_eq!(
+            label.attribute("style"),
+            Some(format!("color:{color} !important").as_str())
+        );
+    }
+    let edge = document
+        .descendants()
+        .find(|node| node.attribute("marker-start").is_some())
+        .unwrap();
+    assert_eq!(edge.attribute("stroke"), Some("purple"));
+    let marker_id = edge
+        .attribute("marker-end")
+        .unwrap()
+        .strip_prefix("url(#")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    let marker = document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(marker_id))
+        .unwrap();
+    assert_eq!(
+        marker
+            .children()
+            .find(|node| node.has_tag_name("path"))
+            .unwrap()
+            .attribute("fill"),
+        Some("purple")
+    );
+    assert!(svg.contains("fill: pink !important") || svg.contains("fill:pink !important"));
+    assert!(document.descendants().any(|node| node.has_tag_name("rect")
+        && node.attribute("fill") == Some("blue")
+        && node.attribute("stroke") == Some("gray")));
+}
+
+#[test]
+fn c4_presentation_partial_surface_and_css_pixel_fonts_reach_all_label_sections() {
+    let theme = HostTheme::new()
+        .try_with_role(ThemeRole::Surface, "#eeeeee")
+        .unwrap()
+        .try_with_font_family("Inter, sans-serif")
+        .unwrap()
+        .try_with_font_size("24px")
+        .unwrap()
+        .try_with_series_palette(["#ff0000", "#00ff00"])
+        .unwrap();
+    let svg = render_presentation_c4(PRESENTATION_C4, theme);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert!(svg.contains("font-family:Inter,sans-serif;font-size:24px"));
+    for content in ["Boundary title", "Uses", "[HTTPS]"] {
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && svg_text_content(*node) == content)
+            .unwrap();
+        let style = text.attribute("style").unwrap();
+        assert!(style.contains("font-family: Inter, sans-serif"));
+        assert!(style.contains(if content == "Boundary title" {
+            "font-size: 26px"
+        } else {
+            "font-size: 24px"
+        }));
+    }
+    assert!(!svg.contains("color:#FFFFFF !important"));
+}
+
+#[test]
+fn c4_partial_light_canvas_and_dark_surface_resolve_text_for_each_actual_background() {
+    let theme = HostTheme::new()
+        .try_with_role(ThemeRole::Canvas, "#ffffff")
+        .unwrap()
+        .try_with_role(ThemeRole::Surface, "#111111")
+        .unwrap();
+    let svg = render_presentation_c4(PRESENTATION_C4, theme);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let label = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("label"))
+        .unwrap();
+    assert_eq!(label.attribute("style"), Some("color:#ffffff !important"));
+    let relationship = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && svg_text_content(*node) == "Uses")
+        .unwrap();
+    assert_eq!(relationship.attribute("fill"), Some("#000000"));
+}
+
+#[test]
+fn c4_canvas_only_presentation_preserves_unmodified_blue_surfaces_and_white_labels() {
+    let theme = HostTheme::new()
+        .try_with_role(ThemeRole::Canvas, "#ffffff")
+        .unwrap();
+    let svg = render_presentation_c4(PRESENTATION_C4, theme);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let shape = document
+        .descendants()
+        .find(|node| {
+            node.attribute("class")
+                .is_some_and(|classes| classes.split_whitespace().any(|class| class == "c4-system"))
+        })
+        .unwrap();
+    let label = shape
+        .descendants()
+        .find(|node| node.attribute("class") == Some("label"))
+        .unwrap();
+    assert_eq!(label.attribute("style"), Some("color:#FFFFFF !important"));
+    assert!(shape.descendants().any(|node| {
+        node.has_tag_name("rect")
+            && node
+                .attribute("style")
+                .is_some_and(|style| style.contains("fill:#1168BD !important"))
+    }));
+}
+
+#[test]
+fn c4_dynamic_text_colors_remain_single_xml_attributes_for_site_and_source_values() {
+    let site_color = r#"red" data-probe="site&raw"#;
+    let authored_color = "blue' data-probe='source&raw";
+    let source = format!(
+        r#"{PRESENTATION_C4}
+UpdateRelStyle(system, external, $textColor="{authored_color}")
+"#
+    );
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"c4": {
+            "boundary_font_color": site_color,
+            "relationship_text_color": site_color
+        }}),
+    ));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let svg = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned();
+    let document =
+        roxmltree::Document::parse(&svg).expect("dynamic color values must not break XML");
+    for (content, expected) in [
+        ("Boundary title", site_color),
+        ("Boundary description", site_color),
+        ("Uses", site_color),
+        ("[HTTPS]", site_color),
+        ("Calls", authored_color),
+    ] {
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && svg_text_content(*node) == content)
+            .unwrap();
+        assert_eq!(text.attribute("fill"), Some(expected), "{content}");
+    }
+    assert!(
+        document
+            .descendants()
+            .all(|node| node.attribute("data-probe").is_none())
+    );
 }
 
 fn deep_c4_boundary_chain(depth: usize) -> String {

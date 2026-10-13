@@ -16,6 +16,16 @@ struct WardleyTheme {
     component_label_color: String,
     link_stroke: String,
     evolution_stroke: String,
+    anchor_label_color: String,
+    stage_divider_color: String,
+    build_fill: String,
+    build_stroke: String,
+    buy_fill: String,
+    outsource_fill: String,
+    market_fill: String,
+    annotation_fill: String,
+    annotation_text: String,
+    arrow_fill: String,
 }
 
 impl WardleyTheme {
@@ -44,6 +54,20 @@ impl WardleyTheme {
             ),
             link_stroke: nested("linkStroke", "#000"),
             evolution_stroke: nested("evolutionStroke", "#dc3545"),
+            anchor_label_color: nested("anchorLabelColor", "#000"),
+            stage_divider_color: nested("stageDividerColor", "#000"),
+            build_fill: nested("buildFill", "#eee"),
+            build_stroke: nested("buildStroke", "#000"),
+            buy_fill: nested("buyFill", "#ccc"),
+            outsource_fill: nested("outsourceFill", "#666"),
+            market_fill: nested("marketFill", "white"),
+            annotation_fill: nested("annotationBackgroundColor", "white"),
+            annotation_text: config_string(
+                config,
+                &["themeVariables", "wardley", "annotationLabelColor"],
+            )
+            .unwrap_or_else(|| nested_or_root("axisTextColor", "primaryTextColor", "#222")),
+            arrow_fill: nested("arrowFill", "white"),
         }
     }
 }
@@ -232,7 +256,14 @@ fn write_stages(out: &mut String, layout: &WardleyDiagramLayout, theme: &Wardley
     out.push_str(r#"<g class="wardley-stages">"#);
     for stage in &layout.stages {
         if let Some(divider) = stage.divider {
-            write_line(out, divider, None, "#000", Some(1.0), Some("5 5"));
+            write_line(
+                out,
+                divider,
+                None,
+                &theme.stage_divider_color,
+                Some(1.0),
+                Some("5 5"),
+            );
             let insert_at = out.len() - 2;
             out.insert_str(insert_at, r#" opacity="0.8""#);
         }
@@ -408,15 +439,15 @@ fn write_source_overlay(
             out,
             Some("wardley-build-overlay"),
             *circle,
-            "#eee",
-            "#000",
+            &theme.build_fill,
+            &theme.build_stroke,
             1.0,
         ),
         WardleySourceOverlayLayout::Buy { circle } => write_circle(
             out,
             Some("wardley-buy-overlay"),
             *circle,
-            "#ccc",
+            &theme.buy_fill,
             &theme.component_stroke,
             1.0,
         ),
@@ -424,7 +455,7 @@ fn write_source_overlay(
             out,
             Some("wardley-outsource-overlay"),
             *circle,
-            "#666",
+            &theme.outsource_fill,
             &theme.component_stroke,
             1.0,
         ),
@@ -437,7 +468,7 @@ fn write_source_overlay(
                 out,
                 Some("wardley-market-overlay"),
                 *outer_circle,
-                "white",
+                &theme.market_fill,
                 &theme.component_stroke,
                 1.0,
             );
@@ -456,7 +487,7 @@ fn write_source_overlay(
                     out,
                     Some("wardley-market-dot"),
                     *dot,
-                    "white",
+                    &theme.market_fill,
                     &theme.component_stroke,
                     2.0,
                 );
@@ -512,7 +543,7 @@ fn write_nodes(out: &mut String, layout: &WardleyDiagramLayout, theme: &WardleyT
         }
         let label_fill = match node.class_name.as_deref() {
             Some("evolved") => &theme.evolution_stroke,
-            Some("anchor") => "#000",
+            Some("anchor") => &theme.anchor_label_color,
             _ => &theme.component_label_color,
         };
         write_text(
@@ -536,18 +567,19 @@ fn write_annotations_box(
     if let Some(rect) = annotations_box.rect {
         let _ = write!(
             out,
-            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="white" stroke="{}" stroke-width="1.5" rx="{}" ry="{}"/>"#,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}" stroke-width="1.5" rx="{}" ry="{}"/>"#,
             fmt(rect.x),
             fmt(rect.y),
             fmt(rect.width),
             fmt(rect.height),
+            escape_attr_display(&theme.annotation_fill),
             escape_attr_display(&theme.axis_color),
             fmt(rect.corner_radius),
             fmt(rect.corner_radius)
         );
     }
     for line in &annotations_box.lines {
-        write_text(out, line, None, &theme.axis_text_color, false);
+        write_text(out, line, None, &theme.annotation_text, false);
     }
     out.push_str("</g>");
 }
@@ -577,11 +609,11 @@ fn write_annotations(out: &mut String, layout: &WardleyDiagramLayout, theme: &Wa
                     center: point.center,
                     radius: point.radius,
                 },
-                "white",
+                &theme.annotation_fill,
                 &theme.axis_color,
                 1.5,
             );
-            write_text(out, &point.label, None, &theme.axis_text_color, true);
+            write_text(out, &point.label, None, &theme.annotation_text, true);
             out.push_str("</g>");
         }
     }
@@ -612,7 +644,8 @@ fn write_arrow(out: &mut String, arrow: &WardleyArrowLayout, theme: &WardleyThem
     }
     let _ = write!(
         out,
-        r#" Z" fill="white" stroke="{}" stroke-width="1"/>"#,
+        r#" Z" fill="{}" stroke="{}" stroke-width="1"/>"#,
+        escape_attr_display(&theme.arrow_fill),
         escape_attr_display(&theme.component_stroke)
     );
     write_text(out, &arrow.label, None, &theme.axis_text_color, true);
@@ -672,7 +705,11 @@ pub(crate) fn render_wardley_diagram_svg_model(
     write_accessibility(&mut out, diagram_id, acc_title, acc_descr);
     options.checkpoint_emit()?;
 
-    out.push_str(r#"<g class="wardley-map">"#);
+    out.push_str(r#"<g class="wardley-map""#);
+    if let Some(font) = crate::wardley::wardley_theme_font_family_css(effective_config) {
+        let _ = write!(out, " font-family=\"{}\"", escape_attr_display(&font));
+    }
+    out.push('>');
     let _ = write!(
         out,
         r#"<rect class="wardley-background" width="{}" height="{}" fill="{}"/>"#,

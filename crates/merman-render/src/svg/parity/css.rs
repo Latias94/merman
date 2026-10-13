@@ -230,32 +230,6 @@ where
     )
 }
 
-pub(super) fn info_css_into<I>(out: &mut String, diagram_id: I)
-where
-    I: Copy + std::fmt::Display,
-{
-    // Production callers pass a normalized `SvgDiagramId`, whose grammar is already safe for
-    // direct CSS selector interpolation. Keeping the wrapper intact makes every occurrence flow
-    // through the shared resource projection instead of caching one escaped string.
-    let id = diagram_id;
-    let font = r#""trebuchet ms",verdana,arial,sans-serif"#;
-    write_mermaid_base_css_prefix(
-        out,
-        id,
-        MermaidBaseCss {
-            font_family: font,
-            font_size_css: "16px",
-            normal_edge_stroke_width_css: "1px",
-            text_color: "#333",
-            line_color: "#333333",
-            error_bkg: "#552222",
-            error_text: "#552222",
-        },
-    );
-    write_mermaid_common_neo_css(out, id, &serde_json::Value::Null);
-    out.push_str(&mermaid_base_css_root_rule(id, font));
-}
-
 pub(super) struct InfoCssParts {
     pub(super) css_prefix: String,
     pub(super) root_rule: String,
@@ -941,17 +915,6 @@ where
     Ok(out)
 }
 
-#[cfg(feature = "diagram-xychart")]
-pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I)
-where
-    I: Copy + std::fmt::Display,
-{
-    // Mermaid does not ship dedicated XYChart styles at 11.12.2 (it relies on theme variables and
-    // inline attributes). Keep the shared base stylesheet for consistency with upstream SVG
-    // baselines. The compare tooling ignores `<style>` content in parity mode.
-    info_css_into(out, diagram_id);
-}
-
 #[cfg(feature = "diagram-gantt")]
 pub(super) fn gantt_css<I>(diagram_id: I, effective_config: &serde_json::Value) -> String
 where
@@ -962,6 +925,12 @@ where
     let theme = PresentationTheme::new(effective_config).gantt();
     let mut out = parts.css_prefix;
     let font = &theme.font_family;
+    if let Some(axis_color) =
+        config_string(effective_config, &["themeVariables", "gantt", "axisColor"])
+    {
+        // D3 emits currentColor on tick lines, so their inherited color must be resolved too.
+        let _ = write!(&mut out, "#{id} .grid{{color:{axis_color};}}");
+    }
     let text_color = &theme.text_color;
     let exclude_bkg_color = &theme.exclude_bkg_color;
     let section_bkg_color = &theme.section_bkg_color;

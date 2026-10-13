@@ -264,8 +264,6 @@ use css::PieCss;
 use css::er_css;
 #[cfg(feature = "diagram-gantt")]
 use css::gantt_css;
-#[cfg(feature = "diagram-xychart")]
-use css::push_xychart_css;
 #[cfg(feature = "diagram-requirement")]
 use css::requirement_css;
 #[cfg(feature = "diagram-sankey")]

@@ -1,4 +1,6 @@
-use crate::config::{config_bool, config_f64_or, config_font_family_css};
+use crate::config::{
+    config_bool, config_f64_or, config_font_family_css, config_string, normalize_css_font_family,
+};
 use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::diagrams::wardley::{
@@ -18,6 +20,12 @@ const DEFAULT_LABEL_FONT_SIZE: f64 = 10.0;
 const DEFAULT_SHOW_GRID: bool = false;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
 const DEFAULT_STAGES: [&str; 4] = ["Genesis", "Custom Built", "Product", "Commodity"];
+
+pub(crate) fn wardley_theme_font_family_css(config: &Value) -> Option<String> {
+    config_string(config, &["themeVariables", "wardley", "fontFamily"])
+        .map(|font| normalize_css_font_family(&font))
+        .filter(|font| !font.is_empty())
+}
 
 #[derive(Debug, Clone, Copy)]
 struct WardleySettings {
@@ -1072,7 +1080,8 @@ pub(crate) fn layout_wardley_diagram_typed(
                 };
             }
 
-            let font_family = config_font_family_css(effective_config);
+            let font_family = wardley_theme_font_family_css(effective_config)
+                .unwrap_or_else(|| config_font_family_css(effective_config));
             let style = TextStyle {
                 font_family: Some(font_family),
                 font_size,

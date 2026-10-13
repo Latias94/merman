@@ -1731,7 +1731,11 @@ fn prepare_non_class_render(
         #[cfg(feature = "diagram-zenuml")]
         RenderSemanticModel::Zenuml(model) => {
             BuiltinFamilyArtifact::Zenuml(prepare_pair(model, |model| {
-                crate::zenuml::layout_zenuml_diagram_typed(model, execution.text_measurer())
+                crate::zenuml::layout_zenuml_diagram_typed(
+                    model,
+                    effective_config,
+                    execution.text_measurer(),
+                )
             })?)
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]

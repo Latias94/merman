@@ -622,6 +622,22 @@ fn mindmap_css(
         }
     }
 
+    if let Some(background) = config_string(
+        effective_config,
+        &["themeVariables", "mindmap", "labelBackgroundColor"],
+    ) {
+        // The same scoped declaration reaches browser HTML labels and their resvg-safe fallback.
+        let _ = write!(
+            &mut out,
+            "#{diagram_id} .labelBkg{{background-color:{background};}}"
+        );
+    }
+    if let Some(text) = config_string(
+        effective_config,
+        &["themeVariables", "mindmap", "labelTextColor"],
+    ) {
+        let _ = write!(&mut out, "#{diagram_id} .labelBkg span{{color:{text};}}");
+    }
     out.push_str(&parts.root_rule);
     out
 }

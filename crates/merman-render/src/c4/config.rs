@@ -1,4 +1,6 @@
-use crate::config::{config_bool, config_css_number_or_string, config_f64, config_string};
+use crate::config::{
+    config_bool, config_css_number_or_string, config_f64, config_f64_css_px, config_string,
+};
 use crate::text::TextStyle;
 use serde_json::Value;
 
@@ -75,14 +77,10 @@ impl<'a> C4ConfigView<'a> {
                 .c4_f64("nextLinePaddingX")
                 .unwrap_or(DEFAULT_NEXT_LINE_PADDING_X),
             boundary_font_family: Some(self.font_family("boundaryFontFamily")),
-            boundary_font_size: self
-                .c4_f64("boundaryFontSize")
-                .unwrap_or(DEFAULT_BOUNDARY_FONT_SIZE),
+            boundary_font_size: self.font_size("boundaryFontSize", DEFAULT_BOUNDARY_FONT_SIZE),
             boundary_font_weight: self.font_weight("boundaryFontWeight"),
             message_font_family: Some(self.font_family("messageFontFamily")),
-            message_font_size: self
-                .c4_f64("messageFontSize")
-                .unwrap_or(DEFAULT_MESSAGE_FONT_SIZE),
+            message_font_size: self.font_size("messageFontSize", DEFAULT_MESSAGE_FONT_SIZE),
             message_font_weight: self.font_weight("messageFontWeight"),
             use_max_width: self.use_max_width(),
         }
@@ -99,7 +97,7 @@ impl<'a> C4ConfigView<'a> {
     }
 
     pub(crate) fn font_size(&self, key: &str, fallback: f64) -> f64 {
-        self.c4_f64(key).unwrap_or(fallback)
+        config_f64_css_px(self.c4_config, &[key]).unwrap_or(fallback)
     }
 
     pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
