@@ -13,6 +13,9 @@ CLA/review state, and platform-build failures. Read the current upstream contrib
 writing. Use an isolated checkout, preserve another contributor's history, and prepare the exact
 patch and PR description before any required personal review.
 
+When the maintainer reserves review replies for themselves, prepare the code, verification and
+suggested response evidence, then leave comment publication and thread resolution to them.
+
 Reconcile the owning feedstock/bucket/formula/manifests with the actual registry/catalog version.
 For Nixpkgs, verify release source/NAR hash, Cargo.lock, evaluation/build and installation checks.
 For Homebrew, inspect formula/bottles/API and tag-owned installed CLI checks. Repository health

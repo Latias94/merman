@@ -319,8 +319,12 @@ Completed items below have owner or registry evidence in the
 - [x] Submit the frozen Typst 0.5.0 package with the separately authorized documentation refresh and pass the Universe package checks.
 - [ ] Confirm Typst Universe acceptance and registry availability of `@preview/merman:0.5.0`.
 - [x] Confirm the official Homebrew bot update passed platform checks and merged with the 0.9.0 source and bottle entries.
-- [ ] Confirm the public Homebrew formula API exposes 0.9.0 after propagation.
+- [x] Confirm the public Homebrew formula API exposes 0.9.0 and installed CLI health checks pass on macOS and Linux.
 - [ ] Confirm upstream acceptance and registry propagation of the updated WinGet 0.9.0 submission.
+- [x] Update the existing Nixpkgs first-package submission to 0.9.0 and pass its parsing, formatting and evaluation CI.
+- [ ] Build the Nixpkgs expression and complete upstream review/acceptance.
+- [x] Diagnose the Conda-forge bot build failure and submit the recipe repair with source-backed review replies.
+- [ ] Confirm the final Conda-forge recipe passes every target and that channel packages expose 0.9.0 after acceptance.
 
 ## Release Evidence
 
