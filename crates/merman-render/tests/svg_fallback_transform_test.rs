@@ -676,3 +676,38 @@ fn valid_css_matrix_can_override_an_overflowing_foreign_object_attribute() {
             .any(|node| node.has_tag_name("text") && node.text() == Some("Same"))
     );
 }
+
+#[test]
+fn fallback_ids_follow_the_source_root_namespace_when_diagrams_share_a_document() {
+    let mut identifiers = std::collections::HashSet::new();
+    for root in ["first-diagram", "second-diagram"] {
+        let svg = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" id="{root}"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">Same</div></foreignObject></svg>"#
+        );
+        let output = process(&svg, SvgPipeline::resvg_safe());
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let instance = document
+            .descendants()
+            .find(|node| node.has_tag_name("use"))
+            .unwrap();
+        let id = instance
+            .attribute("href")
+            .unwrap()
+            .strip_prefix('#')
+            .unwrap();
+        assert!(id.starts_with(&format!("{root}-")));
+        assert!(
+            identifiers.insert(id.to_owned()),
+            "separate diagram instances must not share label IDs"
+        );
+        let target = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(id))
+            .unwrap();
+        assert!(
+            target
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some("Same"))
+        );
+    }
+}
