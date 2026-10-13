@@ -1,0 +1,45 @@
+name: Arch Package Checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  arch-package:
+    name: arch-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build and test the AUR source package in Arch
+        run: |
+          docker run --rm --volume "$GITHUB_WORKSPACE:/workspace:ro" \
+            archlinux:base@sha256:3c64b538588416593f69a1aebd2f2ec0f2541b29159f32556fa7def2167147a0 \
+            bash -euc '
+              pacman -Syu --noconfirm --needed base-devel rust cmake ninja python fontconfig ttf-dejavu git
+              useradd --create-home builder
+              cp -r /workspace/distribution/arch /tmp/merman-package
+              chown -R builder:builder /tmp/merman-package
+              cd /tmp/merman-package
+              runuser -u builder -- makepkg --printsrcinfo > /tmp/merman.SRCINFO
+              diff -u .SRCINFO /tmp/merman.SRCINFO
+              runuser -u builder -- makepkg --cleanbuild --noconfirm
+              pacman -U --noconfirm ./*.pkg.tar.zst
+              python src/merman-0.9.0/scripts/verify_cli_installation.py \
+                --package-version 0.9.0 --prefix /usr --completion-layout nix \
+                --contract-root src/merman-0.9.0
+              cmp src/merman-0.9.0/crates/merman-cli/README.md /usr/share/doc/merman-cli/README.md
+              for f in LICENSE-APACHE LICENSE-MIT THIRD_PARTY_NOTICES.md; do
+                cmp "src/merman-0.9.0/$f" "/usr/share/doc/merman-cli/$f"
+              done
+              diff -qr src/merman-0.9.0/THIRD_PARTY_LICENSES /usr/share/doc/merman-cli/THIRD_PARTY_LICENSES
+              cmp src/merman-0.9.0/LICENSE-MIT /usr/share/licenses/merman-cli/LICENSE-MIT
+              cmp src/merman-0.9.0/LICENSE-APACHE /usr/share/licenses/merman-cli/LICENSE-APACHE
+              merman-cli --version
+              printf "flowchart LR\nA[Arch] --> B[Merman]\n" | merman-cli render - > /tmp/arch.svg
+              python -c "import xml.etree.ElementTree as E; assert E.parse(\"/tmp/arch.svg\").getroot().tag.endswith(\"svg\")"
+            '

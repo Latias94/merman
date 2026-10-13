@@ -1,0 +1,146 @@
+name: CLI Distribution Checks
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  gnu-archives:
+    name: gnu-archives (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Python for GNU baseline checks
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          cache-targets: false
+
+      - name: Build exact CLI artifact profiles
+        run: |
+          python3 scripts/artifact_profile_recipe.py cli-analysis --build-host --locked
+      - name: Install pinned cargo-dist on the GNU baseline
+        shell: bash
+        env:
+          DIST_INSTALLER_SHA256: b657cf8c04a8b7bc28f39d220f7e6dd11bbd2bdb072c552262bd9ccf597261b5
+        run: |
+          installer="$RUNNER_TEMP/cargo-dist-installer.sh"
+          curl --proto '=https' --tlsv1.2 -LsSf -o "$installer" \
+            https://github.com/axodotdev/cargo-dist/releases/download/v0.32.0/cargo-dist-installer.sh
+          printf '%s  %s\n' "$DIST_INSTALLER_SHA256" "$installer" | sha256sum --check
+          sh "$installer"
+
+      - name: Build and execute final GNU CLI and LSP archives
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
+          dist build "--tag=v$version" --artifacts=local --target="$TARGET"
+          python3 scripts/linux_binary_compatibility.py \
+            "target/$TARGET/dist/merman-cli" "target/$TARGET/dist/merman-lsp"
+          python3 scripts/verify_cli_release_archive.py \
+            "target/distrib/merman-cli-$TARGET.tar.xz" --target "$TARGET" \
+            --version "$version" --repo-root . --execute
+          python3 scripts/verify_lsp_release_archive.py \
+            "target/distrib/merman-lsp-$TARGET.tar.xz" --target "$TARGET" \
+            --version "$version" --repo-root . --execute
+
+      - name: Upload verified GNU archive bytes for container checks
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: cli-native-archives-${{ matrix.target }}
+          overwrite: true
+          path: |
+            target/distrib/merman-cli-${{ matrix.target }}.tar.xz
+            target/distrib/merman-cli-${{ matrix.target }}.tar.xz.sha256
+          if-no-files-found: error
+
+  setup-action:
+    name: setup-action (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm, macos-15, macos-15-intel, windows-2025-vs2026]
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+      - name: Test setup action
+        run: node --test distribution/github-action/*.test.mjs
+      - uses: ./distribution/github-action
+        with:
+          version: 0.9.0
+      - name: Run installed CLI
+        shell: bash
+        run: |
+          test "$(merman-cli --version)" = 'merman-cli 0.9.0'
+          printf 'flowchart LR\nA[Setup] --> B[Merman]\n' | merman-cli render - > setup.svg
+          python3 -c 'import xml.etree.ElementTree as E; assert E.parse("setup.svg").getroot().tag.endswith("svg")'
+
+  container:
+    name: container (${{ matrix.target }})
+    needs: gnu-archives
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          name: cli-native-archives-${{ matrix.target }}
+          overwrite: true
+          path: release-assets
+      - name: Verify and extract the native archive
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
+          python3 scripts/verify_cli_release_archive.py \
+            "release-assets/merman-cli-$TARGET.tar.xz" --target "$TARGET" \
+            --version "$version" --repo-root .
+          mkdir -p container-context
+          tar -xJf "release-assets/merman-cli-$TARGET.tar.xz" -C container-context --strip-components=1
+      - name: Build and run the native image without publishing
+        run: |
+          version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
+          docker build --file distribution/container/Dockerfile --tag merman-cli:ci container-context
+          python3 scripts/cli_container_smoke.py merman-cli:ci --version "$version"

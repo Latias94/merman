@@ -86,7 +86,8 @@ jobs:
         run: cargo run --locked -p xtask -- verify-editor-language-contract
 
   package:
-    needs: [validate-inputs, editor-language-contract]
+    # The reusable workflow still requires both independent jobs to succeed.
+    needs: validate-inputs
     name: package (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -100,7 +101,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             target: linux-x64
           - os: macos-15
             target: darwin-arm64
@@ -114,6 +115,21 @@ jobs:
         with:
           ref: ${{ needs.validate-inputs.outputs.source_ref }}
           persist-credentials: false
+
+      - name: Checkout GNU compatibility tooling
+        if: runner.os == 'Linux'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-tools
+          sparse-checkout: scripts/linux_binary_compatibility.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Setup Python
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -141,6 +157,10 @@ jobs:
         run: |
           python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked
           python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
+
+      - name: Verify GNU runtime compatibility
+        if: runner.os == 'Linux'
+        run: python3 .workflow-tools/scripts/linux_binary_compatibility.py target/dist/merman-cli target/dist/merman-lsp
 
       - name: Typecheck extension
         working-directory: tools/vscode-extension
