@@ -40,6 +40,7 @@ check is needed.
 Run:
 
 - `git diff --check` for every PR;
+- `python scripts/check_path_lengths.py` after staging added or renamed paths; keep detailed titles inside documentation;
 - `cargo fmt --all -- --check` when Rust, Cargo manifests, or Rust-generated sources changed;
 - focused `cargo nextest run` for affected crates/tests, using `--locked` when the workflow does;
 - `python3 -m py_compile` for changed Python scripts and the narrowest relevant Python unit tests.
@@ -159,22 +160,23 @@ consumer agree on the same feature/API contract.
 
 ## Validate workflow and performance changes
 
-For `.github/workflows/**` or workflow-contract script changes, run the targeted contract suites:
+For `.github/workflows/**` or workflow-contract script changes, select the contracts that own the
+changed behavior:
 
-```text
-python3 -m unittest \
-  scripts.test_ci_plan \
-  scripts.test_release_workflow_security \
-  scripts.test_ci_workflow_android_emulator \
-  scripts.test_fuzz_config
-```
+| Behavior | Contract suite |
+| --- | --- |
+| CI owner selection and fail-closed aggregation | `scripts.test_ci_plan` |
+| Release permissions, provenance and deployment separation | `scripts.test_release_workflow_security` |
+| Android emulator lifecycle | `scripts.test_ci_workflow_android_emulator` |
+| Fuzz recipes and deterministic/randomized lifecycle | `scripts.test_fuzz_config` |
 
-Run `actionlint` and `zizmor --min-severity high .` at the repository-pinned versions when they are
-installed; CI remains the exact-identity owner when they are unavailable locally. The Python suites
-cover only repository-specific behavior: owner selection and fail-closed aggregation, read-only PR
-closure, deployment separation, Android emulator ownership, and the deterministic-versus-randomized
-fuzz lifecycle. Validate only the workflow files touched by the change and keep those behavior
-contracts in the same commit as a changed gate condition.
+Run the selected suites with `python -m unittest <suite>`. Add the affected publisher's protocol
+or recovery tests when its implementation changes.
+
+Run `actionlint <changed-workflow-paths>` and `zizmor --min-severity high <changed-workflow-paths>`
+at the versions pinned by the workflow-analysis job. When shared analyzer configuration changes,
+run the full analyzer scope as CI does. CI remains the exact-identity owner when the tools are
+unavailable locally. Keep behavior contracts in the same commit as changed gate conditions.
 
 For `tools/bench/**` changes, run the Python performance contracts:
 
@@ -240,7 +242,7 @@ Before committing or opening a PR:
 - separate source, generated, and workflow changes into focused Conventional Commits;
 - summarize changed public contracts, feature/dependency impact, checks run, and intentional skips;
 - keep the PR body free of Compound Engineering badges;
-- push or open the PR only when explicitly authorized.
+- use the existing request's commit/push/PR authorization; obtain any missing scope before its external write.
 
 Completion criterion: the branch is reviewable, generated outputs are fresh, evidence is reproducible,
 and no publication or release action was performed implicitly.

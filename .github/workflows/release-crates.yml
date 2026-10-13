@@ -339,6 +339,7 @@ jobs:
     permissions:
       actions: read
       contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -441,7 +442,6 @@ jobs:
 
       - name: Upload crates to crates.io
         env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
           PRIOR_RUN_ID: ${{ steps.recovery.outputs.run_id }}
           PRIOR_ATTEMPT: ${{ steps.recovery.outputs.attempt }}
           RECOVERY_DOWNLOAD_OUTCOME: ${{ steps.download-recovery.outcome }}
@@ -460,6 +460,7 @@ jobs:
             fi
           fi
           python3 trusted/scripts/crates_io_release.py publish-receipted \
+            --trusted-publishing \
             --publication-run-id "$GITHUB_RUN_ID" --publication-attempt "$GITHUB_RUN_ATTEMPT" \
             --repo-root source \
             --source-sha "$SOURCE_SHA" \
