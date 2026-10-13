@@ -51,6 +51,11 @@
       "svg_sha256": "85bd0fc5d8730a678be2c3d3d92748e45f13d58781366f1af4618a9a0e3ec980",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
+    "local_exception_group_postfix": {
+      "input_sha256": "1f6bcdf6e80e22f91a40040f963233f58b8d1432f7703dbdb56de52ff11d75fb",
+      "svg_sha256": "67363b89e209da6e80836e4c887f31038336a833aa0d3d87f0416668f1da454d",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
     "upstream_cypress_railroad_spec_renders_iso_14977_notation_007": {
       "input_sha256": "d87b477e2ecbe33c723845bdd62e02ed629ef36f10085532c213d533d5c8be6c",
       "svg_sha256": "fbd86e1b8abca5efb48e17cd2a341ca950e951a0da649da1f9e58a97fa61c637",

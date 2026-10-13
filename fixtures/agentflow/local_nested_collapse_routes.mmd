@@ -1,0 +1,16 @@
+---
+config:
+  layout: dagre
+  htmlLabels: false
+---
+agentflow-beta LR
+flow outer["Outer"]
+  start["Start"]@{ shape: input }
+  flow inner["Inner"]@{ view: collapsed }
+    task["Hidden task"]@{ shape: tool }
+    task loop@--> task
+  end
+  start enter@--> task
+end
+connector api["API"]
+task exit@--> api

@@ -51,6 +51,11 @@
       "svg_sha256": "c2b444c6acd655ba053a5cfa0952eb13a4268fa607bbb54081a8476512bbd435",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
+    "local_elk_boundary_label_guard": {
+      "input_sha256": "96656c9924749c489f812607c204c81aa12020a9667d44b967a3ddf69d58fa87",
+      "svg_sha256": "66d62dd845074ba68e92de3b5e8cb49dae9f0e4e1c1925c5d35ddc6714502783",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
     "shapes-and-notes": {
       "input_sha256": "c3ec9b691c5e1cc418c06c5f84be2d0848851b8772cec3f83cc76c9004c20b17",
       "svg_sha256": "408fcb09eeef9ecffa75fa83bcaa9072a8b8b3b00207dc3f443114c356fc4eca",

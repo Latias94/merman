@@ -61,6 +61,11 @@
       "svg_sha256": "a9557f902fc8ab1bfa9bdcc3d93174ddfe5237c96cca2c4b854a87aeec293b51",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     },
+    "local_nested_mixed_lane_security": {
+      "input_sha256": "99429778e8f5c51326c106483792fe8077286e7124a3445f27bed1347bd4df85",
+      "svg_sha256": "bb566adcd1c745c7fc180af4188f51ded015f84ef7dd44795578c88617d605d3",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
     "upstream_7_car_sales_constr": {
       "input_sha256": "e09627ba3cdfba2ec7bfabf47128876d29a62f5cf0a9dad02052efd3854d6336",
       "svg_sha256": "e3d866817456478deba0cb27a49a5af19c9dd5d7b2b1f1a14d6b73b65c822e9b",

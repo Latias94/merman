@@ -46,6 +46,11 @@
   },
   "complete": true,
   "fixtures": {
+    "local_numeric_groups_bounds": {
+      "input_sha256": "3819f8ed45e7568f8c3836635827f7a1f8e91d3b248f86d6fcaffe8517757be1",
+      "svg_sha256": "8a7304b59921b3f9ea153ef855143efb085bfce572c7bf7fad683c9d30caf7ab",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
     "repetition_optional_numval": {
       "input_sha256": "487f44a8adf2240178be34f5a2b20556daf9f1d96d1056a2cd227620d1ab4074",
       "svg_sha256": "db1e017edf586e69b34433a1d8a8bf3b9641039f0a3d29fdc47271223420c4ca",

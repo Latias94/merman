@@ -1,0 +1,6 @@
+railroad-abnf-beta
+title Numeric groups and bounds
+accTitle: ABNF numeric alternatives
+accDescr: Fixed and optional repetition around numeric values and named rules.
+octets = 2(%x41.42 / %d67-90) [ 0*1tail ] ;
+tail = %b01000001 / %X30-39 ;

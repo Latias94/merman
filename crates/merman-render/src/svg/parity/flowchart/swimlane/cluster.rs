@@ -215,9 +215,19 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     );
     let data_look = flowchart_config_look(ctx.config);
     let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id).or_else(|| {
-        (subgraph.is_none()
-            && super::super::agentflow::flowchart_palette_len(ctx.config.as_value()) > 0)
-            .then_some(0)
+        let palette_len = super::super::agentflow::flowchart_palette_len(ctx.config.as_value());
+        (subgraph.is_none() && palette_len > 0).then(|| {
+            // helpers.ts appends the synthetic lane with max(existing colorIndex) + 1.
+            // Nested and collapsed visible containers retain their declaration slots.
+            ctx.model
+                .subgraphs
+                .iter()
+                .filter(|subgraph| ctx.model.collapsed_replacement(&subgraph.id).is_none())
+                .filter_map(|subgraph| ctx.model.subgraph_color_ordinal(&subgraph.id))
+                .max()
+                .map_or(0, |ordinal| ordinal.saturating_add(1))
+                % palette_len
+        })
     });
     let _ = write!(out, r#" data-look="{}""#, escape_xml_display(data_look));
     if let Some(color_slot) = color_slot {

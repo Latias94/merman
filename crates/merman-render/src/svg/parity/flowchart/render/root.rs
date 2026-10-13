@@ -617,7 +617,34 @@ fn initialize_flowchart_root_frame<'a>(
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
         out.push_str(r#"<g class="edgeLabels">"#);
-        if !ctx.edge_html_labels {
+        if !ctx.edge_html_labels
+            && !crate::flowchart::flowchart_dagre_merges_self_loop_segments(&ctx.model.keyword)
+        {
+            // Unmerged Agentflow helper edges use insertEdgeLabel for every Graphlib edge.
+            // Its SVG empty-label background remains immediately after that edge's wrapper.
+            for e in &edges {
+                ctx.checkpoint_emit()?;
+                let position = render_flowchart_edge_label(
+                    out,
+                    ctx,
+                    e,
+                    origin_x,
+                    frame.content_origin_y,
+                    &*session.edge_cache,
+                );
+                if edge_label_is_empty(ctx, e) {
+                    out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+                }
+                record_edge_label_position(
+                    &mut session.edge_label_positions,
+                    ctx,
+                    &e.id,
+                    position,
+                    origin_x,
+                    frame.content_origin_y,
+                );
+            }
+        } else if !ctx.edge_html_labels {
             // Mermaid's `createText(..., useHtmlLabels=false)` always creates a background `<rect>`,
             // but for empty labels it returns the `<text>` element instead of the wrapper `<g>`.
             // The unused wrapper `<g>` (with the `background` rect) remains as a direct child

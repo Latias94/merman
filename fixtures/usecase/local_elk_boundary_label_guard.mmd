@@ -1,0 +1,20 @@
+---
+config:
+  layout: elk
+  look: classic
+  htmlLabels: false
+  usecase:
+    minNodeWidth: 120
+    usecaseFontSize: 12
+---
+%% Local compound Usecase variant of Mermaid 12.2 render.ts's label-clearance guard (#8368).
+usecase-beta
+direction LR
+systemBoundary G(Group)
+  A[Draft]
+  B[Review]
+end
+C[Published]
+A --> B
+B -- approved --> C
+B -- changes --> A

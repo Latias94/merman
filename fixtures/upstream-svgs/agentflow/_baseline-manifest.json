@@ -55,6 +55,11 @@
       "input_sha256": "5b64193bfd9af0c87e8fcc83fff8e20c510a98190f706a617cdcd09e3e890a7e",
       "svg_sha256": "efd8fe9d33a88b68b878482a13ec3b5b2cbe02a213d287d1e7d0abc72b115222",
       "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
+    },
+    "local_nested_collapse_routes": {
+      "input_sha256": "3e9ae906a1106141a39959377667ccbbeeb27f6c7fb6d35e623380d035bb4142",
+      "svg_sha256": "374f54fe822a7aafa4713d4097528216bc270868247e56d42d1c49646f361ff9",
+      "renderer_profile": "owned-runtime-seeded-puppeteer-seed-1-fixed-date-1704067200000"
     }
   },
   "excluded": {}

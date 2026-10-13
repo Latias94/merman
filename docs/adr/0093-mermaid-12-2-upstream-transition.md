@@ -100,6 +100,14 @@ the complete ELK #8368 issue, and mixed-order/non-default-width Swimlane cases. 
 family-local inputs preserve narrow SVG Markdown and HandDrawn circle evidence. They found
 source-backed rect-padding and Rough circle branch omissions; neither fix broadens comparators.
 
+Six follow-up primary inputs cover ABNF/EBNF/PEG grammar combinations, nested Agentflow collapse
+and self-loops, a single-boundary Usecase ELK guard rejection, and nested/explicit/synthetic Swimlane
+lanes with strict link filtering. Their actual selected-runtime SVGs expose further source omissions:
+Agentflow is absent from Dagre's self-loop merge allowlist; Usecase SVG label backgrounds contribute
+to provider and guard dimensions; Swimlane synthetic colors follow declaration slots, and label
+movement follows the actual updated-path signal. These repairs preserve the source graph, root
+bounds and existing comparator policies. The primary matrix now has 3,761 inputs and 3,737 SVGs.
+
 HandDrawn Circle and DoubleCircle now use the existing Rough generator with the source fill,
 ring order, classes and per-ring stroke widths. Each ring charges the existing work meter before
 sampling or hachure allocation and checks cancellation before generation. Source-shared curve
@@ -121,7 +129,7 @@ captured when the realm is created; live UI-language synchronization is outside 
 
 ## Verification boundary
 
-The final frozen source passes workspace nextest (9,427 passed, seven existing ignored tests),
+The initial aligned revision passes workspace nextest (9,427 passed, seven existing ignored tests),
 formatting, all-target/all-feature Clippy, 652 feature combinations and 36 artifact recipes.
 `xtask verify --strict` completes successfully, including documentation, three-mode DOM comparison,
 five Web/WASM recipes, 129 Web tests, 37-family Web consumer/DOM-safety smoke, 449 Playground tests,
@@ -133,6 +141,15 @@ After the final Rough resource fix, the verifier is rebuilt from the frozen sour
 and trusted-base reference verification, generated projections, and all 37 families in
 `structure`, `parity`, and `parity-root` pass again. Exact command evidence is retained in the
 2026-10-13 engineering verification shards; temporary raw logs remain under `target/mermaid-12.2/`.
+
+The coverage follow-up passes workspace nextest with all features (9,716 tests, eighteen existing
+feature/diagnostic skips). After the last source review fixes, 1,813 affected renderer tests,
+all-target/all-feature Clippy and the release-mode 37-family three-mode DOM gate pass. Materialized
+and trusted-base reference verification and generated projections also pass, as do the final
+five-package Web/WASM build, Web tests, consumer and DOM-safety smoke. Chromium replay
+confirms that both formerly blocking Swimlane inputs have no geometry or structural paint outside
+their roots. Windows retains the existing platform-bound filtered-title diagnostic; Linux CI owns
+its exact residual replay against the pushed revision.
 
 The selected bundle, base-bound receipt, regenerated runtime projections and actual SVG generation
 own the reference identity. Exact gate results and residual review belong to the verified revision

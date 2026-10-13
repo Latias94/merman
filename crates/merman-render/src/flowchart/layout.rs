@@ -1494,6 +1494,8 @@ fn layout_flowchart_with_model(
     let mut self_loop_label_node_ids: Vec<String> = Vec::new();
     let mut self_loop_label_node_id_set: std::collections::HashSet<String> =
         std::collections::HashSet::new();
+    let merge_self_loops = super::flowchart_dagre_merges_self_loop_segments(&model.keyword);
+    let mut unmerged_first_slots = HashMap::new();
     for (projected_index, e) in projected_edges.iter().enumerate() {
         let edge_index = projected_edge_owner_indices[projected_index];
         if e.from != e.to {
@@ -1514,27 +1516,45 @@ fn layout_flowchart_with_model(
 
         // Mermaid clears the label text on the end segments, but keeps the label (if any) on the
         // mid edge (`edgeMid` is a structuredClone of the original edge without label changes).
-        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge1));
-        render_edge_owner_indices.push(edge_index);
-        render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
-            logical_edge_id: e.id.clone(),
-            node_id: e.from.clone(),
-            order: 0,
-        }));
-        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge_mid));
-        render_edge_owner_indices.push(edge_index);
-        render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
-            logical_edge_id: e.id.clone(),
-            node_id: e.from.clone(),
-            order: 1,
-        }));
-        render_edges.push(std::borrow::Cow::Owned(helper_edges.edge2));
-        render_edge_owner_indices.push(edge_index);
-        render_edge_self_loop_meta.push(Some(FlowchartSelfLoopSegmentMeta {
-            logical_edge_id: e.id.clone(),
-            node_id: e.from.clone(),
-            order: 2,
-        }));
+        let first_slot = if merge_self_loops {
+            None
+        } else {
+            work_control.charge_adapter(1)?;
+            // Graphlib setEdge overwrites a parallel helper triple without moving its first
+            // insertion position. Keep both its geometry and label owner at those same slots.
+            Some(
+                *unmerged_first_slots
+                    .entry(e.from.as_str())
+                    .or_insert(render_edges.len()),
+            )
+        };
+        for (order, segment) in [
+            helper_edges.edge1,
+            helper_edges.edge_mid,
+            helper_edges.edge2,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let meta = Some(FlowchartSelfLoopSegmentMeta {
+                logical_edge_id: e.id.clone(),
+                node_id: e.from.clone(),
+                order: order as u8,
+            });
+            let slot = first_slot
+                .map(|first| work_control.checked_add(first, order))
+                .transpose()?
+                .unwrap_or(render_edges.len());
+            if slot == render_edges.len() {
+                render_edges.push(std::borrow::Cow::Owned(segment));
+                render_edge_owner_indices.push(edge_index);
+                render_edge_self_loop_meta.push(meta);
+            } else {
+                render_edges[slot] = std::borrow::Cow::Owned(segment);
+                render_edge_owner_indices[slot] = edge_index;
+                render_edge_self_loop_meta[slot] = meta;
+            }
+        }
     }
     let FlowchartLayoutSettings {
         nodesep,
@@ -3969,17 +3989,25 @@ fn layout_flowchart_with_model(
         });
     }
 
-    let merge_work = work_control.checked_add(
-        work_control.checked_add(model.edges.len(), out_edge_candidates.len())?,
-        out_nodes.len(),
-    )?;
-    work_control.charge_adapter(merge_work)?;
-    let mut out_edges = merge_flowchart_self_loop_segments(
-        &projected_edges,
-        &out_nodes,
-        &diagram_direction,
-        out_edge_candidates,
-    );
+    let mut out_edges = if merge_self_loops {
+        let merge_work = work_control.checked_add(
+            work_control.checked_add(model.edges.len(), out_edge_candidates.len())?,
+            out_nodes.len(),
+        )?;
+        work_control.charge_adapter(merge_work)?;
+        merge_flowchart_self_loop_segments(
+            &projected_edges,
+            &out_nodes,
+            &diagram_direction,
+            out_edge_candidates,
+        )
+    } else {
+        work_control.charge_adapter(out_edge_candidates.len())?;
+        out_edge_candidates
+            .into_iter()
+            .map(|candidate| candidate.edge)
+            .collect()
+    };
 
     // Mermaid's flowchart renderer uses shape-specific intersection functions for edge endpoints
     // (e.g. diamond nodes). Our Dagre-ish layout currently treats all nodes as rectangles, so the

@@ -11,6 +11,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   including HandDrawn circle paths with resource checks before generation;
   ELK terminal straightening preserves label clearance. Swimlane nodes retain source order, title
   bands avoid boundary rails, terminal routes remain separated, and cluster IDs include the diagram ID.
+- Preserve Agentflow's unmerged Dagre self-loop segments and SVG label order. Usecase SVG edge
+  backgrounds participate in layout and label clearance, and classic markers retain their source
+  variant. Swimlane synthetic colors follow nested declaration slots; unchanged pinned routes keep
+  their label anchors inside the root viewport.
 - Playground comparison keeps fallback fonts consistent across its rendering panes, including C4
   on Windows.
 - The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds
