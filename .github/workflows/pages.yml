@@ -17,8 +17,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build playground
+  web-package:
+    name: Build Web package
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -34,38 +36,21 @@ jobs:
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: pages-web-wasm
 
       - name: Setup Node
         uses: actions/setup-node@v7.1.0
         with:
           node-version: "24.21.0"
           cache: npm
-          cache-dependency-path: |
-            platforms/web/package-lock.json
-            playground/package-lock.json
-            playground/tests/package-lock.json
+          cache-dependency-path: platforms/web/package-lock.json
 
       - name: Install npm toolchain
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
-      - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.87.27
-        with:
-          tool: wasm-tools@1.261.0
-
       - name: Install wasm-pack
         run: cargo install wasm-pack --version 0.15.0 --locked
-
-      - name: Verify deployable browser projections
-        if: github.event_name != 'pull_request' && inputs.ci_only != true
-        run: |
-          cargo run --locked -p xtask -- verify-mermaid-reference
-          cargo run --locked -p xtask -- verify-capability-surface
-          cargo run --locked -p xtask -- verify-editor-language-contract
-          cargo run --locked -p xtask -- verify-text-measurement-protocol
-          cargo run --locked -p xtask -- verify-web-diagram-catalog
-          cargo run --locked -p xtask -- verify-resource-contract
-          cargo run --locked -p xtask -- verify-playground-example-catalog
 
       - name: Install web package dependencies
         run: npm ci --prefix platforms/web
@@ -76,12 +61,143 @@ jobs:
       - name: Verify and smoke web package
         run: npm run smoke --prefix platforms/web
 
+      - name: Upload built Web package
+        id: upload
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: pages-web-package-${{ github.run_attempt }}
+          path: |
+            platforms/web/packages
+            platforms/web/pkg
+          if-no-files-found: error
+          retention-days: 7
+
+  budget-tool:
+    name: Build Web budget tool
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact-id }}
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_INCREMENTAL: '0'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: pages-web-budget-tool
+
+      - name: Build optimized budget tool
+        run: cargo build --locked --release -p xtask
+
+      - name: Setup Node for deployable browser projections
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+
+      - name: Verify deployable browser projections
+        if: github.event_name != 'pull_request' && inputs.ci_only != true
+        run: |
+          target/release/xtask verify-mermaid-reference
+          target/release/xtask verify-capability-surface
+          target/release/xtask verify-editor-language-contract
+          target/release/xtask verify-text-measurement-protocol
+          target/release/xtask verify-web-diagram-catalog
+          target/release/xtask verify-resource-contract
+          target/release/xtask verify-playground-example-catalog
+
+      - name: Upload budget tool
+        id: upload
+        uses: actions/upload-artifact@v7.0.2
+        with:
+          name: pages-web-budget-tool-${{ github.run_attempt }}
+          path: target/release/xtask
+          if-no-files-found: error
+          retention-days: 7
+
+  size-budgets:
+    name: Check Web package size budgets
+    needs: [web-package, budget-tool]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download built Web package
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.web-package.outputs.artifact_id }}
+          path: platforms/web
+
+      - name: Download budget tool
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.budget-tool.outputs.artifact_id }}
+          path: target/release
+
+      - name: Install wasm-tools
+        uses: taiki-e/install-action@v2.87.27
+        with:
+          tool: wasm-tools@1.261.0
+
       - name: Check final Web package WASM size budgets
         run: |
-          cargo run --locked -p xtask -- wasm-size-matrix \
+          chmod +x target/release/xtask
+          target/release/xtask wasm-size-matrix \
             --surface web \
             --web-package-root platforms/web/packages \
             --budget-file docs/release/WASM_SIZE_BUDGETS.json
+
+  build:
+    name: Build playground
+    needs: web-package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          shared-key: pages-playground-tools
+          cache-targets: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: |
+            playground/package-lock.json
+            playground/tests/package-lock.json
+
+      - name: Install npm toolchain
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+
+      - name: Install wasm-pack
+        run: cargo install wasm-pack --version 0.15.0 --locked
+
+      - name: Download built Web package
+        uses: actions/download-artifact@v8.0.2
+        with:
+          artifact-ids: ${{ needs.web-package.outputs.artifact_id }}
+          path: platforms/web
 
       - name: Install playground dependencies
         run: npm ci --prefix playground
