@@ -171,9 +171,10 @@ reuse pre-fix performance numbers.
 
 ## 7. Integrate and Hand Off
 
-Commit only the winning implementation and its regression tests. Stage exact owned paths and leave
-other worktree changes untouched. Include the experiment ledger path and benchmark command in the
-handoff.
+Prepare only the winning implementation and its regression tests for integration. Stage exact
+owned paths and leave other worktree changes untouched. Commit or push within the existing
+authorization; otherwise hand off the reviewed diff. Include the experiment ledger path and
+benchmark command in the handoff.
 
 Report:
 

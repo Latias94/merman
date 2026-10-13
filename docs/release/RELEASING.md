@@ -14,6 +14,33 @@ prerelease component such as `0.8.0-alpha.5`, `0.8.0-beta.1`, or `0.8.0-rc.1` us
 channel. Do not describe the project or a `0.x` release as alpha solely because its major version
 is zero.
 
+## Release Stages And Evidence
+
+Keep each selected delivery surface in one observable state:
+
+| State | Required evidence |
+| --- | --- |
+| Selected | Maintainer request, version and delivery scope |
+| Prepared | Reviewed source and packaged documentation, owner checks and upload constraints |
+| Frozen | Immutable source/tree plus exact artifact and producing run/attempt |
+| Submitted | Identified upload attempt or upstream PR |
+| Accepted | Registry acceptance or upstream merge |
+| Available | Exact version and matching artifact served by the owning registry or release |
+
+A successful preflight proves preparation, and a green upstream PR proves its checks. Neither
+establishes registry availability. An upstream merge may precede catalog/API propagation. Record
+these states and outstanding conditions in [Publish Order](PUBLISH_ORDER.md); complete checklist
+items only for the state actually observed.
+
+Carry the maintainer's authorization forward for the same version, surfaces and necessary recovery.
+Resolve the immutable source during preparation. A new surface, conflicting artifact, tag move or
+incident yank needs its own explicit decision. The current request and upstream contribution rules
+determine authorization; a cached status document does not.
+
+Prepare final user documentation before freezing a package. Record run IDs, registry observations
+and pending channels in publication receipts. Keep tool versions and build recipes in their owning
+workflows/descriptors, and use the release skill for the sequence and conditional checks.
+
 ## Release Workflows
 
 | Workflow | Publishes | Channel |
@@ -76,7 +103,7 @@ For WinGet and Scoop, run the independent [CLI registry candidate workflow](../r
 | --- | --- |
 | crates.io publish | Trusted Publishing / OIDC for each crate, its owning release workflow, and the `crates.io` environment |
 | crates.io incident yank | Dedicated `CARGO_REGISTRY_YANK_TOKEN` secret with yank permission in the `crates.io` environment |
-| pub.dev | Trusted Publishing / OIDC configured for `merman`, this repository, `release-flutter.yml`, and `flutter-v{{version}}` |
+| pub.dev | Automated publishing configured for `merman`, this repository, tag pattern `flutter-v{{version}}`, and the `pub.dev` environment |
 | PyPI | Trusted Publishing / OIDC configured for `merman` and `release-python.yml` |
 | npm | Trusted Publishing / OIDC configured for every admitted `@mermanjs/web*` and `@mermanjs/node*` package plus `@mermanjs/tree-sitter-mermaid`, this repository, each owning release workflow, and the `npm` environment |
 | GitHub Release assets | `GITHUB_TOKEN` from Actions |
@@ -89,6 +116,10 @@ Existing Trusted Publisher bindings remain valid across version upgrades with th
 repository, workflow and environment. A newly admitted npm package or PyPI/pub.dev project needs
 its own binding before its first automated upload. Homebrew, Scoop and WinGet use external
 repository review and require no registry Trusted Publisher binding.
+
+pub.dev's publisher settings bind the repository, version tag pattern and optional required
+environment. They do not expose a workflow-filename field. The repository owns the
+`release-flutter.yml` implementation that handles the matching tag.
 
 For crates.io, register owner `Latias94`, repository `merman`, environment `crates.io`, and the
 workflow filename belonging to each crate:
@@ -107,13 +138,14 @@ remain unauthenticated; the operator removes OIDC request credentials from Cargo
 environments. Authentication failure does not record an attempted upload or fall back to a secret.
 
 An initial upload of a new crate still requires a maintainer API token before its Trusted Publisher
-can be registered. The new `merman-unicode-linebreak 0.9.0` bootstrap already completed through
-the previous token-authenticated owner. Its later versions use the workspace OIDC binding.
+can be registered. Inspect the release's package plan for new names, bootstrap each admitted new
+crate in dependency order, then configure its owning workflow binding for later versions. Record
+the exact accepted version and checksum in Publish Order.
 
-The maintainer reported configuring the Rust bindings on 2026-10-13. Local workflow and mocked
-protocol/recovery checks validate this integration without uploading another version; they do not
-prove live token exchange or registry upload. Confirm those on the next new-version publication,
-then remove the old publishing secret and optionally enforce trusted-only uploads. The dedicated
+Local workflow and mocked protocol/recovery checks validate the integration without uploading
+another version; they do not prove live token exchange or registry upload. Confirm those on the
+next new-version publication, then remove the old publishing secret and optionally enforce
+trusted-only uploads. Keep the observed authentication state in Publish Order. The dedicated
 yank credential remains separate: Trusted Publishing does not authorize incident yanks.
 
 If a crates.io run stops after publishing only part of a release, keep the tag immutable and retain
@@ -191,13 +223,20 @@ For an npm-only alpha test, `release-node.yml` treats `release_tag` as the packa
 same-named workspace tag; the workflow records the resolved commit in the package-group manifest,
 and release notes must not claim that separately published channels are byte-identical.
 
-The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with Node 24.21.0 and
-npm 12.0.2, enters the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
+The npm publish job is intentionally narrow: it runs on GitHub-hosted Ubuntu with the owning
+workflow's pinned Node/npm versions, enters the `npm` environment, requests `id-token: write`, and checks out the trusted workflow revision plus
 the immutable source commit without credentials. The source checkout supplies only the package
 surface descriptor; the trusted revision verifies the downloaded package-group hashes before
 publishing missing packages directly under the final tag. The job must not build, test, or execute
 source scripts or scripts contained in the downloaded artifact. Do not add `NPM_TOKEN`,
 `NODE_AUTH_TOKEN`, `--provenance`, `provenance=false`, or `NPM_CONFIG_PROVENANCE=false`.
+
+Keep preflight and publisher toolchains aligned. Node GNU/musl container images define libc and
+native compatibility baselines independently of the newer host packaging tools. Refresh them only
+with equivalent platform coverage and artifact evidence; floating tags can change package bytes
+between attempts. Apple compatibility likewise requires the exact compiler-floor owner lane on
+the selected source. A newer Swift compiler does not prove that floor; move the lane to an
+equivalent supported runner/toolchain when its runner becomes unavailable.
 
 The Apple workflow currently publishes a zipped `Merman.xcframework` and checksum as GitHub Release
 assets. It does not yet make the repository directly consumable as a remote SwiftPM package with a
@@ -220,6 +259,33 @@ Before submitting a Homebrew update, follow its current
 AI-assisted changes and PR prose require the contributor's personal review and tool/model
 disclosure; the contributor must answer subsequent maintainer questions and review comments
 without AI assistance. Prepare the complete patch and PR description for that review first.
+
+## External Package-Manager Updates
+
+Observe the current registry and existing PRs before submitting an update. Homebrew's autobump and
+Scoop's `checkver`/`autoupdate` normally follow new stable releases. Track their bot changes and
+intervene when an update is missed, checks fail, or installation/dependency logic needs changing.
+When the bot has already published the same version, close a duplicate manual update with the
+upstream publication evidence. PR closure alone does not mean the release is missing.
+
+Conda-forge's version bot proposes feedstock updates; inspect every advertised platform's build
+before acceptance. When maintainers permit edits to the bot's branch, append the focused fix there
+and preserve its PR/history. An `automerge` label requests merging after green CI; apply it only
+within the authorized merge scope. Repair the first causal recipe or dependency failure using upstream build
+documentation. Preserve compiler hardening and the supported target matrix. A local recipe render
+or dependency solve is useful preparation; native CI owns cross-platform compilation and package
+tests that the local host cannot run.
+
+For unaccepted WinGet or Nixpkgs initial-package submissions, update the existing maintainer PR to
+the new release instead of opening a second initial submission. Preserve package identity and
+upstream review history. Verify current CLA/review status rather than treating historical bot
+comments as active blockers. Keep source archive checksums, Nix NAR hashes and installed-artifact
+checks distinct. Follow each upstream repository's current contribution and AI-assistance rules.
+
+Use the [CLI registry candidate contract](../releasing/CLI.md#scoop-and-winget-draft-candidate-contract)
+for WinGet/Scoop validation and the tag-owned CLI verifier for installed capabilities, completions,
+manual pages and legal material. Candidate generation, upstream merge and registry propagation are
+separate results. Record each result and its remaining acceptance condition in Publish Order.
 
 ## 0.9.0 Preparation Checklist
 

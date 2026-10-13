@@ -58,9 +58,10 @@ python3 tools/bench/compare_self.py \
   --json-out target/bench/self-comparison.json
 ```
 
-Run separate parse, layout, render, and end-to-end filters when attributing a regression. Repeat
-three times and alternate checkout order. Release ranges with renamed features require explicit
-same-capability lanes; the helper assumes the current `svg` vocabulary.
+Run separate parse, layout, render, and end-to-end filters when attributing a regression. Three
+alternating repeats are exploratory evidence; use `BENCHMARKING.md`'s calibrated, power-sized
+confirmation schedule for an acceptance decision. Release ranges with renamed features require
+explicit same-capability lanes; the helper assumes the current `svg` vocabulary.
 
 Use exactly one stage group per invocation. The helper expands `group/(fixture_a|fixture_b)`, but it
 does not expand `(parse|layout|render)/(fixture_a|fixture_b)`. Criterion 0.8 can treat the latter as
@@ -168,9 +169,12 @@ Use focused `cargo nextest` during iteration. For shared behavior, use:
 
 ```console
 cargo run -p xtask -- verify --strict
-cargo run -p xtask -- compare-all-svgs --check-dom --dom-mode parity-root --dom-decimals 3 --diagnostic-browser-text-layout
 python3 tools/bench/test_perf_contracts.py
 ```
+
+Strict verification includes all release DOM modes. Run `compare-all-svgs` with a focused mode
+separately when diagnosing its failure, rather than repeating `parity-root` after a successful
+strict run.
 
 Consult `docs/performance/BENCHMARKING.md` for semantics, `docs/performance/RUNBOOK.md` for
 execution order, and `docs/performance/PERF_PLAN.md` for current priorities and thresholds.

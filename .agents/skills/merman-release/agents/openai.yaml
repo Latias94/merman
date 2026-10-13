@@ -1,4 +1,4 @@
 interface:
   display_name: "Merman Release"
-  short_description: "Prepare and recover Merman releases"
-  default_prompt: "Use $merman-release to prepare a new Merman version, write release notes, run preflight, tag, publish platform workflows, and verify registries."
+  short_description: "Prepare, publish, verify and recover Merman releases"
+  default_prompt: "Use $merman-release to complete the requested release surfaces through their owner workflows, retain frozen artifacts during recovery, and verify registry delivery within the existing authorization."

@@ -117,25 +117,11 @@ allowlist. Keep downloaded checkouts and caches out of commits.
 For retained Mermaid Cypress evidence, use the executable collector in
 `tools/upstreams/cypress-collector/`. The repository does not maintain a Rust JavaScript evaluator:
 the collector must execute the pinned Mermaid runtime and transpilation path. Install the pinned
-checkout with lifecycle scripts disabled, run the collector through the exact Node and pnpm
-versions declared by the collector scope catalog, and collect both retained scopes:
-
-```bash
-cd repo-ref/mermaid
-npx --yes --package=node@22.14.0 --package=pnpm@10.30.3 -- \
-  pnpm install --frozen-lockfile --ignore-scripts
-cd ../..
-
-npx --yes --package=node@22.14.0 --package=pnpm@10.30.3 -- \
-  node tools/upstreams/cypress-collector/collect.mjs \
-  --scope new-family \
-  --output target/upstream-cypress-new-family.json
-
-npx --yes --package=node@22.14.0 --package=pnpm@10.30.3 -- \
-  node tools/upstreams/cypress-collector/collect.mjs \
-  --scope flowchart-elk \
-  --output target/upstream-cypress-flowchart-elk.json
-```
+checkout with lifecycle scripts disabled. Read `nodeVersion` and `pnpmVersion` from
+`tools/upstreams/cypress-collector/scopes.json`, then use the commands in the collector's
+[README](../../../tools/upstreams/cypress-collector/README.md) with those exact versions. Collect
+both retained scopes, `new-family` and `flowchart-elk`, with outputs under `target/`. The catalog
+and collector own toolchain validation; keep version literals out of this skill.
 
 Review call additions, removals, skips, runtime effects, and supplemental fixture identities before
 projecting either collection. Project reviewed observations with
@@ -241,7 +227,6 @@ cargo run -p xtask -- verify-web-diagram-catalog
 cargo run -p xtask -- check-alignment
 cargo run -p xtask -- verify-lalrpop-parsers
 cargo run -p xtask -- verify --strict
-cargo run -p xtask -- wasm-size-matrix --budget-file docs/release/WASM_SIZE_BUDGETS.json
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
