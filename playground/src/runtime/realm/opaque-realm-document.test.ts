@@ -56,3 +56,30 @@ test("opaque realm document rejects mismatched or HTML-breaking artifacts", () =
     /artifact is invalid/
   );
 });
+
+test("opaque realm shell preserves host language for compare and benchmark font fallback", () => {
+  for (const kind of ["compare", "benchmark"] as const) {
+    for (const language of ["en", "zh-Hant-TW", ""]) {
+      const document = buildOpaqueRealmDocument(
+        { kind, realmId: "r".repeat(43), bootNonce: "b".repeat(43) },
+        { ...ARTIFACT, id: kind },
+        language,
+      );
+      assert.ok(document.startsWith(`<!doctype html><html lang="${language}">`));
+      assert.match(document, new RegExp(`script-src '${ARTIFACT.cspHash}' blob:`));
+      assert.ok(document.includes(`<script>${SCRIPT}</script>`));
+    }
+  }
+});
+
+test("opaque realm shell escapes host language without adding executable attributes", () => {
+  const document = buildOpaqueRealmDocument(
+    { kind: "compare", realmId: "r".repeat(43), bootNonce: "b".repeat(43) },
+    ARTIFACT,
+    'en" onload="<script>&',
+  );
+  assert.ok(document.startsWith(
+    '<!doctype html><html lang="en&quot; onload=&quot;&lt;script&gt;&amp;">',
+  ));
+  assert.doesNotMatch(document, /lang="en" onload=/);
+});

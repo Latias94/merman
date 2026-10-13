@@ -90,6 +90,9 @@ export function createProjectedOpaqueRealmDocument(
   return buildOpaqueRealmDocument(
     boot,
     projectBootstrapArtifact(projection.bootstrap),
+    // The document language selects browser font fallback even with identical font CSS.
+    // Preserve an empty host language too: both documents then use the browser default.
+    document.documentElement.lang,
   );
 }
 
