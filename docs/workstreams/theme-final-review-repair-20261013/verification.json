@@ -1,0 +1,1237 @@
+{
+  "schema_version": 1,
+  "purpose": "Durable concise receipts for the authorized theme repair; complete local logs remain at the cited paths.",
+  "cargo_execution": "Root serial, two build jobs, shared existing target.",
+  "checks": [
+    {
+      "name": "u4-core-contract-green",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-core",
+        "-p",
+        "merman-theme-contract",
+        "--features",
+        "merman-core/all-diagrams",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T03:31:59.455843+00:00",
+      "elapsed_seconds": 123.923,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.log",
+      "log_sha256": "593f55fc272ac89a008d2f113a8a4a4ac20b59b6fef05d6143b05ed305c52164"
+    },
+    {
+      "name": "export-final",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-export",
+        "--features",
+        "png,jpeg,pdf,native-fonts",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T05:35:00.011763+00:00",
+      "elapsed_seconds": 15.271,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/export-final.log",
+      "log_sha256": "1dc72ede6be6f88030f9d066de4e41c5796105affe100559265bc3b274f152c7"
+    },
+    {
+      "name": "core-treemap-g9-corrected",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-core",
+        "--features",
+        "diagram-treemap",
+        "--lib",
+        "-j",
+        "2",
+        "-E",
+        "test(treemap_style_byte_preflight_observes_cancellation_inside_one_class) | test(treemap_compatibility_preflight_estimate_covers_serialized_output) | test(treemap_compatibility_preflight_observes_cancellation)"
+      ],
+      "started_utc": "2026-10-13T05:56:40.672794+00:00",
+      "elapsed_seconds": 0.408,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/core-treemap-g9-corrected.log",
+      "log_sha256": "2900e4b1ef61337f38d776286c45b3b6ceacf28c089d8be154e3ad14d3fe6d7e"
+    },
+    {
+      "name": "facade-green-retry",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman",
+        "--features",
+        "all-diagrams,svg,png,pdf,native-fonts,math,layout-elk,layout-cytoscape",
+        "--lib",
+        "--test",
+        "theme_operation_isolation",
+        "--test",
+        "native_font_context",
+        "--test",
+        "theme_xychart_text",
+        "--test",
+        "swimlane_label_identity",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T05:32:15.682986+00:00",
+      "elapsed_seconds": 122.062,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/facade-green-retry.log",
+      "log_sha256": "fb7d9e63cab2a0f80eb60d2fc534254a52644bbe428448202ba56278378da6fc"
+    },
+    {
+      "name": "renderer-final",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-render",
+        "--features",
+        "all-diagrams,math,layout-elk,layout-cytoscape",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T05:40:10.236366+00:00",
+      "elapsed_seconds": 293.205,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 100,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.log",
+      "log_sha256": "e61636b5aa1df33edddb6a2705c7c6dc901d39a52a131bc74bbfb570723e75d8"
+    },
+    {
+      "name": "renderer-final-corrections",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-render",
+        "--features",
+        "all-diagrams,math,layout-elk,layout-cytoscape",
+        "-j",
+        "2",
+        "--lib",
+        "--test",
+        "railroad_svg_test",
+        "-E",
+        "test(typed_title_fill_shadows_unsupported_ordinal_palette) | test(railroad_unsupported_nontext_targets_have_no_terminal_domain)"
+      ],
+      "started_utc": "2026-10-13T05:48:42.348231+00:00",
+      "elapsed_seconds": 13.123,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.log",
+      "log_sha256": "eccec9ae96ddbf2de2d588dd417f80a3040f95123e7d84abac6437960050425e"
+    },
+    {
+      "name": "u2-no-elk",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-render",
+        "--no-default-features",
+        "--features",
+        "diagram-flowchart",
+        "--test",
+        "flowchart_svg_test",
+        "-j",
+        "2",
+        "--no-tests=pass",
+        "-E",
+        "test(flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs) | test(flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes)"
+      ],
+      "started_utc": "2026-10-13T05:56:57.429925+00:00",
+      "elapsed_seconds": 18.077,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u2-no-elk.log",
+      "log_sha256": "4f005a31049196bd29ba35855b8b058f8a3187537d9cd674223f21578efddc74"
+    },
+    {
+      "name": "u2-elk",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-render",
+        "--no-default-features",
+        "--features",
+        "diagram-flowchart,layout-elk",
+        "--test",
+        "flowchart_svg_test",
+        "-j",
+        "2",
+        "--no-tests=pass",
+        "-E",
+        "test(flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs) | test(flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes)"
+      ],
+      "started_utc": "2026-10-13T05:57:46.216561+00:00",
+      "elapsed_seconds": 16.59,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u2-elk.log",
+      "log_sha256": "1e4c60ec50bceb9080b68f8b0564929cf74d452e9029b0f9500d39cbb9826888"
+    },
+    {
+      "name": "u5-node-green-final",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "crates/merman-node/Cargo.toml",
+        "--features",
+        "svg,all-diagrams,layout-cytoscape,layout-elk,transport-napi",
+        "--lib",
+        "-j",
+        "2",
+        "-E",
+        "test(runtime_catalog_metadata_ids) | test(theme_catalog_transport_uses_constrained)"
+      ],
+      "started_utc": "2026-10-13T05:51:24.119944+00:00",
+      "elapsed_seconds": 45.006,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u5-node-green-final.log",
+      "log_sha256": "7e70afd8a10e928077c461610227892e623a1060a67d4f5b92a52ef4e91a22c5"
+    },
+    {
+      "name": "u5-typst-full",
+      "command": [
+        "cargo",
+        "run",
+        "--offline",
+        "--locked",
+        "-p",
+        "xtask",
+        "-j",
+        "2",
+        "--",
+        "typst-package-smoke",
+        "--profile",
+        "publish"
+      ],
+      "started_utc": "2026-10-13T05:59:22.644307+00:00",
+      "elapsed_seconds": 236.951,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.log",
+      "log_sha256": "01f81b45009a29be87e95ce65d4cfab8d8c2bc97c43edaf81387e7b9f5db327e"
+    },
+    {
+      "name": "u4-opaque-consumer",
+      "command": [
+        "cargo",
+        "run",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "/tmp/merman-final-module-review-20261012/unknown-number-probe/Cargo.toml",
+        "--target-dir",
+        "target",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T05:58:40.077863+00:00",
+      "elapsed_seconds": 2.874,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u4-opaque-consumer.log",
+      "log_sha256": "966f6792f09f71544b513814d276e9887b0dd14946388ee67bf69c95e1670a0a"
+    },
+    {
+      "name": "er-native-green-final",
+      "command": [
+        "cargo",
+        "run",
+        "--offline",
+        "--manifest-path",
+        "/tmp/merman-theme-review-repair-20261013/er-native-source-color-probe/Cargo.toml",
+        "--target-dir",
+        "target",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T05:31:34.621205+00:00",
+      "elapsed_seconds": 9.978,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.log",
+      "log_sha256": "81abdef1f26e57acbfaf46b81d55ed4059d3bc6c2d7efc4956c627b934f06d33"
+    },
+    {
+      "name": "state-radius-generate",
+      "command": [
+        "cargo",
+        "run",
+        "--offline",
+        "--manifest-path",
+        "/tmp/merman-theme-review-repair-20261013/U2-state-radius-probe/Cargo.toml",
+        "--target-dir",
+        "target",
+        "-j",
+        "2",
+        "--",
+        "/tmp/merman-theme-review-repair-20261013/U2-state-radius-svg"
+      ],
+      "started_utc": "2026-10-13T05:28:45.262975+00:00",
+      "elapsed_seconds": 43.024,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/state-radius-generate.log",
+      "log_sha256": "9ac041a2b2cc82507cfdb4f09350a7bc33964254afea124291ae0d5fd3e6694f"
+    },
+    {
+      "name": "u4-pdf-closure-green",
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-export",
+        "--no-default-features",
+        "--features",
+        "pdf",
+        "--lib",
+        "--no-run",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T03:38:34.397477+00:00",
+      "elapsed_seconds": 1.976,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.log",
+      "log_sha256": "9fb293911dfa197410928af123009f047eaf97c7194b94040cbc5a4926b0f0ee"
+    },
+    {
+      "name": "u1-feature-closure-green",
+      "command": [
+        "cargo",
+        "check",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "/tmp/merman-final-module-review-20261012/math-feature-closure-probe/Cargo.toml",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T03:39:46.185165+00:00",
+      "elapsed_seconds": 7.198,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.log",
+      "log_sha256": "039fdc72033f8c2771ee9ad75b1af808fcbaf989adf2e20b9c42e1eed9f22cd4"
+    },
+    {
+      "name": "node-final",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "crates/merman-node/Cargo.toml",
+        "--features",
+        "svg,all-diagrams,layout-cytoscape,layout-elk,transport-napi",
+        "--lib",
+        "-j",
+        "2",
+        "--no-fail-fast"
+      ],
+      "started_utc": "2026-10-13T06:37:37.930680+00:00",
+      "elapsed_seconds": 18.852,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/node-final.log",
+      "log_sha256": "80ce3284cd61e2c7c6362e73e402ce71eb9f17cc0fc5af7cfbd10aead6cca683"
+    },
+    {
+      "name": "u5-apple-native-build",
+      "command": [
+        "python3",
+        "scripts/artifact_profile_recipe.py",
+        "apple-uniffi-native",
+        "--build-host",
+        "--locked"
+      ],
+      "started_utc": "2026-10-13T06:06:53.863824+00:00",
+      "elapsed_seconds": 263.761,
+      "head": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u5-apple-native-build.log",
+      "log_sha256": "f19d8a964138286f848d28faeda61fb69cf5cca92c3b93e3639abdf1400c062d"
+    },
+    {
+      "name": "u5-ffi-native-build",
+      "command": [
+        "cargo",
+        "build",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-ffi",
+        "--no-default-features",
+        "--features",
+        "all-diagrams,svg,png,jpeg,pdf,layout-cytoscape,layout-elk",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T06:12:38.346369+00:00",
+      "elapsed_seconds": 52.447,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u5-ffi-native-build.log",
+      "log_sha256": "73c153aa8e45dcb1c9f229bb868805865e9807c8ea3b3fe6b8cdf8624611793c"
+    },
+    {
+      "name": "native-font-css-fixed",
+      "command": [
+        "cargo",
+        "run",
+        "--offline",
+        "--manifest-path",
+        "/tmp/merman-theme-review-repair-20261013/font-css-native-probe/Cargo.toml",
+        "--target-dir",
+        "target",
+        "-j",
+        "2"
+      ],
+      "started_utc": "2026-10-13T06:22:14.967760+00:00",
+      "elapsed_seconds": 16.343,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/native-font-css-fixed.log",
+      "log_sha256": "5d381356aa5d36b17b2297194f01a2cd621bc3ea1ad4268c3b55ce8c6310d8e1"
+    },
+    {
+      "name": "pipeline-native-final-fixed",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-render",
+        "--features",
+        "all-diagrams,math,layout-elk,layout-cytoscape",
+        "--lib",
+        "--test",
+        "mindmap_svg_test",
+        "--test",
+        "railroad_svg_test",
+        "--test",
+        "venn_svg_test",
+        "-j",
+        "2",
+        "-E",
+        "test(svg::pipeline::) | test(svg::fallback::) | test(font_ampersand) | test(typed_title_fill_shadows_unsupported_ordinal_palette) | test(railroad_unsupported_nontext_targets_have_no_terminal_domain) | test(sequence::tests) | test(math::tests) | test(math::prepared::tests) | test(mindmap_native_finalization_preserves_the_typed_font_stack_and_hex_css)"
+      ],
+      "started_utc": "2026-10-13T06:25:01.238635+00:00",
+      "elapsed_seconds": 35.81,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 100,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/pipeline-native-final-fixed.log",
+      "log_sha256": "4762217c7f3073e7b43a5e1dc31015dc292196c9828e99ce4934b2da479c83c5"
+    },
+    {
+      "name": "pipeline-oracle-corrections-final",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-render",
+        "--features",
+        "all-diagrams,math,layout-elk,layout-cytoscape",
+        "--lib",
+        "--test",
+        "mindmap_svg_test",
+        "--test",
+        "railroad_svg_test",
+        "--test",
+        "venn_svg_test",
+        "-j",
+        "2",
+        "-E",
+        "test(foreign_object_overlay_inherits_logical_xml_stylesheet_font_strings) | test(mindmap_native_finalization_preserves_the_typed_font_stack_and_hex_css)"
+      ],
+      "started_utc": "2026-10-13T06:30:35.791539+00:00",
+      "elapsed_seconds": 24.87,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/pipeline-oracle-corrections-final.log",
+      "log_sha256": "dd5f065f0616b50afc359e2cc9ff84a751a53fb53e3224f3bac76fdb21780233"
+    },
+    {
+      "name": "core-usecase-disabled",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-core",
+        "--no-default-features",
+        "--test",
+        "usecase_contract",
+        "-j",
+        "2",
+        "--no-tests=pass"
+      ],
+      "started_utc": "2026-10-13T06:17:34.392977+00:00",
+      "elapsed_seconds": 7.299,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/core-usecase-disabled.log",
+      "log_sha256": "5fd8fa90539abc77b5746cf1082e1f7b60ba82be604e73c0dea4c03683562bd3"
+    },
+    {
+      "name": "clippy-all-targets-final",
+      "command": [
+        "cargo",
+        "clippy",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-render",
+        "-p",
+        "merman-export",
+        "-p",
+        "merman-theme-contract",
+        "-p",
+        "merman-core",
+        "-p",
+        "merman",
+        "--keep-going",
+        "--all-targets",
+        "--features",
+        "all-diagrams,svg,png,jpeg,pdf,native-fonts,math,layout-elk,layout-cytoscape",
+        "-j",
+        "2",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "started_utc": "2026-10-13T06:51:53.576085+00:00",
+      "elapsed_seconds": 1.387,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/clippy-all-targets-final.log",
+      "log_sha256": "5258f078301c39b8d00c16b389f86a5f547985a863eb82486dc13416c31ba685"
+    },
+    {
+      "name": "final-runtime",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman-render",
+        "-p",
+        "merman",
+        "--features",
+        "all-diagrams,svg,png,jpeg,pdf,native-fonts,math,layout-elk,layout-cytoscape",
+        "-j",
+        "2",
+        "-E",
+        "package(merman-render) | test(diagram_theme) | test(theme_nested_detector) | test(theme_operation_isolation) | test(theme_xychart_text) | test(native_font_context) | test(swimlane_label_identity) | test(facade_render_svg) | test(security_regression) | test(swimlane_typed_render) | test(layout_work_calibration_contract)"
+      ],
+      "started_utc": "2026-10-13T06:52:26.220760+00:00",
+      "elapsed_seconds": 437.636,
+      "head": "430aa7b7a8890957ae4b4a933fcaf5a7f5f7bc8f",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/final-runtime.log",
+      "log_sha256": "d91a021decb0db7e0bc9623abc9f255bb02d05cfabafff19c704bfe83c471e1d"
+    },
+    {
+      "name": "facade-final",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--offline",
+        "--locked",
+        "--no-fail-fast",
+        "-p",
+        "merman",
+        "--features",
+        "all-diagrams,svg,png,jpeg,pdf,native-fonts,math,layout-elk,layout-cytoscape",
+        "-j",
+        "2",
+        "--lib",
+        "--test",
+        "diagram_theme_coverage",
+        "--test",
+        "diagram_theme_layering",
+        "--test",
+        "native_font_context",
+        "--test",
+        "native_flowchart_typography",
+        "--test",
+        "native_swimlane_typography",
+        "--test",
+        "theme_nested_detector",
+        "--test",
+        "theme_operation_isolation",
+        "--test",
+        "theme_xychart_text",
+        "--test",
+        "swimlane_label_identity",
+        "--test",
+        "security_regression",
+        "--test",
+        "facade_render_svg",
+        "--test",
+        "swimlane_typed_render",
+        "--test",
+        "layout_work_calibration_contract"
+      ],
+      "started_utc": "2026-10-13T07:01:04.765648+00:00",
+      "elapsed_seconds": 151.938,
+      "head": "f5f2bc29ae75c14276d4a6c5200f5839d6687cee",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/facade-final.log",
+      "log_sha256": "4c928fedc27564a0cca03ab7227b2a9dc5fcf7e3abdcd80ae23d04f8a185d60a"
+    }
+  ],
+  "independent_reviews": [
+    {
+      "unit": "U1",
+      "report_sha256": "3c52d9fc841241d78bec3820b9d9b86e80fd32d47bd6bf5dc0391441b627e781",
+      "current_findings": [],
+      "scope": {
+        "performed_by_this_agent": "\u53ea\u8bfbdiff\u3001\u6e90\u7801/\u4f9d\u8d56\u6e90\u7801/\u7236\u4ee3\u7406packet\u53ca\u65e5\u5fd7\uff1b\u672a\u8fd0\u884cCargo\u3001nextest\u3001browser\u3001fmt\uff0c\u672a\u4fee\u6539\u6e90\u7801\u6216\u7d22\u5f15\u3002",
+        "parent_log": "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.log",
+        "observed_parent_passes": [
+          "compiled_css_foregrounds_color_pure_and_mixed_glyphs_without_string_roundtrips",
+          "sequence_large_diagram_id_preflight_counts_dynamic_message_references",
+          "sequence_math_css_colors_reach_browser_and_native_glyphs",
+          "sequence_math_notes_keep_note_style_inside_control_frames",
+          "sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences",
+          "sequence_neo_control_keyword_clear_overrides_builtin_shadow"
+        ],
+        "feature_log": "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.log",
+        "limits": "wave1 final\u6574\u4f534769\u4e2d4767\u901a\u8fc7\u30012\u9879\u5931\u8d25\u5c5e\u4e8e\u5176\u4ed6module\uff1b\u4e0d\u80fd\u58f0\u660ewhole suite green\u3002\u6700\u65b0Nodecommand/_formatter\u6e05\u7406\u665a\u4e8e\u4ee5\u4e0a\u6d4b\u8bd5\u65e5\u5fd7\uff0c\u9759\u6001\u8bed\u4e49\u5df2\u6838\uff0c\u6700\u65b0\u4ee3\u7801\u662f\u5426\u91cd\u7f16\u8bd1\u7531\u7236\u4ee3\u7406\u6700\u7ec8\u9a8c\u8bc1\u3002"
+      },
+      "limitations": []
+    },
+    {
+      "unit": "U2",
+      "report_sha256": "80e57fdfd8e55c2eb6f4c1c54261348d5d47e395e3ba94de533b0694b82ec770",
+      "current_findings": [],
+      "scope": {},
+      "limitations": []
+    },
+    {
+      "unit": "U3",
+      "report_sha256": "da23034380c52ec864f35e02d76513f73f67798ec32f1a3afb66fd5ac44d9e1c",
+      "current_findings": [],
+      "scope": {
+        "repair_baseline": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+        "original_source_baseline": "96eef30915b2a372f2897f8bc1156a708df31a77",
+        "paths": [
+          "crates/merman-render/src/block.rs",
+          "crates/merman-render/src/block/edge_paint.rs",
+          "crates/merman-render/src/block/node_binding.rs",
+          "crates/merman-render/src/block/theme.rs",
+          "crates/merman-render/src/er/theme.rs",
+          "crates/merman-render/src/er/theme/css_binding.rs",
+          "crates/merman-render/src/er/theme/terminal.rs",
+          "crates/merman-render/src/er/theme/visual.rs",
+          "crates/merman-render/src/family/evidence_support.rs",
+          "crates/merman-render/src/svg/icon_registry/render.rs",
+          "crates/merman-render/src/svg/parity/er/render.rs",
+          "crates/merman-render/src/svg/parity/markers.rs",
+          "crates/merman-render/src/tree_view/theme.rs",
+          "crates/merman-render/tests/block_svg_test.rs",
+          "crates/merman-render/tests/er_subgraph_theme_test.rs",
+          "crates/merman-render/tests/er_svg_test.rs",
+          "crates/merman-render/tests/tree_view_svg_test.rs"
+        ],
+        "production_changed_lines": 697,
+        "depth": "Deep",
+        "count_method": "\u6309\u9650\u5b9a\u6587\u4ef6 diff hunk \u7684\u52a0\u5220\u884c\u8ba1\u6570\uff1b\u6392\u9664 tests \u8def\u5f84\uff0c\u5e76\u4f9d\u636e\u5df2\u624b\u8bfb\u7684 cfg(test) \u6a21\u5757\u8fb9\u754c\u6392\u9664\u884c\u5185\u6d4b\u8bd5\uff1b\u4e0d\u5efa\u7acb Rust \u89e3\u6790\u5668\u3002",
+        "excluded": "family.rs \u548c\u5176\u4ed6 worker \u6587\u4ef6\u672a\u4f5c\u5dee\u5f02\u5f52\u56e0\uff1b\u76f8\u90bb core parser\u3001layout\u3001writer \u4e0e direct-static helper \u4ec5\u4e3a\u8c03\u7528/\u8bed\u4e49\u8bc1\u660e\u53ea\u8bfb\u3002",
+        "initial_production_changed_lines": 594,
+        "followup_extension": "\u4ec5\u589e\u52a0 root \u65b0\u4fee\u590d\u5173\u8054\u7684 owned block.rs \u5b57\u91cd\u6d4b\u91cf\u5dee\u5f02\uff1b\u672a\u6269\u5c55\u5230\u5176\u4ed6 worker\u3002"
+      },
+      "limitations": []
+    },
+    {
+      "unit": "U4",
+      "report_sha256": "894a64451698a1fed7a48e8bece47bd29d2d7b399356cd6ddbe933ce9cec2e86",
+      "current_findings": [],
+      "scope": {},
+      "limitations": []
+    },
+    {
+      "unit": "U5",
+      "report_sha256": "676545c831f3960d36da10684f89c9342775fd7f511a0bbad74652aecc01f86d",
+      "current_findings": [
+        {
+          "title": "\u6587\u5b57\u80cc\u540e\u7684\u8868\u9762\u88ab\u906e\u6321\u65f6\uff0c\u5168\u8868\u9762\u622a\u56fe\u4ecd\u7ed9\u51fa\u9ad8\u5bf9\u6bd4\u5ea6\u5047\u7eff",
+          "severity": "P2",
+          "file": "playground/tests/helpers/theme-text-surface.ts",
+          "line": 213,
+          "why_it_matters": "\u9009\u5b9a\u8868\u9762\u53ea\u8981\u5728\u6587\u5b57\u4e4b\u5916\u8fd8\u8d21\u732e\u50cf\u7d20\uff0c\u6574\u5f20 SVG \u7684\u8868\u9762\u6291\u5236\u622a\u56fe\u5c31\u4f1a\u53d1\u751f\u53d8\u5316\uff0c\u5373\u4f7f\u6587\u5b57\u4e0b\u9762\u5b8c\u5168\u662f\u53e6\u4e00\u4e2a\u989c\u8272\u3002\u771f\u5b9e Chromium \u4e2d\u68d5\u8272\u8868\u9762\u4e0a\u7684\u767d\u8272\u6587\u5b57\u533a\u8986\u76d6\u5c42\u4ecd\u8fd4\u56de13.09\u5e76\u901a\u8fc7\u5305\u542b\u68c0\u67e5\uff0c\u5b9e\u9645\u6d45\u9ec4\u6587\u5b57\u5bf9\u767d\u8272\u53ea\u67091.11\uff0c\u6545\u4e0b\u6e38\u5bf9\u6bd4\u5ea6\u95e8\u7981\u4f1a\u63a5\u53d7\u4e0d\u53ef\u8bfb\u8f93\u51fa\u3002\u5e94\u9488\u5bf9\u6bcf\u4e2a\u6587\u5b57\u5b9e\u9645\u5f71\u54cd\u7684\u50cf\u7d20\u8bc1\u660e\u9009\u5b9a\u8868\u9762\u63d0\u4f9b\u80cc\u666f\uff0c\u4e0d\u80fd\u7528\u6574\u4e2a\u8868\u9762\u7684\u4efb\u610f\u50cf\u7d20\u53d8\u5316\u4ee3\u66ff\u3002",
+          "autofix_class": "manual",
+          "owner": "downstream-resolver",
+          "requires_verification": true,
+          "suggested_fix": "\u4fdd\u7559\u73b0\u6709 exact selectors\uff0c\u5728\u5c40\u90e8\u5b57\u5f62\u5b9e\u9645\u50cf\u7d20\u57df\u5185\u9a8c\u8bc1\u9009\u5b9a surface \u7684\u80cc\u666f\u8d21\u732e\uff1b\u5b8c\u5168\u6216\u90e8\u5206\u906e\u6321\u5b57\u5f62\u80cc\u666f\u65f6\u4fdd\u5b88\u62d2\u7edd\uff0c\u5e76\u52a0\u5165\u53ea\u8986\u76d6\u6587\u5b57\u533a\u57df\u3001\u8868\u9762\u56db\u5468\u4ecd\u53ef\u89c1\u7684\u56de\u5f52\u3002\u4e0d\u8981\u6269\u6210\u901a\u7528 CSS \u5408\u6210\u5668\u3002",
+          "confidence": 100,
+          "evidence": [
+            "playground/tests/helpers/theme-text-surface.ts:213 -- if (before.equals(after)) {",
+            "playground/tests/helpers/theme-text-surface.ts:193 -- const before = await svgLocator.screenshot({ animations: \"disabled\", caret: \"hide\" });",
+            "\u89e6\u53d1\uff1asurface rect x20/y20/w200/h48 fill #422006\uff0c\u4e4b\u540e\u63d2 white rect x28/y28/w130/h34\uff0c\u518d text x30/y48 fill #fef3c7\uff0ctspan Terminal note\u3002",
+            "\u6267\u884c\uff1atext opacity \u6291\u5236\u6539\u53d8\u6d45\u9ec4\u5b57\u5f62\uff1bsurface fill \u6291\u5236\u6539\u53d8\u767d\u8272\u8986\u76d6\u533a\u5916\u7684\u68d5\u8272\u8fb9\u7f18\uff0c\u56e0\u6b64\u4e24\u4e2a\u6574\u56fe\u6bd4\u8f83\u90fd\u901a\u8fc7\u3002",
+            "\u7ed3\u679c\uff1a/tmp/merman-theme-review-repair-20261013/U5-adversarial-browser-probe.json partial-surface-occlusion accepted=true, reportedContrast=13.088561556061585, boundsContain=true\uff1bU5-partial-surface-occlusion.png \u663e\u793a\u6587\u5b57\u80cc\u540e\u767d\u8272\uff0c\u5b9e\u9645\u6bd4\u503c1.1135203684778359\u3002"
+          ],
+          "pre_existing": false,
+          "resolution_status": "verified-fixed"
+        },
+        {
+          "title": "\u5b50 tspan \u964d\u4f4e\u900f\u660e\u5ea6\u6216\u8986\u76d6\u586b\u8272\u65f6\uff0c\u7236 text \u989c\u8272\u4ecd\u88ab\u5c01\u6210\u53ef\u8bfb\u8bc1\u636e",
+          "severity": "P2",
+          "file": "playground/tests/helpers/theme-text-surface.ts",
+          "line": 147,
+          "why_it_matters": "\u63a2\u9488\u901a\u5e38\u9009\u62e9\u542b tspan \u7684 text\uff0c\u6d4f\u89c8\u5668\u5b9e\u9645\u7ed8\u5236\u5b50\u5b57\u5f62\u65f6\u53ef\u4f7f\u7528\u81ea\u5df1\u7684\u586b\u8272\u548c\u900f\u660e\u5ea6\uff0c\u800c helper \u4ec5\u8bfb\u53d6\u7236 text \u7684 computed style\u3002\u771f\u5b9e Chromium \u4e2d tspan fill-opacity:0.1 \u7684\u6d45\u9ec4\u5b57\u5f62\u4ecd\u88ab\u62a5\u544a\u4e3a\u4e0d\u900f\u660e\u6d45\u9ec4\u3001\u5bf9\u6bd4\u5ea613.09\uff0c\u5b9e\u9645\u5408\u6210\u5bf9\u6bd4\u5ea6\u7ea61.33\uff1b\u5b50 tspan \u6539\u6210\u4e0e\u80cc\u666f\u540c\u8272\u4e5f\u9519\u8bef\u901a\u8fc7\u3002\u5bf9\u4e8e\u5355\u989c\u8272\u89c2\u5bdf\u7ed3\u679c\uff0c\u5e94\u6821\u9a8c\u5b9e\u9645\u5b50\u5b57\u5f62\u8def\u5f84\u7684\u4e00\u81f4\u586b\u8272\u548c\u4e0d\u900f\u660e\u5ea6\uff0c\u4e0d\u80fd\u628a\u7236\u6837\u5f0f\u5f53\u6210\u7ec8\u7aef\u989c\u8272\u3002",
+          "autofix_class": "manual",
+          "owner": "downstream-resolver",
+          "requires_verification": true,
+          "suggested_fix": "\u5bf9\u6240\u9009 SVGTextContentElement \u4e2d\u5b9e\u9645\u7ed8\u5b57\u7684 tspan/textPath \u8def\u5f84\u9a8c\u8bc1\u53ef\u89c1\u6027\u3001opacity\u3001fillOpacity\u548c\u6700\u7ec8paint\uff1b\u6df7\u5408\u6216\u900f\u660e\u7684\u7ec8\u7aef\u5b57\u5f62\u65e0\u6cd5\u8868\u793a\u4e3a\u73b0\u6709\u5355\u8272\u89c2\u5bdf\u65f6\u4fdd\u5b88\u62d2\u7edd\u3002\u8865 child fill-opacity 0.1/0.5 \u4ee5\u53ca child fill\u4e0e\u80cc\u666f\u540c\u8272\u7684\u56de\u5f52\u3002",
+          "confidence": 100,
+          "evidence": [
+            "playground/tests/helpers/theme-text-surface.ts:147 -- if (text instanceof SVGElement && Number(textStyle.fillOpacity) !== 1) {",
+            "playground/tests/helpers/theme-text-surface.ts:164 -- text instanceof SVGElement ? textStyle.fill : textStyle.color,",
+            "\u89e6\u53d1\uff1a\u540c\u4e00\u5408\u6cd5 rect/text/tspan SVG\uff0c\u52a0 tspan{fill-opacity:0.1}\uff1b\u7236 text fillOpacity=1\uff0c\u5b50 tspan fillOpacity=0.1\u3002",
+            "\u6267\u884c\uff1a\u7236\u6837\u5f0f\u68c0\u67e5\u901a\u8fc7\uff1bopacity\u6291\u5236\u5b9e\u9645\u6de1\u5b57\u5f62\u4ecd\u6709\u622a\u56fe\u5dee\u5f02\uff1bhelper \u8fd4\u56de\u7236\u4e0d\u900f\u660e\u989c\u8272\u3002",
+            "\u7ed3\u679c\uff1aU5-adversarial-browser-probe.json tspan-partial-fill-opacity accepted=true\u3001ratio13.08856\uff0c\u5b9e\u96450.1\u6df7\u8272\u5bf9\u767d\u5e95\u5bf9\u5e94\u68d5\u8272\u80cc\u666fratio1.3254\uff1btspan-different-fill computed child rgb(66,32,6) \u7b49\u4e8e\u80cc\u666f\uff0c\u4ecdaccepted=true\u3002"
+          ],
+          "pre_existing": false,
+          "resolution_status": "verified-fixed"
+        },
+        {
+          "title": "\u6587\u672c\u6ee4\u955c\u6216\u6df7\u8272\u6539\u53d8\u5b57\u5f62\u540e\u4ecd\u88ab\u7236 fill \u62a5\u544a\u4e3a\u9ad8\u5bf9\u6bd4\u5ea6",
+          "severity": "P2",
+          "file": "playground/tests/helpers/theme-text-surface.ts",
+          "line": 134,
+          "why_it_matters": "\u6ee4\u955c\u548c\u975e\u6b63\u5e38\u6df7\u8272\u5728 computed fill \u4e4b\u540e\u6539\u53d8\u5b9e\u9645\u5b57\u5f62\u989c\u8272\u3002Chromium \u5b9e\u9645 text brightness(0.2) \u548c multiply \u5747\u66fe\u88ab\u62a5\u544a13.09\uff0c\u800c\u6697\u8272\u5b57\u5f62\u5df2\u7ecf\u63a5\u8fd1\u68d5\u8272\u80cc\u666f\uff1b\u5df2\u6709\u9650\u62d2\u7edd\u771f\u5b9e\u6587\u5b57\u8def\u5f84\u76f8\u5173\u6ee4\u955c\u548c\u6df7\u8272\uff0c\u4fdd\u6b63\u5e38 surface shadow\u3002",
+          "autofix_class": "manual",
+          "owner": "downstream-resolver",
+          "requires_verification": true,
+          "suggested_fix": "\u5bf9\u771f\u5b9e\u5b57\u5f62\u8def\u5f84\u4e0e\u7956\u5148\u7684 filter/mixBlendMode \u4fdd\u5b88\u62d2\u7edd\uff1bsurface-only filter \u4fdd\u6301\u9010\u50cf\u7d20\u80cc\u666f\u9a8c\u8bc1\u3002",
+          "confidence": 100,
+          "evidence": [
+            "playground/tests/helpers/theme-text-surface.ts:164 (\u4fee\u590d\u524d) -- text instanceof SVGElement ? textStyle.fill : textStyle.color,",
+            "/tmp/merman-theme-review-repair-20261013/U5-adversarial-browser-followup-probe.json \u5b9e\u9645\u8bb0\u5f55 text-brightness-filter \u4e0e text-multiply-blend accepted=true\u3001reportedContrast13.08856\u3002",
+            "U5-adversarial-browser-mask-final.json \u540c\u4e24\u8f93\u5165\u5df2\u6b63\u786e\u62d2\u7edd\u3002"
+          ],
+          "pre_existing": false,
+          "resolution_status": "verified-fixed"
+        },
+        {
+          "title": "\u6587\u5b57\u63cf\u8fb9\u548c\u900f\u660e\u8499\u7248\u6539\u53d8\u5b57\u5f62\u540e\u4ecd\u88ab\u5c01\u6210\u5355 fill \u989c\u8272\u8bc1\u636e",
+          "severity": "P2",
+          "file": "playground/tests/helpers/theme-text-surface.ts",
+          "line": 160,
+          "why_it_matters": "SVG \u53ef\u89c1\u63cf\u8fb9\u6216\u8499\u7248\u6539\u53d8\u5b9e\u9645\u5b57\u5f62\uff0c\u800c\u5355 fill \u62a5\u544a\u6ca1\u6709\u8868\u793a\u8be5\u6700\u7ec8\u989c\u8272\u3002Chromium \u5b9e\u9645\u7c97\u84dd\u63cf\u8fb9\u548calpha0.1\u8499\u7248\u66fe\u8fd4\u56de13.09\uff0c\u84dd\u5b57\u5f62\u5bf9\u68d5\u8272\u80cc\u666f\u7ea61.70\uff1b\u73b0\u6709\u8fb9\u754c\u62d2\u7edd\u65e0\u6cd5\u8868\u793a\u4e3a\u5355\u4e0d\u900f\u660e fill \u7684\u6587\u672c\u7ec8\u7aef\u3002",
+          "autofix_class": "manual",
+          "owner": "downstream-resolver",
+          "requires_verification": true,
+          "suggested_fix": "\u5bf9\u771f\u5b9e SVG \u6587\u5b57\u7236/\u5b50\u8282\u70b9\u7684\u6709\u6548\u63cf\u8fb9\u3001\u6587\u5b57\u8def\u5f84\u76f8\u5173 maskImage \u4fdd\u5b88\u62d2\u7edd\uff0c\u4fdd surface \u7684\u6b63\u5e38\u8fb9\u6846\u3002",
+          "confidence": 100,
+          "evidence": [
+            "playground/tests/helpers/theme-text-surface.ts:164 (\u4fee\u590d\u524d) -- text instanceof SVGElement ? textStyle.fill : textStyle.color,",
+            "U5-adversarial-browser-paint-probe.json \u5b9e\u9645\u8bb0\u5f55\u84dd\u63cf\u8fb9 accepted=true\uff1bU5-adversarial-browser-mask-probe.json alpha\u8499\u7248 accepted=true\u3002",
+            "U5-adversarial-browser-mask-final.json \u540c\u4e24\u8f93\u5165\u5df2\u6b63\u786e\u62d2\u7edd\u3002"
+          ],
+          "pre_existing": false,
+          "resolution_status": "verified-fixed"
+        }
+      ],
+      "scope": {},
+      "limitations": []
+    },
+    {
+      "unit": "U6",
+      "report_sha256": "541111b7d81b69fbb73fce8467bbeeb77d3537b62a39718b3062c740a48ecb85",
+      "current_findings": [],
+      "scope": {
+        "repair_baseline": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+        "original_source_baseline": "96eef30915b2a372f2897f8bc1156a708df31a77",
+        "paths": [
+          "crates/merman-core/src/diagrams/treemap.rs",
+          "crates/merman-render/src/family/preparation.rs",
+          "crates/merman-render/src/gantt/task_bar.rs",
+          "crates/merman-render/src/info.rs",
+          "crates/merman-render/src/ishikawa/theme.rs",
+          "crates/merman-render/src/journey/theme.rs",
+          "crates/merman-render/src/mindmap.rs",
+          "crates/merman-render/src/railroad/theme.rs",
+          "crates/merman-render/src/sankey/theme.rs",
+          "crates/merman-render/src/svg/parity.rs",
+          "crates/merman-render/src/svg/parity/c4/render.rs",
+          "crates/merman-render/src/svg/parity/css.rs",
+          "crates/merman-render/src/svg/parity/journey/render.rs",
+          "crates/merman-render/src/svg/parity/mindmap/render.rs",
+          "crates/merman-render/src/svg/parity/railroad.rs",
+          "crates/merman-render/src/svg/parity/sankey/render.rs",
+          "crates/merman-render/src/svg/parity/treemap/render.rs",
+          "crates/merman-render/src/svg/parity/venn/render.rs",
+          "crates/merman-render/src/swimlane/prepare.rs",
+          "crates/merman-render/tests/c4_svg_test.rs",
+          "crates/merman-render/tests/gantt_svg_test.rs",
+          "crates/merman-render/tests/info_error_svg_test.rs",
+          "crates/merman-render/tests/ishikawa_svg_test.rs",
+          "crates/merman-render/tests/journey_svg_test.rs",
+          "crates/merman-render/tests/mindmap_svg_test.rs",
+          "crates/merman-render/tests/railroad_svg_test.rs",
+          "crates/merman-render/tests/sankey_svg_test.rs",
+          "crates/merman-render/tests/treemap_svg_test.rs",
+          "crates/merman-render/tests/venn_svg_test.rs",
+          "crates/merman/tests/swimlane_label_identity.rs"
+        ],
+        "production_changed_lines": 601,
+        "depth": "Deep",
+        "count_method": "Scoped hunk added/deleted lines; test-only core helper and mindmap.rs changes excluded; manually read tail cfg(test) module boundaries excluded. Shared parity.rs counts only U6 helper import deletion.",
+        "risk_signals": [],
+        "techniques": [
+          "assumption-violation",
+          "composition-failures",
+          "cascade-construction",
+          "abuse-cases"
+        ],
+        "initial_production_changed_lines": 425
+      },
+      "limitations": []
+    },
+    {
+      "unit": "U7",
+      "report_sha256": "2f77c0627ca4656c2e4df34dc5830d25a6b2550fad329d8cdd1d6f91cfa52c9f",
+      "current_findings": [],
+      "scope": {
+        "repair_baseline": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+        "original_source_baseline": "96eef30915b2a372f2897f8bc1156a708df31a77",
+        "paths": [
+          "crates/merman-render/src/architecture/theme/edge_stroke.rs",
+          "crates/merman-render/src/cynefin/theme.rs",
+          "crates/merman-render/src/diagram_theme/presets.rs",
+          "crates/merman-render/src/eventmodeling/theme.rs",
+          "crates/merman-render/src/kanban/config.rs",
+          "crates/merman-render/src/kanban/theme.rs",
+          "crates/merman-render/src/svg/parity/architecture/labels.rs",
+          "crates/merman-render/src/svg/parity/architecture/nodes.rs",
+          "crates/merman-render/src/svg/parity/xychart/render.rs",
+          "crates/merman-render/src/timeline/css_binding.rs",
+          "crates/merman-render/src/timeline/theme.rs",
+          "crates/merman-render/src/xychart.rs",
+          "crates/merman-render/src/xychart/paint.rs",
+          "crates/merman-render/src/xychart/series.rs",
+          "crates/merman-render/tests/architecture_svg_test.rs",
+          "crates/merman-render/tests/cynefin_svg_test.rs",
+          "crates/merman-render/tests/eventmodeling_svg_test.rs",
+          "crates/merman-render/tests/kanban_svg_test.rs",
+          "crates/merman-render/tests/requirement_layout_test.rs",
+          "crates/merman-render/tests/timeline_svg_test.rs",
+          "crates/merman-render/tests/xychart_svg_test.rs",
+          "crates/merman-render/tests/zenuml_svg_test.rs",
+          "crates/merman/tests/theme_xychart_text.rs",
+          "crates/merman-render/src/diagram_theme/presets/catalog.rs"
+        ],
+        "initial_path_count": 23,
+        "current_path_count": 24,
+        "followup_extension": "\u7ed3\u679c\u6e05\u5355\u65b0\u589e root-owned presets/catalog.rs\uff1b\u4ec5\u590d\u6838 OneDark/GruvboxDark \u7b2c\u516b label \u69fd\u4f4d\u4fee\u590d\u53ca\u5176\u4e0e\u771f\u5b9e\u7ec8\u7aef oracle \u7684\u914d\u5bf9\u3002\u76ee\u5f55\u6307\u7eb9\u7531 root/U8 \u751f\u6210\uff0c\u672a\u72ec\u7acb\u91cd\u65b0\u751f\u6210\u6216\u5f52\u56e0\u5176\u4ed6 root \u4fee\u6539\u3002",
+        "production_changed_lines": 205,
+        "depth": "Deep",
+        "count_method": "\u6307\u5b9a\u6587\u4ef6 unified diff \u52a0\u5220\u884c\uff1b\u6392\u9664\u5916\u90e8 tests\u3001\u624b\u8bfb cfg(test) \u6a21\u5757\u4e0e Kanban \u6d4b\u8bd5\u4e13\u7528\u89e3\u6790\u5668\u3001\u751f\u6210 recipe fingerprint \u5e38\u91cf\uff1b\u5305\u62ec catalog \u4e24\u4e2a\u524d\u666f\u8272\u4fee\u590d\u3002",
+        "excluded": "\u672a\u4f5c\u5168\u4ed3\u5ba1\u67e5\uff1b\u76f8\u90bb architecture/timeline/kanban writer\u3001XY typography\u3001\u6570\u503c\u683c\u5f0f\u4e0e\u5171\u4eab source helper \u53ea\u8bfb\uff0c\u7528\u4e8e\u8de8\u7ec4\u4ef6\u8bc1\u636e\u3002"
+      },
+      "limitations": []
+    }
+  ],
+  "known_test_corrections": "Renderer full run had two invalid Railroad test premises; both were corrected without changing production and passed the four-test focused rerun. No failing production path was waived. Two new XML-CSS tests initially selected a parent marker on text; actual class and parsed CSS tokens corrected, then 2/2 passed. No production assertion was weakened.",
+  "claims": "Correctness, feature closure, byte/work bounds and structurally eliminated repeated work only; no elapsed-time, allocation-count or artifact-size improvement claim.",
+  "native_swift_loader": {
+    "published_source_commit": "580e39b69cc1b0ca35c4f8272683e622b2e9b8db",
+    "published_projection_sha256": {
+      "Merman.swift": "e38c375b70be408d534e5d90c04811f8ad318df88e57e3cf3c2243d091047bc7",
+      "MermanFFI.h": "1b97f1cedda8a6824e62490d823be8aad9e92582999d51b8060b2d1e22b7405c",
+      "MermanFFI.modulemap": "aa7655309334b067a19ccf8130ecb1e78352cdc4aae6599278bc2357f75c08d4"
+    },
+    "native_library": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/target/native-sdk/libmerman_uniffi.dylib",
+    "native_library_sha256": "f56239c8823f192c9c1b2193ff98c7ebb710ec37f4ddf52ceb5c552af6d99209",
+    "loader_rejection": "dlopen(/var/folders/zk/87rg5ff15mlfnplph83p5ntm0000gn/T/merman-published-api7-ixti3hyy/libMermanPublishedApi7.dylib, 0x0002): symbol not found in flat namespace '_uniffi_merman_uniffi_checksum_method_merman_presentation_catalog_json'"
+  },
+  "native_bindings": {
+    "dart_authoring": "Fresh libmerman_ffi.dylib: 2 materializations,22 queries,5 errors,3 budgeted operations per consumer; ABI3 contracts passed",
+    "documented_export_options": "Fresh native output PNG1979bytes/PDF10785bytes",
+    "limits": "Mac ARM64 locally built libraries; no other host or publication claim."
+  },
+  "browser_followup": {
+    "unit": "U5-browser-followup",
+    "status": "implemented-and-verified",
+    "completed_at": "2026-10-13T05:35:32.751424+00:00",
+    "head_at_receipt": "8fa7e884aa69b28ad8620ce196dfa1eee43cb49b",
+    "modified_paths": [
+      "playground/tests/helpers/theme-text-surface.ts",
+      "playground/tests/theme-text-surface.smoke.spec.ts"
+    ],
+    "source_sha256": {
+      "playground/tests/helpers/theme-text-surface.ts": "22ae1ad1938a482b1a15d412130434081af39eac3d30d9eaf55b0121970962ef",
+      "playground/tests/theme-text-surface.smoke.spec.ts": "f2cbf6d7614253935e9ee0d6bab1b7f018fe1afd67dff53b1acb47068e7cff42"
+    },
+    "repairs": [
+      {
+        "id": "U5-browser-local-surface",
+        "trigger": "An opaque white rectangle covers only the glyph region while the selected brown surface remains visible elsewhere.",
+        "closure": "At each actual text-contributing pixel, the text-suppressed image must contain the reported opaque surface RGB and suppression of that surface must change that same pixel."
+      },
+      {
+        "id": "U5-browser-child-alpha",
+        "trigger": "A tspan fill-opacity of 0.5 or 0.1 is hidden by the parent text computed fill-opacity of 1.",
+        "closure": "Check actual nonempty text-node parent paths and opacity ancestry; every actual SVG text parent must have fill-opacity 1."
+      },
+      {
+        "id": "U5-browser-child-paint",
+        "trigger": "A child tspan has the brown background fill while its parent reports yellow.",
+        "closure": "All actual text-node parents must share the reported computed paint and font family, otherwise reject the single-paint observation."
+      },
+      {
+        "id": "U5-browser-text-filter",
+        "trigger": "brightness(0.2) changes real text pixels while computed fill remains yellow.",
+        "closure": "Reject non-none filters on actual glyph paths and ancestors."
+      },
+      {
+        "id": "U5-browser-text-blend",
+        "trigger": "multiply blending changes real text pixels while computed fill remains yellow.",
+        "closure": "Reject non-normal mix-blend-mode on actual glyph paths and ancestors."
+      },
+      {
+        "id": "U5-browser-text-stroke",
+        "trigger": "A 5px blue text stroke painted after fill covers the reported yellow fill.",
+        "closure": "Reject an effective positive-width SVG text stroke for this fill-only observation; normal surface borders remain supported."
+      },
+      {
+        "id": "U5-browser-text-mask",
+        "trigger": "A white SVG mask with fill-opacity 0.1 lowers glyph opacity while text opacity and fill-opacity remain 1.",
+        "closure": "Reject non-none mask-image on actual glyph paths and ancestors."
+      }
+    ],
+    "verification": [
+      {
+        "name": "initial-regression-red",
+        "command": "PLAYWRIGHT_PORT=4187 ./node_modules/.bin/playwright test theme-text-surface.smoke.spec.ts --project=chromium-desktop --grep 'only beneath the glyphs|transparent child tspan|differs from the report' --reporter=list",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/playground/tests",
+        "exit_code": 1,
+        "summary": "3 tests failed because the old helper resolved instead of rejecting.",
+        "log": "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-red.log"
+      },
+      {
+        "name": "compositing-regression-red",
+        "command": "PLAYWRIGHT_PORT=4187 ./node_modules/.bin/playwright test theme-text-surface.smoke.spec.ts --project=chromium-desktop --grep 'brightness filter|multiply blend' --reporter=list",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/playground/tests",
+        "exit_code": 1,
+        "summary": "2 tests failed because the helper still accepted altered real text paint.",
+        "log": "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-compositing-red.log"
+      },
+      {
+        "name": "stroke-regression-red",
+        "command": "PLAYWRIGHT_PORT=4187 ./node_modules/.bin/playwright test theme-text-surface.smoke.spec.ts --project=chromium-desktop --grep 'stroke that covers' --reporter=list",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/playground/tests",
+        "exit_code": 1,
+        "summary": "1 test failed because a blue stroke was incorrectly reported as yellow fill.",
+        "log": "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-stroke-red.log"
+      },
+      {
+        "name": "mask-regression-red",
+        "command": "PLAYWRIGHT_PORT=4187 ./node_modules/.bin/playwright test theme-text-surface.smoke.spec.ts --project=chromium-desktop --grep 'mask that changes' --reporter=list",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/playground/tests",
+        "exit_code": 1,
+        "summary": "1 test failed because a translucent glyph mask was accepted as opaque.",
+        "log": "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-mask-red.log"
+      },
+      {
+        "name": "theme-text-surfaces-green",
+        "command": "PLAYWRIGHT_PORT=4187 ./node_modules/.bin/playwright test theme-text-surface.smoke.spec.ts --project=chromium-desktop --reporter=list",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/playground/tests",
+        "exit_code": 0,
+        "summary": "38/38 passed, including production-mounted State, Packet, Sequence, transformed geometry, exact style restoration, local occlusion positive and all seven adversarial regressions.",
+        "log": "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-final-green.log"
+      },
+      {
+        "name": "cyberpunk-control-green",
+        "command": "PLAYWRIGHT_PORT=4187 ./node_modules/.bin/playwright test theme-cyberpunk.spec.ts --project=chromium-desktop --reporter=list",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/playground/tests",
+        "exit_code": 0,
+        "summary": "6/6 passed.",
+        "log": "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-cyberpunk-green.log"
+      },
+      {
+        "name": "browser-typecheck-green",
+        "command": "npm run typecheck",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/playground/tests",
+        "exit_code": 0,
+        "log": "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-typecheck-final.log"
+      },
+      {
+        "name": "diff-whitespace-green",
+        "command": "git diff --check -- playground/tests/helpers/theme-text-surface.ts playground/tests/theme-text-surface.smoke.spec.ts",
+        "cwd": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance",
+        "exit_code": 0
+      }
+    ],
+    "bounds": {
+      "max_screenshot_pixels": 4000000,
+      "screenshots_per_probe": 3,
+      "screenshot_scale": "css",
+      "background_rgb_channel_tolerance": 1
+    },
+    "limitations": [
+      "Evidence qualifies a single uniform opaque fill and font-family identity; altered text paint from filters, blending, masks, or effective SVG strokes is rejected rather than simulated.",
+      "Exact same-colored paint below a selected surface cannot prove its local contribution and is conservatively rejected.",
+      "Each visible text-contributing raster pixel requires the selected surface locally; text displaced outside its surface is now rejected before a receipt can be returned.",
+      "Surface shadow filters are permitted only through the existing actual local RGB/provenance pixel checks; text-affecting ancestor filters are rejected.",
+      "Browser runs here used Chromium and existing checked-in Web binding/Playground artifacts; no fresh WASM build or other browser run is claimed."
+    ],
+    "independent_review": {
+      "reviewer": "/root/review_u5_repair",
+      "status": "independent-current-source-eight-case-probe-verified",
+      "evidence": "/tmp/merman-theme-review-repair-20261013/U5-adversarial-browser-mask-final.json",
+      "summary": "Normal control accepted; seven actual adversarial cases rejected. The reviewer owns the final comprehensive U5 review receipt."
+    },
+    "cargo_runs": 0,
+    "git_index_mutations": 0,
+    "commits": []
+  },
+  "state_radius_browser": {
+    "generatedAt": "2026-10-13T05:31:36.022Z",
+    "executablePath": "/Users/frankorz/Library/Caches/ms-playwright/chromium_headless_shell-1248/chrome-headless-shell-mac-arm64/chrome-headless-shell",
+    "browserVersion": "HeadlessChrome/156.0.8078.4",
+    "checks": [
+      {
+        "name": "normal",
+        "htmlLabels": false,
+        "file": "/tmp/merman-theme-review-repair-20261013/U2-state-radius-svg/normal-false.svg",
+        "svgModifiedAt": "2026-10-13T05:29:28.242Z",
+        "svgSha256": "680c166058b1be73a64bfa1f9749baf8adf632a791eea156a1f4a519fbc0b17d",
+        "expectedRadius": "19px",
+        "actual": [
+          {
+            "className": "basic label-container",
+            "rx": "19px",
+            "ry": "19px",
+            "rxAttribute": "19",
+            "ryAttribute": "19",
+            "inlineStyle": "fill:#e2e8f0 !important;rx:19px;ry:19px;",
+            "computedFill": "rgb(226, 232, 240)"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "title",
+        "htmlLabels": false,
+        "file": "/tmp/merman-theme-review-repair-20261013/U2-state-radius-svg/title-false.svg",
+        "svgModifiedAt": "2026-10-13T05:29:28.250Z",
+        "svgSha256": "08d28476ddb0e56e349ece032cdb115d441cbb359db897e56eff7a9ffb96e7c5",
+        "expectedRadius": "19px",
+        "actual": [
+          {
+            "className": "outer title-state",
+            "rx": "19px",
+            "ry": "19px",
+            "rxAttribute": "19",
+            "ryAttribute": "19",
+            "inlineStyle": "fill:#e2e8f0 !important;rx:19px;ry:19px;",
+            "computedFill": "rgb(226, 232, 240)"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "composite",
+        "htmlLabels": false,
+        "file": "/tmp/merman-theme-review-repair-20261013/U2-state-radius-svg/composite-false.svg",
+        "svgModifiedAt": "2026-10-13T05:29:28.259Z",
+        "svgSha256": "1ff0610726cc8dc419f67fa12ec47718df2971f1e70085c3f1005d6a39e8349c",
+        "expectedRadius": "12px",
+        "actual": [
+          {
+            "className": "outer",
+            "rx": "12px",
+            "ry": "12px",
+            "rxAttribute": "12",
+            "ryAttribute": "12",
+            "inlineStyle": "rx:12px;ry:12px;",
+            "computedFill": "rgb(253, 244, 255)"
+          },
+          {
+            "className": "inner",
+            "rx": "12px",
+            "ry": "12px",
+            "rxAttribute": "12",
+            "ryAttribute": "12",
+            "inlineStyle": "fill:#e2e8f0 !important;rx:12px;ry:12px;",
+            "computedFill": "rgb(226, 232, 240)"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "normal",
+        "htmlLabels": true,
+        "file": "/tmp/merman-theme-review-repair-20261013/U2-state-radius-svg/normal-true.svg",
+        "svgModifiedAt": "2026-10-13T05:29:28.267Z",
+        "svgSha256": "75bea78bc5250b6247255f5fb0ba8c01d253a5978bc9b78f26c81cf596dd6d16",
+        "expectedRadius": "19px",
+        "actual": [
+          {
+            "className": "basic label-container",
+            "rx": "19px",
+            "ry": "19px",
+            "rxAttribute": "19",
+            "ryAttribute": "19",
+            "inlineStyle": "fill:#e2e8f0 !important;rx:19px;ry:19px;",
+            "computedFill": "rgb(226, 232, 240)"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "title",
+        "htmlLabels": true,
+        "file": "/tmp/merman-theme-review-repair-20261013/U2-state-radius-svg/title-true.svg",
+        "svgModifiedAt": "2026-10-13T05:29:28.276Z",
+        "svgSha256": "bf32a839924f3964fca6db81a37ef02bb1cd26070822e34b84a147885621a2d0",
+        "expectedRadius": "19px",
+        "actual": [
+          {
+            "className": "outer title-state",
+            "rx": "19px",
+            "ry": "19px",
+            "rxAttribute": "19",
+            "ryAttribute": "19",
+            "inlineStyle": "fill:#e2e8f0 !important;rx:19px;ry:19px;",
+            "computedFill": "rgb(226, 232, 240)"
+          }
+        ],
+        "passed": true
+      },
+      {
+        "name": "composite",
+        "htmlLabels": true,
+        "file": "/tmp/merman-theme-review-repair-20261013/U2-state-radius-svg/composite-true.svg",
+        "svgModifiedAt": "2026-10-13T05:29:28.285Z",
+        "svgSha256": "291b8744328bdc9846bbaa817f37461c521022e3b6618a1e98224900972100c1",
+        "expectedRadius": "12px",
+        "actual": [
+          {
+            "className": "outer",
+            "rx": "12px",
+            "ry": "12px",
+            "rxAttribute": "12",
+            "ryAttribute": "12",
+            "inlineStyle": "rx:12px;ry:12px;",
+            "computedFill": "rgb(253, 244, 255)"
+          },
+          {
+            "className": "inner",
+            "rx": "12px",
+            "ry": "12px",
+            "rxAttribute": "12",
+            "ryAttribute": "12",
+            "inlineStyle": "fill:#e2e8f0 !important;rx:12px;ry:12px;",
+            "computedFill": "rgb(226, 232, 240)"
+          }
+        ],
+        "passed": true
+      }
+    ],
+    "passed": true
+  },
+  "structural_performance": {
+    "baseline": "96eef30915b2a372f2897f8bc1156a708df31a77",
+    "question": "Remove proven duplicate immutable plan/invariant work and enforce bounded SVG construction without changing semantic, budget, or cancellation contracts.",
+    "evidence_mode": "structural only",
+    "scope": [
+      10,
+      28,
+      51,
+      60,
+      75
+    ],
+    "admission": "Focused output/receipt identity and resource/cancellation regressions; no latency, allocation-count, artifact-size, or cross-host gain claimed.",
+    "measurements": []
+  },
+  "final_cleanup_review": {
+    "report": "/tmp/merman-theme-review-repair-20261013/final-cleanup-independent-review.json",
+    "sha256": "150cdd2fc2cab6b141f2b21555156ad4b4046f816143eb8f6b824821acbe2a64",
+    "findings": []
+  },
+  "scope_validation": {
+    "confirmed_findings": 68,
+    "testing_gaps": 26,
+    "necessity_assessments": 36,
+    "remaining": "Exact release clean-candidate preset qualification only.",
+    "public_compatibility": "N1 retained as assessed; N6 retired no-state signatures remain compatible.",
+    "rejected_review_candidate": "U6-R6 had no admitted Railroad target and is not counted as a repair."
+  }
+}

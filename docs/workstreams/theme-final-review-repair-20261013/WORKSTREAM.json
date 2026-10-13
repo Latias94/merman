@@ -33,7 +33,9 @@
         "crates/merman-render/src/svg/parity/sequence/",
         "crates/merman-render/src/text.rs",
         "crates/merman-render/tests/sequence_svg_test.rs"
-      ]
+      ],
+      "agent": "/root/repair_u1_math_sequence",
+      "status": "verified"
     },
     "U2": {
       "name": "flowchart-state-class",
@@ -83,8 +85,12 @@
         "crates/merman-render/src/text/visible_style.rs",
         "crates/merman-render/tests/flowchart_svg_test.rs",
         "crates/merman-render/tests/state_svg_test.rs",
-        "crates/merman-render/tests/class_svg_test.rs"
-      ]
+        "crates/merman-render/tests/class_svg_test.rs",
+        "crates/merman-render/src/text/prepared.rs",
+        "crates/merman-render/src/text/markdown.rs"
+      ],
+      "agent": "/root/repair_u2_flow_state_class",
+      "status": "verified"
     },
     "U3": {
       "name": "block-er-treeview-icons",
@@ -123,8 +129,11 @@
         "crates/merman-render/tests/block_svg_test.rs",
         "crates/merman-render/tests/er_svg_test.rs",
         "crates/merman-render/tests/er_subgraph_theme_test.rs",
-        "crates/merman-render/tests/tree_view_svg_test.rs"
-      ]
+        "crates/merman-render/tests/tree_view_svg_test.rs",
+        "crates/merman-render/src/family/evidence_support.rs"
+      ],
+      "agent": "/root/repair_u3_block_er_tree",
+      "status": "verified"
     },
     "U4": {
       "name": "core-contract-export-pipeline",
@@ -157,11 +166,14 @@
         "crates/merman-core/src/theme.rs",
         "crates/merman-theme-contract/src/support.rs",
         "crates/merman-theme-contract/tests/",
-        "crates/merman-render/src/diagram_theme/",
         "crates/merman-render/src/environment.rs",
         "crates/merman-render/src/svg/pipeline/standalone.rs",
-        "crates/merman-render/src/svg/fallback/cascade.rs"
-      ]
+        "crates/merman-render/src/svg/fallback/cascade.rs",
+        "crates/merman-render/src/family.rs",
+        "crates/merman-render/src/diagram_theme/ (except presets.rs)"
+      ],
+      "agent": "/root/repair_u4_foundation",
+      "status": "verified"
     },
     "U5": {
       "name": "tooling-bindings-docs",
@@ -204,7 +216,16 @@
         "crates/merman-bindings-core/src/wire.rs",
         "crates/merman-cli/tests/distribution_assets.rs",
         "crates/merman-cli/tests/cli_contract.rs",
-        "platforms/swift/"
+        "platforms/swift/",
+        "crates/merman-uniffi/README.md",
+        "crates/merman-node/src/wire.rs",
+        "platforms/apple/",
+        "platforms/flutter/tool/"
+      ],
+      "agent": "/root/repair_u5_public_tooling",
+      "status": "verified_pending_clean_candidate_qualification",
+      "root_owned_integration_paths": [
+        ".github/workflows/ci.yml"
       ]
     },
     "U6": {
@@ -307,7 +328,9 @@
         "crates/merman-render/src/svg/parity/swimlane/",
         "crates/merman-render/tests/swimlane_svg_test.rs",
         "crates/merman-render/tests/swimlane_layout_test.rs"
-      ]
+      ],
+      "status": "verified",
+      "agent": "/root/repair_u6_geometry_resources"
     },
     "U7": {
       "name": "remaining-paint-families",
@@ -381,664 +404,1741 @@
         "crates/merman-render/src/svg/parity/xychart/",
         "crates/merman-render/tests/xychart_svg_test.rs",
         "crates/merman-render/tests/xychart_layout_test.rs"
-      ]
+      ],
+      "status": "verified",
+      "agent": "/root/repair_u7_remaining_paint"
+    },
+    "U8": {
+      "name": "unmerged-theme-version-normalization",
+      "status": "verified",
+      "agent": "/root/repair_u8_theme_versions",
+      "findings": [],
+      "gaps": [],
+      "necessity": [],
+      "ownership": [],
+      "audit": "U8-version-audit.json"
     }
   },
   "findings": {
     "1": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "2": {
       "unit": "U1",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "3": {
       "unit": "U1",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "4": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "5": {
       "unit": "U5",
-      "status": "pending",
+      "status": "implemented_pending_same_source_artifact_verification",
       "evidence": []
     },
     "7": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "8": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "9": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "10": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "11": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "12": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "13": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "14": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "15": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "16": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "17": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "18": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "19": {
       "unit": "U1",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "20": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "21": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "22": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "23": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "24": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "25": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "26": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "27": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "28": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "29": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "30": {
       "unit": "U1",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "31": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "32": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "33": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "34": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
     },
     "35": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "36": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "37": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "39": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "40": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "41": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "42": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "43": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "44": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "45": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "46": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "47": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "48": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "49": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "50": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "51": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "52": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "53": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "54": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "55": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "56": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "57": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "58": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "59": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "60": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "61": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "62": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "63": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json"
+      ]
     },
     "64": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "65": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ]
     },
     "66": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "67": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json"
+      ]
     },
     "73": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-ffi-native-build.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json"
+      ],
+      "outcome": "Fresh debug C ABI dylib: Dart authoring 2 materializations,22 support queries,5 errors,3 budgeted operations per consumer; ABI3 contract suite passed."
     },
     "74": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ]
     },
     "75": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     }
   },
   "testing_gaps": {
     "G1": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-cli-green.json"
+      ]
     },
     "G2": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json"
+      ]
     },
     "G3": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json"
+      ]
     },
     "G4": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json"
+      ]
     },
     "G5": {
       "unit": "U1",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "G6": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json"
+      ]
     },
     "G7": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json"
+      ]
     },
     "G8": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json"
+      ]
     },
     "G9": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/core-treemap-g9-corrected.json"
+      ]
     },
     "G10": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json"
+      ]
     },
     "G11": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-node-green-final.json"
+      ]
     },
     "G12": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json"
+      ]
     },
     "G13": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-cli-green.json"
+      ]
     },
     "G14": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json"
+      ]
     },
     "G15": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-apple-native-build.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u5-swift-loader-same-source.json"
+      ],
+      "outcome": "Complete frozen alpha.7 Swift projection compiled and rejected at dynamic loading against fresh native-sdk host library. Host build intentionally omits target triple; CI XCFramework uses explicit target triple path."
     },
     "G16": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "G17": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     },
     "G18": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json"
+      ]
     },
     "G19": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json"
+      ]
     },
     "G20": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json"
+      ]
     },
     "G21": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json"
+      ]
     },
     "G22": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json"
+      ]
     },
     "G23": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json"
+      ]
     },
     "G24": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json"
+      ]
     },
     "G25": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json"
+      ]
     },
     "G26": {
       "unit": "U1",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ]
     }
   },
   "necessity": {
     "N1": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "assessed_compatibility_preserved",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": "Keep all public projection types/getters and error variants; document retired system-only result semantics. v0.8.0 and v0.8.0-alpha.7 do not contain assets.rs, but local release absence/no current consumers is insufficient proof to remove public APIs."
     },
     "N2": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": {
+        "id": "N2",
+        "status": "fixed-verified",
+        "finding_ids": [
+          51,
+          75
+        ]
+      }
     },
     "N3": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": {
+        "id": "N3",
+        "status": "fixed-verified",
+        "finding_ids": [
+          10
+        ]
+      }
     },
     "N4": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Deleted the redundant test-only raw estimator; the same cancellation obligation is now covered by production estimation."
     },
     "N5": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": {
+        "id": "N5",
+        "status": "fixed-verified",
+        "finding_ids": [
+          7
+        ]
+      }
     },
     "N6": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": "Remove environment policy field/default allocation/debug/clone state; preserve setter/getter signatures including const getter as deprecated no-state compatibility APIs returning empty current-mode policy. Preserve session report fallback evidence."
     },
     "N7": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Retain parent/local/class and importance in color winner. Important inherit/currentColor/unset restore parent ownership; non-important class uncertainty and source-owned parent remain conservative."
     },
     "N8": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Inspect XHTML style attributes with standard CSS semicolon declaration boundary visitor; keep malformed declarations and stable independent provenance ordinals. Mermaid comma-source boundaries remain unchanged."
     },
     "N9": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Delete unsupported historical ancestor route collapse, request flag, imports, predicate, now-unused hierarchy argument and persisted physical_ancestry field. Keep local physical ancestry cluster sorting and generic single-point paths."
     },
     "N10": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Select self-loop shadowing through the compiled backend resolver. Store the shadowed edge IDs in StateStylePlan and consume that fact from SVG instead of rescanning later edges."
     },
     "N11": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Removed section reconstruction; actual layout section facts own all section receipt expectations."
     },
     "N12": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "One rect geometry template emits optional fill/stroke declarations; a four-combination test preserves attributes, XML encoding and absent-style behavior."
     },
     "N13": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Remove is_dark_name and source_border_slots; effective theme mode and filtered terminal colors are sole inputs."
     },
     "N14": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Retired font parser deleted; private test layout helper retained as production-plan delegation only."
     },
     "N15": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Delete suppressed rule flag/branch; pending facets and independent residuals own completion."
     },
     "N16": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Source stroke filter precedes every classification; sibling residual contract retained."
     },
     "N17": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Optional service receipt region avoids unconsumed host probes, DOM equality unit oracle retained."
     },
     "N18": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Actual resolved property winners determine unsupported facets; inactive history no longer leaves residuals, with mixed-facet aggregation preserved."
     },
     "N19": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Removed the expanded CSS temporary and retired parts helper; reused existing bounded common CSS emission."
     },
     "N20": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U3-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": "TreeView static Edge style reused for direct paint; inherited label style resolves once for paint; icon classification removed from whole-receipt gate and stays channel-local. Unsupported facet reconciliation shares actual terminal domain algorithm."
     },
     "N21": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Deleted local selector/applicability shadow logic and unmetered finish-stage style scans. Shared metered per-facet reconciliation consumes exact prepared roles; the writer proves that prepared domain before evidence merge."
     },
     "N22": {
       "unit": "U1",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U1-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": "Remove both per-label RaTeX parse/Display roundtrips and per-formula string color parse. CSS validity and typed color conversion have one owner; preserve one formula compile/layout/render, same-source metrics, sanitizer and XHTML normalization."
     },
     "N23": {
       "unit": "U3",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U3-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U3-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": "Base marker geometry table shared; distinct paint writers retained."
     },
     "N24": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": {
+        "id": "N24",
+        "status": "fixed-verified",
+        "finding_ids": [
+          1
+        ]
+      }
     },
     "N25": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": {
+        "id": "N25",
+        "status": "implemented-awaiting-root-verification",
+        "finding_ids": [
+          47
+        ]
+      }
     },
     "N26": {
       "unit": "U4",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U4-result.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+      ],
+      "decision": {
+        "id": "N26",
+        "status": "fixed-verified",
+        "finding_ids": [
+          48
+        ]
+      }
     },
     "N27": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Forward the same operation sidecar through collapsed ELK projection while retaining original node/edge owner maps. Cover theme fonts/padding and prepared math source binding."
     },
     "N28": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Use ClassMember::display_text_for_render for SVG row measurement and both field/method emission; remove all-prefix stripping. HTML retains its createText input contract."
     },
     "N29": {
       "unit": "U2",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Delegate Class non-centered styled Markdown to generic style-aware writer. Delete both obsolete unstyled wrappers and copied row/word writer. Preserve empty/whitespace style DOM and None receipt."
     },
     "N30": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ],
+      "decision": "Shared only pure boundedUTF8 counting; preserves constructor/request scope separation, raw scanner and duplicate-field admission. Removed full utf8 encoding copies from projection byte charge. No generalized JSON parser introduced."
     },
     "N31": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ],
+      "decision": "Removed stale version literal; uses Chinese readiness which owns async condition; preserves import generation/cancel/reopen browser flows."
     },
     "N32": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ],
+      "decision": "Reuses finite visible/opaque function for text and surface ancestors; exact paint suppression observes surface pixels. No heuristic surface search/CSS compositor."
     },
     "N33": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ],
+      "decision": "Discarded numeric validation output; removed stale context-host-theme import; preserved single Typst normalization owner and Rust theme model."
     },
     "N34": {
       "unit": "U5",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json"
+      ],
+      "decision": "Fixed catalog/Options/export/frozen ABI doc contradictions; preserved dated immutable UNRELEASED_CONTRACT_VERSIONS audit because historical versions are explicit there; no registry/compat aliases added."
     },
     "N35": {
       "unit": "U7",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U7-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U7-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Complete fixed Architecture label collection replaces any-terminal oracle."
     },
     "N36": {
       "unit": "U6",
-      "status": "pending",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U6-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ],
+      "decision": "Deleted journey_task_palette_preserves_source_owned_fill_type_slots; retained the stronger two-slot/source-owner/CSS/evidence superset journey_task_palette_preserves_source_owned_slots_and_counts_typed_slots."
     }
   },
-  "verification": []
+  "verification": [
+    {
+      "name": "u1-red",
+      "phase": "characterization",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u1-red.json",
+      "outcome": "Note style failed; budget control passed"
+    },
+    {
+      "name": "u1-red-remaining",
+      "phase": "characterization",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u1-red-remaining.json",
+      "outcome": "Two test fixture/unsupported-projection issues detected and corrected before claiming regression"
+    },
+    {
+      "name": "u4-core-red-lib",
+      "phase": "characterization",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u4-core-red-lib.json",
+      "outcome": "Falsy extended background fallback failed"
+    },
+    {
+      "name": "u4-contract-red",
+      "phase": "characterization",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u4-contract-red.json",
+      "outcome": "Nested opaque integer changed; three existing-domain controls passed"
+    },
+    {
+      "name": "u4-export-red",
+      "phase": "characterization",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u4-export-red.json",
+      "outcome": "Family selection and discovery observer regressions both failed"
+    },
+    {
+      "name": "u5-dart-red",
+      "phase": "characterization",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u5-dart-red.json",
+      "outcome": "Oversized options counting did not stop at the first over-limit code point"
+    },
+    {
+      "name": "wave1-render-green",
+      "phase": "integration",
+      "result": "3600 run: 3593 pass, 7 fail, 3 skip; failures returned to owners; not complete",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-green.json"
+    },
+    {
+      "name": "u4-core-contract-green",
+      "phase": "verification",
+      "result": "2037/2037 passed; all core diagram features",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json"
+    },
+    {
+      "name": "u4-export-green",
+      "phase": "integration",
+      "result": "154 run:153pass1fail; unresolvedfont/discoverytests passed; Unicodefont named-face test still failing",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u4-export-green.json"
+    },
+    {
+      "name": "u1-feature-closure-green",
+      "phase": "verification",
+      "result": "Independent svg,diagram-flowchart,math consumer without Sequence compiled successfully",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u1-feature-closure-green.json"
+    },
+    {
+      "name": "u4-pdf-closure-green",
+      "phase": "verification",
+      "result": "Exact pdf-only export library tests compile; no tiny-skia/resvg dependencies added",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u4-pdf-closure-green.json"
+    },
+    {
+      "name": "u3-shared-facets-green",
+      "result": "4/4 passed",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u3-shared-facets-green.json"
+    },
+    {
+      "name": "wave1-render-final",
+      "result": "4769 run:4767pass2feature-contracttest failures; ownbehavior regressions passed",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json"
+    },
+    {
+      "name": "u4-font-selection-green",
+      "result": "Valid quotedUnicode font selection, glyph IDs, shaped bbox and fallback flags passed",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u4-font-selection-green.json"
+    },
+    {
+      "name": "u5-cli-green",
+      "result": "4/4 public completion and hardcap tests passed",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/u5-cli-green.json"
+    },
+    {
+      "name": "u7-focused-green",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json",
+      "status": "20_pass_2_fail",
+      "limits": "One invalid test Stroke wire shape; one genuine preset contrast defect assigned for repair."
+    },
+    {
+      "name": "u6-u7-green",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u6-u7-green.json",
+      "status": "388_pass_17_fail",
+      "limits": "Railroad/Venn raw CSS was incorrectly decoded while XML escaping; actual CSS colors damaged. Remaining fixture and receipt defects assigned, not waived."
+    },
+    {
+      "name": "integration-r7-r8-check",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/integration-r7-r8-check.json",
+      "status": "contrast_pass_note_red_expected_fingerprint_refresh",
+      "limits": "Real Class phantom-applied red and actual compiler values recorded."
+    },
+    {
+      "name": "build-cache-cleanup",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/build-cache-cleanup.json",
+      "status": "completed",
+      "limits": "Only 521 old Cargo-generated untracked Mach-O test executables removed; source, libraries, evidence retained."
+    },
+    {
+      "name": "er-native-green-final",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json",
+      "status": "passed",
+      "limits": "Controlled usvg native glyph spans, two source-owner cases, exact ER-only features."
+    },
+    {
+      "name": "state-radius-browser",
+      "record": "/tmp/merman-theme-review-repair-20261013/U2-state-radius-computed-style.json",
+      "status": "passed",
+      "limits": "Six fresh publicly rendered SVGs, eight rects, exact Chromium computed rx/ry."
+    },
+    {
+      "name": "facade-green-retry",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/facade-green-retry.json",
+      "status": "passed_57_of_57",
+      "limits": "Public source-theme isolation, target-evidence binding, native context admission, Swimlane collision, XY legend PNG/PDF pixels and filter receipts; latest Railroad followup occurred after compile and needs own final run."
+    },
+    {
+      "name": "python-u5-contracts",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.test_qualify_theme_presets",
+        "scripts.test_verify_cli_release_archive"
+      ],
+      "status": "passed_74_of_74"
+    },
+    {
+      "name": "workflow-syntax",
+      "command": [
+        "actionlint",
+        ".github/workflows/ci.yml"
+      ],
+      "status": "passed"
+    },
+    {
+      "name": "renderer-final-corrections",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+      "status": "passed"
+    },
+    {
+      "name": "core-treemap-g9-corrected",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/core-treemap-g9-corrected.json",
+      "status": "passed"
+    },
+    {
+      "name": "u2-no-elk",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u2-no-elk.json",
+      "status": "passed"
+    },
+    {
+      "name": "u2-elk",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u2-elk.json",
+      "status": "passed"
+    },
+    {
+      "name": "u5-node-green-final",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u5-node-green-final.json",
+      "status": "passed"
+    },
+    {
+      "name": "export-final",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/export-final.json",
+      "status": "passed"
+    },
+    {
+      "name": "renderer-final",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+      "status": "4950_pass_2_test_premises_corrected_and_four_targeted_tests_passed",
+      "limits": "Six intentional skips retained. Two corrections changed only invalid Railroad test premises; new production paths passed."
+    },
+    {
+      "name": "u5-typst-full",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u5-typst-full.json",
+      "status": "passed_23_compiled_9_expected_rejections",
+      "limits": "Fresh ABI3 wasm-size build, real Typst0.15.1, full examples/tests/compilefail and theme vectors; no registry publication."
+    },
+    {
+      "name": "opaque-support-consumer",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u4-opaque-consumer.json",
+      "status": "passed_all_four_integer_boundaries"
+    },
+    {
+      "name": "ci-owner-contracts",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.test_ci_plan",
+        "scripts.test_artifact_profile_recipe",
+        "scripts.test_release_workflow_security"
+      ],
+      "status": "passed_112_of_112"
+    },
+    {
+      "name": "swift-loader-same-source",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/u5-swift-loader-same-source.json",
+      "status": "passed",
+      "limits": "Fresh host-native-sdk dylib f56239c8; explicit-target Oct10 dylib test is not claimed as fresh evidence."
+    },
+    {
+      "name": "dart-fresh-authoring",
+      "status": "passed",
+      "command": [
+        "dart",
+        "--packages=.dart_tool/package_config.json",
+        "tool/theme_authoring_smoke.dart",
+        "../../target/debug/libmerman_ffi.dylib"
+      ],
+      "build_record": "/tmp/merman-theme-review-repair-20261013/verification/u5-ffi-native-build.json",
+      "outcome": "2 materializations,22 support queries,5 errors,3 budgeted operations per consumer."
+    },
+    {
+      "name": "dart-abi3",
+      "status": "passed",
+      "command": [
+        "dart",
+        "--packages=.dart_tool/package_config.json",
+        "tool/abi3_contract_test.dart"
+      ]
+    },
+    {
+      "name": "binding-doc-native-options",
+      "status": "passed",
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/u5-export-options-fresh.log",
+      "outcome": "PNG1979 bytes, PDF10785 bytes parsed from current Options3 docs using fresh C ABI dylib."
+    },
+    {
+      "name": "final-runtime",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/final-runtime.json",
+      "status": "passed_4968_of_4968",
+      "limits": "All renderer tests plus matching public tests; unrelated fa\u00e7ade filters excluded373 tests. Explicit fa\u00e7ade targets are rerun separately."
+    },
+    {
+      "name": "facade-final",
+      "record": "/tmp/merman-theme-review-repair-20261013/verification/facade-final.json",
+      "status": "passed_135_of_135_no_skips",
+      "limits": "Explicit library plus13 public integration targets, all diagram and native export/math/layout features."
+    }
+  ],
+  "integration_findings": {
+    "R1": {
+      "title": "Usecase integration tests lack their diagram feature gate",
+      "status": "verified",
+      "paths": [
+        "crates/merman-core/tests/usecase_contract.rs"
+      ],
+      "red_evidence": "/tmp/merman-theme-review-repair-20261013/verification/u4-core-red.log",
+      "fix": "Gate Usecase-specific contract tests on diagram-usecase, matching the exposed semantic variant.",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/core-usecase-disabled.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/u4-core-contract-green.json"
+      ]
+    },
+    "R2": {
+      "title": "Shared Mermaid Markdown tokenizer preserves escape tokens upstream ignores",
+      "status": "verified",
+      "unit": "U2",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ]
+    },
+    "R3": {
+      "title": "Empty CSS declarations create false XHTML residuals",
+      "status": "verified",
+      "unit": "U2",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ]
+    },
+    "R4": {
+      "title": "Mixed unsupported facet evidence can be swallowed by earlier Applied bookkeeping",
+      "status": "audited-no-current-trigger",
+      "unit": "U3",
+      "resolution": "All 33 current callers retain valid ordering; no speculative downgrade mechanism or test was added."
+    },
+    "R5": {
+      "title": "Optional-layout tests assume a capability absent from the selected feature profile",
+      "status": "verified",
+      "paths": [
+        "crates/merman-render/tests/typed_family_api_test.rs",
+        "crates/merman-render/tests/layout_snapshots_test.rs"
+      ],
+      "red_evidence": "/tmp/merman-theme-review-repair-20261013/verification/wave1-render-final.json",
+      "resolution": "Default Mindmap uses the supported tidy-tree fallback without Cytoscape; the complete-backend snapshot test requires both layout engines.",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json"
+      ]
+    },
+    "R6": {
+      "title": "Block case-normalized source declaration merge loses important precedence",
+      "status": "verified",
+      "unit": "U3",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/u7-focused-green.json",
+        "/tmp/merman-theme-review-repair-20261013/U3-independent-review.json"
+      ]
+    },
+    "R7": {
+      "title": "Class member Markdown fallback leaked into note visibility evidence",
+      "unit": "U2",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U2-independent-review.json"
+      ],
+      "decision": "Keep generic note/edge Markdown facts pure; apply source fallback only to node/member consumers that emit that source."
+    },
+    "R8": {
+      "title": "Actual one-dark Kanban task label contrast below 4.5:1",
+      "unit": "U7",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/integration-r7-r8-check.json"
+      ],
+      "actual": "Item 8 white on hsl(5,48%,60.9803921569%) yields 3.36:1; preserve actual terminal oracle.",
+      "decision": "All ten real prepared presets and explicit Cyberpunk modes pass terminal contrast after two label slots changed to black; recipe fingerprints refreshed from actual compiler output."
+    },
+    "R9": {
+      "title": "Browser terminal contrast can certify an occluded or differently painted glyph",
+      "unit": "U5",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-browser-followup-result.json",
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json"
+      ]
+    },
+    "R10": {
+      "title": "Railroad receipt finalization repeats unmetered ordinal theme lookups",
+      "unit": "U6",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
+    },
+    "R11": {
+      "title": "Railroad fill owners and global winners suppress sibling or later-title-ordinal residuals",
+      "unit": "U6",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
+    },
+    "R12": {
+      "title": "ER-only public feature closure depends on disabled Flowchart and Class Arc import",
+      "unit": "U3",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/er-native-green-final.json"
+      ]
+    },
+    "R13": {
+      "title": "Mindmap common CSS font stack with ampersand must cross a raw XML text boundary",
+      "unit": "U6",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final-corrections.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-independent-review.json"
+      ]
+    },
+    "R14": {
+      "title": "Typst README confuses current local candidate ABI with a published 0.5.0 baseline",
+      "unit": "U5",
+      "status": "verified_documentation",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/U5-independent-review.json"
+      ]
+    },
+    "R15": {
+      "title": "Native pipeline parses serialized XML style entities as CSS tokens, corrupting quoted ampersand font stacks",
+      "unit": "U6",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/native-font-css-fixed.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/pipeline-native-final-fixed.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/pipeline-oracle-corrections-final.json",
+        "/tmp/merman-theme-review-repair-20261013/U6-R15-independent-review.json"
+      ],
+      "outcome": "Decode logical XML style text once before CSS parsing; re-encode sanitized CSS at output boundary, retain bounds/cancellation."
+    },
+    "R16": {
+      "title": "Final all-target lint cleanup for theme tests and private helpers",
+      "status": "verified",
+      "unit": "root",
+      "decision": "Move unchanged test modules, remove unused private APIs, replace equivalent borrows/Copy/initializers and box errors only inside tests/examples; do not add warning suppressions or change public error APIs.",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/clippy-all-targets-final.json",
+        "/tmp/merman-theme-review-repair-20261013/final-cleanup-independent-review.json"
+      ]
+    }
+  },
+  "user_steering": [
+    {
+      "request": "Reset theme-related versions for code not merged into main to 1.",
+      "received_utc": "2026-10-13T03:41:00Z",
+      "status": "implemented_and_verified",
+      "unit": "U8",
+      "evidence": [
+        "430aa7b7a",
+        "/tmp/merman-theme-review-repair-20261013/U8-version-audit.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/facade-green-retry.json"
+      ],
+      "outcome": "New unmerged theme formats and three domains remain V1; no old-version adapters exist. Live migration alternative wording removed, necessary closed V1 rejection preserved. Published ABI and historical evidence identities unchanged."
+    },
+    {
+      "request": "Remove unmerged theme version migration logic after resetting versions to 1.",
+      "status": "implemented_and_verified",
+      "unit": "U8",
+      "evidence": [
+        "430aa7b7a",
+        "/tmp/merman-theme-review-repair-20261013/U8-version-audit.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/renderer-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/facade-green-retry.json"
+      ],
+      "outcome": "New unmerged theme formats and three domains remain V1; no old-version adapters exist. Live migration alternative wording removed, necessary closed V1 rejection preserved. Published ABI and historical evidence identities unchanged."
+    }
+  ],
+  "commits": [
+    {
+      "hash": "1bcd27f52",
+      "message": "fix(theme): preserve source ownership and native export evidence",
+      "scope": "core configuration, integer forwarding, native export/font evidence, PDF/Treemap closure"
+    },
+    {
+      "hash": "430aa7b7a",
+      "message": "refactor(theme): consolidate unpublished contracts at version one",
+      "scope": "Three V1 hash domains, real preset fingerprints and two Kanban contrast labels, live migration policy cleanup"
+    },
+    {
+      "hash": "f5f2bc29a",
+      "message": "fix(bindings): align theme consumers and verify visible output",
+      "scope": "Dart cap, real Node dispatcher, actual browser glyph evidence, full Swift loader/CI, Typst/docs/CLI/qualification closure"
+    },
+    {
+      "hash": "2fd71b54d",
+      "message": "fix(render): close theme ownership and terminal evidence gaps",
+      "scope": "Renderer families, math/Sequence, bounded geometry/resources, XML native pipeline, feature closures and theme test cleanup"
+    }
+  ],
+  "review_rejections": [
+    {
+      "id": "U6-R6",
+      "outcome": "Rejected as unreachable: Railroad target validity filters Node/Edge before route creation. Required/accounted/NA=0 is the actual contract; not counted as a fixed production bug."
+    }
+  ],
+  "status": "source_repairs_verified_pending_clean_qualification",
+  "remaining": [
+    "Finding5: exact clean release preset qualification with corrected standalone feature recipe."
+  ]
 }

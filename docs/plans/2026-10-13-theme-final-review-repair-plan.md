@@ -15,6 +15,10 @@ where warranted. This implementation supersedes the earlier report-only scope.
   closure, and operation-level reporting. Do not mask failures by weakening gates.
 - Verify the repaired feature configurations and relevant existing suites. Record
   the exact checks and their limits; claim performance gains only with evidence.
+- Reset theme-specific version domains introduced on this unmerged branch to V1,
+  regenerate their fingerprints from the compiler, and remove obsolete unmerged
+  version migration paths. Retain explicit V1 validation, unknown-version rejection,
+  independent published ABI contracts, and truthful historical records.
 
 ## Implementation
 
@@ -22,7 +26,9 @@ Use fresh workers with exclusive file ownership for the units in the
 [runtime ledger](../workstreams/theme-final-review-repair-20261013/WORKSTREAM.json).
 The first wave covers math/Sequence, Flowchart/State/Class, Block/ER/TreeView,
 core/export/pipeline, and tooling/bindings. The second wave covers the remaining
-geometry and paint families after integration of the first wave.
+geometry and paint families. Stable independent second-wave work proceeded while
+first-wave platform checks were running; shared file ownership stayed explicit and
+Cargo execution remained serialized.
 
 Workers implement source-backed fixes and focused regressions. The primary agent
 alone runs Cargo, coordinates shared files, stages changes, and commits integrated
