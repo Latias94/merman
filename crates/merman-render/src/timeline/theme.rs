@@ -760,7 +760,7 @@ fn timeline_event_fill_source_owned(
         );
     }
 
-    if binding.is_color_theme && !binding.is_dark_name {
+    if binding.is_color_theme && !binding.is_dark_theme {
         if binding.has_source_border_slot(slot) {
             return merman_core::__private::config_path_overrides_typed_default(
                 config,

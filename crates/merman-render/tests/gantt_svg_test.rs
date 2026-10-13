@@ -473,16 +473,37 @@ fn gantt_final_mermaid_stroke_keys_own_their_states_independently() {
         .expect("render source-owned Gantt task strokes");
     let terminals = gantt_task_terminal_inline_strokes(rendered.svg());
 
+    assert_eq!(
+        terminals.len(),
+        8,
+        "all eight source-owned task terminals must exist"
+    );
+    let actual_ids = terminals
+        .iter()
+        .map(|(id, _, _)| id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected_ids = [
+        "gantt-config-default-task",
+        "gantt-config-active-task",
+        "gantt-config-done-task",
+        "gantt-config-crit-task",
+        "gantt-config-active-crit-task",
+        "gantt-config-done-crit-task",
+        "gantt-config-active-milestone-task",
+        "gantt-config-done-vert-task",
+    ]
+    .into_iter()
+    .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(actual_ids, expected_ids);
+
     for (id, _, stroke) in &terminals {
         let expected = match id.as_str() {
             "gantt-config-default-task" => "#111111",
-            "gantt-config-active-task"
+            "gantt-config-active-task" | "gantt-config-active-milestone-task" => "#222222",
+            "gantt-config-done-task" | "gantt-config-done-vert-task" => "#333333",
+            "gantt-config-crit-task"
             | "gantt-config-active-crit-task"
-            | "gantt-config-active-milestone-task" => "#222222",
-            "gantt-config-done-task"
-            | "gantt-config-done-crit-task"
-            | "gantt-config-done-vert-task" => "#333333",
-            "gantt-config-crit-task" => "#444444",
+            | "gantt-config-done-crit-task" => "#444444",
             _ => panic!("unexpected Gantt task rect {id}"),
         };
         assert_eq!(stroke, expected, "incorrect final-key owner for {id}");
@@ -731,9 +752,9 @@ fn gantt_warning_stroke_respects_source_owned_vertical_line_color() {
         })
         .expect("source-owned vertical terminal");
     assert!(
-        !vertical
+        vertical
             .attribute("style")
-            .is_some_and(|style| style_property(style, "stroke").is_some())
+            .is_none_or(|style| style_property(style, "stroke").is_none())
     );
 
     let completion = rendered.into_completion();
@@ -1256,6 +1277,29 @@ fn gantt_final_mermaid_fill_keys_own_their_states_independently() {
         )
         .expect("render source-owned Gantt task fills");
     let terminals = gantt_task_terminal_inline_fills(rendered.svg());
+
+    assert_eq!(
+        terminals.len(),
+        8,
+        "all eight source-owned task terminals must exist"
+    );
+    let actual_ids = terminals
+        .iter()
+        .map(|(id, _, _)| id.as_str())
+        .collect::<std::collections::BTreeSet<_>>();
+    let expected_ids = [
+        "gantt-config-default-task",
+        "gantt-config-active-task",
+        "gantt-config-done-task",
+        "gantt-config-crit-task",
+        "gantt-config-active-crit-task",
+        "gantt-config-done-crit-task",
+        "gantt-config-active-milestone-task",
+        "gantt-config-done-vert-task",
+    ]
+    .into_iter()
+    .collect::<std::collections::BTreeSet<_>>();
+    assert_eq!(actual_ids, expected_ids);
 
     for (id, _, fill) in &terminals {
         let expected = match id.as_str() {
@@ -2186,4 +2230,52 @@ Task B: task-b,2024-01-03,1d
             .collect::<Vec<_>>(),
         vec![("marker-long", -1), ("task-a", 0), ("task-b", 0)]
     );
+}
+
+#[test]
+fn gantt_compound_critical_strokes_have_independent_config_ownership() {
+    let theme = gantt_task_stroke_theme(CanvasPaint::solid("#654321").unwrap());
+    for critical_owner in [false, true] {
+        let variables = if critical_owner {
+            serde_json::json!({"critBorderColor":"#444444"})
+        } else {
+            serde_json::json!({"activeTaskBorderColor":"#222222", "doneTaskBorderColor":"#333333"})
+        };
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"themeVariables":variables}),
+        ));
+        let rendered =
+            prepare_gantt_family_with_theme_and_engine(GANTT_TASK_FILL_SOURCE, &theme, engine)
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some("gantt-config".into()),
+                        ..Default::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap();
+        let terminals = gantt_task_terminal_inline_strokes(rendered.svg());
+        assert_eq!(terminals.len(), 8);
+        for (id, _, stroke) in terminals {
+            let expected = if id.contains("crit-task") {
+                if critical_owner { "#444444" } else { "#654321" }
+            } else if !critical_owner
+                && (id.contains("active-task") || id.contains("active-milestone"))
+            {
+                "#222222"
+            } else if !critical_owner && (id.contains("done-task") || id.contains("done-vert")) {
+                "#333333"
+            } else {
+                "#654321"
+            };
+            assert_eq!(
+                stroke, expected,
+                "critical owner={critical_owner}, terminal {id}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }

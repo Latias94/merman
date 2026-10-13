@@ -839,7 +839,7 @@ impl FamilyRenderReport {
 }
 
 struct FamilyRenderContext {
-    root_theme: RootThemePlan,
+    root_theme: Arc<RootThemePlan>,
     style_plan: ResolvedFamilyStylePlan,
     session: RenderSession,
 }

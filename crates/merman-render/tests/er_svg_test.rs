@@ -2322,7 +2322,13 @@ fn er_entity_paint_is_not_applicable_without_entities() {
         CanvasPaint::solid("#123456").expect("valid entity fill"),
         Some(CanvasPaint::solid("#654321").expect("valid entity stroke")),
     );
-    let _ = render_er_svg_from_text_with_theme("erDiagram\n", &theme);
+    let rendered = prepare_er_family_with_theme_and_engine("erDiagram\n", &theme, Engine::new())
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -3475,4 +3481,148 @@ fn er_svg_nested_relationships_and_empty_groups_keep_dom_order() {
             .count(),
         3
     );
+}
+
+#[test]
+fn er_redux_source_fill_owns_odd_and_even_table_rows() {
+    for theme_name in ["redux", "redux-dark", "redux-color", "redux-dark-color"] {
+        let source = format!(
+            "---\nconfig:\n  theme: {theme_name}\n  layout: dagre\n---\nerDiagram\n CUSTOMER {{\n string id\n string name\n }}\n style CUSTOMER fill:#112233\n"
+        );
+        let rendered =
+            prepare_er_family_with_theme_and_engine(&source, &er_table_row_theme(), Engine::new())
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for odd in [true, false] {
+            let class = if odd { "row-rect-odd" } else { "row-rect-even" };
+            let row = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some(class))
+                .expect("visible Redux table row");
+            let paths: Vec<_> = row
+                .children()
+                .filter(|node| node.has_tag_name("path"))
+                .collect();
+            assert!(!paths.is_empty(), "{theme_name}: {class}");
+            for path in paths {
+                let style = path.attribute("style").unwrap_or("");
+                assert!(
+                    style.contains("fill:#112233 !important"),
+                    "{theme_name}: {style}"
+                );
+                assert!(
+                    !style.contains("#aabbcc") && !style.contains("#ddeeff"),
+                    "{theme_name}: {style}"
+                );
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 2);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn er_hidden_entity_terminals_preserve_visible_source_ordinals() {
+    for requirement in [
+        ThemePortabilityRequirement::BestEffort,
+        ThemePortabilityRequirement::RequirePortable,
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(ThemeRule::new(
+                                ThemeTarget::Entity,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                            ))
+                            .with_rule(
+                                ThemeRule::new(
+                                    ThemeTarget::Entity,
+                                    ThemeStylePatch::default()
+                                        .with_stroke(CanvasPaint::solid("#abcdef").unwrap()),
+                                )
+                                .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                            ),
+                    )
+                    .with_typography(
+                        TypographySpec::default().with_family_style(
+                            merman_render::DiagramFamilyId::ER,
+                            ThemeTextStyle::default()
+                                .with_font_stack(FontStack::single("ErTypedFace").unwrap()),
+                        ),
+                    ),
+            )
+            .unwrap();
+        let source = "---\nconfig:\n  layout: dagre\n  htmlLabels: false\n  theme: default\n---\nerDiagram\nA {\n string hidden\n}\nsubgraph A [Group]\n B {\n string visible\n}\nend\n";
+        let rendered = try_prepare_er_family_with_theme_and_engine_requirement(
+            source,
+            &theme,
+            Engine::new(),
+            requirement,
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("hidden entity terminals must not be required for emission");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            !document
+                .descendants()
+                .any(|n| n.is_text() && n.text() == Some("hidden"))
+        );
+        assert!(
+            document
+                .descendants()
+                .any(|n| n.is_text() && n.text() == Some("visible"))
+        );
+        assert!(rendered.svg().contains("fill:#123456"));
+        assert!(!rendered.svg().contains("stroke:#abcdef"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 2);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn er_svg_source_color_is_lowered_for_entity_and_attribute_text() {
+    for source_style in [
+        "style CUSTOMER color:#123456",
+        "classDef accent color:#123456\nclass CUSTOMER accent",
+    ] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n---\nerDiagram\n CUSTOMER {{\n string id PK \"key\"\n }}\n{source_style}\n"
+        );
+        let svg = render_er_svg_from_text(&source, &SvgRenderOptions::default());
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for class in [
+            "label name",
+            "label attribute-type",
+            "label attribute-name",
+            "label attribute-keys",
+            "label attribute-comment",
+        ] {
+            let labels: Vec<_> = document
+                .descendants()
+                .filter(|n| {
+                    n.attribute("class") == Some(class)
+                        && n.descendants().any(|n| n.has_tag_name("text"))
+                })
+                .collect();
+            assert!(!labels.is_empty(), "missing {class}");
+            assert!(
+                labels.iter().any(|n| n
+                    .attribute("style")
+                    .unwrap_or("")
+                    .contains("fill:#123456 !important")),
+                "{class}: {svg}"
+            );
+        }
+    }
 }

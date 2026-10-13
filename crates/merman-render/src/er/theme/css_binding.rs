@@ -35,6 +35,13 @@ pub(crate) struct ErCssBinding {
 }
 
 impl ErCssBinding {
+    pub(super) fn source_fill_owns_odd_rows(&self) -> bool {
+        matches!(
+            self.theme_name.as_str(),
+            "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+        )
+    }
+
     pub(crate) fn resolve(
         config: &serde_json::Value,
         fonts: &InheritedFontStackPlan,

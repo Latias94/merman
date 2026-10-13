@@ -41,7 +41,7 @@ fn preset_catalog_ids_round_trip_through_all_ten_enum_projections() {
     const PRESET_COUNT: usize = theme_preset_descriptors().len();
 
     assert_eq!(EDITOR_LIGHT_ID, "editor-light");
-    assert!(EDITOR_DARK_IS_DARK);
+    const { assert!(EDITOR_DARK_IS_DARK) };
     assert_eq!(PRESET_COUNT, 10);
 
     let descriptors = theme_preset_descriptors();

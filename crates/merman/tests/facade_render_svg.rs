@@ -5,7 +5,7 @@ use merman::{
     SvgRequest,
 };
 
-fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, RenderError> {
+fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, Box<RenderError>> {
     let request = SvgRequest {
         options: merman::svg::SvgRenderOptions {
             diagram_id: diagram_id.map(str::to_owned),
@@ -16,9 +16,9 @@ fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, R
     let output =
         Renderer::new().render(RenderRequest::svg(source, OperationControl::new(), request))?;
     let RenderOutput::Svg(Some(svg)) = output else {
-        return Err(RenderError::UnsupportedTarget(
+        return Err(Box::new(RenderError::UnsupportedTarget(
             "no Mermaid diagram detected",
-        ));
+        )));
     };
     Ok(svg)
 }
@@ -35,8 +35,10 @@ fn typed_facade_renders_a_mermaid_diagram() {
 
 #[test]
 fn typed_facade_preserves_detected_diagram_errors() {
-    let error = render("flowchart TD\nA -->", None).expect_err("invalid Mermaid must fail");
-    assert!(matches!(error, RenderError::Parse(_)));
+    let error = render("flowchart TD\nA -->", None)
+        .map(|_| ())
+        .expect_err("invalid Mermaid must fail");
+    assert!(matches!(*error, RenderError::Parse(_)));
 }
 
 #[test]

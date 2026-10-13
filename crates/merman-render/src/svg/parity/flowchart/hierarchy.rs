@@ -617,7 +617,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartHierarchyPlan<'a> {
     nested_roots: FxHashMap<&'a str, FlowchartRootEmission<'a>>,
     ordered_edges: Vec<super::render_input::FlowchartRenderEdgeRef<'a>>,
     edge_root_by_key: FxHashMap<crate::flowchart::FlowchartEdgeKey, Option<&'a str>>,
-    physical_ancestry: FlowchartAncestryIndex<'a>,
     effective_parents: &'a FlowchartEffectiveParentIndex,
     root_offsets: FxHashMap<&'a str, FlowchartRootOffsets>,
     extra_recursive_root_y: f64,
@@ -689,7 +688,6 @@ impl<'a> FlowchartHierarchyPlan<'a> {
                 },
                 nested_roots: FxHashMap::default(),
                 edge_root_by_key,
-                physical_ancestry,
                 effective_parents,
                 root_offsets,
                 extra_recursive_root_y,
@@ -789,7 +787,6 @@ impl<'a> FlowchartHierarchyPlan<'a> {
             nested_roots,
             ordered_edges,
             edge_root_by_key,
-            physical_ancestry,
             effective_parents,
             root_offsets,
             extra_recursive_root_y,
@@ -850,26 +847,6 @@ impl<'a> FlowchartHierarchyPlan<'a> {
 
     pub(in crate::svg::parity::flowchart) fn effective_parent(&self, id: &str) -> Option<&'a str> {
         self.effective_parents.parent(id)
-    }
-
-    pub(in crate::svg::parity::flowchart) fn is_degenerate_subgraph_descendant_edge(
-        &self,
-        ctx: &FlowchartRenderCtx<'_>,
-        edge: &crate::flowchart::FlowEdge,
-    ) -> bool {
-        // ELK clips ancestor/descendant edges to the group boundary and retains their route.
-        // Only Dagre's cluster rewrite has the historical single-point normalization below.
-        if ctx.uses_elk_adapter_dom {
-            return false;
-        }
-        (ctx.subgraphs_by_id.contains_key(edge.from.as_str())
-            && self
-                .physical_ancestry
-                .is_strict_ancestor(edge.from.as_str(), edge.to.as_str()))
-            || (ctx.subgraphs_by_id.contains_key(edge.to.as_str())
-                && self
-                    .physical_ancestry
-                    .is_strict_ancestor(edge.to.as_str(), edge.from.as_str()))
     }
 
     pub(in crate::svg::parity::flowchart) fn edge_root(

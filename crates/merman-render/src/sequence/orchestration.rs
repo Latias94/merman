@@ -509,6 +509,9 @@ pub(super) fn build_sequence_layout_graph(
         math_terminal_style: ctx
             .typography
             .terminal_text_style(super::SequenceTextSurface::ControlPrimaryTitle),
+        note_math_terminal_style: ctx
+            .typography
+            .terminal_text_style(super::SequenceTextSurface::NoteLabel),
         math_sidecar: ctx.math_sidecar,
         message_metrics: ctx.message_metrics,
         checkpoints: ctx.checkpoints,

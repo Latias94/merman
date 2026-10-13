@@ -245,7 +245,7 @@ impl XyChartPaintPlan {
                         if let Some(paint) = &paint {
                             label.fill = paint.css().to_owned();
                         }
-                        if visible_dimension(label.font_size) && !label.text.trim().is_empty() {
+                        if text_is_visible(&label.text, label.font_size) {
                             let effect = effects.get(&target);
                             if let Some(effect) = effect {
                                 work_meter.charge(label.text.len())?;
@@ -1000,6 +1000,10 @@ fn visible_axis_segment(path: &str) -> bool {
 
 fn visible_dimension(value: f64) -> bool {
     value.is_finite() && crate::number_format::canonicalize_number(value) > 0.0
+}
+
+pub(crate) fn text_is_visible(text: &str, font_size: f64) -> bool {
+    visible_dimension(font_size) && !text.trim().is_empty()
 }
 
 fn source_owns(config: &MermaidConfig, channel: &str) -> bool {

@@ -336,11 +336,11 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn render_svg(&self, source: &str) -> Result<Option<String>, merman::RenderError> {
+    fn render_svg(&self, source: &str) -> Result<Option<String>, Box<merman::RenderError>> {
         self.render_with_request(source, self.request.clone())
     }
 
-    fn render_resvg_safe(&self, source: &str) -> Result<Option<String>, merman::RenderError> {
+    fn render_resvg_safe(&self, source: &str) -> Result<Option<String>, Box<merman::RenderError>> {
         let mut request = self.request.clone();
         request.pipeline = Some(SvgPipeline::resvg_safe());
         self.render_with_request(source, request)
@@ -350,7 +350,7 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         request: SvgRequest,
-    ) -> Result<Option<String>, merman::RenderError> {
+    ) -> Result<Option<String>, Box<merman::RenderError>> {
         let output = self.renderer.render(
             RenderRequest::svg(source, OperationControl::new(), request)
                 .with_parse_options(self.parse_options),

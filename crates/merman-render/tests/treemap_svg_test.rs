@@ -1620,7 +1620,7 @@ fn treemap_huge_source_font_finishes_height_fitting() {
         .unwrap();
     let label = text_tag_by_text(rendered.svg(), "Leaf");
     assert!(
-        font_size_px(label).is_some_and(|size| size >= 8.0 && size < 1000.0),
+        font_size_px(label).is_some_and(|size| (8.0..1000.0).contains(&size)),
         "{label}"
     );
     assert!(!label.contains("display: none"));
@@ -1666,7 +1666,7 @@ fn treemap_huge_overwide_source_font_finishes_width_fitting_without_a_work_limit
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("bounded width fitting must finish");
     let label = text_tag_by_text(rendered.svg(), "Leaf");
-    assert!(font_size_px(label).is_some_and(|size| size >= 8.0 && size < 1000.0));
+    assert!(font_size_px(label).is_some_and(|size| (8.0..1000.0).contains(&size)));
     assert!(
         calls.load(Ordering::Relaxed) < 128,
         "width fitting should remain logarithmic for huge source sizes"
@@ -1930,4 +1930,15 @@ title Routed title
         host_svg, parity_svg,
         "host metrics must change observable geometry"
     );
+}
+
+#[test]
+fn treemap_value_text_preserves_zero_ending_scientific_exponents() {
+    let svg = render_treemap_svg_from_source("treemap-beta\n\"Tiny\": 0.00000000012\n");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let value = document
+        .descendants()
+        .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("treemapValue"))
+        .expect("visible treemap value");
+    assert_eq!(value.text(), Some("1.2e-10"));
 }

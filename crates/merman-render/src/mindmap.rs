@@ -584,6 +584,10 @@ mod tests {
             "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    child[\"**Bold** $$x$$\"]",
             merman_core::ParseOptions::strict(),
         ).unwrap().unwrap();
+        let merman_core::RenderSemanticModel::Mindmap(model) = parsed.model() else {
+            panic!("Mindmap render model");
+        };
+        let padding = model.nodes[1].padding;
         let session = crate::environment::RenderEnvironment::deterministic()
             .with_math_renderer(std::sync::Arc::new(crate::math::NoopMathRenderer))
             .begin_session()
@@ -595,11 +599,25 @@ mod tests {
             .as_array()
             .unwrap();
         assert_eq!(nodes.len(), 2);
-        assert!(
-            nodes
-                .iter()
-                .all(|node| node["width"].as_f64().unwrap() > 0.0)
+        let child = nodes
+            .iter()
+            .find(|node| node["id"] == "1")
+            .expect("Markdown child node");
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let html = crate::text::mermaid_markdown_to_html_label_fragment("**Bold** $$x$$", true);
+        let expected = crate::text::measure_html_with_inline_styles(
+            &measurer,
+            &html,
+            &style,
+            Some(200.0),
+            crate::text::WrapMode::HtmlLike,
         );
+        assert_eq!(
+            child["width"].as_f64(),
+            Some(expected.width + 2.0 * padding)
+        );
+        assert_eq!(child["height"].as_f64(), Some(expected.height + padding));
     }
 
     struct FixedMeasurer;

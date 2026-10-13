@@ -37,11 +37,11 @@ fn xy_text_role_recipe_survives_exchange_and_public_rendering() {
             panic!("expected SVG")
         };
         let xml = roxmltree::Document::parse(output.svg()).unwrap();
-        for (text, size, weight) in [
-            ("TitleProbe", "18", "700"),
-            ("Month", "13", "600"),
-            ("A", "11", "500"),
-            ("Sales", "12", "600"),
+        for (text, size, weight, fill) in [
+            ("TitleProbe", "18", "700", "#ff0000"),
+            ("Month", "13", "600", "#00ff00"),
+            ("A", "11", "500", "#0000ff"),
+            ("Sales", "12", "600", "#ff00ff"),
         ] {
             let node = xml
                 .descendants()
@@ -49,6 +49,7 @@ fn xy_text_role_recipe_survives_exchange_and_public_rendering() {
                 .unwrap();
             assert_eq!(node.attribute("font-size"), Some(size));
             assert_eq!(node.attribute("font-weight"), Some(weight));
+            assert_eq!(node.attribute("fill"), Some(fill));
         }
         svgs.push(output.svg().to_owned());
         #[cfg(all(feature = "png", feature = "pdf"))]
@@ -65,6 +66,13 @@ fn xy_text_role_recipe_survives_exchange_and_public_rendering() {
                     "role text color channel {channel} must be painted"
                 );
             }
+            assert!(
+                buffer.chunks_exact(4).any(|pixel| pixel[0] > 128
+                    && pixel[1] < 64
+                    && pixel[2] > 128
+                    && pixel[3] > 128),
+                "the authored magenta legend must paint native pixels"
+            );
             pixels.push((width, height, buffer));
         }
     }
@@ -483,8 +491,7 @@ fn complete_cyberpunk_xy_scene_fits_default_native_filter_budget() {
             &RasterOptions::default().with_conversion_limits(limits),
             OperationControl::new(),
         )
-        .err()
-        .expect("exact lower limit remains enforced");
+        .expect_err("exact lower limit remains enforced");
     assert!(
         error
             .to_string()

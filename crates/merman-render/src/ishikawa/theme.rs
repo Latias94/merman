@@ -241,13 +241,15 @@ impl IshikawaTextThemePlan {
             }
         }
 
+        let source_owned_fill = vec![mermaid_owns_fill; text_count];
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
             &[UnsupportedTerminalDomain::fallbacks_only(
                 ThemeTarget::Text,
                 TerminalVariantDomain::uniform(text_count, ThemeVariant::Default),
-            )],
+            )
+            .with_source_owned_fill(&source_owned_fill)],
             work_meter,
         )?;
 

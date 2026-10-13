@@ -966,7 +966,7 @@ mod tests {
             destroyed_actors: BTreeMap::new(),
             actor_lifecycles: None,
         };
-        let nodes = vec![
+        let nodes = [
             LayoutNode {
                 id: "actor-top-Alice".to_string(),
                 x: 40.0,

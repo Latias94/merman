@@ -501,6 +501,7 @@ pub(crate) struct StateStylePlan {
     classes: IndexMap<String, StateClassStylePlan>,
     nodes: BTreeMap<String, StateNodeStylePlan>,
     edges: BTreeMap<String, StateEdgeStylePlan>,
+    shadowed_self_loop_edges: BTreeSet<String>,
     effects: StateEffectPlan,
     residuals: Vec<SourceStyleResidual>,
     theme_evidence: FamilyThemeEvidence,
@@ -723,6 +724,7 @@ impl StateStylePlan {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_value(effective_config),
+            crate::layout_backend::resolve_graph_layout(effective_config).backend,
             None,
             Arc::new(ThemeResourcePolicy::interactive()),
             None,
@@ -744,6 +746,7 @@ impl StateStylePlan {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_value(effective_config),
+            crate::layout_backend::resolve_graph_layout(effective_config).backend,
             resolved_theme,
             effective_theme_resource_policy,
             title,
@@ -762,6 +765,7 @@ impl StateStylePlan {
         Self::resolve_internal(
             model,
             StateCompatibilityPlan::from_config(effective_config),
+            crate::layout_backend::resolve_graph_layout(effective_config.as_value()).backend,
             resolved_theme,
             effective_theme_resource_policy,
             title,
@@ -772,6 +776,7 @@ impl StateStylePlan {
     fn resolve_internal(
         model: &StateDiagramRenderModel,
         compatibility: StateCompatibilityPlan,
+        backend: crate::layout_backend::GraphLayoutBackend,
         resolved_theme: Option<&ResolvedDiagramTheme>,
         effective_theme_resource_policy: Arc<ThemeResourcePolicy>,
         title: Option<&str>,
@@ -940,7 +945,15 @@ impl StateStylePlan {
         let transition_label_background_div_style_prefix =
             html_background_style(transition_label_background_fallback_fill.as_deref());
         let hidden_prefixes = hidden_state_prefixes(model);
-        let shadowed_self_loops = shadowed_self_loop_edge_indices(model, &hidden_prefixes);
+        let shadowed_self_loops = if backend == crate::layout_backend::GraphLayoutBackend::Dagre {
+            shadowed_self_loop_edge_indices(model, &hidden_prefixes)
+        } else {
+            BTreeSet::new()
+        };
+        let shadowed_self_loop_edges = shadowed_self_loops
+            .iter()
+            .map(|&index| model.edges[index].id.clone())
+            .collect();
         let mut target_ordinals = BTreeMap::<ThemeTarget, usize>::new();
         let mut nodes = BTreeMap::new();
         for node in &model.nodes {
@@ -1099,6 +1112,7 @@ impl StateStylePlan {
             classes,
             nodes,
             edges,
+            shadowed_self_loop_edges,
             effects,
             residuals,
             theme_evidence: planned_theme_evidence.clone(),
@@ -1161,6 +1175,10 @@ impl StateStylePlan {
 
     pub(crate) fn node(&self, id: &str) -> Option<&StateNodeStylePlan> {
         self.nodes.get(id)
+    }
+
+    pub(crate) fn is_shadowed_self_loop_edge(&self, id: &str) -> bool {
+        self.shadowed_self_loop_edges.contains(id)
     }
 
     pub(crate) fn edge(&self, id: &str) -> Option<&StateEdgeStylePlan> {
@@ -4102,8 +4120,10 @@ mod tests {
             },
         ]);
 
-        let mut label_patch = TextStylePatch::default();
-        label_patch.font_size_px = Specified::Value(24.0);
+        let label_patch = TextStylePatch {
+            font_size_px: Specified::Value(24.0),
+            ..TextStylePatch::default()
+        };
         let styles = crate::diagram_theme::ThemeRuleSet::default()
             .with_rule(ThemeRule::new(
                 ThemeTarget::TransitionMarker,
@@ -4298,8 +4318,10 @@ mod tests {
 
     #[test]
     fn generic_text_rule_is_consumed_by_state_labels() {
-        let mut text_patch = TextStylePatch::default();
-        text_patch.font_size_px = Specified::Value(23.0);
+        let text_patch = TextStylePatch {
+            font_size_px: Specified::Value(23.0),
+            ..TextStylePatch::default()
+        };
         let theme = DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
@@ -4335,10 +4357,14 @@ mod tests {
 
     #[test]
     fn state_node_charges_each_ordinal_semantic_role_once() {
-        let mut generic_text = TextStylePatch::default();
-        generic_text.font_size_px = Specified::Value(19.0);
-        let mut state_label = TextStylePatch::default();
-        state_label.font_size_px = Specified::Value(23.0);
+        let generic_text = TextStylePatch {
+            font_size_px: Specified::Value(19.0),
+            ..TextStylePatch::default()
+        };
+        let state_label = TextStylePatch {
+            font_size_px: Specified::Value(23.0),
+            ..TextStylePatch::default()
+        };
         let ordinal = OrdinalSelector::exact(1).unwrap();
         let rules = ThemeRuleSet::default()
             .with_rule(
@@ -4346,14 +4372,14 @@ mod tests {
                     ThemeTarget::State,
                     ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ef4444").unwrap()),
                 )
-                .with_ordinal(ordinal.clone()),
+                .with_ordinal(ordinal),
             )
             .with_rule(
                 ThemeRule::new(
                     ThemeTarget::State,
                     ThemeStylePatch::default().with_fill(CanvasPaint::solid("#22c55e").unwrap()),
                 )
-                .with_ordinal(ordinal.clone()),
+                .with_ordinal(ordinal),
             )
             .with_rule(
                 ThemeRule::new(
@@ -4363,7 +4389,7 @@ mod tests {
                         ..ThemeStylePatch::default()
                     },
                 )
-                .with_ordinal(ordinal.clone()),
+                .with_ordinal(ordinal),
             )
             .with_rule(
                 ThemeRule::new(
@@ -4430,8 +4456,10 @@ mod tests {
 
     #[test]
     fn state_edge_charges_each_ordinal_semantic_role_once() {
-        let mut label_text = TextStylePatch::default();
-        label_text.font_size_px = Specified::Value(27.0);
+        let label_text = TextStylePatch {
+            font_size_px: Specified::Value(27.0),
+            ..TextStylePatch::default()
+        };
         let ordinal = OrdinalSelector::exact(1).unwrap();
         let rules = ThemeRuleSet::default()
             .with_rule(
@@ -4439,21 +4467,21 @@ mod tests {
                     ThemeTarget::Transition,
                     ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#22d3ee").unwrap()),
                 )
-                .with_ordinal(ordinal.clone()),
+                .with_ordinal(ordinal),
             )
             .with_rule(
                 ThemeRule::new(
                     ThemeTarget::TransitionMarker,
                     ThemeStylePatch::default().with_fill(CanvasPaint::solid("#f472b6").unwrap()),
                 )
-                .with_ordinal(ordinal.clone()),
+                .with_ordinal(ordinal),
             )
             .with_rule(
                 ThemeRule::new(
                     ThemeTarget::TransitionLabelBackground,
                     ThemeStylePatch::default().with_fill(CanvasPaint::solid("#0f172a").unwrap()),
                 )
-                .with_ordinal(ordinal.clone()),
+                .with_ordinal(ordinal),
             )
             .with_rule(
                 ThemeRule::new(

@@ -1,7 +1,7 @@
 //! Operation-owned render services and deterministic policy.
 
 use crate::diagram_theme::{
-    DiagramTheme, FontCatalog, FontCatalogFingerprint, FontSourcePolicy, HostMeasurementFallback,
+    DiagramTheme, FontCatalog, FontCatalogFingerprint, FontSourcePolicy,
     HostMeasurementFallbackPolicy, ResolvedThemeAdmission, ThemeAdmissionError,
     ThemeAdmissionPolicy, ThemeHostAdmissionReport, ThemePortabilityRequirement,
     ThemeRecipeFingerprint, ThemeRecipeReport, ThemeResourceLimitExceeded, ThemeResourcePolicy,
@@ -1629,10 +1629,8 @@ fn default_math_backend() -> Option<ConfiguredMathBackend> {
     None
 }
 
-fn default_theme_measurement_fallbacks() -> HostMeasurementFallbackPolicy {
-    HostMeasurementFallbackPolicy::new([HostMeasurementFallback::AcceptHostDependent])
-        .expect("static theme measurement fallback policy")
-}
+static EMPTY_THEME_MEASUREMENT_FALLBACKS: HostMeasurementFallbackPolicy =
+    HostMeasurementFallbackPolicy::EMPTY;
 
 /// Immutable render services and the policy used to capture one operation context.
 #[derive(Clone)]
@@ -1647,7 +1645,6 @@ pub struct RenderEnvironment {
     font_source_policy: FontSourcePolicy,
     theme_admission_policy: ThemeAdmissionPolicy,
     theme_resource_ceiling: Arc<ThemeResourcePolicy>,
-    theme_measurement_fallbacks: HostMeasurementFallbackPolicy,
     theme_portability: ThemePortabilityRequirement,
 }
 
@@ -1668,10 +1665,6 @@ impl fmt::Debug for RenderEnvironment {
             .field("font_source_policy", &self.font_source_policy)
             .field("theme_admission_policy", &self.theme_admission_policy)
             .field("theme_resource_ceiling", &self.theme_resource_ceiling)
-            .field(
-                "theme_measurement_fallbacks",
-                &self.theme_measurement_fallbacks,
-            )
             .field("theme_portability", &self.theme_portability)
             .finish_non_exhaustive()
     }
@@ -1696,7 +1689,6 @@ impl RenderEnvironment {
             font_source_policy: FontSourcePolicy::default(),
             theme_admission_policy: ThemeAdmissionPolicy::default(),
             theme_resource_ceiling: Arc::new(ThemeResourcePolicy::interactive()),
-            theme_measurement_fallbacks: default_theme_measurement_fallbacks(),
             theme_portability: ThemePortabilityRequirement::BestEffort,
         }
     }
@@ -1808,16 +1800,22 @@ impl RenderEnvironment {
         &self.theme_resource_ceiling
     }
 
-    pub fn with_theme_measurement_fallbacks(
-        mut self,
-        policy: HostMeasurementFallbackPolicy,
-    ) -> Self {
-        self.theme_measurement_fallbacks = policy;
+    /// Retains source compatibility for the retired prepared-layout fallback setting.
+    ///
+    /// System-font rendering uses `TextMeasurementPolicy`; this setting has no runtime action.
+    #[deprecated(
+        note = "prepared-layout fallback configuration is retired; use TextMeasurementPolicy"
+    )]
+    pub fn with_theme_measurement_fallbacks(self, _policy: HostMeasurementFallbackPolicy) -> Self {
         self
     }
 
+    /// Returns the empty prepared-layout policy used by the current system-font mode.
+    #[deprecated(
+        note = "prepared-layout fallbacks are unavailable in the current system-font mode"
+    )]
     pub const fn theme_measurement_fallbacks(&self) -> &HostMeasurementFallbackPolicy {
-        &self.theme_measurement_fallbacks
+        &EMPTY_THEME_MEASUREMENT_FALLBACKS
     }
 
     pub const fn with_theme_portability_requirement(
@@ -2445,6 +2443,46 @@ impl RenderSessionReport {
     /// Returns the peak owner-accounted prepared-text bytes retained by the operation.
     pub const fn prepared_text_retained_bytes_peak(&self) -> usize {
         self.prepared_text_retained_bytes_peak
+    }
+}
+
+#[cfg(test)]
+mod theme_fallback_compatibility_tests {
+    use super::*;
+
+    #[test]
+    #[allow(deprecated)]
+    fn retired_theme_fallback_configuration_retains_no_runtime_policy() {
+        let policy = HostMeasurementFallbackPolicy::new([
+            crate::diagram_theme::HostMeasurementFallback::AcceptHostDependent,
+        ])
+        .unwrap();
+        let environment =
+            RenderEnvironment::deterministic().with_theme_measurement_fallbacks(policy);
+        assert_eq!(
+            environment.theme_measurement_fallbacks().priority().len(),
+            0
+        );
+        assert!(!format!("{environment:?}").contains("theme_measurement_fallbacks"));
+        assert!(
+            environment
+                .begin_session()
+                .unwrap()
+                .theme_measurement_fallback_policy()
+                .is_none()
+        );
+        let theme = crate::diagram_theme::DiagramThemeCompiler::new()
+            .compile(crate::diagram_theme::DiagramThemeSpec::new())
+            .unwrap();
+        let session = environment.begin_session_with_theme(&theme).unwrap();
+        assert_eq!(
+            session
+                .theme_measurement_fallback_policy()
+                .unwrap()
+                .priority()
+                .len(),
+            0
+        );
     }
 }
 

@@ -56,12 +56,16 @@ pub(crate) fn render_railroad_diagram_svg_model(
     }
     out.push_str("<style>");
     out.checkpoint()?;
+    let mut raw_css = BoundedSvgOutput::new(options.work_meter());
     write_railroad_css(
-        &mut out,
+        &mut raw_css,
         style,
         diagram_id.semantic_str(),
         &mut surface_receipt,
     )?;
+    let raw_css = raw_css.finish()?;
+    super::util::escape_xml_raw_into(&mut out, &raw_css);
+    out.checkpoint()?;
     out.push_str("</style>");
     out.checkpoint()?;
     out.push_str("<g/>");

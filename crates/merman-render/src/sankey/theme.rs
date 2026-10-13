@@ -547,6 +547,7 @@ impl SankeyNodePalettePlan {
         let node_colors = render_settings.node_colors;
         let mut node_indices = HashMap::with_capacity(layout.nodes.len());
         let mut paints = Vec::with_capacity(layout.nodes.len());
+        let mut default_color_domain = HashMap::with_capacity(layout.nodes.len());
 
         for (node_index, node) in layout.nodes.iter().enumerate() {
             let explicit_fill = node_colors
@@ -559,12 +560,17 @@ impl SankeyNodePalettePlan {
                     first_layout_index: node_index,
                     last_paint_index: node_index,
                 });
+            let fill = explicit_fill.unwrap_or_else(|| {
+                let next_index = default_color_domain.len();
+                let palette_index = *default_color_domain
+                    .entry(node.id.as_str())
+                    .or_insert(next_index);
+                TABLEAU10[palette_index % TABLEAU10.len()]
+            });
             paints.push(SankeyNodePaint {
                 id: node.id.clone(),
                 ordinal: node_index + 1,
-                fill_css: explicit_fill
-                    .unwrap_or(TABLEAU10[node_index % TABLEAU10.len()])
-                    .to_string(),
+                fill_css: fill.to_string(),
                 source_owned: explicit_fill.is_some(),
                 typed_capability: None,
             });
@@ -838,7 +844,7 @@ mod tests {
         let palette = OrdinalPalette::new(
             colors
                 .iter()
-                .map(|color| ThemeColorValue::parse(*color).expect("valid Sankey test color")),
+                .map(|color| ThemeColorValue::parse(color).expect("valid Sankey test color")),
         )
         .expect("non-empty Sankey test palette");
         DiagramThemeCompiler::new()

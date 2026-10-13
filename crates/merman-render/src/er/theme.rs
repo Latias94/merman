@@ -315,6 +315,7 @@ fn last_source_style_value<'a>(
 pub(crate) struct ErEntityThemePlan {
     css_binding: css_binding::ErCssBinding,
     entity_indices: BTreeMap<String, usize>,
+    entity_terminal_occurrences: Vec<(usize, ThemeVariant)>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
     subgraph_source_styles: BTreeMap<String, ErEntitySourceStyle>,
     inherited_font_stack: InheritedFontStackPlan,
@@ -371,7 +372,22 @@ impl ErEntityThemePlan {
             &inherited_font_stack,
             &base_font_size,
         );
-        let entity_count = model.entities.len();
+        // Layout is the final authority for entity visibility. Keep source indices intact
+        // because ordinal rules and paint checkpoints use semantic model identities.
+        let visible_entity_ids = layout
+            .nodes
+            .iter()
+            .filter(|node| !node.is_cluster)
+            .map(|node| node.id.as_str())
+            .collect::<BTreeSet<_>>();
+        let entity_terminal_occurrences = model
+            .entities
+            .values()
+            .enumerate()
+            .filter(|(_, entity)| visible_entity_ids.contains(entity.id.as_str()))
+            .map(|(index, _)| (index + 1, ThemeVariant::Default))
+            .collect::<Vec<_>>();
+        let entity_count = entity_terminal_occurrences.len();
         let entity_source_styles = model
             .entities
             .values()
@@ -404,6 +420,7 @@ impl ErEntityThemePlan {
             return Self {
                 css_binding,
                 entity_indices,
+                entity_terminal_occurrences,
                 entity_source_styles,
                 subgraph_source_styles,
                 inherited_font_stack,
@@ -428,7 +445,7 @@ impl ErEntityThemePlan {
             }
             .prepare_visuals(model, work_meter);
         };
-        let expectations = vec![EntityExpectation::default(); entity_count];
+        let expectations = vec![EntityExpectation::default(); model.entities.len()];
         let needs_text_terminal_evidence = theme.family_mechanism_routes().iter().any(|route| {
             matches!(
                 route.mechanism(),
@@ -471,14 +488,37 @@ impl ErEntityThemePlan {
         } else {
             &BTreeMap::new()
         };
-        let source_owns_font_family = entity_source_styles
-            .iter()
-            .any(|style| style.text_value("font-family").is_some())
-            || visible_subgraph_styles
-                .values()
-                .any(|style| style.text_value("font-family").is_some());
+        if svg_subgraph_labels && needs_text_terminal_evidence {
+            for cluster in &layout.clusters {
+                let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
+                    continue;
+                };
+                let source_style = visible_subgraph_styles
+                    .get(&subgraph.id)
+                    .expect("visible ER subgraph styles are indexed with layout clusters");
+                let facts = subgraph_svg_text_facts(subgraph, source_style);
+                insert_text_terminal(
+                    &mut text_terminals,
+                    ErTextTerminalId::SubgraphLabel(subgraph.id.clone().into()),
+                    &facts,
+                );
+            }
+        }
+        let source_owns_font_family = entity_terminal_occurrences.iter().any(|(ordinal, _)| {
+            entity_source_styles[ordinal - 1]
+                .text_value("font-family")
+                .is_some()
+        }) || visible_subgraph_styles
+            .values()
+            .any(|style| style.text_value("font-family").is_some());
+        let visible_text_terminal = |terminal_id: &ErTextTerminalId| {
+            terminal_id
+                .entity_id()
+                .is_none_or(|id| visible_entity_ids.contains(id))
+        };
         let source_owns_font_size = text_terminals.keys().any(|terminal_id| {
-            !terminal_id.is_relation_label()
+            visible_text_terminal(terminal_id)
+                && !terminal_id.is_relation_label()
                 && text_terminal_font_size_source_owned(
                     terminal_id,
                     &entity_indices,
@@ -490,9 +530,12 @@ impl ErEntityThemePlan {
         let diagram_title = diagram_title
             .map(str::trim)
             .filter(|title| !title.is_empty());
-        let has_visible_typography = !text_terminals.is_empty() || diagram_title.is_some();
+        let has_visible_typography =
+            text_terminals.keys().any(visible_text_terminal) || diagram_title.is_some();
         let has_visible_base_typography = text_terminals.iter().any(|(terminal_id, terminal)| {
-            !terminal_id.is_relation_label() && terminal.visible_run_count > 0
+            visible_text_terminal(terminal_id)
+                && !terminal_id.is_relation_label()
+                && terminal.visible_run_count > 0
         }) || diagram_title.is_some();
         let font_stack_requested = inherited_font_stack.typed_font_stack_requested();
         let font_stack_pending = has_visible_typography
@@ -534,7 +577,8 @@ impl ErEntityThemePlan {
         let mut expected_capabilities =
             BTreeMap::<(usize, ThemeTarget, ResolvedStyleProperty), ThemeCapability>::new();
 
-        for (entity_index, _) in model.entities.values().enumerate() {
+        for (ordinal, _) in &entity_terminal_occurrences {
+            let entity_index = ordinal - 1;
             let style = theme.style_with_work_meter(
                 ThemeTarget::Entity,
                 ThemeVariant::Default,
@@ -578,23 +622,10 @@ impl ErEntityThemePlan {
             }
         }
 
-        if svg_subgraph_labels && needs_text_terminal_evidence {
-            for cluster in &layout.clusters {
-                let Some(subgraph) = subgraphs.get(cluster.id.as_str()) else {
-                    continue;
-                };
-                let source_style = visible_subgraph_styles
-                    .get(&subgraph.id)
-                    .expect("visible ER subgraph styles are indexed with layout clusters");
-                let facts = subgraph_svg_text_facts(subgraph, source_style);
-                insert_text_terminal(
-                    &mut text_terminals,
-                    ErTextTerminalId::SubgraphLabel(subgraph.id.clone().into()),
-                    &facts,
-                );
-            }
-        }
         for (text_index, (terminal_id, terminal)) in text_terminals.iter_mut().enumerate() {
+            if !visible_text_terminal(terminal_id) {
+                continue;
+            }
             let text_style = theme.text_style_with_work_meter(
                 ThemeTarget::Text,
                 ThemeVariant::Default,
@@ -644,8 +675,12 @@ impl ErEntityThemePlan {
             }
         }
 
+        text_terminals.retain(|terminal_id, _| visible_text_terminal(terminal_id));
         let mut table_rows = table_rows;
         for (table_index, (terminal_id, terminal)) in table_rows.iter_mut().enumerate() {
+            if !visible_entity_ids.contains(terminal_id.entity_id()) {
+                continue;
+            }
             let variant = terminal_id.variant();
             let style = theme.style_with_work_meter(
                 ThemeTarget::Table,
@@ -656,7 +691,12 @@ impl ErEntityThemePlan {
             for (property, origin) in style.winner_rule_properties() {
                 winner_properties.insert((origin.rule_index(), ThemeTarget::Table, property));
             }
-            if table_terminal_source_owned(terminal_id, &entity_indices, &entity_source_styles) {
+            if table_terminal_source_owned(
+                terminal_id,
+                &entity_indices,
+                &entity_source_styles,
+                css_binding.source_fill_owns_odd_rows(),
+            ) {
                 continue;
             }
             let Some(expected) = typed_fill_expectation(
@@ -677,6 +717,7 @@ impl ErEntityThemePlan {
             *terminal = Some(expected);
         }
 
+        table_rows.retain(|terminal_id, _| visible_entity_ids.contains(terminal_id.entity_id()));
         let mut relation_strokes = Vec::with_capacity(model.relationships.len());
         for relationship_index in 0..model.relationships.len() {
             let relation_style = theme.style_with_work_meter(
@@ -749,9 +790,9 @@ impl ErEntityThemePlan {
                         _ => unreachable!("guarded ER theme target"),
                     };
                     let observation = observations.entry((rule_index, target)).or_default();
-                    if occurrence_count == 0
-                        || !selector.ordinal_domain_intersects_occurrence_count(occurrence_count)
-                    {
+                    // Winners were resolved at each visible terminal's original ordinal.
+                    // A count bound would renumber sparse domains after hidden terminals.
+                    if occurrence_count == 0 {
                         continue;
                     }
                     let property = resolved_style_property_for_facet(facet);
@@ -810,7 +851,7 @@ impl ErEntityThemePlan {
             &[
                 UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Entity,
-                    TerminalVariantDomain::uniform(entity_count, ThemeVariant::Default),
+                    TerminalVariantDomain::indexed(&entity_terminal_occurrences),
                 ),
                 UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Relation,
@@ -850,6 +891,7 @@ impl ErEntityThemePlan {
         Self {
             css_binding,
             entity_indices,
+            entity_terminal_occurrences,
             entity_source_styles,
             subgraph_source_styles,
             inherited_font_stack,
@@ -998,6 +1040,7 @@ impl ErEntityThemePlan {
             self.font_stack_pending
                 .then(|| self.font_family_css().into()),
         )
+        .with_entity_terminal_domain(&self.entity_terminal_occurrences)
         .with_typography_font_size(self.font_size_pending.then(|| {
             (
                 self.font_size_css().into(),
@@ -1275,10 +1318,11 @@ fn table_terminal_source_owned(
     terminal_id: &ErTableRowTerminalId,
     entity_indices: &BTreeMap<String, usize>,
     entity_source_styles: &[ErEntitySourceStyle],
+    source_fill_owns_odd_rows: bool,
 ) -> bool {
-    // The row writer applies entity fill only to even row paths. Odd rows retain
-    // their own fill, independently of the enclosing entity's source style.
-    if terminal_id.variant() != ThemeVariant::Even {
+    // Redux source declarations cover all row paths; other themes apply entity
+    // fill only to even rows. Use the same decision as the visual plan.
+    if terminal_id.variant() != ThemeVariant::Even && !source_fill_owns_odd_rows {
         return false;
     }
     entity_indices

@@ -147,6 +147,9 @@ pub(crate) enum TerminalVariantDomain<'a> {
         count: usize,
         variant: ThemeVariant,
     },
+    Indexed {
+        occurrences: &'a [(usize, ThemeVariant)],
+    },
     PerOccurrence {
         variants: &'a [ThemeVariant],
     },
@@ -160,6 +163,11 @@ pub(crate) enum TerminalVariantDomain<'a> {
 impl<'a> TerminalVariantDomain<'a> {
     pub(crate) const fn uniform(count: usize, variant: ThemeVariant) -> Self {
         Self::Uniform { count, variant }
+    }
+
+    /// Actual terminal ordinals when semantic source occurrences can be hidden by layout.
+    pub(crate) const fn indexed(occurrences: &'a [(usize, ThemeVariant)]) -> Self {
+        Self::Indexed { occurrences }
     }
 
     pub(crate) const fn per_occurrence(variants: &'a [ThemeVariant]) -> Self {
@@ -185,6 +193,11 @@ impl<'a> TerminalVariantDomain<'a> {
         match self {
             Self::Uniform { count, variant } => {
                 for ordinal in 1..=count {
+                    visit(ordinal, variant)?;
+                }
+            }
+            Self::Indexed { occurrences } => {
+                for (ordinal, variant) in occurrences.iter().copied() {
                     visit(ordinal, variant)?;
                 }
             }
@@ -373,8 +386,9 @@ impl UnsupportedMechanismObservation {
     fn is_owned(&self) -> bool {
         match self {
             Self::Rule {
-                all_unsupported, ..
-            } => *all_unsupported,
+                all_unsupported,
+                reasons_by_property,
+            } => *all_unsupported || !reasons_by_property.is_empty(),
             Self::OrdinalPalette { unsupported } | Self::EffectBinding { unsupported } => {
                 *unsupported
             }
@@ -445,9 +459,11 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
                     unreachable!("one family mechanism key has one mechanism kind")
                 };
                 *all_unsupported &= route.disposition() == FamilyThemeDisposition::Unsupported;
-                reasons_by_property
-                    .entry(resolved_style_property_for_facet(facet))
-                    .or_insert_with(|| unsupported_residual_for_facet(facet));
+                if route.disposition() == FamilyThemeDisposition::Unsupported {
+                    reasons_by_property
+                        .entry(resolved_style_property_for_facet(facet))
+                        .or_insert_with(|| unsupported_residual_for_facet(facet));
+                }
             }
             FamilyThemeMechanism::OrdinalPalette { .. } => {
                 observations[domain_index].insert(
@@ -565,7 +581,15 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
         for (key, outcome) in outcomes {
             if let Some(reason) = outcome {
                 evidence.mark_residual(key, reason);
-            } else {
+            } else if !matches!(
+                observations.get(&key),
+                Some(UnsupportedMechanismObservation::Rule {
+                    all_unsupported: false,
+                    ..
+                })
+            ) {
+                // A mixed rule without an unsupported winner remains owned by its
+                // typed adapter. Only wholly unsupported rules can be classified N/A here.
                 evidence.mark_not_applicable(key);
             }
         }
@@ -649,6 +673,19 @@ mod tests {
             .compile(spec)
             .expect("compile terminal evidence fixture")
             .resolve(family)
+    }
+
+    #[test]
+    fn indexed_terminal_domain_preserves_sparse_source_ordinals() {
+        let occurrences = [(2, ThemeVariant::Default), (5, ThemeVariant::Odd)];
+        let mut visited = Vec::new();
+        TerminalVariantDomain::indexed(&occurrences)
+            .for_each(|ordinal, variant| {
+                visited.push((ordinal, variant));
+                Ok(())
+            })
+            .unwrap();
+        assert_eq!(visited, occurrences);
     }
 
     fn fill_rule(target: ThemeTarget, color: &str) -> ThemeRule {
@@ -878,6 +915,81 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn mixed_terminal_rules_keep_only_winning_unsupported_facets_residual() {
+        let patch = ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("#123456").unwrap())
+            .with_padding(crate::diagram_theme::InsetsPx::all(2.0));
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [ThemeRule::new(ThemeTarget::NodeLabel, patch.clone())],
+        );
+        let domains = [UnsupportedTerminalDomain::textual(
+            ThemeTarget::NodeLabel,
+            &[ThemeTarget::NodeLabel, ThemeTarget::Text],
+            TerminalVariantDomain::uniform(2, ThemeVariant::Default),
+        )];
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &work_meter())
+            .unwrap();
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry
+        );
+        assert!(evidence.not_applicable_mechanisms().is_empty());
+        let required_work = theme.family_mechanism_routes().len() + 2;
+        let exact = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work)
+                .unwrap(),
+        );
+        let mut exact_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        reconcile_unsupported_terminal_domains(&theme, &mut exact_evidence, &domains, &exact)
+            .unwrap();
+        assert_eq!(exact.used(), required_work);
+        let short = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, required_work - 1)
+                .unwrap(),
+        );
+        let mut short_evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        assert!(matches!(
+            reconcile_unsupported_terminal_domains(&theme, &mut short_evidence, &domains, &short),
+            Err(OperationWorkError::ResourceLimitExceeded(_))
+        ));
+
+        let mut clear = ThemeStylePatch::default();
+        clear.spacing.padding = Specified::Clear;
+        let theme = resolved_theme(
+            DiagramFamilyId::TREE_VIEW,
+            [
+                ThemeRule::new(ThemeTarget::NodeLabel, patch),
+                ThemeRule::new(ThemeTarget::NodeLabel, clear),
+            ],
+        );
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(&theme));
+        let fill_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::NodeLabel,
+        };
+        evidence.mark_applied_with_capabilities(
+            fill_key.clone(),
+            [crate::diagram_theme::ThemeCapability::SolidPaint],
+        );
+        reconcile_unsupported_terminal_domains(&theme, &mut evidence, &domains, &work_meter())
+            .unwrap();
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(
+            evidence.residuals()[0].key(),
+            &FamilyThemeMechanismKey::Rule {
+                index: 1,
+                target: ThemeTarget::NodeLabel
+            }
+        );
+        assert!(!evidence.not_applicable_mechanisms().contains(&fill_key));
     }
 
     #[test]

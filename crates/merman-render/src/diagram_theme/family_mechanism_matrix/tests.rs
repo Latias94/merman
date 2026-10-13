@@ -2100,8 +2100,10 @@ fn unsupported_gradient_and_rule_typography_report_residual_routes() {
         ],
     )
     .expect("valid gradient");
-    let mut typography = TextStylePatch::default();
-    typography.font_weight = Specified::Value(700);
+    let typography = TextStylePatch {
+        font_weight: Specified::Value(700),
+        ..TextStylePatch::default()
+    };
     let rule = ThemeRule::new(
         ThemeTarget::Node,
         ThemeStylePatch {

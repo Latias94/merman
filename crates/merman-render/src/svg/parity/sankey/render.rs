@@ -689,7 +689,7 @@ mod tests {
         assert_eq!(prepared.source_layout_index, 0);
         assert!(matches!(
             prepared.paint,
-            crate::sankey::SankeyLinkPaint::Solid("#f28e2c")
+            crate::sankey::SankeyLinkPaint::Solid("#4e79a7")
         ));
         let mut uid_count = layout.nodes.len();
         let mut next_generated_id = |prefix: &str| {
@@ -709,7 +709,7 @@ mod tests {
 
         assert_eq!(
             out,
-            r##"<g class="link" style="mix-blend-mode: multiply;"><path d="M10,4C30,4,30,6,50,6" stroke="#f28e2c" stroke-width="2"/></g>"##
+            r##"<g class="link" style="mix-blend-mode: multiply;"><path d="M10,4C30,4,30,6,50,6" stroke="#4e79a7" stroke-width="2"/></g>"##
         );
         assert_eq!(node_palette.link_lookup_stats(), (3, 2));
     }

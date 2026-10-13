@@ -919,8 +919,10 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
         .expect("State diagram detected");
     let artifact = family::prepare(parsed, &LayoutOptions::default(), session)
         .expect("prepare strict portable State artifact without edges");
-    let mut debug = SvgDebugOptions::default();
-    debug.include_edges = false;
+    let debug = SvgDebugOptions {
+        include_edges: false,
+        ..SvgDebugOptions::default()
+    };
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &debug)
         .expect("hidden edges must not invalidate emitted State node effects");
@@ -1212,10 +1214,14 @@ fn state_cluster_title_geometry(svg: &str, cluster_id: &str) -> (f64, f64, f64) 
 
 #[test]
 fn state_svg_compiled_theme_styles_structural_roles_and_reflows_transition_labels() {
-    let mut label_typography = TextStylePatch::default();
-    label_typography.font_size_px = Specified::Value(30.0);
-    let mut composite_typography = TextStylePatch::default();
-    composite_typography.font_size_px = Specified::Value(40.0);
+    let label_typography = TextStylePatch {
+        font_size_px: Specified::Value(30.0),
+        ..TextStylePatch::default()
+    };
+    let composite_typography = TextStylePatch {
+        font_size_px: Specified::Value(40.0),
+        ..TextStylePatch::default()
+    };
     let styles = ThemeRuleSet::default()
         .with_rule(ThemeRule::new(
             ThemeTarget::TransitionMarker,
@@ -4753,8 +4759,21 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         Stroke,
     }
 
+    #[derive(Clone, Copy)]
+    enum Terminal {
+        Named(&'static str),
+        Note,
+        Start,
+        EndOuter,
+        EndInner,
+        CompositeHeader(&'static str),
+        CompositeBody(&'static str),
+        Divider,
+    }
+
     struct Case {
         name: &'static str,
+        terminal: Terminal,
         target: ThemeTarget,
         variant: ThemeVariant,
         ordinal: Option<usize>,
@@ -4766,6 +4785,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
     let cases = [
         Case {
             name: "ordinary-fill",
+            terminal: Terminal::Named("Ready"),
             target: ThemeTarget::State,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4775,6 +4795,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "ordinary-stroke",
+            terminal: Terminal::Named("Ready"),
             target: ThemeTarget::State,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4784,6 +4805,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "note-fill",
+            terminal: Terminal::Note,
             target: ThemeTarget::Note,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4793,6 +4815,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "note-stroke",
+            terminal: Terminal::Note,
             target: ThemeTarget::Note,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4802,6 +4825,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "start-fill",
+            terminal: Terminal::Start,
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::Start,
             ordinal: None,
@@ -4811,6 +4835,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "start-stroke",
+            terminal: Terminal::Start,
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::Start,
             ordinal: None,
@@ -4820,6 +4845,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "composite-header-fill",
+            terminal: Terminal::CompositeHeader("Parent"),
             target: ThemeTarget::CompositeHeader,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4829,6 +4855,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "composite-header-stroke",
+            terminal: Terminal::CompositeHeader("Parent"),
             target: ThemeTarget::CompositeHeader,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4838,6 +4865,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "composite-body-fill",
+            terminal: Terminal::CompositeBody("Parent"),
             target: ThemeTarget::Composite,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4847,6 +4875,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "composite-body-stroke",
+            terminal: Terminal::CompositeBody("Parent"),
             target: ThemeTarget::Composite,
             variant: ThemeVariant::Default,
             ordinal: None,
@@ -4856,6 +4885,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "composite-alt-fill",
+            terminal: Terminal::CompositeBody("Inner"),
             target: ThemeTarget::Composite,
             variant: ThemeVariant::Default,
             ordinal: Some(2),
@@ -4865,6 +4895,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "divider-stroke",
+            terminal: Terminal::Divider,
             target: ThemeTarget::Composite,
             variant: ThemeVariant::Default,
             ordinal: Some(2),
@@ -4874,6 +4905,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "end-outer-fill",
+            terminal: Terminal::EndOuter,
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::End,
             ordinal: None,
@@ -4883,6 +4915,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "end-outer-stroke",
+            terminal: Terminal::EndOuter,
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::End,
             ordinal: None,
@@ -4892,6 +4925,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "end-inner-fill",
+            terminal: Terminal::EndInner,
             target: ThemeTarget::SpecialStateInner,
             variant: ThemeVariant::End,
             ordinal: None,
@@ -4901,6 +4935,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "end-inner-stroke",
+            terminal: Terminal::EndInner,
             target: ThemeTarget::SpecialStateInner,
             variant: ThemeVariant::End,
             ordinal: None,
@@ -4910,6 +4945,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "fork-fill",
+            terminal: Terminal::Named("Fork"),
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::Special,
             ordinal: None,
@@ -4919,6 +4955,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "join-stroke",
+            terminal: Terminal::Named("Join"),
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::Special,
             ordinal: None,
@@ -4928,6 +4965,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "choice-fill",
+            terminal: Terminal::Named("Decide"),
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::Special,
             ordinal: None,
@@ -4937,6 +4975,7 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
         },
         Case {
             name: "choice-stroke",
+            terminal: Terminal::Named("Decide"),
             target: ThemeTarget::SpecialState,
             variant: ThemeVariant::Special,
             ordinal: None,
@@ -4978,14 +5017,74 @@ fn state_hand_drawn_terminal_owners_follow_distinct_surfaces_from_site_and_sourc
                 }),
                 origin,
             );
-            let expected_attribute = match case.facet {
-                PaintFacet::Fill => format!("fill=\"{MERMAID_COLOR}\""),
-                PaintFacet::Stroke => format!("stroke=\"{MERMAID_COLOR}\""),
+            let document = roxmltree::Document::parse(&svg).expect("valid hand-drawn terminal SVG");
+            let named = |id: &str| {
+                document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g")
+                            && node
+                                .attribute("id")
+                                .is_some_and(|value| value.contains(&format!("-state-{id}-")))
+                    })
+                    .unwrap_or_else(|| panic!("missing state {id}: {svg}"))
             };
-
-            assert!(
-                svg.contains(&expected_attribute),
-                "explicit {origin} {} must reach a HandDrawn terminal: {svg}",
+            let pair = match case.terminal {
+                Terminal::Named(id) => named(id).descendants().find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .children()
+                            .filter(|child| child.has_tag_name("path"))
+                            .count()
+                            == 2
+                }),
+                Terminal::Note => document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some("label noteLabel"))
+                    .and_then(|label| label.parent())
+                    .and_then(|container| {
+                        container.children().find(|node| {
+                            node.has_tag_name("g")
+                                && node
+                                    .children()
+                                    .filter(|child| child.has_tag_name("path"))
+                                    .count()
+                                    == 2
+                        })
+                    }),
+                Terminal::Start | Terminal::EndOuter => document.descendants().find(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("outer-path")
+                }),
+                Terminal::EndInner => document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g") && node.attribute("class") == Some("outer-path")
+                    })
+                    .and_then(|outer| outer.children().find(|node| node.has_tag_name("g"))),
+                Terminal::CompositeHeader(id) => named(id).descendants().find(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("outer")
+                }),
+                Terminal::CompositeBody(id) => named(id).descendants().find(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("inner")
+                }),
+                Terminal::Divider => document.descendants().find(|node| {
+                    node.has_tag_name("g") && node.attribute("class") == Some("divider")
+                }),
+            }
+            .unwrap_or_else(|| panic!("missing {} terminal pair: {svg}", case.name));
+            let (index, property) = match case.facet {
+                PaintFacet::Fill => (0, "fill"),
+                PaintFacet::Stroke => (1, "stroke"),
+            };
+            let terminal = pair
+                .children()
+                .filter(|node| node.has_tag_name("path"))
+                .nth(index)
+                .expect("selected fill/stroke path");
+            assert_eq!(
+                terminal.attribute(property),
+                Some(MERMAID_COLOR),
+                "explicit {origin} {} must reach its own terminal: {svg}",
                 case.name
             );
             assert!(
@@ -6431,4 +6530,150 @@ fn state_svg_min_width_updates_html_box_without_changing_wrapping() {
             .count(),
         1
     );
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn state_elk_parallel_self_loops_preserve_transition_label_and_marker_ordinals() {
+    let mut rules = ThemeRuleSet::default();
+    for (target, colors) in [
+        (ThemeTarget::Transition, ["#123456", "#654321"]),
+        (ThemeTarget::TransitionLabel, ["#22c55e", "#ec4899"]),
+        (ThemeTarget::TransitionMarker, ["#2468ac", "#ac6824"]),
+    ] {
+        for (index, color) in colors.into_iter().enumerate() {
+            let patch = if target == ThemeTarget::Transition {
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid(color).unwrap())
+            } else {
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap())
+            };
+            rules = rules.with_rule(
+                ThemeRule::new(target, patch)
+                    .with_ordinal(OrdinalSelector::exact(index + 1).unwrap()),
+            );
+        }
+    }
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap();
+    let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+        &theme,
+        "stateDiagram-v2\nReady --> Ready: first\nReady --> Ready: second\n",
+        serde_json::json!({"layout":"elk", "htmlLabels":false}),
+        "site",
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    for (index, stroke, label_fill, marker_fill) in [
+        (0, "#123456", "#22c55e", "#2468ac"),
+        (1, "#654321", "#ec4899", "#ac6824"),
+    ] {
+        let id = format!("edge{index}");
+        let edge = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("path") && node.attribute("data-id") == Some(id.as_str())
+            })
+            .unwrap();
+        assert!(
+            edge.attribute("style")
+                .is_some_and(|style| style.contains(&format!("stroke:{stroke}"))),
+            "{id} stroke: {svg}"
+        );
+        let label = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("g")
+                    && node.attribute("data-id") == Some(id.as_str())
+                    && node.attribute("class") == Some("label")
+            })
+            .unwrap();
+        assert!(
+            label.descendants().any(|node| node
+                .attribute("style")
+                .is_some_and(|style| style.contains(&format!("fill:{label_fill}")))),
+            "{id} label paint: {svg}"
+        );
+        let marker_id = edge
+            .attribute("marker-end")
+            .and_then(|url| url.strip_prefix("url(#"))
+            .and_then(|url| url.strip_suffix(')'))
+            .unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
+            .unwrap();
+        assert!(
+            marker.descendants().any(|node| node
+                .attribute("style")
+                .is_some_and(|style| style.contains(&format!("fill:{marker_fill}")))),
+            "{id} marker paint: {svg}"
+        );
+    }
+    assert_eq!(evidence.applied, 6);
+    assert_eq!(evidence.residual, 0);
+}
+
+#[test]
+fn state_explicit_radius_wins_compatibility_css_on_plain_title_and_composite_rects() {
+    for html_labels in [false, true] {
+        for (source, target, classes) in [
+            (
+                "stateDiagram-v2\nReady\n",
+                ThemeTarget::State,
+                &["basic label-container"][..],
+            ),
+            (
+                "stateDiagram-v2\nDisplay : Ready\nDisplay : Running\n",
+                ThemeTarget::State,
+                &["outer title-state"][..],
+            ),
+            (
+                "stateDiagram-v2\nstate Parent {\nReady\n}\n",
+                ThemeTarget::Composite,
+                &["outer", "inner"][..],
+            ),
+        ] {
+            let theme =
+                DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch {
+                                geometry: ThemeGeometryPatch {
+                                    radius: Specified::Value(12.0),
+                                },
+                                ..Default::default()
+                            },
+                        )),
+                    ))
+                    .unwrap();
+            let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                &theme,
+                source,
+                serde_json::json!({"htmlLabels":html_labels}),
+                "site",
+            );
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            for class in classes {
+                let rect = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("rect") && node.attribute("class") == Some(*class)
+                    })
+                    .unwrap_or_else(|| panic!("missing {class} rect: {svg}"));
+                assert_eq!(rect.attribute("rx"), Some("12"));
+                assert_eq!(rect.attribute("ry"), Some("12"));
+                for property in ["rx", "ry"] {
+                    assert!(
+                        rect.attribute("style").is_some_and(|style| style
+                            .split(';')
+                            .any(|decl| decl == format!("{property}:12px"))),
+                        "inline geometry must win compatibility CSS for {class}/{property}: {svg}"
+                    );
+                }
+            }
+            assert_eq!(evidence.applied, 1);
+            assert_eq!(evidence.residual, 0);
+        }
+    }
 }

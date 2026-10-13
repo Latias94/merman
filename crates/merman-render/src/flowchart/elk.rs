@@ -1013,7 +1013,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control(
             effective_config,
             measurer,
             math_renderer,
-            None,
+            svg_label_sidecar,
             edge_style_plan,
             Some(&projected_model.node_owner_indices),
             Some(&projected_model.edge_owner_indices),
@@ -2120,6 +2120,98 @@ mod tests {
 
         assert_eq!(label.height, 23.75);
         assert!(builder.has_prepared_math(FlowchartSvgLabelOwner::SubgraphTitle(0), "$$x$$"));
+    }
+
+    #[test]
+    fn elk_collapsed_projection_keeps_prepared_math_bound_to_original_owners() {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                r#"flowchart TD
+subgraph Hidden
+A --> B
+end
+Hidden@{ view: collapsed }
+C["$$x$$"] -->|"$$x$$"| D
+"#,
+                merman_core::ParseOptions::default(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("Flowchart model");
+        };
+        let node_index = model.nodes.iter().position(|node| node.id == "C").unwrap();
+        let edge_index = model
+            .edges
+            .iter()
+            .position(|edge| edge.from == "C" && edge.to == "D")
+            .unwrap();
+        let config =
+            MermaidConfig::from_value(json!({"htmlLabels":true, "flowchart":{"htmlLabels":true}}));
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let measurer = session.text_measurer(crate::environment::TextMeasurementPhase::Layout);
+        let backend = crate::math::ConfiguredMathBackend::external(std::sync::Arc::new(
+            FixedPreparedMathRenderer,
+        ));
+        let builder =
+            FlowchartSvgLabelSidecarBuilder::default().with_math_backend(Some(&backend), &config);
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            model,
+            &config,
+            false,
+            session.work_meter(),
+        )
+        .unwrap();
+        let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
+            model,
+            parsed.flowchart_render_context().unwrap(),
+            &config,
+            &measurer,
+            None,
+            Some(&builder),
+            &edge_style_plan,
+            None,
+        )
+        .unwrap();
+        assert!(
+            !graph
+                .nodes
+                .iter()
+                .any(|node| node.id == "A" || node.id == "B")
+        );
+        assert_eq!(
+            graph
+                .nodes
+                .iter()
+                .find(|node| node.id == "C")
+                .and_then(|node| node.label)
+                .unwrap()
+                .height,
+            23.75
+        );
+        assert_eq!(
+            graph
+                .edges
+                .iter()
+                .find(|edge| edge.source == "C" && edge.target == "D")
+                .and_then(|edge| edge.label)
+                .unwrap()
+                .height,
+            23.75
+        );
+        assert!(builder.has_prepared_math(FlowchartSvgLabelOwner::Node(node_index), "$$x$$"));
+        assert!(builder.has_prepared_math(FlowchartSvgLabelOwner::Edge(edge_index), "$$x$$"));
+        let sidecar = builder.finish();
+        assert_eq!(
+            sidecar.node_owner("C", false),
+            Some(FlowchartSvgLabelOwner::Node(node_index))
+        );
+        assert_eq!(
+            sidecar.edge_owner(&model.edges[edge_index].id, false),
+            Some(FlowchartSvgLabelOwner::Edge(edge_index))
+        );
     }
 
     #[test]

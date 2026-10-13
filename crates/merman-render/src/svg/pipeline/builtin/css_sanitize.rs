@@ -7,7 +7,10 @@ use std::borrow::Cow;
 use std::fmt;
 
 use super::attr_sanitize::is_unsafe_render_resource_url_value;
-use super::util::{checkpoint_loop, find_tag_end_with_checkpoints, find_with_checkpoints};
+use super::util::{
+    SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
+    find_with_checkpoints, start_tag_name,
+};
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 const CSS_NESTING_HARD_LIMIT: u8 = 64;
@@ -25,62 +28,98 @@ impl SvgPostprocessor for SanitizeCssPostprocessor {
         svg: Cow<'a, str>,
         ctx: &SvgPostprocessContext<'_>,
     ) -> Result<Cow<'a, str>> {
-        apply_sanitize_style_elements(svg, || ctx.checkpoint())
+        apply_sanitize_style_elements(svg, ctx.execution())
     }
 }
 
 pub(crate) fn apply_sanitize_style_elements<'a>(
     svg: Cow<'a, str>,
-    mut checkpoint: impl FnMut() -> Result<()>,
+    execution: crate::svg::pipeline::SvgPostprocessExecution<'_>,
 ) -> Result<Cow<'a, str>> {
+    let mut checkpoint = || execution.checkpoint();
     checkpoint()?;
     if find_with_checkpoints(&svg, "<style", &mut checkpoint)?.is_none() {
         return Ok(svg);
     }
-    sanitize_style_elements_with_checkpoints(&svg, &mut checkpoint).map(Cow::Owned)
+    sanitize_style_elements_with_admission(&svg, &mut checkpoint, &mut |projected| {
+        execution.preflight_svg_byte_count(projected)
+    })
+    .map(Cow::Owned)
 }
 
-pub(crate) fn sanitize_style_elements_with_checkpoints<E>(
+#[cfg(test)]
+fn sanitize_style_elements_with_checkpoints<E>(
     svg: &str,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<String, E> {
-    if find_with_checkpoints(svg, "<style", checkpoint)?.is_none() {
-        return Ok(svg.to_string());
-    }
+    sanitize_style_elements_with_admission(svg, checkpoint, &mut |_| Ok(()))
+}
+
+fn sanitize_style_elements_with_admission<E>(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    admit: &mut impl FnMut(usize) -> std::result::Result<(), E>,
+) -> std::result::Result<String, E> {
     let mut out = String::with_capacity(svg.len());
+    let mut scanner = SvgTagScanner::new(svg);
     let mut cursor = 0;
-
-    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], "<style", checkpoint)? {
-        let start = cursor + rel_start;
-        out.push_str(&svg[cursor..start]);
-
-        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
-            out.push_str(&svg[start..]);
-            return Ok(out);
+    while let Some(open) = scanner.next_with_checkpoints(checkpoint)? {
+        if start_tag_name(open.raw()) != Some("style") || open.is_self_closing() {
+            continue;
+        }
+        let content_start = scanner.cursor();
+        let mut close = None;
+        while let Some(candidate) = scanner.next_with_checkpoints(checkpoint)? {
+            if end_tag_name(candidate.raw()) == Some("style") {
+                close = Some(candidate);
+                break;
+            }
+        }
+        let Some(close) = close else {
+            break;
         };
-
-        let content_start = open_end + 1;
-        let Some(rel_close_start) =
-            find_with_checkpoints(&svg[content_start..], "</style", checkpoint)?
-        else {
-            out.push_str(&svg[start..]);
-            return Ok(out);
-        };
-        let close_start = content_start + rel_close_start;
-        let Some(close_end) = find_tag_end_with_checkpoints(svg, close_start, checkpoint)? else {
-            out.push_str(&svg[start..]);
-            return Ok(out);
-        };
-
-        out.push_str(&svg[start..=open_end]);
-        out.push_str(&sanitize_css_with_checkpoints(
-            &svg[content_start..close_start],
-            checkpoint,
-        )?);
-        out.push_str(&svg[close_start..=close_end]);
-        cursor = close_end + 1;
+        let close_end = scanner.cursor();
+        admit(out.len().saturating_add(content_start - cursor))?;
+        out.push_str(&svg[cursor..content_start]);
+        if let Some(logical_css) =
+            decode_xml_style_text_with_checkpoints(&svg[content_start..close.start()], checkpoint)?
+        {
+            let sanitized = sanitize_css_with_checkpoints(&logical_css, checkpoint)?;
+            let mut encoded_len = 0usize;
+            for (index, character) in sanitized.chars().enumerate() {
+                checkpoint_loop(index, checkpoint)?;
+                if !crate::xml::is_xml_1_0_char(character) {
+                    continue;
+                }
+                encoded_len = encoded_len.saturating_add(match character {
+                    '&' => 5,
+                    '<' | '>' => 4,
+                    _ => character.len_utf8(),
+                });
+            }
+            admit(
+                out.len()
+                    .saturating_add(encoded_len)
+                    .saturating_add(close_end - close.start()),
+            )?;
+            for (index, character) in sanitized.chars().enumerate() {
+                checkpoint_loop(index, checkpoint)?;
+                if !crate::xml::is_xml_1_0_char(character) {
+                    continue;
+                }
+                match character {
+                    '&' => out.push_str("&amp;"),
+                    '<' => out.push_str("&lt;"),
+                    '>' => out.push_str("&gt;"),
+                    _ => out.push(character),
+                }
+            }
+        }
+        admit(out.len().saturating_add(close_end - close.start()))?;
+        out.push_str(&svg[close.start()..close_end]);
+        cursor = close_end;
     }
-
+    admit(out.len().saturating_add(svg.len() - cursor))?;
     out.push_str(&svg[cursor..]);
     checkpoint()?;
     Ok(out)
@@ -866,6 +905,7 @@ fn format_parse_error(error: ParseError<CssViolation>) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::super::util::escape_xml_text_with_checkpoints;
     use super::*;
 
     fn nested_function(depth: usize, leaf: &str) -> String {
@@ -879,6 +919,166 @@ mod tests {
             rule,
             "}".repeat(depth)
         )
+    }
+
+    #[test]
+    fn style_element_sanitizer_preserves_logical_xml_css_strings() {
+        let expected = r##"#root{font-family:"A&B",monospace;font-size:16px;fill:#123456;}"##;
+        for serialized in [
+            r##"#root{font-family:&quot;A&amp;B&quot;,monospace;font-size:16px;fill:#123456;}"##,
+            r##"#root{font-family:"A&amp;B",monospace;font-size:16px;fill:#123456;}"##,
+            r##"<![CDATA[#root{font-family:"A&B",monospace;font-size:16px;fill:#123456;}]]>"##,
+        ] {
+            let svg = format!("<svg><style>{serialized}</style></svg>");
+            let output = sanitize_style_elements_with_checkpoints(&svg, &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
+            let document = roxmltree::Document::parse(&output)
+                .expect("sanitized CSS must remain well-formed XML");
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .unwrap();
+            assert_eq!(css, expected);
+            let twice = sanitize_style_elements_with_checkpoints(&output, &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
+            assert_eq!(
+                twice, output,
+                "XML references must be decoded only once per pass"
+            );
+        }
+    }
+
+    #[test]
+    fn style_element_sanitizer_preserves_plain_raw_css_and_literal_entity_names() {
+        for css in [
+            r##"#root{font-family:monospace;fill:#123456;}"##,
+            r##"#root{font-family:"Literal &quot;",monospace;fill:#abcdef;}"##,
+        ] {
+            let encoded = escape_xml_text_with_checkpoints(css, &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
+            let svg = format!("<svg><style>{encoded}</style></svg>");
+            let output = sanitize_style_elements_with_checkpoints(&svg, &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
+            let document = roxmltree::Document::parse(&output).unwrap();
+            assert_eq!(
+                document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text()),
+                Some(css)
+            );
+        }
+    }
+
+    #[test]
+    fn style_element_sanitizer_finds_xml_closing_tag_after_cdata_terminator_text() {
+        let svg = r##"<svg><style><![CDATA[#root{font-family:"</style> A&B",monospace;fill:#123456;}]]></style><text>Keep</text></svg>"##;
+        let output = sanitize_style_elements_with_checkpoints(svg, &mut || {
+            Ok::<(), std::convert::Infallible>(())
+        })
+        .unwrap();
+        let document = roxmltree::Document::parse(&output).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text()),
+            Some(r##"#root{font-family:"</style> A&B",monospace;fill:#123456;}"##)
+        );
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some("Keep"))
+        );
+    }
+
+    #[test]
+    fn style_element_sanitizer_admits_xml_expansion_before_retaining_it() {
+        let css = format!(
+            r##"#root{{font-family:"{}",monospace;fill:#123456;}}"##,
+            "&".repeat(256)
+        );
+        let svg = format!("<svg><style><![CDATA[{css}]]></style></svg>");
+        let mut observed = Vec::new();
+        let result = sanitize_style_elements_with_admission(
+            &svg,
+            &mut || Ok::<(), &'static str>(()),
+            &mut |projected| {
+                observed.push(projected);
+                if projected > svg.len() {
+                    Err("output ceiling")
+                } else {
+                    Ok(())
+                }
+            },
+        );
+        assert_eq!(result, Err("output ceiling"));
+        assert_eq!(observed[0], "<svg><style>".len());
+        assert!(observed[1] > svg.len() + 3 * 256);
+    }
+
+    #[test]
+    fn style_element_sanitizer_admission_excludes_future_removed_css() {
+        let first = format!(
+            r#"<style><![CDATA[#root{{font-family:"{}";}}]]></style>"#,
+            "&".repeat(64)
+        );
+        let removed = format!(
+            "<style>@keyframes removed{{from{{opacity:1}}}}.unused{{animation:{};}}</style>",
+            "untrusted ".repeat(256)
+        );
+        let svg = format!("<svg>{first}{removed}</svg>");
+        let mut max_observed = 0;
+        let output = sanitize_style_elements_with_admission(
+            &svg,
+            &mut || Ok::<(), &'static str>(()),
+            &mut |projected| {
+                max_observed = max_observed.max(projected);
+                if projected > svg.len() {
+                    Err("ceiling")
+                } else {
+                    Ok(())
+                }
+            },
+        )
+        .expect("future CSS removal must not be charged as retained output");
+        assert!(output.len() < svg.len());
+        assert_eq!(max_observed, output.len());
+    }
+
+    #[test]
+    fn style_element_sanitizer_checks_real_xml_expansion_against_svg_byte_policy() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        let svg = format!(
+            r#"<svg><style><![CDATA[#root{{font-family:"{}",monospace;}}]]></style></svg>"#,
+            "&".repeat(256)
+        );
+        let environment = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxSvgBytes, svg.len())
+                    .unwrap(),
+            );
+        let session = environment.begin_session().unwrap();
+        let error = apply_sanitize_style_elements(
+            Cow::Borrowed(&svg),
+            crate::svg::pipeline::SvgPostprocessExecution::new(&session),
+        )
+        .expect_err("encoded CSS must fit the same operation output ceiling");
+        let crate::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected byte ceiling");
+        };
+        assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+        assert!(limit.actual > limit.max);
     }
 
     #[test]

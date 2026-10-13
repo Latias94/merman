@@ -52,6 +52,12 @@ fn treemap_exponential_parts(value: f64, significant_digits: usize) -> Option<(S
 }
 
 fn treemap_trim_decimal(mut value: String) -> String {
+    if let Some(exponent_start) = value.find('e') {
+        let exponent = value.split_off(exponent_start);
+        let mut mantissa = treemap_trim_decimal(value);
+        mantissa.push_str(&exponent);
+        return mantissa;
+    }
     if let Some(dot) = value.find('.') {
         while value.ends_with('0') {
             value.pop();
@@ -1386,6 +1392,14 @@ mod tests {
             Some("−1,234.5".to_string())
         );
         assert_eq!(treemap_format_value(0.0, ","), Some("0".to_string()));
+        assert_eq!(
+            treemap_format_value(0.00000000012, ","),
+            Some("1.2e-10".to_string())
+        );
+        assert_eq!(
+            treemap_format_value(12_000_000_000.0, ".2g"),
+            Some("1.2e+10".to_string())
+        );
         assert_eq!(treemap_format_value(0.35, ".1%"), Some("35.0%".to_string()));
         assert_eq!(
             treemap_format_value(0.6723, ".2f"),

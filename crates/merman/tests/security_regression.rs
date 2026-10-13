@@ -54,7 +54,7 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn render_svg_result(&self, source: &str) -> Result<Option<String>, RenderError> {
+    fn render_svg_result(&self, source: &str) -> Result<Option<String>, Box<RenderError>> {
         self.render_svg_with_request(source, self.request.clone())
     }
 
@@ -62,13 +62,13 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         pipeline: SvgPipeline,
-    ) -> Result<Option<String>, RenderError> {
+    ) -> Result<Option<String>, Box<RenderError>> {
         let mut request = self.request.clone();
         request.pipeline = Some(pipeline);
         self.render_svg_with_request(source, request)
     }
 
-    fn render_resvg_safe_result(&self, source: &str) -> Result<Option<String>, RenderError> {
+    fn render_resvg_safe_result(&self, source: &str) -> Result<Option<String>, Box<RenderError>> {
         self.render_svg_with_pipeline_result(source, SvgPipeline::resvg_safe())
     }
 
@@ -76,7 +76,7 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         request: SvgRequest,
-    ) -> Result<Option<String>, RenderError> {
+    ) -> Result<Option<String>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::svg(source, OperationControl::new(), request)
                 .with_parse_options(self.parse_options)
@@ -93,7 +93,7 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         options: &merman::svg::export::RasterOptions,
-    ) -> Result<Option<Vec<u8>>, RenderError> {
+    ) -> Result<Option<Vec<u8>>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::png(
                 source,
@@ -117,7 +117,7 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         options: &merman::svg::export::RasterOptions,
-    ) -> Result<Option<Vec<u8>>, RenderError> {
+    ) -> Result<Option<Vec<u8>>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::jpeg(
                 source,
@@ -137,7 +137,7 @@ impl TypedSvgRenderer {
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-    fn render_pdf_result(&self, source: &str) -> Result<Option<Vec<u8>>, RenderError> {
+    fn render_pdf_result(&self, source: &str) -> Result<Option<Vec<u8>>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::pdf(
                 source,

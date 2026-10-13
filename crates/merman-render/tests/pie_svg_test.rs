@@ -550,7 +550,7 @@ fn pie_typed_font_stack_reaches_layout_stylesheet_and_terminal_evidence() {
     ] {
         assert_eq!(
             pie_stylesheet_property_values(rendered.svg(), selector, "font-family"),
-            [expected_font.clone()],
+            std::slice::from_ref(&expected_font),
             "selector={selector}"
         );
     }

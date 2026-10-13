@@ -422,18 +422,7 @@ fn requirement_svg_labels_preserve_wrapped_markdown_and_bold_names() {
         assert!(
             doc.descendants().any(|node| node.has_tag_name("tspan")
                 && node.text().is_some_and(|text| text.trim() == word)
-                && node.ancestors().any(|ancestor| {
-                    ancestor.attribute(attribute) == Some(value)
-                        || ancestor.attribute("style").is_some_and(|style| {
-                            style.split(';').any(|declaration| {
-                                declaration
-                                    .split_once(':')
-                                    .is_some_and(|(property, actual)| {
-                                        property.trim() == attribute && actual.trim() == value
-                                    })
-                            })
-                        })
-                })),
+                && nearest_svg_text_property(node, attribute) == Some(value)),
             "missing {attribute}={value} for {word}: {svg}"
         );
     }
@@ -444,4 +433,36 @@ fn requirement_svg_labels_preserve_wrapped_markdown_and_bold_names() {
         .collect::<String>();
     assert!(text.contains("second row & value"), "{text}");
     assert!(!text.contains("<br") && !text.contains("**"), "{text}");
+}
+
+fn nearest_svg_text_property<'a>(node: roxmltree::Node<'a, 'a>, property: &str) -> Option<&'a str> {
+    node.ancestors().find_map(|ancestor| {
+        ancestor
+            .attribute("style")
+            .and_then(|style| {
+                style
+                    .split(';')
+                    .rev()
+                    .filter_map(|declaration| declaration.split_once(':'))
+                    .find_map(|(name, value)| (name.trim() == property).then_some(value.trim()))
+            })
+            .or_else(|| ancestor.attribute(property))
+    })
+}
+
+#[test]
+fn requirement_markdown_oracle_observes_the_nearest_final_declaration() {
+    let document = roxmltree::Document::parse(r#"<svg><g style="font-weight:bold;font-style:italic"><text><tspan font-weight="bold" style="font-weight:bold;font-weight:normal;font-style:normal">strong</tspan></text></g></svg>"#).unwrap();
+    let tspan = document
+        .descendants()
+        .find(|node| node.has_tag_name("tspan"))
+        .unwrap();
+    assert_eq!(
+        nearest_svg_text_property(tspan, "font-weight"),
+        Some("normal")
+    );
+    assert_eq!(
+        nearest_svg_text_property(tspan, "font-style"),
+        Some("normal")
+    );
 }

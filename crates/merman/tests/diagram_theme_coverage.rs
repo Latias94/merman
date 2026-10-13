@@ -98,7 +98,7 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn render_svg(&self, source: &str) -> Result<Option<String>, merman::RenderError> {
+    fn render_svg(&self, source: &str) -> Result<Option<String>, Box<merman::RenderError>> {
         let request = RenderRequest::svg(source, OperationControl::new(), self.request.clone());
         let request = match self.theme.as_ref() {
             Some(theme) => request.with_theme(theme.clone()),

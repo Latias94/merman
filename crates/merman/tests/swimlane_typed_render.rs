@@ -108,7 +108,7 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
     // Probe the exact full-SVG baseline without line hops. Layout JSON intentionally does not pay
     // for SVG-only hierarchy and emission work, so its boundary cannot isolate line-hop work.
     let svg_boundary = (90..=512)
-        .find_map(|max_layout_work_units| {
+        .find(|&max_layout_work_units| {
             let resources = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(
                     merman::svg::ResourceLimitId::MaxLayoutWorkUnits,
@@ -125,10 +125,10 @@ fn line_hop_work_budget_is_reported_by_the_typed_render_operation() {
                 OperationControl::new(),
                 request,
             )) {
-                Ok(RenderOutput::Svg(Some(_))) => Some(max_layout_work_units),
+                Ok(RenderOutput::Svg(Some(_))) => true,
                 Ok(RenderOutput::Svg(None)) => panic!("expected swimlane diagram"),
                 Ok(_) => panic!("unexpected target output"),
-                Err(error) if error.to_string().contains("max_layout_work_units") => None,
+                Err(error) if error.to_string().contains("max_layout_work_units") => false,
                 Err(error) => panic!("unexpected SVG error: {error}"),
             }
         })

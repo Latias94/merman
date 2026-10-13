@@ -632,6 +632,25 @@ fn info_config_text_color_outranks_typed_text_fill_per_property() {
     )
     .expect("explicit Info textColor ownership must remain portable");
 
+    let document = roxmltree::Document::parse(rendered.svg()).expect("valid config-owned Info SVG");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Info stylesheet");
+    let root_rule = css
+        .split_once("#info-config-owned-text-fill{")
+        .expect("Info root selector")
+        .1
+        .split_once('}')
+        .unwrap()
+        .0;
+    assert!(
+        root_rule
+            .split(';')
+            .any(|declaration| declaration == "fill:#abcdef"),
+        "configured text color must reach its actual root owner: {root_rule}"
+    );
     assert_single_info_text_fill(rendered, None, 0, 1);
 }
 
@@ -1008,4 +1027,75 @@ fn lenient_error_does_not_invent_compatibility_for_typed_flowchart_node_fill() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn info_unsupported_fill_only_tracks_its_final_winning_facet() {
+    use merman_render::diagram_theme::{GradientStop, LinearGradient};
+    let gradient = CanvasPaint::LinearGradient(
+        LinearGradient::new(
+            90.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#123456").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#654321").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    for owner in ["typed", "config", "uncovered", "mixed"] {
+        let mut patch = ThemeStylePatch::default().with_fill(gradient.clone());
+        if owner == "mixed" {
+            patch = patch.with_stroke(CanvasPaint::solid("#654321").unwrap());
+        }
+        let mut rules = ThemeRuleSet::default()
+            .with_rule(ThemeRule::new(ThemeTarget::Text, patch).for_family(DiagramFamilyId::INFO));
+        if matches!(owner, "typed" | "mixed") {
+            rules = rules.with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                )
+                .for_family(DiagramFamilyId::INFO),
+            );
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(rules))
+            .unwrap();
+        let engine = if owner == "config" {
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
+            ))
+        } else {
+            Engine::new()
+        };
+        let result = try_render_family(
+            InheritedTextFamily::Info,
+            "info",
+            &theme,
+            engine,
+            "info-final-fill",
+        );
+        if matches!(owner, "uncovered" | "mixed") {
+            assert!(
+                result.is_err(),
+                "active unsupported facet must remain rejected: {owner}"
+            );
+            continue;
+        }
+        let rendered = result.expect("shadowed fill must not leave an unsupported residual");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let version = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("version"))
+            .unwrap();
+        assert_eq!(
+            version.attribute("fill"),
+            (owner == "typed").then_some("#123456")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(owner == "typed"));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
 }

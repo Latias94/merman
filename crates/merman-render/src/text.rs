@@ -79,6 +79,10 @@ pub use wrap::{
     wrap_label_like_mermaid_lines, wrap_text_lines_measurer,
 };
 
+pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) * 1.1875
+}
+
 #[cfg(all(
     test,
     any(

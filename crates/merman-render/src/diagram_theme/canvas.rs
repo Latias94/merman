@@ -470,19 +470,6 @@ impl GradientRepetition {
             Self::None | Self::Repeating { .. } => None,
         }
     }
-
-    fn validate(self, field: &'static str) -> Result<(), ThemeCompileValidationError> {
-        match self {
-            Self::None | Self::Repeating { period_px: None } => Ok(()),
-            Self::Repeating {
-                period_px: Some(period_px),
-            } => validate_gradient_period_px(period_px, field),
-            Self::Tiled {
-                width_px,
-                height_px,
-            } => validate_gradient_tile_px(width_px, height_px, field),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -594,33 +581,6 @@ impl CanvasPaint {
             Self::Transparent | Self::Solid(_) | Self::Pattern(_) => false,
         }
     }
-
-    pub(crate) fn validate(&self, field: &'static str) -> Result<(), ThemeCompileValidationError> {
-        match self {
-            Self::Transparent | Self::Solid(_) => Ok(()),
-            Self::LinearGradient(gradient) => {
-                validate_gradient_stops(gradient.stops(), field)?;
-                gradient.repetition.validate(field)
-            }
-            Self::RadialGradient(gradient) => {
-                gradient
-                    .center_x()
-                    .validate("canvas.radial_gradient.center_x")?;
-                gradient
-                    .center_y()
-                    .validate("canvas.radial_gradient.center_y")?;
-                gradient
-                    .radius()
-                    .validate("canvas.radial_gradient.radius")?;
-                validate_gradient_stops(gradient.stops(), field)?;
-                gradient.repetition.validate(field)
-            }
-            Self::Pattern(pattern) => {
-                validate_positive(pattern.cell_width(), field)?;
-                validate_positive(pattern.cell_height(), field)
-            }
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -729,7 +689,6 @@ impl CanvasSpec {
                 field: "canvas.layers",
             });
         }
-        layer.paint.validate("canvas.layer.paint")?;
         self.layers.push(layer);
         Ok(self)
     }
@@ -759,20 +718,6 @@ impl CanvasSpec {
 
     pub const fn bleed(&self) -> InsetsPx {
         self.bleed
-    }
-
-    pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
-        self.base.validate("canvas.base")?;
-        if self.layers.len() > MAX_CANVAS_LAYERS {
-            return Err(ThemeCompileValidationError::LimitExceeded {
-                field: "canvas.layers",
-            });
-        }
-        for layer in &self.layers {
-            layer.paint.validate("canvas.layer.paint")?;
-            validate_unit_interval(layer.opacity, "canvas.layer.opacity")?;
-        }
-        self.bleed.validate("canvas.bleed")
     }
 }
 

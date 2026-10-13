@@ -206,7 +206,12 @@ fn collect_visible_runs(
             inherited_font_size_owner
         };
         (
-            inline_color_owner(node.attribute("style"), local_color_owner),
+            inline_color_owner(
+                node.attribute("style"),
+                inherited_color_owner,
+                local_color_owner,
+                has_css_class,
+            ),
             inline_font_family_owner(
                 node.attribute("style"),
                 inherited_font_family_owner,
@@ -263,10 +268,12 @@ fn collect_visible_runs(
 
 fn inline_color_owner(
     style: Option<&str>,
-    inherited: &VisibleTextColorOwner,
+    parent: &VisibleTextColorOwner,
+    local: &VisibleTextColorOwner,
+    has_css_class: bool,
 ) -> VisibleTextColorOwner {
     let Some(style) = style else {
-        return inherited.clone();
+        return local.clone();
     };
     let mut winner: Option<(bool, &str)> = None;
     crate::mermaid_style::visit_parsed_style_declarations(style, |declaration| {
@@ -279,14 +286,18 @@ fn inline_color_owner(
             winner = Some((declaration.important(), declaration.value()));
         }
     });
-    let Some((_, value)) = winner else {
-        return inherited.clone();
+    let Some((important, value)) = winner else {
+        return local.clone();
     };
     if matches!(
         value.trim().to_ascii_lowercase().as_str(),
         "currentcolor" | "inherit" | "unset"
     ) {
-        inherited.clone()
+        if !has_css_class || important {
+            parent.clone()
+        } else {
+            local.clone()
+        }
     } else {
         VisibleTextColorOwner::Inline(value.trim().into())
     }
@@ -343,7 +354,7 @@ fn is_fontawesome_icon(node: roxmltree::Node<'_, '_>) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::VisibleTextStyleFacts;
+    use super::{VisibleTextColorOwner, VisibleTextStyleFacts};
 
     #[test]
     fn portable_paint_distinguishes_dynamic_inline_colors_from_static_owners() {
@@ -412,6 +423,29 @@ mod tests {
         );
         assert_eq!(inherited.inherited_color_run_count(), 0);
         assert_eq!(inherited.non_inherited_color_run_count(), 1);
+    }
+
+    #[test]
+    fn important_color_inheritance_overrides_class_uncertainty_but_preserves_parent() {
+        for value in ["inherit", "currentColor", "unset"] {
+            let inherited = VisibleTextStyleFacts::from_xhtml_fragment(&format!(
+                "<span class='host' style='color:{value} !important'>Inherited</span>",
+            ));
+            assert_eq!(inherited.inherited_color_run_count(), 1, "{value}");
+            assert_eq!(inherited.unverified_color_run_count(), 0, "{value}");
+            let source_owned = VisibleTextStyleFacts::from_xhtml_fragment(&format!(
+                "<span style='color:red'><b class='host' style='color:{value} !important'>Owned</b></span>",
+            ));
+            assert_eq!(source_owned.inherited_color_run_count(), 0, "{value}");
+            assert_eq!(source_owned.unverified_color_run_count(), 0, "{value}");
+            assert!(
+                matches!(&source_owned.runs[0].color_owner, VisibleTextColorOwner::Inline(color) if color.as_ref() == "red")
+            );
+            let uncertain = VisibleTextStyleFacts::from_xhtml_fragment(&format!(
+                "<span class='host' style='color:{value}'>Unknown</span>",
+            ));
+            assert_eq!(uncertain.unverified_color_run_count(), 1, "{value}");
+        }
     }
 
     #[test]

@@ -1231,6 +1231,10 @@ fn classes_owning_node_paint(
                 "stroke" => {
                     stroke_classes.insert(class_def.id.clone());
                 }
+                "all" => {
+                    fill_classes.insert(class_def.id.clone());
+                    stroke_classes.insert(class_def.id.clone());
+                }
                 _ => {}
             }
         }
@@ -2085,6 +2089,20 @@ mod tests {
         assert!(receipt.proves_rule(3));
         assert!(receipt.has_matching_property(3, ResolvedStyleProperty::Fill));
         assert!(!receipt.has_matching_property(3, ResolvedStyleProperty::Stroke));
+    }
+
+    #[test]
+    fn source_all_reset_owns_each_node_class_paint_channel() {
+        for id in ["default", "node", "flowchart-label"] {
+            let mut classes = IndexMap::new();
+            let mut class = BlockClassDefRenderModel::default();
+            class.id = id.into();
+            class.styles = vec!["all:unset".into()];
+            classes.insert(id.into(), class);
+            let ownership = BlockNodePaintSourceOwnership::new(&classes);
+            assert!(ownership.owns_fill(false, &[]), "class={id}");
+            assert!(ownership.owns_stroke(false, &[]), "class={id}");
+        }
     }
 
     #[test]

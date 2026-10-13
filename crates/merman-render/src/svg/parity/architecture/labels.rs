@@ -34,7 +34,7 @@ pub(super) struct ArchitectureTextWriterFacts {
 
 #[derive(Debug, Clone)]
 pub(super) struct ArchitectureTextWriterEmission {
-    pub(super) bounds: Bounds,
+    pub(super) bounds: Option<Bounds>,
     #[cfg(merman_internal_theme_acceptance)]
     pub(super) facts: ArchitectureTextWriterFacts,
 }
@@ -552,17 +552,20 @@ pub(super) fn write_architecture_service_title(
     measurer: &dyn crate::text::TextMeasurer,
     style: &crate::text::TextStyle,
     inline_style: Option<&str>,
+    observe_bounds: bool,
 ) -> ArchitectureTextWriterEmission {
     let lines = wrap_svg_words_to_lines(title, title_width_px, measurer, style);
-    let terminal_bounds = architecture_svg_text_terminal_bounds(
-        &lines,
-        service_x + icon_size_px / 2.0,
-        service_y + icon_size_px,
-        ArchitectureTextAnchor::Middle,
-        ArchitectureTextBaseline::Middle,
-        measurer,
-        style,
-    );
+    let terminal_bounds = observe_bounds.then(|| {
+        architecture_svg_text_terminal_bounds(
+            &lines,
+            service_x + icon_size_px / 2.0,
+            service_y + icon_size_px,
+            ArchitectureTextAnchor::Middle,
+            ArchitectureTextBaseline::Middle,
+            measurer,
+            style,
+        )
+    });
     let _ = write!(
         out,
         r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate({x}, {y})"><g><rect class="background" style="stroke: none"/>"#,
@@ -676,16 +679,49 @@ mod tests {
         let mut out = String::new();
 
         let bounds = write_architecture_service_title(
-            &mut out, "s1", 0.0, 0.0, 80.0, 120.0, &measurer, &style, None,
+            &mut out, "s1", 0.0, 0.0, 80.0, 120.0, &measurer, &style, None, true,
         );
 
-        assert!(
-            bounds.bounds.max_x > bounds.bounds.min_x && bounds.bounds.max_y > bounds.bounds.min_y
-        );
+        let bounds = bounds.bounds.expect("requested service region");
+        assert!(bounds.max_x > bounds.min_x && bounds.max_y > bounds.min_y);
         assert_eq!(
             out,
             r#"<g dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle" transform="translate(40, 80)"><g><rect class="background" style="stroke: none"/><text y="-10.1" style=""><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">s1</tspan></tspan></text></g></g>"#
         );
+    }
+
+    #[test]
+    fn optional_service_region_preserves_the_emitted_dom() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let mut observed = String::new();
+        let mut unobserved = String::new();
+        let observed_emission = write_architecture_service_title(
+            &mut observed,
+            "Service **title**",
+            0.0,
+            0.0,
+            80.0,
+            120.0,
+            &measurer,
+            &text_style(),
+            None,
+            true,
+        );
+        let unobserved_emission = write_architecture_service_title(
+            &mut unobserved,
+            "Service **title**",
+            0.0,
+            0.0,
+            80.0,
+            120.0,
+            &measurer,
+            &text_style(),
+            None,
+            false,
+        );
+        assert!(observed_emission.bounds.is_some());
+        assert!(unobserved_emission.bounds.is_none());
+        assert_eq!(observed, unobserved);
     }
 
     #[test]

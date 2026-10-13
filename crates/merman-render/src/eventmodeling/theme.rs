@@ -139,7 +139,12 @@ impl EventModelingTextThemePlan {
                     facet,
                 } => {
                     let observation = observations.entry(rule_index).or_default();
-                    if !selector.ordinal_domain_intersects_occurrence_count(occurrences.total()) {
+                    if !selector.ordinal_domain_intersects_occurrence_count(occurrences.total())
+                        || matches!(selector,
+                            FamilyThemeSelectorShape::Static { variant: Some(variant) }
+                            | FamilyThemeSelectorShape::Ordinal { variant: Some(variant), .. }
+                            if variant != ThemeVariant::Default)
+                    {
                         continue;
                     }
                     if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
@@ -230,13 +235,15 @@ impl EventModelingTextThemePlan {
             }
         }
 
+        let source_owned_fill = config_owns_fill.then(|| vec![true; occurrences.total()]);
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
             &[UnsupportedTerminalDomain::fallbacks_only(
                 ThemeTarget::Text,
                 TerminalVariantDomain::uniform(occurrences.total(), ThemeVariant::Default),
-            )],
+            )
+            .with_source_owned_fill(source_owned_fill.as_deref().unwrap_or_default())],
             work_meter,
         )?;
 

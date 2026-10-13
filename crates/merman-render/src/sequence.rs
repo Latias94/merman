@@ -61,7 +61,6 @@ pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
 pub(crate) use constants::{
     SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
     SequenceActorBands, sequence_actor_popup_panel_height, sequence_actor_popup_rect_height,
-    sequence_text_line_step_px,
 };
 pub(crate) use math_artifact::{
     SequenceMathArtifactStore, SequenceMathOccurrence, SequenceMathSidecar,
@@ -531,6 +530,9 @@ pub(crate) fn sequence_block_widths_for_render(
         math_terminal_style: prepared
             .typography()
             .terminal_text_style(SequenceTextSurface::ControlPrimaryTitle),
+        note_math_terminal_style: prepared
+            .typography()
+            .terminal_text_style(SequenceTextSurface::NoteLabel),
         math_sidecar: prepared.math_sidecar(),
         message_metrics,
         checkpoints,

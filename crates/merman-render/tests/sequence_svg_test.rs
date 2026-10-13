@@ -932,10 +932,13 @@ fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
     for _ in 0..message_count {
         messages.push_str("A->>B: hello\n");
     }
-    let fanout_ceiling = base_occurrences * diagram_id.len();
+    let fanout_ceiling = base_svg.len();
+    let base_at_ceiling = render_with_limit(base, &diagram_id, fanout_ceiling)
+        .expect("base input must succeed under the dynamic-reference ceiling");
+    assert_eq!(base_at_ceiling, base_svg);
     let Error::ResourceLimitExceeded(fanout) =
         render_with_limit(&messages, &diagram_id, fanout_ceiling)
-            .expect_err("message ID fanout must exceed the base-only contribution")
+            .expect_err("message ID fanout must exceed the successful base SVG ceiling")
     else {
         panic!("expected dynamic diagram-ID projection error");
     };
@@ -944,7 +947,7 @@ fn sequence_large_diagram_id_preflight_counts_dynamic_message_references() {
     assert_eq!(fanout.limit, ResourceLimitId::MaxSvgBytes.as_str());
     assert!(
         fanout.actual > fanout_ceiling,
-        "message references must increase the projected SVG bytes beyond the base-only ceiling: {fanout:?}"
+        "message references must increase the projected SVG bytes beyond the successful base ceiling: {fanout:?}"
     );
     assert_eq!(fanout.max, fanout_ceiling);
 
@@ -3925,6 +3928,43 @@ end"#;
 }
 
 #[cfg(feature = "math")]
+fn assert_sequence_math_glyph_color(root: roxmltree::Node<'_, '_>, expected: [f64; 4]) {
+    let mut painted_glyphs = 0;
+    for glyph in root.descendants().filter(|node| {
+        matches!(node.tag_name().name(), "path" | "line" | "rect" | "text")
+            && !node
+                .ancestors()
+                .any(|ancestor| ancestor.has_tag_name("template"))
+    }) {
+        for (paint, opacity) in [("fill", "fill-opacity"), ("stroke", "stroke-opacity")] {
+            let Some(value) = glyph.attribute(paint).filter(|value| *value != "none") else {
+                continue;
+            };
+            let color = merman_core::theme_color::ThemeColor::parse(value)
+                .unwrap_or_else(|error| panic!("invalid math glyph {paint} {value}: {error}"))
+                .rgba_channels();
+            let opacity = glyph
+                .attribute(opacity)
+                .map_or(1.0, |value| value.parse::<f64>().unwrap());
+            for (actual, expected) in [color.red, color.green, color.blue, color.alpha * opacity]
+                .into_iter()
+                .zip(expected)
+            {
+                assert!(
+                    (actual - expected).abs() < 0.00001,
+                    "math glyph {paint} {value}: {actual} != {expected}"
+                );
+            }
+            painted_glyphs += 1;
+        }
+    }
+    assert!(
+        painted_glyphs > 0,
+        "prepared occurrence must draw colored math glyphs"
+    );
+}
+
+#[cfg(feature = "math")]
 #[test]
 fn sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences() {
     for (case, target, source, expected_math_occurrences) in [
@@ -4012,14 +4052,195 @@ fn sequence_math_role_paint_is_sealed_by_exact_prepared_terminal_occurrences() {
                 rendered.svg()
             );
         }
+        let wrappers: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("merman-prepared-math"))
+            .collect();
+        assert_eq!(wrappers.len(), expected_math_occurrences, "{case}");
+        for wrapper in wrappers {
+            assert!(
+                wrapper
+                    .attribute("style")
+                    .unwrap()
+                    .split(';')
+                    .any(|declaration| declaration == "color:#22d3ee"),
+                "{case}: wrapper must keep the requested foreground"
+            );
+            assert_sequence_math_glyph_color(wrapper, [34.0, 211.0, 238.0, 1.0]);
+        }
+        drop(document);
+        if case == "control-primary-and-section" {
+            assert!(
+                rendered
+                    .svg()
+                    .contains("data-merman-prepared-math-native=\"unavailable\"")
+            );
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1, "{case}");
+            assert_eq!(evidence.accounted_count(), 1, "{case}");
+            assert_eq!(evidence.applied_count(), 1, "{case}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+            continue;
+        }
+        let native = rendered
+            .finalize_resvg(&merman_render::svg::SvgPipeline::resvg_safe())
+            .unwrap_or_else(|error| panic!("finalize Sequence {case} math: {error}"));
+        let document = roxmltree::Document::parse(native.svg().as_str()).unwrap();
+        let projections: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("merman-prepared-math-native"))
+            .collect();
+        assert_eq!(projections.len(), expected_math_occurrences, "{case}");
+        for projection in projections {
+            assert_sequence_math_glyph_color(projection, [34.0, 211.0, 238.0, 1.0]);
+        }
         drop(document);
 
-        let completion = rendered.into_completion();
+        let completion = native.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert_eq!(evidence.required_count(), 1, "{case}");
         assert_eq!(evidence.accounted_count(), 1, "{case}");
         assert_eq!(evidence.applied_count(), 1, "{case}");
         assert_eq!(evidence.theme_residual_count(), 0, "{case}");
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_math_css_colors_reach_browser_and_native_glyphs() {
+    for (color, expected) in [
+        ("#ff0000", [255.0, 0.0, 0.0, 1.0]),
+        ("#ff000080", [255.0, 0.0, 0.0, 128.0 / 255.0]),
+        ("rgb(12,34,56)", [12.0, 34.0, 56.0, 1.0]),
+        ("hsl(120,100%,50%)", [0.0, 255.0, 0.0, 1.0]),
+        ("rebeccapurple", [102.0, 51.0, 153.0, 1.0]),
+        ("transparent", [0.0, 0.0, 0.0, 0.0]),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::MessageLabel,
+                        ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+                    ),
+                )),
+            )
+            .unwrap();
+        let parsed = merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+            .parse_diagram_for_render_model_sync(
+                "sequenceDiagram\nA->>B: $$x^2$$\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_compiled_math_renderer()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let wrapper = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("merman-prepared-math"))
+            .unwrap();
+        assert_sequence_math_glyph_color(wrapper, expected);
+        drop(document);
+        let native = rendered
+            .finalize_resvg(&merman_render::svg::SvgPipeline::resvg_safe())
+            .unwrap();
+        let document = roxmltree::Document::parse(native.svg().as_str()).unwrap();
+        let projection = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("merman-prepared-math-native"))
+            .unwrap();
+        assert_sequence_math_glyph_color(projection, expected);
+    }
+}
+
+#[cfg(feature = "math")]
+#[test]
+fn sequence_math_notes_keep_note_style_inside_control_frames() {
+    for block in [None, Some("loop Work"), Some("alt Work"), Some("opt Work")] {
+        for typed in [false, true] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(if typed {
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::NoteLabel, {
+                        let mut patch = ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#22d3ee").unwrap());
+                        patch.typography.font_size_px = Specified::Value(27.0);
+                        patch
+                    }))
+                } else {
+                    ThemeRuleSet::default()
+                }))
+                .unwrap();
+            let engine = if typed {
+                Engine::new()
+            } else {
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "theme": "base",
+                    "themeVariables": {"loopTextColor":"#ff0000", "noteTextColor":"#00ff00"},
+                    "sequence": {"loopFontSize": 14, "noteFontSize": 27}
+                })))
+            };
+            let mut source = String::from("sequenceDiagram\nparticipant A\nparticipant B\n");
+            if let Some(block) = block {
+                source.push_str(block);
+                source.push('\n');
+            }
+            source.push_str("Note over A,B: $$x^2$$\nA->>B: ok\n");
+            if block.is_some() {
+                source.push_str("end\n");
+            }
+            let parsed = merman_render::__private::install_parse_compatibility(&theme, engine)
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_compiled_math_renderer()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered = family::prepare(parsed, &LayoutOptions::default(), session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let expected = if typed {
+                [34.0, 211.0, 238.0, 1.0]
+            } else {
+                [0.0, 255.0, 0.0, 1.0]
+            };
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let wrappers: Vec<_> = document
+                .descendants()
+                .filter(|node| node.attribute("class") == Some("merman-prepared-math"))
+                .collect();
+            assert_eq!(wrappers.len(), 1, "{block:?}, typed={typed}");
+            assert_sequence_math_glyph_color(wrappers[0], expected);
+            if typed {
+                assert!(
+                    wrappers[0]
+                        .attribute("style")
+                        .unwrap()
+                        .contains("font-size:27px;")
+                );
+            }
+            drop(document);
+            let native = rendered
+                .finalize_resvg(&merman_render::svg::SvgPipeline::resvg_safe())
+                .unwrap();
+            let document = roxmltree::Document::parse(native.svg().as_str()).unwrap();
+            let projection = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("merman-prepared-math-native"))
+                .unwrap();
+            assert_sequence_math_glyph_color(projection, expected);
+        }
     }
 }
 
@@ -8243,6 +8464,68 @@ fn sequence_control_surfaces_keep_effect_clear_and_paint_independent() {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn sequence_neo_control_keyword_clear_overrides_builtin_shadow() {
+    for width in [None, Some(4.0)] {
+        let mut patch = ThemeStylePatch::default();
+        patch.effects.effect = Specified::Clear;
+        if let Some(width) = width {
+            patch = patch.with_stroke_width(width).unwrap();
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(ThemeTarget::LoopLabelBackground, patch)),
+                ),
+            )
+            .unwrap();
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "look":"neo", "theme":"redux", "themeVariables":{"dropShadow":"url(#drop-shadow)"}
+        })));
+        let rendered = try_render_sequence_theme_request(
+            "sequenceDiagram\nparticipant A\nparticipant B\nloop Work\nA->>B: Request\nend",
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        assert!(css.contains(".labelBox{stroke:"));
+        let diagram_id = document.root_element().attribute("id").unwrap();
+        assert!(
+            css.contains(&format!("filter:url(#{diagram_id}-drop-shadow);")),
+            "Neo compatibility CSS must request its baseline shadow: {css}"
+        );
+        let keyword = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("labelBox"))
+            .unwrap();
+        let style = keyword.attribute("style").unwrap_or_default();
+        assert!(
+            style
+                .split(';')
+                .any(|declaration| declaration == "filter:none"),
+            "Clear must override the stylesheet with terminal filter:none, width={width:?}: {style}"
+        );
+        assert_eq!(style.contains("stroke-width:4px;"), width.is_some());
+        assert!(keyword.attribute("filter").is_none());
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 

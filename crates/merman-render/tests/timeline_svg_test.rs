@@ -2622,3 +2622,61 @@ fn timeline_event_stroke_keeps_best_effort_output_for_unsupported_sibling() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
 }
+
+#[test]
+fn repair_u7_timeline_filtered_border_slots_share_the_terminal_index() {
+    let theme = timeline_event_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    let rendered = try_render_timeline_with_theme_and_engine("timeline\nsection First\nPlan : Build\nsection Second\nShip : Done", &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({"theme":"redux-color","darkMode":false,"themeVariables":{"borderColorArray":[null,"#abcdef"]}})))).unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let styles = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+        .flat_map(|node| node.descendants())
+        .filter(|node| {
+            node.has_tag_name("path") && node.attribute("class") == Some("node-bkg node-undefined")
+        })
+        .map(|node| node.attribute("style"))
+        .collect::<Vec<_>>();
+    assert_eq!(styles, [None, Some("fill:#123456;")]);
+    assert!(rendered.svg().contains("#abcdef"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn repair_u7_timeline_effective_dark_mode_selects_the_source_fill_owner() {
+    let theme = timeline_event_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for config in [
+        serde_json::json!({"theme":"redux-color","darkMode":true,"themeVariables":{"mainBkg":"#abcdef"}}),
+        serde_json::json!({"theme":"redux-dark-color","darkMode":false,"themeVariables":{"borderColorArray":["#abcdef"]}}),
+    ] {
+        let rendered = try_render_timeline_with_theme_and_engine(
+            "timeline\nsection Release\nPlan : Build",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let event = document
+            .descendants()
+            .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("eventWrapper"))
+            .unwrap();
+        let path = event
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("class") == Some("node-bkg node-undefined")
+            })
+            .unwrap();
+        assert_eq!(path.attribute("style"), None);
+        assert!(!rendered.svg().contains("#123456"));
+        assert!(rendered.svg().contains("#abcdef"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}

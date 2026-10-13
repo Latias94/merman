@@ -303,8 +303,7 @@ impl DiagramThemeSpec {
         self.mermaid.validate()?;
         self.typography.validate()?;
         self.styles.validate()?;
-        self.canvas.validate()?;
-        self.effects.validate()?;
+        self.effects.validate_references()?;
         for rule in self.styles.rules() {
             let super::Specified::Value(effect_id) = &rule.style().effects.effect else {
                 continue;

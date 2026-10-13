@@ -389,12 +389,13 @@ impl CalibrationRenderer {
         }
     }
 
-    fn prepare_semantic(&self, source: &str) -> Result<Option<SemanticArtifact>, RenderError> {
+    fn prepare_semantic(&self, source: &str) -> Result<Option<SemanticArtifact>, Box<RenderError>> {
         self.renderer
             .prepare_semantic(source, OperationControl::new())
+            .map_err(Box::new)
     }
 
-    fn render_svg(&self, source: &str) -> Result<Option<SvgOutput>, RenderError> {
+    fn render_svg(&self, source: &str) -> Result<Option<SvgOutput>, Box<RenderError>> {
         let output = self.renderer.render(RenderRequest::svg(
             source,
             OperationControl::new(),
@@ -409,7 +410,7 @@ impl CalibrationRenderer {
     fn render_svg_from_semantic(
         &self,
         semantic: SemanticArtifact,
-    ) -> Result<Option<SvgOutput>, RenderError> {
+    ) -> Result<Option<SvgOutput>, Box<RenderError>> {
         let output =
             self.render_semantic_target(semantic, RenderTarget::Svg(self.svg_request.clone()))?;
         let RenderOutput::Svg(output) = output else {
@@ -421,7 +422,7 @@ impl CalibrationRenderer {
     fn render_layout_from_semantic(
         &self,
         semantic: SemanticArtifact,
-    ) -> Result<Option<SvgLayoutOutput>, RenderError> {
+    ) -> Result<Option<SvgLayoutOutput>, Box<RenderError>> {
         let output = self
             .render_semantic_target(semantic, RenderTarget::LayoutJson(self.svg_request.clone()))?;
         let RenderOutput::LayoutJson(output) = output else {
@@ -434,8 +435,8 @@ impl CalibrationRenderer {
         &self,
         semantic: SemanticArtifact,
         target: RenderTarget,
-    ) -> Result<RenderOutput, RenderError> {
-        semantic.render(target)
+    ) -> Result<RenderOutput, Box<RenderError>> {
+        semantic.render(target).map_err(Box::new)
     }
 }
 
@@ -563,13 +564,15 @@ fn run_single_probe(
                     }
                 }
                 Ok(None) => return Err("layout probe returned no diagram".into()),
-                Err(RenderError::ResourceLimitExceeded(limit)) => SingleProbeOutcome::Rejected {
-                    elapsed_ns: elapsed_ns(started),
-                    rejection: validate_layout_rejection(limit, policy)?,
+                Err(error) => match *error {
+                    RenderError::ResourceLimitExceeded(limit) => SingleProbeOutcome::Rejected {
+                        elapsed_ns: elapsed_ns(started),
+                        rejection: validate_layout_rejection(limit, policy)?,
+                    },
+                    error => {
+                        return Err(format!("layout probe failed unexpectedly: {error}").into());
+                    }
                 },
-                Err(error) => {
-                    return Err(format!("layout probe failed unexpectedly: {error}").into());
-                }
             }
         }
         ProbeStage::Svg => {
@@ -593,11 +596,13 @@ fn run_single_probe(
                     }
                 }
                 Ok(None) => return Err("SVG probe returned no diagram".into()),
-                Err(RenderError::ResourceLimitExceeded(limit)) => SingleProbeOutcome::Rejected {
-                    elapsed_ns: elapsed_ns(started),
-                    rejection: validate_layout_rejection(limit, policy)?,
+                Err(error) => match *error {
+                    RenderError::ResourceLimitExceeded(limit) => SingleProbeOutcome::Rejected {
+                        elapsed_ns: elapsed_ns(started),
+                        rejection: validate_layout_rejection(limit, policy)?,
+                    },
+                    error => return Err(format!("SVG probe failed unexpectedly: {error}").into()),
                 },
-                Err(error) => return Err(format!("SVG probe failed unexpectedly: {error}").into()),
             }
         }
         ProbeStage::EndToEnd => {
@@ -618,13 +623,15 @@ fn run_single_probe(
                     }
                 }
                 Ok(None) => return Err("probe source was not recognized".into()),
-                Err(RenderError::ResourceLimitExceeded(limit)) => SingleProbeOutcome::Rejected {
-                    elapsed_ns: elapsed_ns(started),
-                    rejection: validate_layout_rejection(limit, policy)?,
+                Err(error) => match *error {
+                    RenderError::ResourceLimitExceeded(limit) => SingleProbeOutcome::Rejected {
+                        elapsed_ns: elapsed_ns(started),
+                        rejection: validate_layout_rejection(limit, policy)?,
+                    },
+                    error => {
+                        return Err(format!("end-to-end probe failed unexpectedly: {error}").into());
+                    }
                 },
-                Err(error) => {
-                    return Err(format!("end-to-end probe failed unexpectedly: {error}").into());
-                }
             }
         }
     };
@@ -1216,16 +1223,18 @@ fn verify_exact_work_limit(
 
     let rejected_policy = policy.with_limit(ResourceLimitId::MaxLayoutWorkUnits, rejected_limit)?;
     let rejection = match CalibrationRenderer::new(rejected_policy, theme).render_svg(source) {
-        Err(RenderError::ResourceLimitExceeded(limit)) => {
-            validate_layout_rejection(limit, rejected_policy)?
-        }
         Ok(_) => return Err("maximum fixture succeeded one unit below observed work".into()),
-        Err(error) => {
-            return Err(format!(
-                "maximum fixture failed unexpectedly one unit below observed work: {error}"
-            )
-            .into());
-        }
+        Err(error) => match *error {
+            RenderError::ResourceLimitExceeded(limit) => {
+                validate_layout_rejection(limit, rejected_policy)?
+            }
+            error => {
+                return Err(format!(
+                    "maximum fixture failed unexpectedly one unit below observed work: {error}"
+                )
+                .into());
+            }
+        },
     };
     Ok(ExactLimitCheck {
         fixture: expected.name.clone(),
@@ -1381,16 +1390,18 @@ fn scan_linear_flowchart_admission(
             layout_work_units: rendered.evidence().layout_work_units(),
         })),
         Ok(None) => Err("linear Flowchart was not recognized during sequential scan".into()),
-        Err(RenderError::ResourceLimitExceeded(limit)) => Ok(CardinalityScanProbe::Rejected(
-            CardinalityBoundaryRejected {
-                nodes,
-                edges: nodes.saturating_sub(1),
-                source_sha256: sha256_hex(source.as_bytes()),
-                source_bytes: source.len(),
-                rejection: validate_layout_rejection(limit, renderer.policy)?,
-            },
-        )),
-        Err(error) => Err(format!("linear Flowchart scan failed unexpectedly: {error}").into()),
+        Err(error) => match *error {
+            RenderError::ResourceLimitExceeded(limit) => Ok(CardinalityScanProbe::Rejected(
+                CardinalityBoundaryRejected {
+                    nodes,
+                    edges: nodes.saturating_sub(1),
+                    source_sha256: sha256_hex(source.as_bytes()),
+                    source_bytes: source.len(),
+                    rejection: validate_layout_rejection(limit, renderer.policy)?,
+                },
+            )),
+            error => Err(format!("linear Flowchart scan failed unexpectedly: {error}").into()),
+        },
     }
 }
 
@@ -1424,16 +1435,18 @@ fn probe_linear_flowchart(
             ))
         }
         Ok(None) => Err("linear Flowchart was not recognized".into()),
-        Err(RenderError::ResourceLimitExceeded(limit)) => Ok(CardinalityBoundaryProbe::Rejected(
-            CardinalityBoundaryRejected {
-                nodes,
-                edges,
-                source_sha256,
-                source_bytes,
-                rejection: validate_layout_rejection(limit, renderer.policy)?,
-            },
-        )),
-        Err(error) => Err(format!("linear Flowchart probe failed unexpectedly: {error}").into()),
+        Err(error) => match *error {
+            RenderError::ResourceLimitExceeded(limit) => Ok(CardinalityBoundaryProbe::Rejected(
+                CardinalityBoundaryRejected {
+                    nodes,
+                    edges,
+                    source_sha256,
+                    source_bytes,
+                    rejection: validate_layout_rejection(limit, renderer.policy)?,
+                },
+            )),
+            error => Err(format!("linear Flowchart probe failed unexpectedly: {error}").into()),
+        },
     }
 }
 
@@ -1556,17 +1569,19 @@ fn probe_architecture_iterations(
             ))
         }
         Ok(None) => Err("Architecture iteration probe was not recognized".into()),
-        Err(RenderError::ResourceLimitExceeded(limit)) => Ok(ConfigurationBoundaryProbe::Rejected(
-            ConfigurationBoundaryRejected {
-                configured_iterations,
-                source_sha256,
-                source_bytes,
-                rejection: validate_layout_rejection(limit, renderer.policy)?,
-            },
-        )),
-        Err(error) => {
-            Err(format!("Architecture iteration probe failed unexpectedly: {error}").into())
-        }
+        Err(error) => match *error {
+            RenderError::ResourceLimitExceeded(limit) => Ok(ConfigurationBoundaryProbe::Rejected(
+                ConfigurationBoundaryRejected {
+                    configured_iterations,
+                    source_sha256,
+                    source_bytes,
+                    rejection: validate_layout_rejection(limit, renderer.policy)?,
+                },
+            )),
+            error => {
+                Err(format!("Architecture iteration probe failed unexpectedly: {error}").into())
+            }
+        },
     }
 }
 
@@ -1882,7 +1897,7 @@ mod tests {
         let error = CalibrationRenderer::new(policy, "dark")
             .render_svg("flowchart LR\nA --> B\n")
             .unwrap_err();
-        let RenderError::ResourceLimitExceeded(limit) = error else {
+        let RenderError::ResourceLimitExceeded(limit) = *error else {
             panic!("expected structured layout-work rejection");
         };
         let rejection = validate_layout_rejection(limit, policy).unwrap();

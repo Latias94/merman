@@ -760,7 +760,7 @@ fn render_state_root(
         r#"<g class="edgePaths">"#
     });
     if ctx.include_edges {
-        for (edge_index, edge) in ctx.edges.iter().enumerate() {
+        for edge in ctx.edges {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())
                 || state_is_hidden(ctx, edge.id.as_str())
@@ -770,7 +770,7 @@ fn render_state_root(
             if state_edge_context(ctx, edge) != root {
                 continue;
             }
-            if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
+            if state_is_shadowed_self_loop_edge(ctx, edge) {
                 continue;
             }
             if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
@@ -791,7 +791,7 @@ fn render_state_root(
     let _g_edge_labels = detail_guard(timing, &mut details.edge_labels);
     out.push_str(r#"<g class="edgeLabels">"#);
     if ctx.include_edges {
-        for (edge_index, edge) in ctx.edges.iter().enumerate() {
+        for edge in ctx.edges {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())
                 || state_is_hidden(ctx, edge.id.as_str())
@@ -801,7 +801,7 @@ fn render_state_root(
             if state_edge_context(ctx, edge) != root {
                 continue;
             }
-            if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
+            if state_is_shadowed_self_loop_edge(ctx, edge) {
                 continue;
             }
             if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
@@ -890,7 +890,7 @@ fn render_state_root(
     // Dagre adds dummy edgeLabel nodes for self loops; ELK retains the original edges.
     if ctx.include_edges && !ctx.uses_elk_adapter_dom {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
-        for (edge_index, edge) in ctx.edges.iter().enumerate() {
+        for edge in ctx.edges {
             if state_is_hidden(ctx, edge.start.as_str())
                 || state_is_hidden(ctx, edge.end.as_str())
                 || state_is_hidden(ctx, edge.id.as_str())
@@ -903,7 +903,7 @@ fn render_state_root(
             if state_edge_context(ctx, edge) != root {
                 continue;
             }
-            if state_is_shadowed_self_loop_edge(ctx, edge_index, edge, root) {
+            if state_is_shadowed_self_loop_edge(ctx, edge) {
                 continue;
             }
 
@@ -1056,6 +1056,9 @@ fn render_state_cluster(
             }
         })
         .unwrap_or(label_div_prefix);
+    let radius_override = node_style.and_then(crate::state::StateNodeStylePlan::radius_override);
+    let body_rect_style = state_rect_style(body_style, radius_override);
+    let header_rect_style = state_rect_style(header_style, radius_override);
     let radius_attrs = node_style
         .and_then(crate::state::StateNodeStylePlan::radius_override)
         .map(|radius| {
@@ -1254,7 +1257,7 @@ fn render_state_cluster(
         (
             format!(
                 r#"<rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/>"#,
-                escape_attr(header_style),
+                escape_attr(&header_rect_style),
                 radius_attrs,
                 fmt(x),
                 fmt(y),
@@ -1264,7 +1267,7 @@ fn render_state_cluster(
             ),
             format!(
                 r#"<rect class="inner" style="{}"{} x="{}" y="{}" width="{}" height="{}"/>"#,
-                escape_attr(body_style),
+                escape_attr(&body_rect_style),
                 radius_attrs,
                 fmt(x),
                 fmt(inner_y),

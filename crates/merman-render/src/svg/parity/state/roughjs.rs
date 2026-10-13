@@ -92,29 +92,6 @@ pub(super) fn mermaid_choice_diamond_path_data(w: f64, h: f64) -> String {
     roughjs_closed_path_d_from_points(&points)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rounded_rect_radius_changes_path_geometry() {
-        let square = mermaid_rounded_rect_path_data(100.0, 40.0, 0.0);
-        let rounded = mermaid_rounded_rect_path_data(100.0, 40.0, 12.0);
-
-        assert_ne!(square, rounded);
-        assert_eq!(square, "M-50,-20 L50,-20 L50,20 L-50,20 Z");
-    }
-
-    #[test]
-    fn rounded_rect_radius_is_clamped_to_half_the_smallest_side() {
-        let clamped = mermaid_rounded_rect_path_data(100.0, 40.0, 100.0);
-        let max = mermaid_rounded_rect_path_data(100.0, 40.0, 20.0);
-
-        assert_eq!(clamped, max);
-        assert_eq!(normalized_rounded_rect_radius(100.0, 40.0, -1.0), 0.0);
-    }
-}
-
 pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
     svg_path_data: &str,
     stroke_width: f32,
@@ -214,4 +191,27 @@ pub(in crate::svg::parity) fn roughjs_paths_for_svg_path(
         roughjs_ops_to_svg_path_d(&fill_opset),
         roughjs_ops_to_svg_path_d(&stroke_opset),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rounded_rect_radius_changes_path_geometry() {
+        let square = mermaid_rounded_rect_path_data(100.0, 40.0, 0.0);
+        let rounded = mermaid_rounded_rect_path_data(100.0, 40.0, 12.0);
+
+        assert_ne!(square, rounded);
+        assert_eq!(square, "M-50,-20 L50,-20 L50,20 L-50,20 Z");
+    }
+
+    #[test]
+    fn rounded_rect_radius_is_clamped_to_half_the_smallest_side() {
+        let clamped = mermaid_rounded_rect_path_data(100.0, 40.0, 100.0);
+        let max = mermaid_rounded_rect_path_data(100.0, 40.0, 20.0);
+
+        assert_eq!(clamped, max);
+        assert_eq!(normalized_rounded_rect_radius(100.0, 40.0, -1.0), 0.0);
+    }
 }

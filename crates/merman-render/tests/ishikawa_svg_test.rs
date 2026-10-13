@@ -1190,3 +1190,60 @@ fn ishikawa_deep_hierarchy_projects_and_renders_flat_model() {
         .expect("deep Ishikawa SVG");
     roxmltree::Document::parse(rendered.svg()).expect("well-formed deep Ishikawa SVG");
 }
+
+#[test]
+fn ishikawa_text_palette_is_shadowed_by_the_config_owned_fill_domain() {
+    let palette = OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap();
+    let theme =
+        DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Text, palette),
+            ))
+            .unwrap();
+    for look in ["classic", "handDrawn"] {
+        for source_owner in [false, true] {
+            let source = if source_owner {
+                format!(
+                    "---\nconfig:\n  look: {look}\n  handDrawnSeed: 7\n  themeVariables:\n    textColor: '#abcdef'\n---\n{}",
+                    ishikawa_theme_source("classic")
+                )
+            } else {
+                ishikawa_theme_source(look)
+            };
+            let engine = if source_owner {
+                Engine::new()
+            } else {
+                Engine::new().with_site_config(MermaidConfig::from_value(
+                    serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
+                ))
+            };
+            let rendered = render_ishikawa_with_theme(&source, &theme, engine);
+            let css = ishikawa_stylesheet(rendered.svg());
+            let text_rule = css
+                .split_once("#ishikawa-theme .ishikawa text {")
+                .expect("actual inherited text rule")
+                .1
+                .split_once('}')
+                .unwrap()
+                .0;
+            assert!(
+                text_rule
+                    .split(';')
+                    .any(|declaration| declaration.trim() == "fill: #abcdef")
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let texts = ishikawa_visible_text_nodes(&document);
+            assert!(!texts.is_empty());
+            assert!(
+                texts
+                    .iter()
+                    .all(|text| text.attribute("style").is_none()
+                        && text.attribute("fill").is_none())
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}

@@ -14,7 +14,7 @@ use crate::family::{
     resolve_direct_static_fill, resolve_direct_static_stroke, resolved_style_property_for_facet,
     unsupported_residual_for_facet,
 };
-use crate::model::JourneyTaskLayout;
+use crate::model::{JourneySectionLayout, JourneyTaskLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
@@ -96,6 +96,7 @@ impl JourneyTaskTheme {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
         tasks: &[JourneyTaskLayout],
+        sections: &[JourneySectionLayout],
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
@@ -235,7 +236,7 @@ impl JourneyTaskTheme {
         }
 
         let (sections, missing_section_palette_slot) =
-            journey_section_expectations(theme, effective_config, tasks);
+            journey_section_expectations(theme, effective_config, sections);
         missing_palette_slot |= missing_section_palette_slot;
         palette_surface_owned |= sections.iter().any(|section| section.palette.is_some());
 
@@ -610,19 +611,12 @@ fn journey_palette_source_owned(config: &MermaidConfig, task_num: i64) -> Option
 fn journey_section_expectations(
     theme: &ResolvedDiagramTheme,
     effective_config: &MermaidConfig,
-    tasks: &[JourneyTaskLayout],
+    layout_sections: &[JourneySectionLayout],
 ) -> (Vec<JourneySectionTerminalExpectation>, bool) {
     let mut sections = Vec::new();
     let mut missing_palette_slot = false;
-    let mut section_start = 0usize;
-    while section_start < tasks.len() {
-        let section_name = tasks[section_start].section.as_str();
-        let mut section_end = section_start + 1;
-        while section_end < tasks.len() && tasks[section_end].section == section_name {
-            section_end += 1;
-        }
-
-        let section_num = tasks[section_start].num;
+    for section in layout_sections {
+        let section_num = section.num;
         let palette = if journey_fill_source_owned(effective_config, section_num) {
             journey_palette_source_owned(effective_config, section_num)
                 .map(JourneyTaskPalettePaint::source_owned)
@@ -644,7 +638,6 @@ fn journey_section_expectations(
             missing_palette_slot = true;
         }
         sections.push(JourneySectionTerminalExpectation { palette });
-        section_start = section_end;
     }
     (sections, missing_palette_slot)
 }
@@ -852,6 +845,7 @@ mod tests {
                 None,
                 &MermaidConfig::empty_object(),
                 &tasks,
+                &[],
                 &OperationWorkMeter::new(RenderResourcePolicy::default()),
             )
             .expect("unthemed task plan");
@@ -960,6 +954,7 @@ mod tests {
             Some(&theme),
             &MermaidConfig::empty_object(),
             &[one_task()],
+            &[],
             &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
         )
         .expect("resolve Journey effect shadow fixture");

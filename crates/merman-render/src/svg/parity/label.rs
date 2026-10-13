@@ -399,20 +399,21 @@ fn write_svg_text_markdown_lines_with_style<'a>(
     emitted_style
 }
 
-pub(in crate::svg::parity) fn write_svg_text_markdown(
+pub(in crate::svg::parity) fn write_svg_text_markdown_with_style<'a>(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
-    include_style: bool,
-) {
+    style: Option<&'a str>,
+) -> Option<&'a str> {
     let lines = markdown_to_svg_word_lines(normalized_markdown_label(markdown));
-    write_svg_text_markdown_lines(
+    write_svg_text_markdown_lines_with_style(
         out,
         &lines,
-        include_style.then_some(""),
+        style,
         false,
         true,
         SvgTextEntityMode::DecodedModel,
-    );
+        None,
+    )
 }
 
 pub(in crate::svg::parity) fn write_svg_text_markdown_centered_with_style<'a>(

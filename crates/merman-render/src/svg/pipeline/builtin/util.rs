@@ -583,6 +583,49 @@ pub(crate) fn escape_xml_attr(value: &str) -> String {
     }
 }
 
+/// Reads logical XML stylesheet text exactly once before handing it to a CSS parser.
+/// CDATA stays literal, while XML references never enter CSS tokenization as source spelling.
+pub(crate) fn decode_xml_style_text_with_checkpoints<'a, E>(
+    serialized: &'a str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<std::borrow::Cow<'a, str>>, E> {
+    use quick_xml::events::Event;
+    checkpoint()?;
+    if !serialized.contains('&') && !serialized.contains('<') {
+        return Ok(Some(std::borrow::Cow::Borrowed(serialized)));
+    }
+    let mut reader = quick_xml::Reader::from_str(serialized);
+    let mut logical = String::with_capacity(serialized.len());
+    loop {
+        checkpoint()?;
+        let event = reader.read_event();
+        checkpoint()?;
+        match event {
+            Ok(Event::Text(text)) => logical.push_str(&text.xml10_content()),
+            Ok(Event::CData(text)) => logical.push_str(&text.xml10_content()),
+            Ok(Event::GeneralRef(reference)) => {
+                if let Ok(Some(character)) = reference.resolve_char_ref() {
+                    if !crate::xml::is_xml_1_0_char(character) {
+                        return Ok(None);
+                    }
+                    logical.push(character);
+                } else if let Some(value) =
+                    quick_xml::escape::resolve_xml_entity(reference.as_ref())
+                {
+                    logical.push_str(value);
+                } else {
+                    return Ok(None);
+                }
+            }
+            Ok(Event::Comment(_)) => {}
+            Ok(Event::Eof) => break,
+            _ => return Ok(None),
+        }
+    }
+    checkpoint()?;
+    Ok(Some(std::borrow::Cow::Owned(logical)))
+}
+
 pub(crate) fn escape_xml_text_with_checkpoints<E>(
     value: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
@@ -630,6 +673,47 @@ pub(crate) fn escape_xml_attr_with_checkpoints<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn logical_stylesheet_xml_text_decodes_only_xml_references_once() {
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        for (serialized, expected) in [
+            (r#"&quot;A&amp;B&quot; &#x23;123456;"#, r#""A&B" #123456;"#),
+            (r#"&amp;quot;#123456;"#, r#"&quot;#123456;"#),
+            (r#"<![CDATA["A&amp;B" #123456;]]>"#, r#""A&amp;B" #123456;"#),
+            (
+                r#"font-family:monospace;fill:#123456;"#,
+                r#"font-family:monospace;fill:#123456;"#,
+            ),
+        ] {
+            assert_eq!(
+                decode_xml_style_text_with_checkpoints(serialized, &mut checkpoint)
+                    .unwrap()
+                    .unwrap(),
+                expected
+            );
+        }
+        assert!(
+            decode_xml_style_text_with_checkpoints("&unknown;", &mut checkpoint)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn logical_stylesheet_xml_text_observes_cancellation_between_reference_events() {
+        let serialized = "&amp;".repeat(256);
+        let mut checkpoints = 0;
+        let result = decode_xml_style_text_with_checkpoints(&serialized, &mut || {
+            checkpoints += 1;
+            if checkpoints == 5 {
+                Err("cancelled")
+            } else {
+                Ok(())
+            }
+        });
+        assert_eq!(result, Err("cancelled"));
+    }
 
     #[test]
     fn quoted_attr_helpers_handle_spacing_case_and_quote_style() {

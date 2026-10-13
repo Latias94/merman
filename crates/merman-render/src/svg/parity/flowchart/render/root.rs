@@ -335,7 +335,6 @@ fn render_flowchart_elk_edge_paths(
         render_flowchart_edge_path(
             out,
             ctx,
-            session.hierarchy_plan,
             session.marker_plan,
             e,
             0.0,
@@ -460,7 +459,6 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
             render_flowchart_edge_path(
                 out,
                 ctx,
-                session.hierarchy_plan,
                 session.marker_plan,
                 e,
                 origin_x,

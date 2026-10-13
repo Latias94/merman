@@ -1,3 +1,4 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::OnceLock;
 
 use crate::Result;
@@ -9,7 +10,7 @@ use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
     InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
     InheritedTextViewportFacts, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
-    resolve_direct_static_fill, unsupported_residual_for_facet,
+    resolve_direct_static_fill, resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::model::{Bounds, InfoDiagramLayout};
 use crate::resources::{OperationWorkError, OperationWorkMeter};
@@ -142,6 +143,7 @@ pub(crate) struct InfoTypographyThemePlan {
 struct InfoUnsupportedRoute {
     key: FamilyThemeMechanismKey,
     reason: FamilyThemeResidualReason,
+    applicable: bool,
 }
 
 impl InfoTypographyThemePlan {
@@ -170,21 +172,28 @@ impl InfoTypographyThemePlan {
             inherited_font_stack.font_family_css(),
             measurer,
         );
-        let routes = info_theme_routes(theme);
-        let text_fill = theme.and_then(|theme| {
-            let style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+        let text_fill = if let Some(theme) = theme {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Text,
+                ThemeVariant::Default,
+                None,
+                work_meter,
+            )?;
             resolve_direct_static_fill(
                 theme,
                 &style,
                 &[ThemeTarget::Text],
                 DirectStaticSelectorDomain::Default,
             )
-        });
+        } else {
+            None
+        };
         let config_owns_text_fill = theme.is_some()
             && merman_core::__private::config_path_overrides_typed_default(
                 effective_config,
                 "themeVariables.textColor",
             );
+        let routes = info_theme_routes(theme, config_owns_text_fill, work_meter)?;
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
         if let Some(theme) = theme
             && theme.ordinal_palette_disposition(ThemeTarget::Text)
@@ -266,8 +275,24 @@ impl InfoTypographyThemePlan {
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
         let mut evidence = self.evidence.clone();
+        let mut unsupported = BTreeMap::new();
         for route in &self.unsupported_routes {
-            evidence.mark_residual(route.key.clone(), route.reason);
+            let reason = unsupported.entry(route.key.clone()).or_insert(None);
+            if route.applicable {
+                reason.get_or_insert(route.reason);
+            }
+        }
+        let direct_keys = self
+            .direct_text_fill_routes
+            .iter()
+            .map(|route| &route.key)
+            .collect::<BTreeSet<_>>();
+        for (key, reason) in &unsupported {
+            if let Some(reason) = reason {
+                evidence.mark_residual(key.clone(), *reason);
+            } else if !direct_keys.contains(key) {
+                evidence.mark_not_applicable(key.clone());
+            }
         }
         let Some(receipt) = self.terminal_receipt.get() else {
             return evidence;
@@ -295,6 +320,9 @@ impl InfoTypographyThemePlan {
             }
         }
         for route in &self.direct_text_fill_routes {
+            if unsupported.get(&route.key).is_some_and(Option::is_some) {
+                continue;
+            }
             if self.config_owns_text_fill {
                 evidence.mark_not_applicable(route.key.clone());
                 continue;
@@ -320,10 +348,24 @@ impl InfoTypographyThemePlan {
     }
 }
 
-fn info_theme_routes(theme: Option<&ResolvedDiagramTheme>) -> InfoThemeRoutes {
+fn info_theme_routes(
+    theme: Option<&ResolvedDiagramTheme>,
+    config_owns_text_fill: bool,
+    work_meter: &OperationWorkMeter,
+) -> std::result::Result<InfoThemeRoutes, OperationWorkError> {
     let Some(theme) = theme else {
-        return InfoThemeRoutes::default();
+        return Ok(InfoThemeRoutes::default());
     };
+    let final_text_style = theme.style_with_work_meter(
+        ThemeTarget::Text,
+        ThemeVariant::Default,
+        Some(1),
+        work_meter,
+    )?;
+    let winner_properties = final_text_style
+        .winner_rule_properties()
+        .map(|(property, origin)| (origin.rule_index(), property))
+        .collect::<BTreeSet<_>>();
     let mut unsupported = Vec::new();
     let mut direct_text_fill = Vec::new();
     for route in theme.family_mechanism_routes().iter().copied() {
@@ -363,9 +405,24 @@ fn info_theme_routes(theme: Option<&ResolvedDiagramTheme>) -> InfoThemeRoutes {
                     }
                     FamilyThemeMechanism::BaseTypography(_) => continue,
                 };
+                let applicable = match mechanism {
+                    FamilyThemeMechanism::RuleFacet {
+                        rule_index,
+                        target: ThemeTarget::Text,
+                        facet,
+                        ..
+                    } => {
+                        winner_properties
+                            .contains(&(rule_index, resolved_style_property_for_facet(facet)))
+                            && !(config_owns_text_fill
+                                && matches!(facet, FamilyThemeRuleFacet::Fill(_)))
+                    }
+                    _ => true,
+                };
                 unsupported.push(InfoUnsupportedRoute {
                     key: theme.family_mechanism_key(route),
                     reason,
+                    applicable,
                 });
             }
             FamilyThemeMechanism::BaseTypography(_)
@@ -374,10 +431,10 @@ fn info_theme_routes(theme: Option<&ResolvedDiagramTheme>) -> InfoThemeRoutes {
             | FamilyThemeMechanism::EffectBinding { .. } => {}
         }
     }
-    InfoThemeRoutes {
+    Ok(InfoThemeRoutes {
         unsupported: unsupported.into_boxed_slice(),
         direct_text_fill: direct_text_fill.into_boxed_slice(),
-    }
+    })
 }
 
 pub(crate) fn layout_info_diagram_typed(

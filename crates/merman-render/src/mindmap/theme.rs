@@ -1406,7 +1406,7 @@ mod tests {
         let palette = OrdinalPalette::new(
             colors
                 .iter()
-                .map(|color| ThemeColorValue::parse(*color).expect("valid test color")),
+                .map(|color| ThemeColorValue::parse(color).expect("valid test color")),
         )
         .expect("non-empty test palette");
         let mut styles = ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Node, palette);
@@ -1695,6 +1695,6 @@ mod tests {
         assert_eq!(error.limit, "max_layout_work_units");
         assert_eq!(error.actual, exact);
         assert_eq!(error.max, exact - 1);
-        assert!(short_meter.used() <= exact - 1);
+        assert!(short_meter.used() < exact);
     }
 }

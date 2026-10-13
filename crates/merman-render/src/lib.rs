@@ -143,6 +143,7 @@ pub mod gitgraph;
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-class",
+    feature = "diagram-er",
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
     feature = "diagram-mindmap"

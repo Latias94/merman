@@ -1,7 +1,8 @@
 use super::SequenceTextCheckpoints;
-use super::constants::{sequence_text_dimensions_height_px, sequence_text_line_step_px};
+use super::constants::sequence_text_dimensions_height_px;
 use crate::Result;
 use crate::math::{DelimitedMathLine, MathRenderer, parse_delimited_math_line};
+use crate::text::sequence_text_line_step_px;
 use crate::text::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode,
     measure_mermaid_text_dimensions_with_checkpoint, split_html_br_lines,

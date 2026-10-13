@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use super::admission::ThemeCapability;
-use super::application::root_theme_requirements;
+use super::application::RootThemePlan;
 use super::assets::{FontCatalog, FontCatalogError};
 use super::mechanisms::{
     collect_effect_graph_capabilities, collect_style_patch_capabilities,
@@ -69,7 +69,8 @@ impl DiagramThemeCompiler {
             Some(catalog) => catalog.clone().compile(&self.resources)?,
             None => FontCatalog::system_fonts(),
         };
-        let inferred_capabilities = infer_required_capabilities(&spec);
+        let root_plan = Arc::new(RootThemePlan::from_spec(&spec));
+        let inferred_capabilities = infer_required_capabilities(&spec, &root_plan);
         let effective_requirements = spec
             .requirements()
             .clone()
@@ -102,6 +103,7 @@ impl DiagramThemeCompiler {
             requirements: effective_requirements,
             parse_compatibility,
             family_programs,
+            root_plan,
             recipe_fingerprint: ThemeRecipeFingerprint::from_bytes(fingerprint),
             report,
         })))
@@ -215,7 +217,10 @@ fn preset_export_error(
     ThemeMaterializationErrorV1::from_diagnostic(diagnostic)
 }
 
-fn infer_required_capabilities(spec: &DiagramThemeSpec) -> BTreeSet<ThemeCapability> {
+fn infer_required_capabilities(
+    spec: &DiagramThemeSpec,
+    root_plan: &RootThemePlan,
+) -> BTreeSet<ThemeCapability> {
     let mut required = BTreeSet::new();
     if !spec.styles().rules().is_empty() {
         required.insert(ThemeCapability::SemanticTokens);
@@ -225,11 +230,7 @@ fn infer_required_capabilities(spec: &DiagramThemeSpec) -> BTreeSet<ThemeCapabil
         required.insert(ThemeCapability::OrdinalPalette);
     }
     collect_typography_capabilities(spec.typography(), &mut required);
-    required.extend(
-        root_theme_requirements(spec)
-            .iter()
-            .flat_map(|requirement| requirement.capabilities()),
-    );
+    required.extend(root_plan.required_capabilities());
     for rule in spec.styles().rules() {
         collect_style_patch_capabilities(rule.style(), &mut required);
     }
@@ -293,9 +294,8 @@ mod tests {
             if limit == size {
                 result.expect("the exact encoded complete-spec payload must fit");
             } else {
-                let ThemeCompileError::ResourceLimit(error) = result
-                    .err()
-                    .expect("complete-spec input must obey encoded-byte admission")
+                let ThemeCompileError::ResourceLimit(error) =
+                    result.expect_err("complete-spec input must obey encoded-byte admission")
                 else {
                     panic!("encoded-byte admission must report a resource limit");
                 };
@@ -329,9 +329,7 @@ mod tests {
             } else {
                 let super::super::ThemeDefinitionCompileError::Compilation(
                     ThemeCompileError::ResourceLimit(error),
-                ) = result
-                    .err()
-                    .expect("saved complete recipes must obey encoded-byte admission")
+                ) = result.expect_err("saved complete recipes must obey encoded-byte admission")
                 else {
                     panic!("complete recipes must preserve the compiler resource diagnostic");
                 };
@@ -548,6 +546,50 @@ mod tests {
                 .family_programs
                 .contains(crate::DiagramFamilyId::BLOCK)
         );
+    }
+
+    #[test]
+    fn compilation_keeps_public_style_validation_and_cross_graph_references() {
+        use crate::diagram_theme::{Specified, ThemeRule, ThemeRuleSet, ThemeStylePatch};
+        let compiler = DiagramThemeCompiler::new();
+        let effects = DiagramEffectSet::default()
+            .with_binding(EffectBinding::new(ThemeTarget::Node, "missing").unwrap())
+            .unwrap();
+        assert!(matches!(
+            compiler.compile(DiagramThemeSpec::new().with_effects(effects)),
+            Err(ThemeCompileError::Validation(
+                ThemeCompileValidationError::UnknownId {
+                    field: "effects.binding.effect_id"
+                }
+            ))
+        ));
+        let rule = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_effect("missing").unwrap(),
+        );
+        assert!(matches!(
+            compiler.compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule))
+            ),
+            Err(ThemeCompileError::Validation(
+                ThemeCompileValidationError::UnknownId {
+                    field: "styles.rule.effect"
+                }
+            ))
+        ));
+        let mut style = ThemeStylePatch::default();
+        style.paint.opacity = Specified::Value(f32::NAN);
+        let rule = ThemeRule::new(ThemeTarget::Node, style);
+        assert!(matches!(
+            compiler.compile(
+                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule))
+            ),
+            Err(ThemeCompileError::Validation(
+                ThemeCompileValidationError::InvalidNumber {
+                    field: "style.opacity"
+                }
+            ))
+        ));
     }
 
     #[test]

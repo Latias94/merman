@@ -1,4 +1,3 @@
-use crate::entities::decode_entities_minimal;
 use crate::model::{Bounds, ClassNodeLabelPlan, ClassPreparedHtmlLabel, LayoutNode};
 use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use merman_core::models::class_diagram::ClassMember;
@@ -109,6 +108,7 @@ pub(super) struct ClassHtmlNodeRowsContext<'a> {
 
 pub(super) struct ClassSvgNodeLabelRun {
     pub text: String,
+    pub literal_fallback: bool,
     pub style: String,
     pub metrics: crate::text::TextMetrics,
     pub y_offset: f64,
@@ -846,6 +846,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         }
         annotation_runs.push(ClassSvgNodeLabelRun {
             text,
+            literal_fallback: false,
             style: String::new(),
             metrics,
             y_offset: 0.0,
@@ -861,12 +862,15 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
     {
         let mut y_offset = 0.0;
         for m in &node.members {
-            let mut text =
-                decode_entities_minimal(crate::class::class_member_display_text(m).as_str());
-            if text.starts_with('\\') {
-                text = text.trim_start_matches('\\').to_string();
+            let mut text = m.display_text_for_render();
+            let fallback = crate::class::class_svg_empty_markdown_fallback(&text);
+            let literal_fallback = fallback.is_some();
+            if let Some(fallback) = fallback {
+                text = fallback;
             }
-            if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
+            if !literal_fallback
+                && crate::class::analyze_class_svg_markdown(&text).all_runs_normal()
+            {
                 text = wrap_class_svg_text_like_mermaid(
                     &text,
                     ctx.measurer,
@@ -875,13 +879,18 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
                     false,
                 );
             }
-            let metrics = crate::text::measure_markdown_with_inline_styles(
-                ctx.measurer,
-                &text,
-                ctx.text_style,
-                None,
-                WrapMode::SvgLike,
-            );
+            let metrics = if literal_fallback {
+                ctx.measurer
+                    .measure_wrapped(&text, ctx.text_style, None, WrapMode::SvgLike)
+            } else {
+                crate::text::measure_markdown_with_inline_styles(
+                    ctx.measurer,
+                    &text,
+                    ctx.text_style,
+                    None,
+                    WrapMode::SvgLike,
+                )
+            };
             if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
                 if let Some(cur) = members_rect.as_mut() {
                     cur.union(r);
@@ -891,6 +900,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
             }
             members_runs.push(ClassSvgNodeLabelRun {
                 text,
+                literal_fallback,
                 style: m.css_style.trim().to_string(),
                 metrics,
                 y_offset,
@@ -910,7 +920,14 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
         let mut y_offset = 0.0;
         for m in &node.methods {
             let mut text = m.display_text_for_render();
-            if crate::class::analyze_class_svg_markdown(&text).all_runs_normal() {
+            let fallback = crate::class::class_svg_empty_markdown_fallback(&text);
+            let literal_fallback = fallback.is_some();
+            if let Some(fallback) = fallback {
+                text = fallback;
+            }
+            if !literal_fallback
+                && crate::class::analyze_class_svg_markdown(&text).all_runs_normal()
+            {
                 text = wrap_class_svg_text_like_mermaid(
                     &text,
                     ctx.measurer,
@@ -919,13 +936,18 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
                     false,
                 );
             }
-            let metrics = crate::text::measure_markdown_with_inline_styles(
-                ctx.measurer,
-                &text,
-                ctx.text_style,
-                None,
-                WrapMode::SvgLike,
-            );
+            let metrics = if literal_fallback {
+                ctx.measurer
+                    .measure_wrapped(&text, ctx.text_style, None, WrapMode::SvgLike)
+            } else {
+                crate::text::measure_markdown_with_inline_styles(
+                    ctx.measurer,
+                    &text,
+                    ctx.text_style,
+                    None,
+                    WrapMode::SvgLike,
+                )
+            };
             if let Some(r) = class_svg_label_rect(&metrics, y_offset) {
                 if let Some(cur) = methods_rect.as_mut() {
                     cur.union(r);
@@ -935,6 +957,7 @@ pub(super) fn render_class_svg_node_body<O: SvgOutput>(
             }
             methods_runs.push(ClassSvgNodeLabelRun {
                 text,
+                literal_fallback,
                 style: m.css_style.trim().to_string(),
                 metrics,
                 y_offset,
@@ -1279,7 +1302,15 @@ pub(super) fn render_class_svg_node_runs_group(
             escape_attr_display(run.style.as_str()),
             fmt(t_y)
         );
-        write_class_svg_text_markdown_with_style(out, run.text.as_str(), group_style);
+        if run.literal_fallback {
+            super::label::write_class_svg_empty_markdown_fallback(
+                out,
+                run.text.as_str(),
+                group_style,
+            );
+        } else {
+            write_class_svg_text_markdown_with_style(out, run.text.as_str(), group_style);
+        }
         out.push_str("</g></g>");
     }
     out.push_str("</g>");

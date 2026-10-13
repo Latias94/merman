@@ -27,9 +27,8 @@ fn assert_title_admission(source: &str, rejected: bool) {
         OperationControl::new(),
     ));
     if rejected {
-        let error = native
-            .err()
-            .expect("rendered inline title typography must fail native admission");
+        let error =
+            native.expect_err("rendered inline title typography must fail native admission");
         assert!(
             error
                 .to_string()

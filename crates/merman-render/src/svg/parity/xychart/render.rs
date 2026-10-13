@@ -22,6 +22,7 @@ struct Node {
     tag: &'static str,
     attrs: Vec<(&'static str, String)>,
     text: Option<String>,
+    visible_text: bool,
     children: Vec<usize>,
     series_terminal: Option<SeriesTerminal>,
     paint_terminal: Option<crate::xychart::XyChartPaintTerminalId>,
@@ -91,6 +92,7 @@ fn node(tag: &'static str) -> Node {
         tag,
         attrs: Vec::with_capacity(6),
         text: None,
+        visible_text: false,
         children: Vec::with_capacity(2),
         series_terminal: None,
         paint_terminal: None,
@@ -473,7 +475,7 @@ pub(crate) fn render_xychart_diagram_svg(
     } else {
         None
     };
-    let mut series_paint_receipt = series_paint.begin_terminal_receipt();
+    let mut series_paint_receipt = series_paint.begin_terminal_receipt(escape_xml);
     let mut paint_receipt =
         paint_theme.begin_terminal_receipt(escape_xml, diagram_id.semantic_str());
     let mut typography_receipt = typography_theme.begin_terminal_receipt();
@@ -573,6 +575,8 @@ pub(crate) fn render_xychart_diagram_svg(
                                 t.attr("dominant-baseline", "middle");
                                 t.attr("fill", escape_xml(data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
+                                t.visible_text =
+                                    crate::xychart::text_is_visible(item.label, uniform);
                                 t.text = Some(escape_xml(item.label));
                                 t.paint_terminal = paint_theme.terminal_id(
                                     crate::xychart::XyChartPaintTerminalId::DataLabel {
@@ -604,6 +608,8 @@ pub(crate) fn render_xychart_diagram_svg(
                                 );
                                 t.attr("fill", escape_xml(data_label_color));
                                 t.attr("font-size", format!("{}px", fmt_xy(uniform)));
+                                t.visible_text =
+                                    crate::xychart::text_is_visible(item.label, uniform);
                                 t.text = Some(escape_xml(item.label));
                                 t.paint_terminal = paint_theme.terminal_id(
                                     crate::xychart::XyChartPaintTerminalId::DataLabel {
@@ -653,6 +659,7 @@ pub(crate) fn render_xychart_diagram_svg(
                             fmt_xy(rot)
                         ),
                     );
+                    n.visible_text = crate::xychart::text_is_visible(&t.text, t.font_size);
                     n.text = Some(escape_xml(&t.text));
                     n.paint_terminal =
                         paint_theme.terminal_id(crate::xychart::XyChartPaintTerminalId::Text {
@@ -791,8 +798,7 @@ pub(crate) fn render_xychart_diagram_svg(
         if let Some(receipt) = paint_receipt.as_mut() {
             emitted.observe_paint(receipt);
         }
-        if emitted.tag == "text"
-            && emitted.text.as_deref().is_some_and(|text| !text.is_empty())
+        if emitted.visible_text
             && let Some(receipt) = typography_receipt.as_mut()
         {
             receipt.record_visible_text();
@@ -1492,7 +1498,7 @@ mod tests {
                 &meter,
             )
             .unwrap();
-            let mut receipt = plan.begin_terminal_receipt().unwrap();
+            let mut receipt = plan.begin_terminal_receipt(escape_xml).unwrap();
             let mut arena = vec![node("g")];
             let mut bar = node("rect");
             bar.attr("fill", "#123456");
@@ -1574,7 +1580,7 @@ mod tests {
             )
             .unwrap();
             assert!(plan.record_legend_layout(vec![0, 1]));
-            let mut receipt = plan.begin_terminal_receipt().unwrap();
+            let mut receipt = plan.begin_terminal_receipt(escape_xml).unwrap();
             let mut arena = vec![node("g")];
             for terminal in [
                 SeriesTerminal::Bar { plot: 0, mark: 0 },

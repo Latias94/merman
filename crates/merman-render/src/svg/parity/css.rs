@@ -731,16 +731,6 @@ impl InfoCssWriter {
     }
 }
 
-pub(super) fn info_css_parts_from_prepared<I>(
-    diagram_id: I,
-    values: &PreparedCommonCss,
-) -> InfoCssParts
-where
-    I: Copy + std::fmt::Display,
-{
-    info_css_parts_from_values(diagram_id, values.clone())
-}
-
 fn info_css_parts_from_values<I>(diagram_id: I, values: PreparedCommonCss) -> InfoCssParts
 where
     I: Copy + std::fmt::Display,

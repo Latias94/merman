@@ -9,10 +9,6 @@ pub(crate) fn sequence_text_dimensions_height_px(font_size_px: f64) -> f64 {
     (font_size_px.max(1.0) * (17.0 / 16.0)).round().max(1.0)
 }
 
-pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
-    font_size_px.max(1.0) * 1.1875
-}
-
 pub(crate) fn sequence_actor_popup_panel_height(link_count: usize) -> f64 {
     SEQUENCE_ACTOR_POPUP_PANEL_BASE_HEIGHT + (link_count as f64) * SEQUENCE_ACTOR_POPUP_ROW_HEIGHT
 }
@@ -182,7 +178,7 @@ mod tests {
         );
         assert_eq!(super::sequence_text_dimensions_height_px(16.0), 17.0);
         assert_eq!(super::sequence_text_dimensions_height_px(10.0), 11.0);
-        assert_eq!(super::sequence_text_line_step_px(16.0), 19.0);
+        assert_eq!(crate::text::sequence_text_line_step_px(16.0), 19.0);
         assert_eq!(
             super::sequence_actor_visual_height("database", 150.0, 65.0, 20.0, false),
             70.0

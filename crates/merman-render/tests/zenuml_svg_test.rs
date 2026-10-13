@@ -295,11 +295,28 @@ fn zenuml_qualified_and_ordinal_title_fill_do_not_claim_frame_title() {
             .find(|node| node.has_tag_name("style"))
             .and_then(|node| node.text())
             .expect("ZenUML stylesheet");
-        assert!(!stylesheet.contains(".frame-title{fill:#abcdef;}"));
+        assert!(!rendered.svg().contains("#abcdef"));
+        let frame_fill = stylesheet
+            .split('}')
+            .filter_map(|rule| rule.split_once('{'))
+            .find(|(selector, _)| selector.trim().ends_with(".frame-title"))
+            .and_then(|(_, declarations)| {
+                declarations
+                    .split(';')
+                    .rev()
+                    .filter_map(|declaration| declaration.split_once(':'))
+                    .find_map(|(property, value)| {
+                        (property.trim() == "fill").then_some(value.trim())
+                    })
+            });
+        assert_eq!(frame_fill, Some("#222"));
 
         drop(document);
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
         assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
     }
 }

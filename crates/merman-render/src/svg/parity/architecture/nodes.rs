@@ -149,6 +149,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                             text_measurer,
                             &settings.text_style,
                             service_title_style.as_deref(),
+                            surface_theme_receipt.is_some(),
                         )
                     });
             let has_title = service_title_emission.is_some();
@@ -160,7 +161,7 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
             }
             let service_title_bounds = service_title_emission
                 .as_ref()
-                .map(|emission| &emission.bounds);
+                .and_then(|emission| emission.bounds.as_ref());
 
             out.push_str("<g>");
             match (svc.icon, svc.icon_text) {

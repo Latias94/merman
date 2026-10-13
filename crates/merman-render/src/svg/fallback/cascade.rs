@@ -5,8 +5,8 @@ use crate::mermaid_style::{
     visit_style_declaration_boundaries_with_checkpoints,
 };
 use crate::svg::pipeline::{
-    SvgTagScanner, checkpoint_loop, end_tag_name, find_tag_end_with_checkpoints,
-    find_with_checkpoints, start_tag_name, trim_with_checkpoints,
+    SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
+    find_tag_end_with_checkpoints, find_with_checkpoints, start_tag_name, trim_with_checkpoints,
 };
 use crate::text::{HtmlWhiteSpace, TextStyle};
 use cssparser::{
@@ -552,16 +552,20 @@ impl CascadeIndex {
             }
             let Some(close_tag) = close_tag else { break };
             let css = &svg[content_start..close_tag.start()];
-            if !budget.charge_stylesheet_bytes(css.len(), selector_limit)?
-                || !parse_stylesheet(
-                    css,
-                    &mut rules,
-                    &mut source_order,
-                    &mut budget,
-                    checkpoint,
-                    selector_limit,
-                )?
-            {
+            if !budget.charge_stylesheet_bytes(css.len(), selector_limit)? {
+                break;
+            }
+            let Some(logical_css) = decode_xml_style_text_with_checkpoints(css, checkpoint)? else {
+                continue;
+            };
+            if !parse_stylesheet(
+                &logical_css,
+                &mut rules,
+                &mut source_order,
+                &mut budget,
+                checkpoint,
+                selector_limit,
+            )? {
                 break;
             }
         }
@@ -1914,8 +1918,11 @@ fn parse_stylesheet<E>(
                 }
                 BranchParse::Invalid => {
                     // Invalid in the bounded matcher need not mean invalid to a browser.
-                    // Retain the old fail-closed behavior for unclassified declarations.
-                    budget.projection_unbounded |= projection_uncertain;
+                    // A declaration that can affect projected SVG still blocks local fallback.
+                    budget.projection_unbounded |= projection_uncertain
+                        || declarations
+                            .iter()
+                            .any(|declaration| !declaration.property.starts_with("--"));
                     invalid = true;
                 }
                 BranchParse::LimitExceeded(actual) => {
@@ -3102,6 +3109,33 @@ fn bounded_positive(value: f64) -> Option<f64> {
 mod tests {
     use super::*;
     use std::convert::Infallible;
+
+    #[test]
+    fn duplicate_id_selector_with_parsed_typography_blocks_local_projection() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        for declaration in ["font-size:99px!important", "--custom-size:99px"] {
+            let source =
+                format!("<svg><style>#ancestor#ancestor text{{{declaration}}}</style></svg>");
+            let mut cascade =
+                CascadeIndex::new(&source, &mut checkpoint, &mut selector_limit).unwrap();
+            let ancestor =
+                CascadeIndex::source_element("<g id='ancestor'/>", Namespace::Svg, &mut checkpoint)
+                    .unwrap();
+            assert_eq!(
+                cascade
+                    .permits_in_place_fallback(
+                        &[ancestor],
+                        "<text>Label</text>",
+                        &mut checkpoint,
+                        &mut selector_limit
+                    )
+                    .unwrap(),
+                declaration.starts_with("--"),
+                "ordinary declarations outside the matcher must protect projection"
+            );
+        }
+    }
 
     #[test]
     fn text_fragment_boundaries_use_the_nearest_common_ancestor_white_space() {

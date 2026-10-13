@@ -303,7 +303,7 @@ use css::write_pie_css;
     )
 )]
 use css::{
-    MermaidBaseCss, info_css_parts_from_prepared, write_mermaid_base_css_prefix_with_font_emission,
+    MermaidBaseCss, write_mermaid_base_css_prefix_with_font_emission,
     write_mermaid_base_css_root_rule_with_font_emission, write_mermaid_default_base_css_prefix,
     write_prepared_info_css,
 };
@@ -450,6 +450,7 @@ struct SvgDiagramIdSanitizationPlan<'a> {
     trimmed: &'a str,
     output_bytes: usize,
     uses_fallback: bool,
+    avoids_reserved_namespace: bool,
 }
 
 fn checkpoint_svg_diagram_id_scan(
@@ -497,6 +498,7 @@ fn plan_svg_diagram_id_sanitization<'a>(
             trimmed,
             output_bytes: "m-untitled".len(),
             uses_fallback: true,
+            avoids_reserved_namespace: false,
         });
     }
 
@@ -512,6 +514,7 @@ fn plan_svg_diagram_id_sanitization<'a>(
     let first = sanitize_char(first_raw);
     let mut output_bytes = 0usize;
     let mut first_output = None;
+    let mut reserved_prefix_matches = true;
     let mut previous_was_dash = false;
     let mut append = |ch: char| -> Result<()> {
         if ch == '-' && previous_was_dash {
@@ -519,6 +522,12 @@ fn plan_svg_diagram_id_sanitization<'a>(
         }
         previous_was_dash = ch == '-';
         first_output.get_or_insert(ch);
+        if let Some(expected) = crate::text::PREPARED_TEXT_LABEL_ID_PREFIX
+            .as_bytes()
+            .get(output_bytes)
+        {
+            reserved_prefix_matches &= ch as u8 == *expected;
+        }
         output_bytes = output_bytes.checked_add(1).ok_or_else(|| {
             Error::from(session.work_meter().terminate_svg_byte_count_overflow(
                 crate::resources::ResourceLimitPhase::SvgOutput,
@@ -545,14 +554,25 @@ fn plan_svg_diagram_id_sanitization<'a>(
         output_bytes -= 1;
     }
     let uses_fallback = output_bytes == 0 || (output_bytes == 1 && first_output == Some('m'));
+    let avoids_reserved_namespace = !uses_fallback
+        && reserved_prefix_matches
+        && output_bytes >= crate::text::PREPARED_TEXT_LABEL_ID_PREFIX.len();
     if uses_fallback {
         output_bytes = "m-untitled".len();
+    } else if avoids_reserved_namespace {
+        output_bytes = output_bytes.checked_add("m-user-".len()).ok_or_else(|| {
+            Error::from(session.work_meter().terminate_svg_byte_count_overflow(
+                crate::resources::ResourceLimitPhase::SvgOutput,
+                OperationPhase::Emit,
+            ))
+        })?;
     }
     session.checkpoint(OperationPhase::Emit)?;
     Ok(SvgDiagramIdSanitizationPlan {
         trimmed,
         output_bytes,
         uses_fallback,
+        avoids_reserved_namespace,
     })
 }
 
@@ -582,6 +602,9 @@ fn materialize_svg_diagram_id(
         return Ok(output);
     }
 
+    if plan.avoids_reserved_namespace {
+        output.push_str("m-user-");
+    }
     let sanitize_char = |ch: char| {
         if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
             ch
@@ -1689,6 +1712,10 @@ mod diagram_id_projection_tests {
             "",
             "   ",
             "diagram",
+            "merman-prepared-state-17",
+            "merman-prepared-invalid",
+            "merman.prepared---state-17",
+            "merman-prepared-",
             "1diagram",
             "--",
             "a.b:c",
@@ -1708,6 +1735,39 @@ mod diagram_id_projection_tests {
                 Some(sanitize_svg_id(raw).as_str()),
                 "raw diagram id {raw:?}"
             );
+        }
+    }
+
+    #[test]
+    fn reserved_diagram_id_prefix_is_included_in_controlled_byte_preflight() {
+        use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+        let request = SvgRenderOptions {
+            diagram_id: Some("merman-prepared-state-17".into()),
+            ..Default::default()
+        };
+        let normalized = sanitize_svg_id(request.diagram_id.as_deref().unwrap());
+        for max in [normalized.len(), normalized.len() - 1] {
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_resource_policy(
+                    RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(ResourceLimitId::MaxSvgBytes, max)
+                        .unwrap(),
+                )
+                .begin_session()
+                .unwrap();
+            match normalize_svg_render_options(&request, &session) {
+                Ok(options) => {
+                    assert_eq!(max, normalized.len());
+                    assert_eq!(options.diagram_id.as_deref(), Some(normalized.as_str()));
+                }
+                Err(Error::ResourceLimitExceeded(limit)) => {
+                    assert_eq!(max, normalized.len() - 1);
+                    assert_eq!(limit.max, max);
+                    assert_eq!(limit.actual, normalized.len());
+                    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+                }
+                Err(error) => panic!("unexpected controlled diagram id failure: {error:?}"),
+            }
         }
     }
 

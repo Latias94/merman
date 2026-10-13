@@ -34,7 +34,7 @@ fn xychart_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
 fn xychart_series_palette_theme(colors: &[&str]) -> DiagramTheme {
     let palette =
         OrdinalPalette::new(colors.iter().map(|color| {
-            ThemeColorValue::parse(*color).expect("valid XY Chart series palette color")
+            ThemeColorValue::parse(color).expect("valid XY Chart series palette color")
         }))
         .expect("non-empty XY Chart series palette");
     DiagramThemeCompiler::new()
@@ -2462,15 +2462,21 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
         ThemeTarget::Legend,
         ThemeStylePatch::default().with_fill(CanvasPaint::solid("#ff0000").unwrap()),
     )]);
-    for (source, engine, residuals) in [
-        ("xychart\nx-axis [A]\nbar [4]", Engine::new(), 0),
-        ("xychart\nx-axis [A]\nbar \"Sales\" [4]", Engine::new(), 0),
+    for (source, engine, applied, expected_fill) in [
+        ("xychart\nx-axis [A]\nbar [4]", Engine::new(), 0, None),
+        (
+            "xychart\nx-axis [A]\nbar \"Sales\" [4]",
+            Engine::new(),
+            1,
+            Some("#ff0000"),
+        ),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
             Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
                 "xyChart": {"showLegend": false}
             }))),
             0,
+            None,
         ),
         (
             "xychart\nx-axis [A]\nbar \"A very long legend title that does not fit\" [4]",
@@ -2478,6 +2484,7 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
                 "xyChart": {"width": 80, "height": 80}
             }))),
             0,
+            None,
         ),
         (
             "xychart\nx-axis [A]\nbar \"Sales\" [4]",
@@ -2485,6 +2492,7 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
                 "themeVariables": {"xyChart": {"legendTextColor": "#123456"}}
             }))),
             0,
+            Some("#123456"),
         ),
     ] {
         let (_, rendered) = try_render_xychart_with_theme(
@@ -2495,10 +2503,26 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
             "chart",
         )
         .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let expected_title = if source.contains("A very long legend title") {
+            "A very long legend title that does not fit"
+        } else {
+            "Sales"
+        };
+        let legend = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(expected_title));
+        assert_eq!(
+            legend.and_then(|node| node.attribute("fill")),
+            expected_fill
+        );
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.required_count(), evidence.accounted_count());
-        assert_eq!(evidence.theme_residual_count(), residuals);
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), applied);
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
         let strict = try_render_xychart_with_theme(
             source,
             &theme,
@@ -2507,7 +2531,7 @@ fn xychart_legend_fill_distinguishes_absence_source_ownership_and_applied_winner
                 .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
             "chart",
         );
-        assert_eq!(strict.is_err(), residuals != 0);
+        assert!(strict.is_ok());
     }
 }
 
@@ -3585,5 +3609,82 @@ xychart
             let bar_height: f64 = bar.attribute("height").unwrap().parse().unwrap();
             assert!(y + bar_height <= height as f64 + 0.001);
         }
+    }
+}
+
+#[test]
+fn repair_u7_xychart_zero_size_text_does_not_certify_typography() {
+    use merman_render::diagram_theme::{FontStack, ThemeTextStyle, TypographySpec};
+    let source = "xychart\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar [3, 7]";
+    let zero = serde_json::json!({"xyChart": {"titleFontSize":0,"showLegend":false,"showDataLabel":false,
+        "xAxis":{"labelFontSize":0,"titleFontSize":0},"yAxis":{"labelFontSize":0,"titleFontSize":0}}});
+    for typography in [
+        ThemeTextStyle::default().with_font_stack(FontStack::new(["Probe", "monospace"]).unwrap()),
+        ThemeTextStyle::default().with_font_weight(700).unwrap(),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default()
+                        .with_family_style(merman_render::DiagramFamilyId::XY_CHART, typography),
+                ),
+            )
+            .unwrap();
+        let (_, rendered) = try_render_xychart_with_theme(
+            source,
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(zero.clone())),
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "zero-font",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .all(|node| node.attribute("font-size") == Some("0"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn repair_u7_xychart_quoted_source_palette_receipt_uses_serialized_css() {
+    use merman_render::diagram_theme::{Specified, ThemeRule, ThemeStylePatch};
+    let color = "url(\"#missing\") red";
+    let mut patch = ThemeStylePatch::default();
+    patch.paint.opacity = Specified::Value(0.5);
+    for theme in [
+        xychart_paint_rules([ThemeRule::new(ThemeTarget::ChartSeries, patch)]),
+        xychart_series_palette_theme(&["#123456"]),
+    ] {
+        let (_, rendered) = try_render_xychart_with_theme(
+            "xychart\nx-axis [A, B]\nbar Sales [3, 7]\nline Trend [2, 6]",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"themeVariables":{"xyChart":{"plotColorPalette":color}}}),
+            )),
+            &RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable),
+            "quoted-palette",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.attribute("fill") == Some(color))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), evidence.accounted_count());
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }

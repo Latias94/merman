@@ -8021,8 +8021,10 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
         )
         .unwrap()
         .expect("State source should produce a render model");
-    let mut node_debug = SvgDebugOptions::default();
-    node_debug.include_nodes = false;
+    let node_debug = SvgDebugOptions {
+        include_nodes: false,
+        ..SvgDebugOptions::default()
+    };
     let node_rendered = prepare(
         node_parsed,
         &LayoutOptions::default(),
@@ -8080,8 +8082,10 @@ fn state_debug_visibility_filters_downgrade_applied_theme_evidence() {
         )
         .unwrap()
         .expect("State source should produce a render model");
-    let mut edge_debug = SvgDebugOptions::default();
-    edge_debug.include_edges = false;
+    let edge_debug = SvgDebugOptions {
+        include_edges: false,
+        ..SvgDebugOptions::default()
+    };
     let edge_rendered = prepare(
         edge_parsed,
         &LayoutOptions::default(),
@@ -8140,8 +8144,10 @@ fn require_portable_rechecks_state_theme_after_debug_visibility_filter() {
             .expect("begin strict themed session"),
     )
     .expect("complete strict State preparation before output filtering");
-    let mut debug = SvgDebugOptions::default();
-    debug.include_nodes = false;
+    let debug = SvgDebugOptions {
+        include_nodes: false,
+        ..SvgDebugOptions::default()
+    };
 
     let error = match artifact.render_svg(&SvgRenderOptions::default(), &debug) {
         Ok(_) => panic!("filtered State output must not retain portable family evidence"),

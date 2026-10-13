@@ -502,10 +502,24 @@ impl XyChartSeriesPaintPlan {
         .filter_map(|(name, value)| value.map(|value| (name, value.to_string())))
     }
 
-    pub(crate) fn begin_terminal_receipt(&self) -> Option<XyChartSeriesPaintReceipt> {
+    pub(crate) fn begin_terminal_receipt(
+        &self,
+        encode_attribute: impl Fn(&str) -> String,
+    ) -> Option<XyChartSeriesPaintReceipt> {
         (!self.rules.is_empty() || self.palette.is_some() || self.effect_binding.is_some()).then(
             || XyChartSeriesPaintReceipt {
                 plots: self.paints.iter().map(|_| PlotReceipt::default()).collect(),
+                expected_css: self
+                    .paints
+                    .iter()
+                    .map(|paint| {
+                        [
+                            encode_attribute(&paint.fill),
+                            encode_attribute(&paint.stroke),
+                            encode_attribute(&paint.point_label_fill),
+                        ]
+                    })
+                    .collect(),
                 attributes_match: true,
             },
         )
@@ -616,6 +630,7 @@ struct PlotReceipt {
 #[derive(Debug)]
 pub(crate) struct XyChartSeriesPaintReceipt {
     plots: Vec<PlotReceipt>,
+    expected_css: Vec<[String; 3]>,
     attributes_match: bool,
 }
 
@@ -629,7 +644,12 @@ impl XyChartSeriesPaintReceipt {
         legend: bool,
         attribute: impl Fn(&str) -> Option<&'a str>,
     ) {
-        let Some((receipt, paint)) = self.plots.get_mut(plot).zip(plan.paints.get(plot)) else {
+        let Some(((receipt, paint), css)) = self
+            .plots
+            .get_mut(plot)
+            .zip(plan.paints.get(plot))
+            .zip(self.expected_css.get(plot))
+        else {
             self.attributes_match = false;
             return;
         };
@@ -644,8 +664,8 @@ impl XyChartSeriesPaintReceipt {
             self.attributes_match &= receipt.marks == mark && mark < paint.expected_marks;
             receipt.marks = receipt.marks.saturating_add(1);
         }
-        self.attributes_match &= attribute("fill") == Some(paint.fill.as_str())
-            && attribute("stroke") == Some(paint.stroke.as_str())
+        self.attributes_match &= attribute("fill") == Some(css[0].as_str())
+            && attribute("stroke") == Some(css[1].as_str())
             && attribute("stroke-width") == Some(number(paint.stroke_width).as_str());
         for (name, expected) in [
             ("opacity", paint.opacity),
@@ -664,14 +684,19 @@ impl XyChartSeriesPaintReceipt {
         label: usize,
         fill: Option<&str>,
     ) {
-        let Some((receipt, paint)) = self.plots.get_mut(plot).zip(plan.paints.get(plot)) else {
+        let Some(((receipt, paint), css)) = self
+            .plots
+            .get_mut(plot)
+            .zip(plan.paints.get(plot))
+            .zip(self.expected_css.get(plot))
+        else {
             self.attributes_match = false;
             return;
         };
         self.attributes_match &= paint.plot_type == XyChartPlotType::Line
             && receipt.labels == label
             && label < paint.expected_labels
-            && fill == Some(paint.point_label_fill.as_str());
+            && fill == Some(css[2].as_str());
         receipt.labels = receipt.labels.saturating_add(1);
     }
 

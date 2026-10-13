@@ -243,7 +243,9 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
     if let Some(receipt) = title_theme_receipt.as_mut() {
         receipt.record_stylesheet(crate::venn::VENN_TITLE_CLASS, title_fill);
     }
-    let _ = write!(&mut out, r#"<style>{css}</style>"#);
+    out.push_str("<style>");
+    super::super::util::escape_xml_raw_into(&mut out, &css);
+    out.push_str("</style>");
     drop(css);
     out.checkpoint()?;
     out.push_str("<g/>");

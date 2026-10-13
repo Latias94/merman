@@ -566,12 +566,6 @@ impl ThemeStylePatch {
     }
 
     pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
-        if let Specified::Value(paint) = &self.paint.fill {
-            paint.validate("style.fill")?;
-        }
-        if let Specified::Value(paint) = &self.stroke.paint {
-            paint.validate("style.stroke")?;
-        }
         validate_optional_nonnegative(&self.stroke.width, "style.stroke_width")?;
         validate_optional_unit(&self.paint.opacity, "style.opacity")?;
         validate_optional_unit(&self.paint.fill_opacity, "style.fill_opacity")?;

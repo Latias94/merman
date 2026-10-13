@@ -9,7 +9,7 @@ use merman_render::{LayoutOptions, family};
 use serde_json::{Value, json};
 
 fn render_cluster(config: Value, source_style: &str, paint: CanvasPaint) -> (String, usize, usize) {
-    render_cluster_with_spec(
+    let (svg, applied, not_applicable, _) = render_cluster_with_spec(
         config,
         source_style,
         DiagramThemeSpec::new().with_styles(
@@ -23,7 +23,8 @@ fn render_cluster(config: Value, source_style: &str, paint: CanvasPaint) -> (Str
         ),
         ThemePortabilityRequirement::RequirePortable,
     )
-    .expect("render portable ER cluster")
+    .expect("render portable ER cluster");
+    (svg, applied, not_applicable)
 }
 
 fn render_cluster_with_spec(
@@ -31,7 +32,7 @@ fn render_cluster_with_spec(
     source_style: &str,
     spec: DiagramThemeSpec,
     requirement: ThemePortabilityRequirement,
-) -> Result<(String, usize, usize), merman_render::Error> {
+) -> Result<(String, usize, usize, usize), merman_render::Error> {
     let theme = DiagramThemeCompiler::new()
         .compile(spec)
         .expect("compile ER cluster text theme");
@@ -72,6 +73,7 @@ fn render_cluster_with_spec(
         svg,
         evidence.applied_count(),
         evidence.not_applicable_count(),
+        evidence.theme_residual_count(),
     ))
 }
 
@@ -252,10 +254,10 @@ fn subgraph_source_typography_is_fail_closed_until_measured() {
                     .expect("font size"),
             ),
         );
-        let (svg, applied, not_applicable) = render_cluster_with_spec(
+        let (svg, applied, not_applicable, residuals) = render_cluster_with_spec(
             json!({"htmlLabels": false, "themeVariables": {"titleColor": false}}),
             source_style,
-            spec,
+            spec.clone(),
             ThemePortabilityRequirement::BestEffort,
         )
         .expect("render ER cluster in best effort");
@@ -266,5 +268,17 @@ fn subgraph_source_typography_is_fail_closed_until_measured() {
         // One typography property remains typed; the source-owned property must stay residual.
         assert_eq!(applied, 1);
         assert_eq!(not_applicable, 0);
+        assert_eq!(residuals, 1);
+        let error = render_cluster_with_spec(
+            json!({"htmlLabels": false, "themeVariables": {"titleColor": false}}),
+            source_style,
+            spec,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .expect_err("unmeasured source cluster typography must be rejected");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((merman_core::DiagramFamilyId::ER, 1))
+        );
     }
 }

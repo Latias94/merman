@@ -86,7 +86,12 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         let RenderSemanticModel::Flowchart(model) = semantic else {
             panic!("Flowchart")
         };
-        let semantic_node_count = model.nodes.len();
+        let mut semantic_node_ids = model
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+        semantic_node_ids.sort_unstable();
         let semantic_edge_count = model.edges.len();
         // The public layout JSON omits private occurrence owners. These browser fixtures have
         // distinct edge IDs, so bind the deserialized layout back to semantic owners by ID.
@@ -292,13 +297,15 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         // The current renderer intentionally namespaces generated DOM ids by diagram and
         // emission order. Those ids differ from historical Mermaid fixtures, while semantic
         // node/edge ids remain stable and are checked below.
-        let actual_node_count = actual
+        let mut actual_node_ids = actual
             .descendants()
             .filter(|node| node.attribute("data-et") == Some("node"))
-            .count();
+            .map(|node| node.attribute("data-id").expect("semantic node id"))
+            .collect::<Vec<_>>();
+        actual_node_ids.sort_unstable();
         assert_eq!(
-            actual_node_count, semantic_node_count,
-            "{name}: semantic node count"
+            actual_node_ids, semantic_node_ids,
+            "{name}: semantic node ID multiset"
         );
         let actual_edge_count = actual
             .descendants()

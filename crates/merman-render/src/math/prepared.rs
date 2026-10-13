@@ -338,12 +338,21 @@ impl ConfiguredMathBackend {
                         MathPreparationUnavailable::NotMath,
                     ));
                 }
-                if !crate::mermaid_style::is_supported_css_color_value(request.foreground) {
+                let Ok(color) =
+                    merman_core::theme_color::ThemeColor::parse(request.foreground.trim())
+                else {
                     return Ok(MathPreparationOutcome::Unavailable(
                         MathPreparationUnavailable::UnsupportedPaint,
                     ));
-                }
-                prepare_compiled_ratex(request, classification, work_meter)
+                };
+                let color = color.rgba_channels();
+                let color = ratex_types::Color::new(
+                    (color.red / 255.0) as f32,
+                    (color.green / 255.0) as f32,
+                    (color.blue / 255.0) as f32,
+                    color.alpha as f32,
+                );
+                prepare_compiled_ratex(request, classification, color, work_meter)
             }
             #[cfg(any(test, merman_internal_theme_acceptance))]
             Self::External(ref renderer) => {
@@ -364,12 +373,12 @@ impl ConfiguredMathBackend {
 }
 
 impl fmt::Debug for ConfiguredMathBackend {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, _formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match *self {
             #[cfg(feature = "math")]
-            Self::CompiledRatex => formatter.write_str("ConfiguredMathBackend::CompiledRatex"),
+            Self::CompiledRatex => _formatter.write_str("ConfiguredMathBackend::CompiledRatex"),
             #[cfg(any(test, merman_internal_theme_acceptance))]
-            Self::External(ref renderer) => formatter
+            Self::External(ref renderer) => _formatter
                 .debug_tuple("ConfiguredMathBackend::External")
                 .field(renderer)
                 .finish(),
@@ -958,8 +967,10 @@ struct CompiledRatexLayout {
 }
 
 #[cfg(feature = "math")]
-fn layout_compiled_ratex_formula(latex: &str, foreground: &str) -> Option<CompiledRatexLayout> {
-    let color = ratex_types::Color::parse(foreground)?;
+fn layout_compiled_ratex_formula(
+    latex: &str,
+    color: ratex_types::Color,
+) -> Option<CompiledRatexLayout> {
     let ast = ratex_parser::parse(latex).ok()?;
     let layout_options = ratex_layout::LayoutOptions::default()
         .with_style(ratex_types::MathStyle::Display)
@@ -976,17 +987,20 @@ fn layout_compiled_ratex_formula(latex: &str, foreground: &str) -> Option<Compil
 }
 
 #[cfg(feature = "math")]
-pub(super) fn measure_compiled_ratex_formula(latex: &str, foreground: &str) -> Option<(f64, f64)> {
-    let layout = layout_compiled_ratex_formula(latex, foreground)?;
+pub(super) fn measure_compiled_ratex_formula(
+    latex: &str,
+    color: ratex_types::Color,
+) -> Option<(f64, f64)> {
+    let layout = layout_compiled_ratex_formula(latex, color)?;
     Some((layout.width_em, layout.height_em))
 }
 
 #[cfg(feature = "math")]
 pub(super) fn render_compiled_ratex_formula(
     latex: &str,
-    foreground: &str,
+    color: ratex_types::Color,
 ) -> Option<CompiledRatexFormula> {
-    let layout = layout_compiled_ratex_formula(latex, foreground)?;
+    let layout = layout_compiled_ratex_formula(latex, color)?;
     let svg = ratex_svg::render_to_svg(
         &layout.display_list,
         &ratex_svg::SvgOptions {
@@ -1008,11 +1022,12 @@ pub(super) fn render_compiled_ratex_formula(
 fn prepare_compiled_ratex(
     request: PrepareMathLabelRequest<'_>,
     classification: MathLabelClassification,
+    color: ratex_types::Color,
     work_meter: &Arc<OperationWorkMeter>,
 ) -> Result<MathPreparationOutcome, OperationWorkError> {
     let prepared = match classification {
         MathLabelClassification::Pure(formulas) => {
-            prepare_compiled_ratex_pure_html_label(formulas, request, work_meter.as_ref())?
+            prepare_compiled_ratex_pure_html_label(formulas, request, color, work_meter.as_ref())?
         }
         MathLabelClassification::Mixed(lines) => {
             let Some(text_measurer) = request.text_measurer else {
@@ -1023,6 +1038,7 @@ fn prepare_compiled_ratex(
             prepare_compiled_ratex_mixed_html_label(
                 lines,
                 request,
+                color,
                 text_measurer,
                 work_meter.as_ref(),
             )?
@@ -1052,12 +1068,9 @@ fn prepare_compiled_ratex(
 fn prepare_compiled_ratex_pure_html_label(
     lines: Vec<ClassifiedPureMathLine>,
     request: PrepareMathLabelRequest<'_>,
+    color: ratex_types::Color,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<RawPreparedMathLabel>, OperationWorkError> {
-    let Some(color) = ratex_types::Color::parse(request.foreground) else {
-        return Ok(None);
-    };
-    let applied_foreground = color.to_string();
     let font_size_px = effective_font_size(request.style.font_size);
     let mut browser_html = String::new();
     let mut width_px = 0.0_f64;
@@ -1071,8 +1084,7 @@ fn prepare_compiled_ratex_pure_html_label(
         match line {
             ClassifiedPureMathLine::Formula(formula) => {
                 charge_formula_work(Some(work_meter), &formula)?;
-                let Some(rendered) = render_compiled_ratex_formula(&formula, &applied_foreground)
-                else {
+                let Some(rendered) = render_compiled_ratex_formula(&formula, color) else {
                     return Ok(None);
                 };
                 let line_width_px = rendered.width_em * font_size_px;
@@ -1108,7 +1120,7 @@ fn prepare_compiled_ratex_pure_html_label(
                         crate::text::flowchart_html_line_height_px(font_size_px)
                     }
                     MathLabelShell::Sequence => {
-                        crate::sequence::sequence_text_line_step_px(font_size_px)
+                        crate::text::sequence_text_line_step_px(font_size_px)
                     }
                 };
                 height_px += line_height_px;
@@ -1212,13 +1224,10 @@ fn measure_compiled_mixed_prose(
 fn prepare_compiled_ratex_mixed_html_label(
     lines: Vec<ClassifiedMathLine>,
     request: PrepareMathLabelRequest<'_>,
+    color: ratex_types::Color,
     text_measurer: &dyn TextMeasurer,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<RawPreparedMathLabel>, OperationWorkError> {
-    let Some(color) = ratex_types::Color::parse(request.foreground) else {
-        return Ok(None);
-    };
-    let applied_foreground = color.to_string();
     let font_size_px = effective_font_size(request.style.font_size);
     let mut browser_html = String::new();
     let mut width_px = 0.0_f64;
@@ -1292,9 +1301,7 @@ fn prepare_compiled_ratex_mixed_html_label(
                 }
                 ClassifiedMathSegment::Formula(formula) => {
                     charge_formula_work(Some(work_meter), &formula)?;
-                    let Some(rendered) =
-                        render_compiled_ratex_formula(&formula, &applied_foreground)
-                    else {
+                    let Some(rendered) = render_compiled_ratex_formula(&formula, color) else {
                         return Ok(None);
                     };
                     line_width_px += rendered.width_em * font_size_px;
@@ -1452,6 +1459,101 @@ mod tests {
                 + artifact.browser_xhtml().len()
                 + "#e5e7eb".len()
         );
+    }
+
+    #[cfg(feature = "math")]
+    #[test]
+    fn compiled_css_foregrounds_color_pure_and_mixed_glyphs_without_string_roundtrips() {
+        let backend = ConfiguredMathBackend::compiled_ratex();
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict",
+            "htmlLabels": true,
+        }));
+        let style = TextStyle::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        for (foreground, expected) in [
+            ("#ff0000", [255.0, 0.0, 0.0, 1.0]),
+            ("#ff000080", [255.0, 0.0, 0.0, 128.0 / 255.0]),
+            ("rgb(12,34,56)", [12.0, 34.0, 56.0, 1.0]),
+            ("hsl(120,100%,50%)", [0.0, 255.0, 0.0, 1.0]),
+            ("rebeccapurple", [102.0, 51.0, 153.0, 1.0]),
+            ("transparent", [0.0, 0.0, 0.0, 0.0]),
+        ] {
+            for text in [r"$$\frac{\sqrt{x}}{2}$$", r"value: $$\frac{\sqrt{x}}{2}$$"] {
+                for shell in [MathLabelShell::Flowchart, MathLabelShell::Sequence] {
+                    let request = match shell {
+                        MathLabelShell::Flowchart => PrepareMathLabelRequest::flowchart(
+                            text,
+                            &config,
+                            &style,
+                            foreground,
+                            None,
+                            WrapMode::HtmlLike,
+                        ),
+                        MathLabelShell::Sequence => {
+                            PrepareMathLabelRequest::sequence(text, &config, &style, foreground)
+                        }
+                    }
+                    .with_text_measurer(&measurer);
+                    let outcome = backend.prepare(request, &meter()).unwrap();
+                    let artifact = outcome
+                        .prepared()
+                        .unwrap_or_else(|| panic!("prepare {foreground} {text} {shell:?}"));
+                    let document = roxmltree::Document::parse(artifact.browser_xhtml()).unwrap();
+                    let wrapper = document.root_element();
+                    assert!(
+                        wrapper
+                            .attribute("style")
+                            .unwrap()
+                            .split(';')
+                            .any(|declaration| declaration == format!("color:{foreground}"))
+                    );
+                    let mut painted_glyphs = 0;
+                    let mut browser_glyphs = 0;
+                    let mut native_glyphs = 0;
+                    for glyph in wrapper.descendants().filter(|node| {
+                        matches!(node.tag_name().name(), "path" | "line" | "rect" | "text")
+                    }) {
+                        for paint in ["fill", "stroke"] {
+                            let Some(value) =
+                                glyph.attribute(paint).filter(|value| *value != "none")
+                            else {
+                                continue;
+                            };
+                            let actual = merman_core::theme_color::ThemeColor::parse(value)
+                                .unwrap()
+                                .rgba_channels();
+                            for (actual, expected) in
+                                [actual.red, actual.green, actual.blue, actual.alpha]
+                                    .into_iter()
+                                    .zip(expected)
+                            {
+                                assert!(
+                                    (actual - expected).abs() < 0.00001,
+                                    "{foreground} {text} {shell:?} glyph {paint}: {value}"
+                                );
+                            }
+                            painted_glyphs += 1;
+                            if glyph.ancestors().any(|node| node.has_tag_name("template")) {
+                                native_glyphs += 1;
+                            } else {
+                                browser_glyphs += 1;
+                            }
+                        }
+                    }
+                    assert!(
+                        painted_glyphs > 0 && browser_glyphs > 0,
+                        "{foreground} {text} {shell:?}: browser={browser_glyphs}, native={native_glyphs}, payload={}",
+                        artifact.browser_xhtml(),
+                    );
+                    assert_eq!(
+                        native_glyphs > 0,
+                        text.starts_with("$$"),
+                        "only pure formulas provide native projection"
+                    );
+                }
+            }
+        }
     }
 
     #[cfg(feature = "math")]

@@ -4098,7 +4098,7 @@ fn layout_flowchart_with_model(
     )?;
     work_control.charge_adapter(merge_work)?;
     let merged_edges = merge_flowchart_self_loop_segments(
-        &projected_edges,
+        &model.edges,
         &out_nodes,
         &diagram_direction,
         out_edge_candidates,

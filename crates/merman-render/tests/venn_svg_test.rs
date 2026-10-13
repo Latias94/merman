@@ -878,3 +878,31 @@ union A,B
     assert_eq!(children[0].attribute("style"), Some("fill-opacity: 0;"));
     assert!(children[1].has_tag_name("text"));
 }
+
+#[test]
+fn venn_font_ampersand_is_xml_text_encoded_without_changing_css() {
+    let stack = FontStack::new(["A&B", "monospace"]).unwrap();
+    let expected = stack.as_css();
+    let theme = venn_typography_theme(ThemeTextStyle::default().with_font_stack(stack));
+    let rendered = render_venn_with_theme_requirement(
+        THEME_TYPOGRAPHY_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg())
+        .expect("font ampersand must produce valid SVG XML");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap();
+    assert!(css.contains(&format!("font-family:{expected};")));
+    assert!(rendered.svg().contains("A&amp;B"));
+    assert_eq!(
+        merman_render::__private::family_evidence(rendered.into_completion().report())
+            .applied_count(),
+        1
+    );
+}

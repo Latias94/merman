@@ -28,8 +28,6 @@ pub(crate) struct TimelineCssBinding {
     pub(crate) border_colors: Vec<String>,
     pub(crate) sections: Vec<TimelineSectionCssBinding>,
     pub(crate) gradient_stops: [Option<String>; 2],
-    source_border_slots: Vec<bool>,
-    pub(crate) is_dark_name: bool,
 }
 
 impl TimelineCssBinding {
@@ -63,7 +61,6 @@ impl TimelineCssBinding {
         Self {
             is_redux_theme: theme.contains("redux"),
             is_color_theme: theme.contains("color"),
-            is_dark_name: theme.contains("dark"),
             is_dark_theme: config_bool(config, &["darkMode"])
                 .or_else(|| config_bool(config, &["themeVariables", "darkMode"]))
                 .unwrap_or_else(|| theme.contains("dark")),
@@ -81,13 +78,6 @@ impl TimelineCssBinding {
             sections,
             gradient_stops: ["gradientStart", "gradientStop"]
                 .map(|key| config_string(config, &["themeVariables", key])),
-            source_border_slots: crate::config::value_at(
-                config,
-                &["themeVariables", "borderColorArray"],
-            )
-            .and_then(serde_json::Value::as_array)
-            .map(|values| values.iter().map(serde_json::Value::is_string).collect())
-            .unwrap_or_default(),
         }
     }
 
@@ -106,7 +96,7 @@ impl TimelineCssBinding {
     }
 
     pub(crate) fn has_source_border_slot(&self, slot: usize) -> bool {
-        self.source_border_slots.get(slot).copied().unwrap_or(false)
+        self.border_colors.get(slot).is_some()
     }
 }
 
@@ -197,12 +187,12 @@ mod tests {
     }
 
     #[test]
-    fn source_presence_retains_original_border_array_slots() {
+    fn source_presence_uses_the_filtered_terminal_border_slots() {
         let binding = TimelineCssBinding::resolve(&serde_json::json!({
             "themeVariables": {"borderColorArray": [null, "var(--border)"], "cScale0": null}
         }));
-        assert!(!binding.has_source_border_slot(0));
-        assert!(binding.has_source_border_slot(1));
+        assert!(binding.has_source_border_slot(0));
+        assert!(!binding.has_source_border_slot(1));
         assert_eq!(binding.border_colors, ["var(--border)"]);
         assert_eq!(binding.source_scale(0), None);
         assert_eq!(binding.source_inverse(0), None);

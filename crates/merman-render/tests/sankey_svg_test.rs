@@ -17,7 +17,7 @@ fn sankey_node_palette(colors: &[&str]) -> OrdinalPalette {
     OrdinalPalette::new(
         colors
             .iter()
-            .map(|color| ThemeColorValue::parse(*color).expect("valid Sankey node palette color")),
+            .map(|color| ThemeColorValue::parse(color).expect("valid Sankey node palette color")),
     )
     .expect("non-empty Sankey node palette")
 }
@@ -779,7 +779,7 @@ fn sankey_text_evidence_accounts_for_each_winning_facet() {
                     let theme = DiagramThemeCompiler::new()
                         .compile(DiagramThemeSpec::new().with_styles(rules))
                         .unwrap();
-                    let mut config = serde_json::json!({"sankey": {"showValues": outlined}});
+                    let mut config = serde_json::json!({"sankey": {"showValues": false, "labelStyle": if outlined { "outlined" } else { "legacy" }}});
                     if config_owner {
                         config["themeVariables"] = serde_json::json!({"textColor":"#445566"});
                     }
@@ -791,6 +791,19 @@ fn sankey_text_evidence_accounts_for_each_winning_facet() {
                         ThemePortabilityRequirement::BestEffort,
                     )
                     .unwrap();
+                    let document = roxmltree::Document::parse(rendered.svg())
+                        .expect("valid mixed-facet Sankey SVG");
+                    for class in ["sankey-label-bg", "sankey-label-fg"] {
+                        assert_eq!(
+                            document
+                                .descendants()
+                                .filter(|node| node.has_tag_name("text")
+                                    && node.attribute("class") == Some(class))
+                                .count(),
+                            if outlined { 2 } else { 0 },
+                            "outlined={outlined}, terminal pass {class}"
+                        );
+                    }
                     let evidence = merman_render::__private::family_evidence(
                         rendered.into_completion().report(),
                     );
@@ -848,4 +861,28 @@ fn sankey_text_evidence_accounts_for_each_winning_facet() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
+fn sankey_explicit_node_color_does_not_consume_the_default_palette_domain() {
+    for link_color in ["gradient", "target"] {
+        let source = format!(
+            "---\nconfig:\n  sankey:\n    nodeColors:\n      A: '#112233'\n    linkColor: {link_color}\n---\nsankey-beta\nA,B,10\n"
+        );
+        let svg = render_sankey(&source, &SvgRenderOptions::default());
+        assert_eq!(sankey_node_fills(&svg), ["#112233", "#4e79a7"]);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        if link_color == "gradient" {
+            let colors = document
+                .descendants()
+                .filter(|node| node.has_tag_name("stop"))
+                .map(|node| node.attribute("stop-color").unwrap())
+                .collect::<Vec<_>>();
+            assert_eq!(colors, ["#112233", "#4e79a7"]);
+        } else {
+            assert!(document.descendants().any(
+                |node| node.has_tag_name("path") && node.attribute("stroke") == Some("#4e79a7")
+            ));
+        }
+    }
 }

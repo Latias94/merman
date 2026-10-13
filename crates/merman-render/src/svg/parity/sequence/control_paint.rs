@@ -124,7 +124,7 @@ impl<'a> SequenceControlPaint<'a> {
         application: Option<&(String, SvgFilterRegion)>,
         separator: bool,
     ) {
-        if self.width.is_none() && application.is_none() {
+        if self.width.is_none() && application.is_none() && !self.receipt.effect_cleared {
             if separator {
                 out.push_str(r#" style="stroke-dasharray: 3, 3;""#);
             }
@@ -143,6 +143,8 @@ impl<'a> SequenceControlPaint<'a> {
             let _ = write!(out, r#" filter="{}""#, escape_attr(&filter));
             // The keyword stylesheet also declares filter, so the terminal must own its override.
             let _ = write!(style, "filter:{filter};");
+        } else if self.receipt.effect_cleared {
+            style.push_str("filter:none;");
         }
         if !style.is_empty() {
             let _ = write!(out, r#" style="{}""#, escape_attr(&style));

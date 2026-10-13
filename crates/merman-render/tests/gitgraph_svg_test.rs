@@ -34,7 +34,7 @@ fn gitgraph_node_palette_theme(colors: &[&str]) -> DiagramTheme {
     let palette = OrdinalPalette::new(
         colors
             .iter()
-            .map(|color| ThemeColorValue::parse(*color).expect("valid GitGraph palette color")),
+            .map(|color| ThemeColorValue::parse(color).expect("valid GitGraph palette color")),
     )
     .expect("non-empty GitGraph Node palette");
     DiagramThemeCompiler::new()
@@ -53,7 +53,7 @@ fn gitgraph_node_palette_with_static_stroke_theme(
     let palette = OrdinalPalette::new(
         colors
             .iter()
-            .map(|color| ThemeColorValue::parse(*color).expect("valid GitGraph palette color")),
+            .map(|color| ThemeColorValue::parse(color).expect("valid GitGraph palette color")),
     )
     .expect("non-empty GitGraph Node palette");
     DiagramThemeCompiler::new()
@@ -153,7 +153,7 @@ fn css_property_winner<'a>(declarations: &'a str, property: &str) -> Option<&'a 
             let (name, value) = declaration.split_once(':')?;
             (name == property).then_some(value)
         })
-        .last()
+        .next_back()
 }
 
 fn gitgraph_legacy_paint_theme() -> DiagramTheme {

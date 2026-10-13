@@ -175,6 +175,13 @@ pub(crate) fn mermaid_markdown_to_lines(
                 i += end + 1;
                 continue;
             }
+            if !in_code_span
+                && chars[i] == '\\'
+                && chars.get(i + 1).is_some_and(char::is_ascii_punctuation)
+            {
+                i += 2;
+                continue;
+            }
             if chars[i] == '`' {
                 in_code_span = !in_code_span;
                 i += 1;
@@ -307,8 +314,10 @@ pub(crate) fn mermaid_markdown_to_lines(
         let mut skipped_inline_depth = 0usize;
         let mut skipped_block_depth = 0usize;
         let mut previous_text = None;
+        let mut escape_scan_offset = 0;
+        let mut escape_pending = false;
 
-        for (event, range) in parser {
+        for (event, mut range) in parser {
             if skipped_block_depth > 0 {
                 match event {
                     pulldown_cmark::Event::Start(_) => skipped_block_depth += 1,
@@ -368,19 +377,37 @@ pub(crate) fn mermaid_markdown_to_lines(
                     }
                 }
                 pulldown_cmark::Event::Text(text) if in_paragraph && skipped_inline_depth == 0 => {
+                    // Mermaid's processNode ignores Marked escape tokens. pulldown folds the
+                    // escaped character into a text event whose source range starts after '\'.
+                    let mut escaped_prefix = false;
+                    while escape_scan_offset <= range.start {
+                        let byte = markdown.as_bytes()[escape_scan_offset];
+                        if escape_scan_offset == range.start {
+                            escaped_prefix = escape_pending && byte.is_ascii_punctuation();
+                        }
+                        escape_pending = byte == b'\\' && !escape_pending;
+                        escape_scan_offset += 1;
+                    }
+                    let text = if escaped_prefix {
+                        previous_text = None;
+                        range.start += 1;
+                        &text[1..]
+                    } else {
+                        text.as_ref()
+                    };
                     // pulldown-cmark eagerly synthesizes Unicode for HTML entities, while Marked
                     // keeps entity spellings in `node.text`. Preserve the source only when its
                     // full HTML-entity decode is exactly the emitted event; unrelated synthesized
-                    // text (escapes, autolinks, and other extensions) keeps pulldown's payload.
+                    // text (autolinks and other extensions) keeps pulldown's payload.
                     let source_text = markdown
                         .get(range.clone())
                         .filter(|raw| {
                             raw.contains('&')
                                 && merman_core::entities::decode_html_entities_to_unicode(raw)
                                     .as_ref()
-                                    == text.as_ref()
+                                    == text
                         })
-                        .unwrap_or(text.as_ref());
+                        .unwrap_or(text);
                     let word_type = style_stack
                         .last()
                         .copied()
@@ -483,6 +510,15 @@ pub(crate) fn mermaid_markdown_to_lines(
     let mut i = 0usize;
     while i < chars.len() {
         let ch = chars[i];
+
+        // The pinned Mermaid SVG Markdown projection omits Marked's escape nodes,
+        // rather than printing their escaped punctuation as a generic Markdown renderer would.
+        if !in_code_span && ch == '\\' && chars.get(i + 1).is_some_and(char::is_ascii_punctuation) {
+            flush_word(&mut out, &mut line_idx, &mut word, word_ty);
+            word_ty = *stack.last().unwrap_or(&MermaidMarkdownWordType::Normal);
+            i += 2;
+            continue;
+        }
 
         if ch == '\n' {
             flush_word(&mut out, &mut line_idx, &mut word, word_ty);
@@ -649,6 +685,52 @@ mod tests {
     use super::*;
 
     #[test]
+    fn svg_markdown_omits_marked_escape_nodes_in_plain_and_nested_delimiters() {
+        use MermaidMarkdownWordType::{Em, Normal, Strong};
+        for (markdown, expected) in [
+            (
+                r"\longfieldname",
+                vec![vec![(r"\longfieldname".into(), Normal)]],
+            ),
+            (
+                r"\\longfieldname",
+                vec![vec![("longfieldname".into(), Normal)]],
+            ),
+            (
+                r"\\\longfieldname",
+                vec![vec![(r"\longfieldname".into(), Normal)]],
+            ),
+            (
+                r"a\\b",
+                vec![vec![("a".into(), Normal), ("b".into(), Normal)]],
+            ),
+            (
+                r"before \*bold\* end",
+                vec![vec![
+                    ("before".into(), Normal),
+                    ("bold".into(), Normal),
+                    ("end".into(), Normal),
+                ]],
+            ),
+            (
+                r"**_styled_ \#tag &amp; value**",
+                vec![vec![
+                    ("styled".into(), Em),
+                    ("tag".into(), Strong),
+                    ("&amp;".into(), Strong),
+                    ("value".into(), Strong),
+                ]],
+            ),
+        ] {
+            assert_eq!(
+                mermaid_markdown_to_lines(markdown, true),
+                expected,
+                "{markdown}"
+            );
+        }
+    }
+
+    #[test]
     fn underscore_delimiters_match_mermaid() {
         use MermaidMarkdownWordType::*;
 
@@ -737,7 +819,7 @@ mod tests {
             mermaid_markdown_to_lines(r"`**_styled_ \#tag &amp; value**`", true),
             vec![vec![
                 ("styled".to_string(), Em),
-                ("#tag".to_string(), Strong),
+                ("tag".to_string(), Strong),
                 ("&amp;".to_string(), Strong),
                 ("value".to_string(), Strong),
             ]]

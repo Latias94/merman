@@ -144,7 +144,7 @@ fn write_er_svg_box_label(
 ) {
     let source = er_svg_label_source(label);
     if let Some(max_width_px) = max_width_px {
-        crate::svg::parity::flowchart::write_flowchart_svg_text_markdown_wrapped(
+        crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source(
             out,
             source,
             true,
@@ -153,13 +153,15 @@ fn write_er_svg_box_label(
             Some(max_width_px),
         );
     } else {
-        crate::svg::parity::flowchart::write_flowchart_svg_text_markdown(out, source, true);
+        crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
+            out, source, true,
+        );
     }
 }
 
 fn write_er_svg_plain_label(out: &mut impl SvgOutput, text: &str) {
-    let lines = crate::flowchart::flowchart_non_markdown_svg_source_word_lines(text);
-    crate::svg::parity::flowchart::write_flowchart_svg_source_word_lines(out, &lines, true);
+    let lines = crate::graph_label::flowchart_non_markdown_svg_source_word_lines(text);
+    crate::svg::parity::label::write_svg_text_source_word_lines(out, &lines, true, false);
 }
 
 fn write_er_svg_label_background(out: &mut impl SvgOutput) {
@@ -1192,18 +1194,20 @@ pub(crate) fn render_er_diagram_svg_model(
                         fmt(h)
                     );
                     if relation_label_terminal_style.is_empty() {
-                        crate::svg::parity::flowchart::write_flowchart_svg_text_centered(
+                        crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
                             &mut out, rel_text, true,
                         );
                     } else {
                         let source_lines =
-                            crate::flowchart::flowchart_non_markdown_svg_source_word_lines(
+                            crate::graph_label::flowchart_non_markdown_svg_source_word_lines(
                                 rel_text,
                             );
-                        crate::svg::parity::flowchart::write_flowchart_svg_source_word_lines_centered_with_style(
+                        crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
                             &mut out,
                             &source_lines,
                             relation_label_terminal_style,
+                            true,
+                            None,
                         );
                     }
                     out.push_str("</g></g></g>");
@@ -1366,7 +1370,9 @@ pub(crate) fn render_er_diagram_svg_model(
         out.checkpoint()?;
 
         if entity.attributes.is_empty() {
-            let entity_name_style_attr = &visual.name.style_attr;
+            let entity_name_style_attr = visual
+                .name
+                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
             let entity_name_terminal_style = visual.name.typed_style.as_str();
             let paint_emission = {
                 let rect_style_attr = &visual.rect_style_attr;
@@ -1680,7 +1686,9 @@ pub(crate) fn render_er_diagram_svg_model(
             &label_style,
             measure.label.markdown_input(),
         ) + 100;
-        let entity_name_style_attr = &visual.name.style_attr;
+        let entity_name_style_attr = visual
+            .name
+            .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
         let entity_name_terminal_style = visual.name.typed_style.as_str();
         if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
             let _ = write!(
@@ -1810,10 +1818,14 @@ pub(crate) fn render_er_diagram_svg_model(
                         ),
                     })?;
             let [type_visual, name_visual, keys_visual, comment_visual] = attribute_visuals;
-            let type_style_attr = &type_visual.style_attr;
-            let name_style_attr = &name_visual.style_attr;
-            let keys_style_attr = &keys_visual.style_attr;
-            let comment_style_attr = &comment_visual.style_attr;
+            let type_style_attr = type_visual
+                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
+            let name_style_attr = name_visual
+                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
+            let keys_style_attr = keys_visual
+                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
+            let comment_style_attr = comment_visual
+                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
 
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
@@ -2301,11 +2313,11 @@ mod tests {
         let backgrounds = &theme.redux_background_colors;
 
         assert_eq!(
-            super::er_redux_color_id(&borders, 0).as_deref(),
+            super::er_redux_color_id(borders, 0).as_deref(),
             Some("color-0")
         );
         assert_eq!(
-            super::er_redux_color_id(&borders, 3).as_deref(),
+            super::er_redux_color_id(borders, 3).as_deref(),
             Some("color-1")
         );
         assert_eq!(
@@ -2315,7 +2327,7 @@ mod tests {
         );
 
         let mut css = String::new();
-        super::write_er_redux_color_css(&mut css, "er", "classic", &borders, &backgrounds).unwrap();
+        super::write_er_redux_color_css(&mut css, "er", "classic", borders, backgrounds).unwrap();
         assert!(css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;fill:#fdf4ff;}"##
         ));
@@ -2324,7 +2336,7 @@ mod tests {
         ));
 
         let mut dark_css = String::new();
-        super::write_er_redux_color_css(&mut dark_css, "er", "classic", &borders, &[]).unwrap();
+        super::write_er_redux_color_css(&mut dark_css, "er", "classic", borders, &[]).unwrap();
         assert!(dark_css.contains(
             r##"#er [data-look="classic"][data-color-id="color-0"].node path{stroke:#e879f9;}"##
         ));
@@ -2336,8 +2348,8 @@ mod tests {
             "er",
             "classic",
             &theme,
-            &borders,
-            &backgrounds,
+            borders,
+            backgrounds,
         )
         .unwrap();
         let colors = merged.find("[data-color-id=").unwrap();

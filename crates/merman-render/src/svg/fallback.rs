@@ -1355,6 +1355,47 @@ mod tests {
     }
 
     #[test]
+    fn foreign_object_overlay_inherits_logical_xml_stylesheet_font_strings() {
+        for serialized in [
+            r##"font-family:&quot;A&amp;B&quot;,monospace;fill:#123456;"##,
+            r##"font-family:"A&amp;B",monospace;fill:#123456;"##,
+            r##"<![CDATA[font-family:"A&B",monospace;fill:#123456;]]>"##,
+        ] {
+            let css = if serialized.starts_with("<![CDATA[") {
+                r##"<![CDATA[#root{font-family:"A&B",monospace;fill:#123456;}]]>"##.to_owned()
+            } else {
+                format!("#root{{{serialized}}}")
+            };
+            let svg = format!(
+                r#"<svg id="root" xmlns="http://www.w3.org/2000/svg"><style>{css}</style><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Root</div></foreignObject></svg>"#
+            );
+            let output = foreign_object_label_fallback_svg_text(&svg);
+            let document = roxmltree::Document::parse(&output).unwrap();
+            let fallback = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class") == Some("merman-foreignobject-fallback-text")
+                })
+                .expect("actual fallback text");
+            assert_eq!(
+                fallback
+                    .descendants()
+                    .filter(roxmltree::Node::is_text)
+                    .filter_map(|node| node.text())
+                    .collect::<String>(),
+                "Root"
+            );
+            let style = fallback.attribute("style").unwrap();
+            assert!(
+                style.contains(r#"font-family: "A&B",monospace;"#),
+                "logical font stack must inherit: {style}"
+            );
+            assert_eq!(fallback.attribute("fill"), Some("#123456"));
+        }
+    }
+
+    #[test]
     fn foreign_object_overlay_uses_root_font_context() {
         let svg = r##"<svg id="host-theme-root-font" xmlns="http://www.w3.org/2000/svg"><style>#host-theme-root-font{font-family:Inter,system-ui;font-size:14px;fill:#ddeeff;}</style><g><foreignObject width="80" height="21"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha</p></div></foreignObject></g></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);

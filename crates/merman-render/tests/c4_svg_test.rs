@@ -1527,3 +1527,40 @@ Rel(left, right, "Connects")
     assert!(endpoint.x >= shape.x - 1e-8 && endpoint.x <= shape.x + shape.width + 1e-8);
     assert!(endpoint.y >= shape.y - 1e-8 && endpoint.y <= shape.y + shape.height + 1e-8);
 }
+
+#[test]
+fn c4_hand_drawn_person_body_shares_the_classic_body_coordinate_domain() {
+    let source = "%%{init: {\"look\": \"handDrawn\"}}%%\nC4Context\nPerson(person, \"Person\")\n";
+    let layout = layout_c4_with_options(source, &LayoutOptions::default());
+    let shape = &layout.shapes[0];
+    let radius = (shape.width * 0.23).clamp(16.0, 56.0);
+    let overlap = radius * 0.27;
+    let body_height = shape.height - 2.0 * radius + overlap;
+    let body_top = -shape.height / 2.0 + 2.0 * radius - overlap;
+    let svg = render_c4_svg_with_environment(source, &RenderEnvironment::deterministic());
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let body = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("g") && node.attribute("class") == Some("basic label-container")
+        })
+        .unwrap();
+    let transforms = body
+        .children()
+        .filter(|node| node.has_tag_name("g"))
+        .map(|node| node.attribute("transform").unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(transforms.len(), 2);
+    let translate_y = |value: &str| {
+        value
+            .strip_prefix("translate(0,")
+            .unwrap()
+            .strip_suffix(')')
+            .unwrap()
+            .parse::<f64>()
+            .unwrap()
+    };
+    assert!((translate_y(transforms[0]) - (body_top + body_height / 2.0)).abs() < 1e-6);
+    assert!((translate_y(transforms[1]) - (-shape.height / 2.0 + radius)).abs() < 1e-6);
+    assert!(translate_y(transforms[0]) > translate_y(transforms[1]));
+}

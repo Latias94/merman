@@ -57,6 +57,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_icon_circle(
         }) {
             Some(paths) => paths,
             None => {
+                ctx.checkpoint_emit()?;
                 return Err(crate::Error::InvalidModel {
                     message: "Flowchart iconCircle frame generation failed".to_string(),
                 });

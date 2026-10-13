@@ -270,15 +270,21 @@ fn prepare_railroad_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let typography_theme = crate::railroad::RailroadTypographyThemePlan::resolve(
+    let mut typography_theme = crate::railroad::RailroadTypographyThemePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
-    );
+        execution.work_meter_ref(),
+    )?;
     let layout = crate::railroad::layout_railroad_diagram_typed_for_type_with_theme(
         &model,
         diagram_type,
         &typography_theme,
         execution.text_measurer(),
+    )?;
+    typography_theme.prepare_terminal_domain(
+        execution.resolved_theme(),
+        &layout,
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Railroad(Box::new(
         RailroadFamilyArtifact {
@@ -751,6 +757,7 @@ fn prepare_journey_family(
         execution.resolved_theme(),
         &meta.effective_config,
         &layout.tasks,
+        &layout.sections,
         execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Journey(Box::new(

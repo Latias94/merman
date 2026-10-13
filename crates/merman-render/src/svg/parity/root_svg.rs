@@ -2209,7 +2209,7 @@ mod tests {
         document.complete(out).unwrap()
     }
 
-    fn transparent_root_theme_plan() -> RootThemePlan {
+    fn transparent_root_theme_plan() -> std::sync::Arc<RootThemePlan> {
         let theme = crate::diagram_theme::DiagramThemeCompiler::new()
             .compile(
                 crate::diagram_theme::DiagramThemeSpec::new()
@@ -2234,14 +2234,14 @@ mod tests {
         ]
     }
 
-    fn root_theme_plan(canvas: crate::diagram_theme::CanvasSpec) -> RootThemePlan {
+    fn root_theme_plan(canvas: crate::diagram_theme::CanvasSpec) -> std::sync::Arc<RootThemePlan> {
         let theme = crate::diagram_theme::DiagramThemeCompiler::new()
             .compile(crate::diagram_theme::DiagramThemeSpec::new().with_canvas(canvas))
             .expect("compile root canvas theme");
         RootThemePlan::from_theme(Some(&theme))
     }
 
-    fn repeating_linear_root_theme_plan() -> RootThemePlan {
+    fn repeating_linear_root_theme_plan() -> std::sync::Arc<RootThemePlan> {
         root_theme_plan(
             crate::diagram_theme::CanvasSpec::default().with_base(
                 crate::diagram_theme::CanvasPaint::LinearGradient(
@@ -2254,7 +2254,7 @@ mod tests {
         )
     }
 
-    fn repeating_radial_root_theme_plan(radius_percent: f32) -> RootThemePlan {
+    fn repeating_radial_root_theme_plan(radius_percent: f32) -> std::sync::Arc<RootThemePlan> {
         root_theme_plan(
             crate::diagram_theme::CanvasSpec::default().with_base(
                 crate::diagram_theme::CanvasPaint::RadialGradient(

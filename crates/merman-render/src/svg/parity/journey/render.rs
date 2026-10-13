@@ -153,68 +153,32 @@ fn write_task_rect<'a>(
 ) -> (&'a str, &'a str) {
     let emitted_rx = radius_token;
     let emitted_ry = radius_token;
-    match (fill, stroke) {
-        (Some(fill), Some(stroke)) => {
-            let _ = write!(
-                out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="fill:{typed_fill};stroke:{typed_stroke};" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
-                x = fmt(task.x),
-                y = fmt(task.y),
-                fill = escape_attr(&task.fill),
-                typed_fill = escape_attr(fill),
-                typed_stroke = escape_attr(stroke),
-                w = fmt(task.width),
-                h = fmt(task.height),
-                rx = emitted_rx,
-                ry = emitted_ry,
-                num = task.num,
-            );
+    let _ = write!(
+        out,
+        r##"<rect x="{}" y="{}" fill="{}" stroke="#666""##,
+        fmt(task.x),
+        fmt(task.y),
+        escape_attr(&task.fill)
+    );
+    if fill.is_some() || stroke.is_some() {
+        out.push_str(r#" style=""#);
+        if let Some(fill) = fill {
+            let _ = write!(out, "fill:{};", escape_attr(fill));
         }
-        (Some(fill), None) => {
-            let _ = write!(
-                out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="fill:{typed_fill};" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
-                x = fmt(task.x),
-                y = fmt(task.y),
-                fill = escape_attr(&task.fill),
-                typed_fill = escape_attr(fill),
-                w = fmt(task.width),
-                h = fmt(task.height),
-                rx = emitted_rx,
-                ry = emitted_ry,
-                num = task.num,
-            );
+        if let Some(stroke) = stroke {
+            let _ = write!(out, "stroke:{};", escape_attr(stroke));
         }
-        (None, Some(stroke)) => {
-            let _ = write!(
-                out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" style="stroke:{typed_stroke};" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
-                x = fmt(task.x),
-                y = fmt(task.y),
-                fill = escape_attr(&task.fill),
-                typed_stroke = escape_attr(stroke),
-                w = fmt(task.width),
-                h = fmt(task.height),
-                rx = emitted_rx,
-                ry = emitted_ry,
-                num = task.num,
-            );
-        }
-        (None, None) => {
-            let _ = write!(
-                out,
-                r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" rx="{rx}" ry="{ry}" class="task task-type-{num}"/>"##,
-                x = fmt(task.x),
-                y = fmt(task.y),
-                fill = escape_attr(&task.fill),
-                w = fmt(task.width),
-                h = fmt(task.height),
-                rx = emitted_rx,
-                ry = emitted_ry,
-                num = task.num,
-            );
-        }
+        out.push('"');
     }
+    let _ = write!(
+        out,
+        r#" width="{}" height="{}" rx="{}" ry="{}" class="task task-type-{}"/>"#,
+        fmt(task.width),
+        fmt(task.height),
+        emitted_rx,
+        emitted_ry,
+        task.num
+    );
     (emitted_rx, emitted_ry)
 }
 
@@ -959,6 +923,39 @@ mod tests {
             &DeterministicTextMeasurer::default(),
             &execution,
         )
+    }
+
+    #[test]
+    fn task_rect_optional_paints_preserve_geometry_and_attribute_encoding() {
+        let mut task = bounded_journey_layout().tasks.remove(0);
+        task.fill = "A&B".to_string();
+        for (fill, stroke, expected) in [
+            (None, None, None),
+            (Some("#123456"), None, Some("fill:#123456;")),
+            (None, Some("#654321"), Some("stroke:#654321;")),
+            (
+                Some("#123456"),
+                Some("#654321"),
+                Some("fill:#123456;stroke:#654321;"),
+            ),
+        ] {
+            let mut out = String::new();
+            assert_eq!(
+                write_task_rect(&mut out, &task, "9", fill, stroke),
+                ("9", "9")
+            );
+            let document = roxmltree::Document::parse(&out).unwrap();
+            let rect = document.root_element();
+            assert_eq!(rect.attribute("style"), expected);
+            assert_eq!(rect.attribute("fill"), Some("A&B"));
+            assert_eq!(rect.attribute("x"), Some("150"));
+            assert_eq!(rect.attribute("y"), Some("110"));
+            assert_eq!(rect.attribute("width"), Some("150"));
+            assert_eq!(rect.attribute("height"), Some("50"));
+            assert_eq!(rect.attribute("rx"), Some("9"));
+            assert_eq!(rect.attribute("ry"), Some("9"));
+            assert_eq!(rect.attribute("class"), Some("task task-type-0"));
+        }
     }
 
     #[test]

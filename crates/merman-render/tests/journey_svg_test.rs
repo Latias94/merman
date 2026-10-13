@@ -1129,74 +1129,100 @@ fn journey_task_transparent_palette_reaches_both_terminals() {
 }
 
 #[test]
-fn journey_task_palette_preserves_source_owned_fill_type_slots() {
-    let palette = OrdinalPalette::new([
-        merman_render::diagram_theme::ThemeColorValue::parse("#123456")
-            .expect("valid first Journey palette color"),
-        merman_render::diagram_theme::ThemeColorValue::parse("#654321")
-            .expect("valid second Journey palette color"),
-    ])
-    .expect("valid Journey task palette");
-    let theme = DiagramThemeCompiler::new()
-        .compile(DiagramThemeSpec::new().with_styles(
-            ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::JourneyTask, palette),
-        ))
-        .expect("compile Journey task palette theme");
-    let parsed = merman_render::__private::install_parse_compatibility(
-        &theme,
-        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
-            "secure": []
-        }))),
-    )
-        .parse_diagram_for_render_model_sync(
-            "%%{init: {\"themeVariables\": {\"fillType0\": \"#abcdef\"}}}%%\njourney\n  section Delivery\n    Ship release: 5: Maintainer\n  section Verify\n    Verify release: 4: Maintainer\n",
-            ParseOptions::strict(),
-        )
-        .expect("parse source-owned Journey")
-        .expect("detect source-owned Journey");
-    let session = RenderEnvironment::deterministic()
-        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
-        .begin_session_with_theme(&theme)
-        .expect("begin strict portable Journey session");
-    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
-        .expect("prepare source-owned Journey");
-    let rendered = artifact
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some("journey-source-owned-palette".to_string()),
-                ..SvgRenderOptions::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .expect("render source-owned Journey SVG");
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Journey SVG XML");
-    let section = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("rect")
-                && node.attribute("class").is_some_and(|class| {
-                    class
-                        .split_ascii_whitespace()
-                        .any(|token| token == "journey-section")
+fn journey_task_theme_receipts_only_require_actual_section_headers() {
+    for named in [false, true] {
+        for paint in ["radius", "paint", "palette"] {
+            let mut styles = ThemeRuleSet::default();
+            if paint == "radius" {
+                styles = styles.with_rule(ThemeRule::new(
+                    ThemeTarget::JourneyTask,
+                    ThemeStylePatch {
+                        geometry: ThemeGeometryPatch {
+                            radius: Specified::Value(9.0),
+                        },
+                        ..Default::default()
+                    },
+                ));
+            } else if paint == "paint" {
+                styles = styles.with_rule(ThemeRule::new(
+                    ThemeTarget::JourneyTask,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                ));
+            } else {
+                let palette = OrdinalPalette::new([
+                    merman_render::diagram_theme::ThemeColorValue::parse("#123456").unwrap(),
+                    merman_render::diagram_theme::ThemeColorValue::parse("#654321").unwrap(),
+                ])
+                .unwrap();
+                styles = styles.with_ordinal_palette(ThemeTarget::JourneyTask, palette);
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(styles))
+                .unwrap();
+            let source = if named {
+                "journey\n  Unsectioned: 5: Actor\n  section Delivery\n    Named: 4: Actor\n"
+            } else {
+                "journey\n  Unsectioned: 5: Actor\n"
+            };
+            let parsed =
+                merman_render::__private::install_parse_compatibility(&theme, Engine::new())
+                    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered =
+                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .expect("valid unsectioned tasks must complete their actual receipts");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let tasks = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes.split_whitespace().any(|class| class == "task")
+                        })
                 })
-        })
-        .expect("Journey source-owned section rect");
-    let task = document
-        .descendants()
-        .find(|node| {
-            node.has_tag_name("rect")
-                && node.attribute("class").is_some_and(|class| {
-                    class.split_ascii_whitespace().any(|token| token == "task")
+                .collect::<Vec<_>>();
+            let sections = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|class| class == "journey-section")
+                        })
                 })
-        })
-        .expect("Journey source-owned task rect");
-    assert_eq!(section.attribute("style"), Some("fill:#abcdef;"));
-    assert_eq!(task.attribute("style"), Some("fill:#abcdef;"));
-
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
+                .collect::<Vec<_>>();
+            assert_eq!(tasks.len(), if named { 2 } else { 1 });
+            assert_eq!(sections.len(), usize::from(named));
+            for task in tasks {
+                if paint == "radius" {
+                    assert_eq!(task.attribute("rx"), Some("9"));
+                    assert_eq!(task.attribute("ry"), Some("9"));
+                } else if paint == "paint" {
+                    assert_eq!(
+                        task.attribute("style"),
+                        Some("fill:#123456;stroke:#654321;")
+                    );
+                } else {
+                    assert_eq!(task.attribute("style"), Some("fill:#123456;"));
+                }
+            }
+            if paint == "palette" && named {
+                assert_eq!(sections[0].attribute("style"), Some("fill:#123456;"));
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
 }

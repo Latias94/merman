@@ -1484,11 +1484,11 @@ mod tests {
                 let expected = preflight_native_filter_receipt(&full, &full_tree).unwrap();
                 assert_eq!(
                     preflight_native_filter_receipt(&compact, &compact_tree),
-                    Some(expected.clone())
+                    Some(expected)
                 );
                 assert_eq!(
                     preflight_native_filter_receipt(&full, &compact_tree),
-                    Some(expected.clone())
+                    Some(expected)
                 );
                 assert_eq!(
                     preflight_native_filter_receipt(&compact, &full_tree),

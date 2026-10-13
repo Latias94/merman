@@ -389,19 +389,6 @@ impl FlowchartEdgeStylePlan {
     }
 
     #[cfg(test)]
-    pub(in crate::svg::parity::flowchart) fn swimlane_label(
-        &self,
-        edge_id: &str,
-    ) -> crate::Result<Option<&FlowchartCompiledStyles>> {
-        self.edges
-            .get(edge_id)
-            .map(|styles| styles.swimlane_label.as_deref())
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: format!("missing prepared Swimlane edge label style for `{edge_id}`"),
-            })
-    }
-
-    #[cfg(test)]
     pub(in crate::svg::parity::flowchart) fn animation(
         &self,
         edge_id: &str,
@@ -419,17 +406,6 @@ impl FlowchartEdgeStylePlan {
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> crate::Result<FlowchartEdgeAnimationResolution> {
         Ok(self.occurrence(key)?.animation)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn edge_label_text_style<'a>(
-        &self,
-        edge_id: &str,
-        base: &'a crate::text::TextStyle,
-    ) -> crate::Result<crate::flowchart::FlowchartTextStyleResolution<'a>> {
-        Ok(self
-            .edge(edge_id)?
-            .effective_edge_label_text_style_with_provenance(base))
     }
 
     pub(crate) fn edge_label_text_style_for<'a>(
@@ -455,20 +431,6 @@ impl FlowchartEdgeStylePlan {
             resolved.style = std::borrow::Cow::Borrowed(&prepared.style);
         }
         Ok(resolved)
-    }
-
-    #[cfg(test)]
-    pub(crate) fn swimlane_edge_label_text_style<'a>(
-        &self,
-        edge_id: &str,
-        base: &'a crate::text::TextStyle,
-    ) -> crate::Result<crate::flowchart::FlowchartTextStyleResolution<'a>> {
-        let Some(styles) = self.swimlane_label(edge_id)? else {
-            return Ok(crate::flowchart::FlowchartTextStyleResolution::borrowed(
-                base,
-            ));
-        };
-        Ok(styles.effective_edge_label_text_style_with_provenance(base))
     }
 
     pub(crate) fn swimlane_edge_label_text_style_for<'a>(

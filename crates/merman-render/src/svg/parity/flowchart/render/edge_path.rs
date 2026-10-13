@@ -18,7 +18,6 @@ const NEO_EDGE_MASK_SUFFIX: &str = "; stroke-dashoffset: 0;";
 pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
-    hierarchy_plan: &FlowchartHierarchyPlan<'_>,
     marker_plan: &FlowchartMarkerEmissionPlan,
     edge_ref: super::super::render_input::FlowchartRenderEdgeRef<'_>,
     origin_x: f64,
@@ -83,8 +82,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
                 origin_x,
                 origin_y,
                 trace_enabled,
-                collapse_degenerate_subgraph_route: hierarchy_plan
-                    .is_degenerate_subgraph_descendant_edge(ctx, edge),
             },
             scratch,
         )

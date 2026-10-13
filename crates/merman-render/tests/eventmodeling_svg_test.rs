@@ -987,3 +987,83 @@ fn reset_frames_keep_explicit_sources_without_inventing_previous_frame_relations
         3
     );
 }
+
+#[test]
+fn repair_u7_eventmodeling_unmatched_text_variant_is_not_applicable() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                    )
+                    .with_variant(merman_render::diagram_theme::ThemeVariant::Warning),
+                ),
+            ),
+        )
+        .unwrap();
+    let rendered =
+        render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new()).unwrap();
+    assert!(!rendered.svg().contains("#abcdef"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn repair_u7_eventmodeling_source_text_color_owns_palette_fallback() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_ordinal_palette(
+                ThemeTarget::Text,
+                OrdinalPalette::new([ThemeColorValue::parse("#123456").unwrap()]).unwrap(),
+            )),
+        )
+        .unwrap();
+    let rendered = render_eventmodeling_with_theme(
+        THEME_TEXT_SOURCE,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"themeVariables":{"textColor":"#abcdef"}}),
+        )),
+    )
+    .unwrap();
+    assert!(eventmodeling_stylesheet(rendered.svg()).contains("#abcdef"));
+    assert!(!rendered.svg().contains("#123456"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn repair_u7_eventmodeling_matched_unsupported_variant_remains_residual() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                    )
+                    .with_variant(merman_render::diagram_theme::ThemeVariant::Default),
+                ),
+            ),
+        )
+        .unwrap();
+    let rendered = render_eventmodeling_with_theme_requirement(
+        THEME_TEXT_SOURCE,
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert!(render_eventmodeling_with_theme(THEME_TEXT_SOURCE, &theme, Engine::new()).is_err());
+}

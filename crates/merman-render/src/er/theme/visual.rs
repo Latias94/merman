@@ -4,15 +4,25 @@ use std::fmt::Write;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ErTextVisual {
     pub(crate) style_attr: String,
+    svg_style_attr: String,
     pub(crate) typed_style: String,
     pub(crate) wrapper_attr: String,
     pub(crate) inline_attr: String,
 }
 
 impl ErTextVisual {
+    pub(crate) fn label_style_attr(&self, html_labels: bool) -> &str {
+        if html_labels {
+            &self.style_attr
+        } else {
+            &self.svg_style_attr
+        }
+    }
+
     fn byte_len(&self) -> usize {
         self.style_attr
             .len()
+            .saturating_add(self.svg_style_attr.len())
             .saturating_add(self.typed_style.len())
             .saturating_add(self.wrapper_attr.len())
             .saturating_add(self.inline_attr.len())
@@ -87,6 +97,15 @@ pub(super) fn declarations(
     force_important: bool,
     join: &str,
 ) -> String {
+    declarations_for_label_mode(decls, force_important, join, false)
+}
+
+fn declarations_for_label_mode(
+    decls: &[ErStyleDeclaration],
+    force_important: bool,
+    join: &str,
+    svg_text: bool,
+) -> String {
     let mut out = String::new();
     for declaration in decls {
         if !out.is_empty() {
@@ -95,7 +114,11 @@ pub(super) fn declarations(
         write!(
             out,
             "{}:{}",
-            declaration.property_css(),
+            if svg_text && declaration.property() == "color" {
+                "fill"
+            } else {
+                declaration.property_css()
+            },
             declaration.value()
         )
         .unwrap();
@@ -104,90 +127,6 @@ pub(super) fn declarations(
         }
     }
     out
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn baseline_plan_prepares_source_visuals_in_both_label_modes() {
-        let model: merman_core::diagrams::er::ErDiagramRenderModel = serde_json::from_value(serde_json::json!({
-            "direction": "TB", "entities": {"A": {
-                "id": "A", "label": "A", "cssStyles": ["fill:#123456 !important", "stroke-width:2px", "color:#654321"],
-                "attributes": [{"type": "string", "name": "id", "keys": [], "comment": ""}]
-            }}
-        })).unwrap();
-        let layout: crate::model::ErDiagramLayout = serde_json::from_value(serde_json::json!({
-            "nodes": [], "edges": [], "bounds": null
-        }))
-        .unwrap();
-        for html in [false, true] {
-            let config =
-                merman_core::MermaidConfig::from_value(serde_json::json!({"htmlLabels": html}));
-            let meter = OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-            );
-            let plan = ErEntityThemePlan::resolve(
-                None,
-                &config,
-                InheritedFontStackPlan::resolve_property_local(None, &config),
-                ErBaseFontSizePlan::resolve(None, &config),
-                html,
-                None,
-                &model,
-                &layout,
-                &meter,
-            )
-            .unwrap();
-            let visual = &plan.source_style(0).unwrap().visual;
-            assert_eq!(visual.box_fill, "#123456");
-            assert_eq!(visual.stroke_width_attr, "2");
-            assert_eq!(visual.name.style_attr, "style=\"color:#654321 !important\"");
-            assert!(visual.name.typed_style.is_empty());
-            assert_eq!(visual.rows.len(), 1);
-            assert_eq!(visual.attributes.len(), 1);
-            assert!(visual.span_style_attr.contains("color:#654321 !important"));
-        }
-    }
-
-    #[test]
-    fn er_source_important_declarations_are_serialized_once() {
-        let entity = merman_core::diagrams::er::ErEntityRenderModel {
-            css_styles: vec![
-                "fill:#123456 !important".into(),
-                "stroke:#654321 !important".into(),
-            ],
-            ..Default::default()
-        };
-        let source = compile_er_entity_source_style(&entity, &indexmap::IndexMap::new());
-        let visual = source_visual(&source);
-        assert_eq!(source.fill(), Some("#123456"));
-        assert_eq!(visual.rect_style_attr.matches("!important").count(), 2);
-        assert!(!visual.rect_style_attr.contains("!important !important"));
-        assert_eq!(
-            visual.rect_style_attr,
-            "style=\"fill:#123456 !important; stroke:#654321 !important\""
-        );
-    }
-
-    #[test]
-    fn source_and_typed_text_preserve_declaration_order_and_proof_identity() {
-        let entity = merman_core::diagrams::er::ErEntityRenderModel {
-            css_styles: vec!["color:#123456 !important".into()],
-            ..Default::default()
-        };
-        let source = compile_er_entity_source_style(&entity, &indexmap::IndexMap::new());
-        let authored = text_visual(&source, None);
-        assert_eq!(authored.style_attr, "style=\"color:#123456 !important\"");
-        assert!(authored.typed_style.is_empty());
-        let typed = text_visual(&source, Some((7, "#123456")));
-        assert_eq!(
-            typed.style_attr,
-            "style=\"color:#123456 !important; color:#123456;fill:#123456\""
-        );
-        assert_eq!(typed.typed_style, "color:#123456;fill:#123456");
-    }
 }
 
 fn attr(style: &str) -> String {
@@ -209,15 +148,20 @@ pub(super) fn text_visual(
     let typed_style = paint
         .map(|(_, css)| format!("color:{css};fill:{css}"))
         .unwrap_or_default();
-    let mut parts = Vec::new();
-    if !source.text_declarations.is_empty() {
-        parts.push(declarations(&source.text_declarations, true, "; "));
-    }
-    if !typed_style.is_empty() {
-        parts.push(typed_style.clone());
-    }
+    let label_style = |svg_text| {
+        let mut source_style =
+            declarations_for_label_mode(&source.text_declarations, true, "; ", svg_text);
+        if !typed_style.is_empty() {
+            if !source_style.is_empty() {
+                source_style.push_str("; ");
+            }
+            source_style.push_str(&typed_style);
+        }
+        attr(&source_style)
+    };
     ErTextVisual {
-        style_attr: attr(&parts.join("; ")),
+        style_attr: label_style(false),
+        svg_style_attr: label_style(true),
         inline_attr: path_attr(&typed_style),
         typed_style,
         wrapper_attr: paint
@@ -237,7 +181,12 @@ pub(super) fn source_visual(source: &ErEntitySourceStyle) -> ErSourceVisual {
     let source_text_attr = format!(r#"style="{}""#, crate::svg::escape_xml(&text));
     ErSourceVisual {
         rect_style_attr: format!(r#"style="{}""#, crate::svg::escape_xml(&rect)),
-        svg_source_text_attr: source_text_attr.replace("color:", "fill:"),
+        svg_source_text_attr: attr(&declarations_for_label_mode(
+            &source.text_declarations,
+            true,
+            "; ",
+            true,
+        )),
         source_text_attr,
         label_div_color_prefix: source
             .text_value("color")
@@ -328,10 +277,7 @@ impl ErEntityThemePlan {
                 r#"style="{}""#,
                 crate::svg::escape_xml(&declarations(&group, false, ";"))
             );
-            let redux = matches!(
-                self.css_binding.theme_name.as_str(),
-                "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
-            );
+            let redux = self.css_binding.source_fill_owns_odd_rows();
             let mut overrides: Vec<_> = source
                 .rect_declarations
                 .iter()
@@ -429,5 +375,89 @@ impl ErEntityThemePlan {
             source.visual = output;
         }
         Ok(self)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn baseline_plan_prepares_source_visuals_in_both_label_modes() {
+        let model: merman_core::diagrams::er::ErDiagramRenderModel = serde_json::from_value(serde_json::json!({
+            "direction": "TB", "entities": {"A": {
+                "id": "A", "label": "A", "cssStyles": ["fill:#123456 !important", "stroke-width:2px", "color:#654321"],
+                "attributes": [{"type": "string", "name": "id", "keys": [], "comment": ""}]
+            }}
+        })).unwrap();
+        let layout: crate::model::ErDiagramLayout = serde_json::from_value(serde_json::json!({
+            "nodes": [], "edges": [], "bounds": null
+        }))
+        .unwrap();
+        for html in [false, true] {
+            let config =
+                merman_core::MermaidConfig::from_value(serde_json::json!({"htmlLabels": html}));
+            let meter = OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let plan = ErEntityThemePlan::resolve(
+                None,
+                &config,
+                InheritedFontStackPlan::resolve_property_local(None, &config),
+                ErBaseFontSizePlan::resolve(None, &config),
+                html,
+                None,
+                &model,
+                &layout,
+                &meter,
+            )
+            .unwrap();
+            let visual = &plan.source_style(0).unwrap().visual;
+            assert_eq!(visual.box_fill, "#123456");
+            assert_eq!(visual.stroke_width_attr, "2");
+            assert_eq!(visual.name.style_attr, "style=\"color:#654321 !important\"");
+            assert!(visual.name.typed_style.is_empty());
+            assert_eq!(visual.rows.len(), 1);
+            assert_eq!(visual.attributes.len(), 1);
+            assert!(visual.span_style_attr.contains("color:#654321 !important"));
+        }
+    }
+
+    #[test]
+    fn er_source_important_declarations_are_serialized_once() {
+        let entity = merman_core::diagrams::er::ErEntityRenderModel {
+            css_styles: vec![
+                "fill:#123456 !important".into(),
+                "stroke:#654321 !important".into(),
+            ],
+            ..Default::default()
+        };
+        let source = compile_er_entity_source_style(&entity, &indexmap::IndexMap::new());
+        let visual = source_visual(&source);
+        assert_eq!(source.fill(), Some("#123456"));
+        assert_eq!(visual.rect_style_attr.matches("!important").count(), 2);
+        assert!(!visual.rect_style_attr.contains("!important !important"));
+        assert_eq!(
+            visual.rect_style_attr,
+            "style=\"fill:#123456 !important; stroke:#654321 !important\""
+        );
+    }
+
+    #[test]
+    fn source_and_typed_text_preserve_declaration_order_and_proof_identity() {
+        let entity = merman_core::diagrams::er::ErEntityRenderModel {
+            css_styles: vec!["color:#123456 !important".into()],
+            ..Default::default()
+        };
+        let source = compile_er_entity_source_style(&entity, &indexmap::IndexMap::new());
+        let authored = text_visual(&source, None);
+        assert_eq!(authored.style_attr, "style=\"color:#123456 !important\"");
+        assert!(authored.typed_style.is_empty());
+        let typed = text_visual(&source, Some((7, "#123456")));
+        assert_eq!(
+            typed.style_attr,
+            "style=\"color:#123456 !important; color:#123456;fill:#123456\""
+        );
+        assert_eq!(typed.typed_style, "color:#123456;fill:#123456");
     }
 }

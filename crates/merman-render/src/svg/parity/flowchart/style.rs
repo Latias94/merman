@@ -1560,27 +1560,48 @@ fn inspect_sanitized_xhtml_element(
         }
 
         if is_style {
-            for raw in crate::flowchart::flowchart_split_mermaid_style_decls(value) {
-                let provenance = crate::diagram_theme::SourceStyleProvenance::label_style(
-                    owner_id,
-                    crate::diagram_theme::SourceStyleChannel::Label,
-                    *declaration_ordinal,
-                );
-                *declaration_ordinal = declaration_ordinal.saturating_add(1);
-                match crate::diagram_theme::SourceStyleDeclaration::parse(raw, provenance) {
-                    Ok(declaration) => {
-                        if let Some(reason) = label_source_residual_reason(&declaration, false) {
-                            residuals.push(
-                                crate::diagram_theme::SourceStyleResidual::from_declaration(
-                                    &declaration,
-                                    reason,
-                                ),
-                            );
+            crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+                value,
+                &mut || Ok::<(), ()>(()),
+                |boundary| {
+                    let raw = boundary.raw();
+                    let mut parser = Parser::new(raw);
+                    let mut meaningful = false;
+                    while let Ok(token) = parser.next_including_whitespace_and_comments() {
+                        if !matches!(
+                            token,
+                            Token::WhiteSpace(_) | Token::Comment(_) | Token::Semicolon
+                        ) {
+                            meaningful = true;
+                            break;
                         }
                     }
-                    Err(residual) => residuals.push(residual),
-                }
-            }
+                    if !meaningful {
+                        return Ok(true);
+                    }
+                    let provenance = crate::diagram_theme::SourceStyleProvenance::label_style(
+                        owner_id,
+                        crate::diagram_theme::SourceStyleChannel::Label,
+                        *declaration_ordinal,
+                    );
+                    *declaration_ordinal = declaration_ordinal.saturating_add(1);
+                    match crate::diagram_theme::SourceStyleDeclaration::parse(raw, provenance) {
+                        Ok(declaration) => {
+                            if let Some(reason) = label_source_residual_reason(&declaration, false)
+                            {
+                                residuals.push(
+                                    crate::diagram_theme::SourceStyleResidual::from_declaration(
+                                        &declaration,
+                                        reason,
+                                    ),
+                                );
+                            }
+                        }
+                        Err(residual) => residuals.push(residual),
+                    }
+                    Ok(true)
+                },
+            )?;
             continue;
         }
 
@@ -2615,9 +2636,103 @@ pub(in crate::svg::parity) fn flowchart_label_div_style_prefix(
     out
 }
 
+// Structural classes are not part of the label's admitted typography request. Keep any
+// possible glyph geometry, inherited stroke, or filter override outside a positive receipt.
+pub(super) fn label_shadow_structural_styles_are_bounded(
+    class_defs: &IndexMap<String, Vec<String>>,
+    classes: &[&str],
+) -> bool {
+    classes.iter().all(|class| {
+        class_defs.get(*class).is_none_or(|groups| {
+            groups.iter().all(|group| {
+                crate::flowchart::flowchart_split_mermaid_style_decls(group).all(|raw| {
+                    crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_some_and(
+                        |declaration| {
+                            matches!(
+                                declaration.property(),
+                                "fill" | "color" | "opacity" | "fill-opacity"
+                            )
+                        },
+                    )
+                })
+            })
+        })
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sanitized_xhtml_css_declarations_keep_independent_properties_and_ordinals() {
+        use crate::diagram_theme::SourceStyleResidualReason;
+        let residuals = sanitized_xhtml_source_residuals(
+            "A",
+            "<span style='color:red;font-size:20px;broken;color:blue'>Label</span>",
+        );
+        assert_eq!(residuals.len(), 4);
+        assert_eq!(
+            residuals
+                .iter()
+                .map(|residual| residual.property())
+                .collect::<Vec<_>>(),
+            [Some("color"), Some("font-size"), None, Some("color")]
+        );
+        assert_eq!(
+            residuals
+                .iter()
+                .map(|residual| residual.provenance().declaration_ordinal())
+                .collect::<Vec<_>>(),
+            [0, 1, 2, 3]
+        );
+        assert_eq!(
+            residuals[2].reason(),
+            SourceStyleResidualReason::InvalidDeclaration
+        );
+        for index in [0, 1, 3] {
+            assert_eq!(
+                residuals[index].reason(),
+                SourceStyleResidualReason::UnsupportedSurface
+            );
+        }
+    }
+
+    #[test]
+    fn sanitized_xhtml_empty_css_boundaries_do_not_create_residuals_or_ordinals() {
+        for style in [";;", " ; ; ", "/* one */;/* two */;", "/* only */"] {
+            assert!(
+                sanitized_xhtml_source_residuals(
+                    "A",
+                    &format!("<span style='{style}'>Label</span>")
+                )
+                .is_empty(),
+                "{style}"
+            );
+        }
+        let residuals = sanitized_xhtml_source_residuals(
+            "A",
+            "<span style='; /* comment */ ;color:red;; ;font-size:20px; /* comment */;broken;;'>Label</span>",
+        );
+        assert_eq!(
+            residuals
+                .iter()
+                .map(|residual| residual.property())
+                .collect::<Vec<_>>(),
+            [Some("color"), Some("font-size"), None]
+        );
+        assert_eq!(
+            residuals
+                .iter()
+                .map(|residual| residual.provenance().declaration_ordinal())
+                .collect::<Vec<_>>(),
+            [0, 1, 2]
+        );
+        assert_eq!(
+            residuals[2].reason(),
+            crate::diagram_theme::SourceStyleResidualReason::InvalidDeclaration
+        );
+    }
 
     #[test]
     fn sanitized_html_typography_distinguishes_user_overrides_from_prepared_math_wrappers() {
@@ -3662,28 +3777,4 @@ mod tests {
                 .is_empty()
         );
     }
-}
-
-// Structural classes are not part of the label's admitted typography request. Keep any
-// possible glyph geometry, inherited stroke, or filter override outside a positive receipt.
-pub(super) fn label_shadow_structural_styles_are_bounded(
-    class_defs: &IndexMap<String, Vec<String>>,
-    classes: &[&str],
-) -> bool {
-    classes.iter().all(|class| {
-        class_defs.get(*class).is_none_or(|groups| {
-            groups.iter().all(|group| {
-                crate::flowchart::flowchart_split_mermaid_style_decls(group).all(|raw| {
-                    crate::diagram_theme::PreparedSourceStyleDeclaration::parse(raw).is_some_and(
-                        |declaration| {
-                            matches!(
-                                declaration.property(),
-                                "fill" | "color" | "opacity" | "fill-opacity"
-                            )
-                        },
-                    )
-                })
-            })
-        })
-    })
 }

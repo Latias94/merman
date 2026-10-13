@@ -111,12 +111,24 @@ impl StandaloneSvgArtifact {
                 Err(crate::Error::SvgPostprocess { .. })
                     if pipeline.preset() != SvgPipelinePreset::ResvgSafe =>
                 {
+                    // Compatibility can stop before walking the complete use DAG. Its
+                    // observational envelope must still admit all expanded caller-owned work.
+                    final_validation::check_svg_resource_budget_with_execution(
+                        &svg,
+                        SvgPostprocessExecution::new(session),
+                    )?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
                 }
                 Err(crate::Error::ResourceLimitExceeded(limit))
                     if pipeline.preset() != SvgPipelinePreset::ResvgSafe
                         && limit.is_svg_backend_compatibility_ceiling() =>
                 {
+                    // Compatibility can stop before walking the complete use DAG. Its
+                    // observational envelope must still admit all expanded caller-owned work.
+                    final_validation::check_svg_resource_budget_with_execution(
+                        &svg,
+                        SvgPostprocessExecution::new(session),
+                    )?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
                 }
                 Err(crate::Error::ResourceLimitExceeded(limit)) => {
@@ -394,6 +406,41 @@ mod tests {
             StandaloneSvgArtifact::finalize_exact(svg, true, &SvgPipeline::parity(), &session)
                 .expect_err("a native ceiling must not hide a larger explicit resource budget");
         assert_max_svg_elements(error);
+    }
+
+    #[test]
+    fn strict_parity_compatibility_failure_keeps_expansion_budget_terminal() {
+        let dag = r##"<defs><g id="leaf"><path/></g><g id="branch"><use href="#leaf"/><use href="#leaf"/></g></defs><use href="#branch"/><use href="#branch"/>"##;
+        for svg in [
+            format!("<svg><foreignObject/>{dag}</svg>"),
+            format!("<svg>{dag}<foreignObject/></svg>"),
+        ] {
+            let control = merman_core::OperationControl::new();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .with_resource_policy(
+                    RenderResourcePolicy::unbounded_for_trusted_input()
+                        .with_limit(ResourceLimitId::MaxSvgElements, 10)
+                        .unwrap(),
+                )
+                .begin_session_with_control(control.clone())
+                .unwrap();
+            assert_max_svg_elements(
+                StandaloneSvgArtifact::finalize_exact(svg, true, &SvgPipeline::parity(), &session)
+                    .expect_err("compatibility failure must not hide expanded resource work"),
+            );
+            let terminal = control
+                .terminal_checkpoint_at(OperationPhase::Export)
+                .unwrap_err();
+            assert!(
+                matches!(&terminal, merman_core::OperationLedgerError::ResourceLimitExceeded(limit) if limit.id == "max_svg_elements")
+            );
+            control.cancel();
+            assert_eq!(
+                control.terminal_checkpoint_at(OperationPhase::Emit),
+                Err(terminal)
+            );
+        }
     }
 
     #[test]

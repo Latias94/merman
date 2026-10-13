@@ -20,84 +20,6 @@ pub(crate) struct ClassCssThemeBinding {
     pub(crate) palette_look: String,
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn gradient_binding_preserves_mermaid_boolean_coercion() {
-        for (value, expected) in [
-            (serde_json::json!(true), true),
-            (serde_json::json!(false), false),
-            (serde_json::json!("true"), true),
-            (serde_json::json!("false"), false),
-            (serde_json::json!(" ON "), true),
-            (serde_json::json!(1), true),
-            (serde_json::json!(0), false),
-            (serde_json::json!(-1), true),
-            (serde_json::json!("unknown"), false),
-        ] {
-            let binding = ClassCssThemeBinding::resolve(&serde_json::json!({
-                "themeVariables": {"useGradient": value}
-            }));
-            assert_eq!(binding.look_defs.uses_gradient(), expected);
-        }
-    }
-
-    #[test]
-    fn node_defaults_preserve_primary_fallback_without_changing_css_defaults() {
-        let fallback = ClassCssThemeBinding::resolve(&serde_json::json!({
-            "themeVariables": {
-                "primaryColor": "#112233",
-                "primaryBorderColor": "#445566"
-            }
-        }));
-        assert_eq!(fallback.node_default_fill, "#112233");
-        assert_eq!(fallback.node_default_stroke, "#445566");
-        assert_eq!(fallback.main_bkg, "#ECECFF");
-        assert_eq!(fallback.node_border, "#9370DB");
-
-        let explicit = ClassCssThemeBinding::resolve(&serde_json::json!({
-            "themeVariables": {
-                "mainBkg": "var(--fill)",
-                "nodeBorder": "none",
-                "primaryColor": "#112233",
-                "primaryBorderColor": "#445566"
-            }
-        }));
-        assert_eq!(explicit.node_default_fill, "var(--fill)");
-        assert_eq!(explicit.node_default_stroke, "none");
-    }
-
-    #[test]
-    fn browser_tokens_and_palette_spelling_survive_binding() {
-        let config = serde_json::json!({
-            "theme": "redux-color",
-            "look": "handDrawn",
-            "themeVariables": {
-                "classText": "var(--class-text)",
-                "mainBkg": "color(display-p3 1 0 0)",
-                "strokeWidth": "calculated",
-                "noteBkgColor": "none",
-                "borderColorArray": ["  var(--border)  ", 12],
-                "bkgColorArray": ["  transparent  "]
-            }
-        });
-        let binding = ClassCssThemeBinding::resolve(&config);
-        assert_eq!(binding.class_text, "var(--class-text)");
-        assert_eq!(binding.main_bkg, "color(display-p3 1 0 0)");
-        assert_eq!(binding.note_fill, "none");
-        assert_eq!(binding.palette_look, "handDrawn");
-        assert_eq!(
-            binding.palette,
-            vec![
-                ("var(--border)".into(), Some("transparent".into())),
-                ("12".into(), Some("transparent".into()))
-            ]
-        );
-    }
-}
-
 impl ClassCssThemeBinding {
     pub(crate) fn resolve(config: &Value) -> Self {
         let token = |key: &str, fallback: &str| {
@@ -174,5 +96,83 @@ impl ClassCssThemeBinding {
             palette,
             palette_look,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn gradient_binding_preserves_mermaid_boolean_coercion() {
+        for (value, expected) in [
+            (serde_json::json!(true), true),
+            (serde_json::json!(false), false),
+            (serde_json::json!("true"), true),
+            (serde_json::json!("false"), false),
+            (serde_json::json!(" ON "), true),
+            (serde_json::json!(1), true),
+            (serde_json::json!(0), false),
+            (serde_json::json!(-1), true),
+            (serde_json::json!("unknown"), false),
+        ] {
+            let binding = ClassCssThemeBinding::resolve(&serde_json::json!({
+                "themeVariables": {"useGradient": value}
+            }));
+            assert_eq!(binding.look_defs.uses_gradient(), expected);
+        }
+    }
+
+    #[test]
+    fn node_defaults_preserve_primary_fallback_without_changing_css_defaults() {
+        let fallback = ClassCssThemeBinding::resolve(&serde_json::json!({
+            "themeVariables": {
+                "primaryColor": "#112233",
+                "primaryBorderColor": "#445566"
+            }
+        }));
+        assert_eq!(fallback.node_default_fill, "#112233");
+        assert_eq!(fallback.node_default_stroke, "#445566");
+        assert_eq!(fallback.main_bkg, "#ECECFF");
+        assert_eq!(fallback.node_border, "#9370DB");
+
+        let explicit = ClassCssThemeBinding::resolve(&serde_json::json!({
+            "themeVariables": {
+                "mainBkg": "var(--fill)",
+                "nodeBorder": "none",
+                "primaryColor": "#112233",
+                "primaryBorderColor": "#445566"
+            }
+        }));
+        assert_eq!(explicit.node_default_fill, "var(--fill)");
+        assert_eq!(explicit.node_default_stroke, "none");
+    }
+
+    #[test]
+    fn browser_tokens_and_palette_spelling_survive_binding() {
+        let config = serde_json::json!({
+            "theme": "redux-color",
+            "look": "handDrawn",
+            "themeVariables": {
+                "classText": "var(--class-text)",
+                "mainBkg": "color(display-p3 1 0 0)",
+                "strokeWidth": "calculated",
+                "noteBkgColor": "none",
+                "borderColorArray": ["  var(--border)  ", 12],
+                "bkgColorArray": ["  transparent  "]
+            }
+        });
+        let binding = ClassCssThemeBinding::resolve(&config);
+        assert_eq!(binding.class_text, "var(--class-text)");
+        assert_eq!(binding.main_bkg, "color(display-p3 1 0 0)");
+        assert_eq!(binding.note_fill, "none");
+        assert_eq!(binding.palette_look, "handDrawn");
+        assert_eq!(
+            binding.palette,
+            vec![
+                ("var(--border)".into(), Some("transparent".into())),
+                ("12".into(), Some("transparent".into()))
+            ]
+        );
     }
 }

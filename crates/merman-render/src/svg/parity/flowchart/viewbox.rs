@@ -254,8 +254,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
                 origin_x: off.origin_x,
                 origin_y: off.origin_y,
                 trace_enabled: false,
-                collapse_degenerate_subgraph_route: hierarchy_plan
-                    .is_degenerate_subgraph_descendant_edge(ctx, edge),
             };
             if ctx.uses_elk_adapter_dom {
                 if let Some(route) = edge_geom::prepare_edge_route(request, &mut scratch) {
@@ -336,8 +334,6 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
                         origin_x: off.origin_x,
                         origin_y: off.origin_y,
                         trace_enabled: false,
-                        collapse_degenerate_subgraph_route: hierarchy_plan
-                            .is_degenerate_subgraph_descendant_edge(ctx, edge),
                     },
                     route,
                     &mut scratch,

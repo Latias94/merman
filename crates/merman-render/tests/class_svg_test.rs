@@ -2855,9 +2855,22 @@ note for X "outside"
             ["edgeNote1", "edgeNote0"],
             "fixture must reverse source declaration order: {baseline}"
         );
+        for id in ["edgeNote1", "edgeNote0"] {
+            let path = document
+                .descendants()
+                .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(id))
+                .unwrap();
+            assert!(
+                path.attribute("style")
+                    .is_some_and(|style| style.contains("stroke:#123456")),
+                "actual {id} connector paint: {}",
+                rendered.svg()
+            );
+        }
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 
@@ -6180,5 +6193,389 @@ fn class_cardinality_terminals_share_measured_bounds_and_centered_inner_in_both_
                 }
             }
         }
+    }
+}
+
+#[test]
+fn class_node_background_fill_preserves_typed_label_paint() {
+    for html_labels in [false, true] {
+        for target in [ThemeTarget::NodeLabel, ThemeTarget::Text] {
+            let theme = class_edge_rules_theme([ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+            )]);
+            let rendered = try_render_class_svg_with_theme_requirement(
+                "classDiagram\nclass Account\nstyle Account fill:#cc0000\n",
+                &theme,
+                Engine::new()
+                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":html_labels}))),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .expect("node background does not own label text color");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with("merman-classId-Account-"))
+                })
+                .unwrap();
+            let terminal = node
+                .descendants()
+                .find(|node| node.is_text() && node.text() == Some("Account"))
+                .unwrap();
+            for property in if html_labels {
+                &["color"][..]
+            } else {
+                &["color", "fill"][..]
+            } {
+                let color = terminal
+                    .ancestors()
+                    .filter_map(|ancestor| ancestor.attribute("style"))
+                    .find_map(|style| {
+                        style
+                            .split(';')
+                            .filter_map(|declaration| {
+                                let (name, value) = declaration.split_once(':')?;
+                                (name.trim() == *property)
+                                    .then_some(value.trim().trim_end_matches("!important").trim())
+                            })
+                            .next_back()
+                    });
+                assert_eq!(
+                    color,
+                    Some("#2468ac"),
+                    "actual Account label {property}, html={html_labels}, target={target:?}: {}",
+                    rendered.svg()
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn class_svg_member_escape_normalization_matches_layout_and_visible_text() {
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for suffix in ["longfieldname", "longmethodname()"] {
+            let mut widths = Vec::new();
+            for escape_count in [1, 2, 3, 4] {
+                let source = format!("classDiagram\nA : {}{suffix}\n", "\\".repeat(escape_count));
+                let parsed = Engine::new()
+                    .with_site_config(MermaidConfig::from_value(
+                        json!({"htmlLabels":false, "layout":layout}),
+                    ))
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                    .unwrap()
+                    .unwrap();
+                let artifact = family::prepare(
+                    parsed,
+                    &LayoutOptions::default(),
+                    RenderEnvironment::deterministic().begin_session().unwrap(),
+                )
+                .unwrap();
+                let projected = artifact.layout_json().unwrap();
+                let nodes = projected["layout"]["ClassDiagramV2"]["nodes"]
+                    .as_array()
+                    .unwrap();
+                let node = nodes.iter().find(|node| node["id"] == "A").unwrap();
+                let layout_width = node["width"].as_f64().unwrap();
+                let rendered = artifact
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let class = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("id")
+                            .is_some_and(|id| id.starts_with("merman-classId-A-"))
+                    })
+                    .unwrap();
+                let content = class
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                assert_eq!(
+                    content,
+                    format!("A{}{suffix}", if escape_count % 2 == 0 { "\\" } else { "" }),
+                    "visible SVG member {layout}/{escape_count}"
+                );
+                let outline = class
+                    .children()
+                    .find(|node| {
+                        node.attribute("class") == Some("basic label-container outer-path")
+                    })
+                    .unwrap();
+                let box_path = outline
+                    .children()
+                    .find(|node| {
+                        node.has_tag_name("path") && node.attribute("stroke") == Some("none")
+                    })
+                    .unwrap();
+                let coordinates = box_path
+                    .attribute("d")
+                    .unwrap()
+                    .split_ascii_whitespace()
+                    .collect::<Vec<_>>();
+                let left = coordinates[0]
+                    .strip_prefix('M')
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                let right = coordinates[2]
+                    .strip_prefix('L')
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap();
+                assert!(
+                    (layout_width - (right - left)).abs() < 0.01,
+                    "layout and terminal rectangular fill path width agree"
+                );
+                widths.push(layout_width);
+            }
+            assert!(
+                widths[1] > widths[0],
+                "retained visible backslash contributes to {layout}/{suffix} width: {widths:?}"
+            );
+            assert_eq!(
+                widths[2], widths[0],
+                "Marked ignores the escape pair left after Class strips one prefix"
+            );
+            assert_eq!(
+                widths[3], widths[1],
+                "four source backslashes leave one visible backslash"
+            );
+        }
+    }
+}
+
+#[test]
+fn class_svg_empty_note_does_not_claim_typed_text_fill_when_node_is_source_owned() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    for (note, visible) in [("\\\\", false), ("Audit", true)] {
+        let source =
+            format!("classDiagram\nclass A\nstyle A color:#cc0000\nnote for A \"{note}\"\n");
+        for portability in [
+            ThemePortabilityRequirement::BestEffort,
+            ThemePortabilityRequirement::RequirePortable,
+        ] {
+            let rendered = try_render_class_svg_with_theme_requirement(
+                &source,
+                &theme,
+                Engine::new()
+                    .with_site_config(MermaidConfig::from_value(json!({"htmlLabels":false}))),
+                portability,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let note_label = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("label noteLabel"))
+                .unwrap();
+            let text = note_label
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert_eq!(text, if visible { "Audit" } else { "" });
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with("merman-classId-A-"))
+                })
+                .unwrap();
+            assert!(node.descendants().any(|node| {
+                node.attribute("style")
+                    .is_some_and(|style| style.contains("#cc0000"))
+            }));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(visible));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert_eq!(evidence.source_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn class_svg_literal_title_keeps_typed_text_fill_for_markdown_empty_alias() {
+    let theme = class_edge_rules_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    let source = format!("classDiagram\nclass A[\"{}\"]\n", "\\".repeat(3));
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        &source,
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(json!({"htmlLabels":false}))),
+    )
+    .unwrap();
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("label-group text"))
+        .unwrap();
+    assert_eq!(
+        title
+            .descendants()
+            .filter(|node| node.is_text())
+            .filter_map(|node| node.text())
+            .collect::<String>(),
+        "\\\\"
+    );
+    assert!(title.descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains("#2468ac"))
+    }));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    assert_eq!(evidence.source_residual_count(), 0);
+}
+
+#[test]
+fn class_svg_empty_markdown_members_restore_source_row_for_layout_and_emission() {
+    struct SlashWidthMeasurer;
+    impl merman_render::text::TextMeasurer for SlashWidthMeasurer {
+        fn measure(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+        ) -> merman_render::text::TextMetrics {
+            if !text.is_empty() && text.chars().all(|character| character == '\\') {
+                merman_render::text::TextMetrics {
+                    width: text.len() as f64 * 100.0,
+                    height: 20.0,
+                    line_count: 1,
+                }
+            } else {
+                merman_render::text::DeterministicTextMeasurer::default().measure(text, style)
+            }
+        }
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &merman_render::text::TextStyle,
+            max_width: Option<f64>,
+            wrap: merman_render::text::WrapMode,
+        ) -> merman_render::text::TextMetrics {
+            if !text.is_empty() && text.chars().all(|character| character == '\\') {
+                self.measure(text, style)
+            } else {
+                merman_render::text::DeterministicTextMeasurer::default()
+                    .measure_wrapped(text, style, max_width, wrap)
+            }
+        }
+    }
+    let profile = merman_render::environment::TextMeasurementProfile::new(
+        merman_render::environment::TextMeasurementProfileIdentity::new(
+            merman_render::environment::MeasurementProfileId::new(
+                "class-empty-markdown-slash-width",
+            )
+            .unwrap(),
+            "test",
+        )
+        .unwrap(),
+        std::sync::Arc::new(SlashWidthMeasurer),
+    );
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        merman_render::environment::TextMeasurementPolicy::uniform(profile),
+    );
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        let mut widths = Vec::new();
+        for count in [1, 2, 3, 4] {
+            let source = format!("classDiagram\nA : {}\n", "\\".repeat(count));
+            let parsed = Engine::new()
+                .with_site_config(MermaidConfig::from_value(
+                    json!({"htmlLabels":false,"layout":layout}),
+                ))
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+                .unwrap()
+                .unwrap();
+            let artifact = family::prepare(
+                parsed,
+                &LayoutOptions::default(),
+                environment.begin_session().unwrap(),
+            )
+            .unwrap();
+            let layout_json = artifact.layout_json().unwrap();
+            let node = layout_json["layout"]["ClassDiagramV2"]["nodes"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|node| node["id"] == "A")
+                .unwrap();
+            widths.push(node["width"].as_f64().unwrap());
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let class = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with("merman-classId-A-"))
+                })
+                .unwrap();
+            let visible = class
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            let expected = match count {
+                1 => "A",
+                2 | 4 => "A\\",
+                3 => "A\\\\",
+                _ => unreachable!(),
+            };
+            assert_eq!(visible, expected, "{layout}/{count}");
+            if count == 3 {
+                let member = class
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g")
+                            && node.attribute("class") == Some("members-group text")
+                    })
+                    .unwrap();
+                let outer = member
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("tspan")
+                            && node.attribute("class") == Some("row text-outer-tspan")
+                    })
+                    .unwrap();
+                assert_eq!(outer.text(), Some("\\\\"));
+                assert_eq!(
+                    outer.children().filter(|node| node.is_element()).count(),
+                    0,
+                    "shapeUtil fallback replaces inner tspans with literal textContent"
+                );
+            }
+        }
+        assert!(
+            widths[2] > widths[1] + 90.0,
+            "fallback row must measure both visible slashes: {widths:?}"
+        );
     }
 }

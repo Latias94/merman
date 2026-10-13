@@ -760,3 +760,74 @@ fn cynefin_mixed_base_typography_fails_closed() {
     );
     assert_eq!(error.incomplete_family_theme(), None);
 }
+
+#[test]
+fn repair_u7_cynefin_unmatched_text_variant_is_not_applicable() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                    )
+                    .with_variant(ThemeVariant::Warning),
+                ),
+            ),
+        )
+        .unwrap();
+    let (_, rendered) = try_render_cynefin_with_theme(
+        CYNEFIN_TEXT_FILL_SOURCE,
+        &theme,
+        Engine::new(),
+        &portable_cynefin_environment(),
+        "unmatched-variant",
+    )
+    .unwrap();
+    assert!(!rendered.svg().contains("#abcdef"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn repair_u7_cynefin_matching_ordinal_text_variant_remains_residual() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::Text,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+                    )
+                    .with_variant(ThemeVariant::Default)
+                    .with_ordinal(merman_render::diagram_theme::OrdinalSelector::Exact(1)),
+                ),
+            ),
+        )
+        .unwrap();
+    let (_, rendered) = try_render_cynefin_with_theme(
+        CYNEFIN_TEXT_FILL_SOURCE,
+        &theme,
+        Engine::new(),
+        &RenderEnvironment::deterministic(),
+        "matched-variant",
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert!(
+        try_render_cynefin_with_theme(
+            CYNEFIN_TEXT_FILL_SOURCE,
+            &theme,
+            Engine::new(),
+            &portable_cynefin_environment(),
+            "matched-variant"
+        )
+        .is_err()
+    );
+}

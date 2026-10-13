@@ -306,6 +306,10 @@ pub struct HostMeasurementFallbackPolicy {
 }
 
 impl HostMeasurementFallbackPolicy {
+    pub(crate) const EMPTY: Self = Self {
+        priority: Vec::new(),
+    };
+
     pub fn new(
         priority: impl IntoIterator<Item = HostMeasurementFallback>,
     ) -> Result<Self, ThemeAdmissionError> {

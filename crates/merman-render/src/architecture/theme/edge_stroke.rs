@@ -111,6 +111,11 @@ impl ArchitectureEdgeStrokePlan {
                     facet,
                 } => {
                     let observation = observations.entry(rule_index).or_default();
+                    if config_owns_stroke
+                        && resolved_style_property_for_facet(facet) == ResolvedStyleProperty::Stroke
+                    {
+                        continue;
+                    }
                     if !selector.ordinal_domain_intersects_occurrence_count(expected_edge_count) {
                         continue;
                     }
@@ -142,9 +147,7 @@ impl ArchitectureEdgeStrokePlan {
                                 FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
                             ),
                         ) if stroke_rule == Some(rule_index) => {
-                            if !config_owns_stroke {
-                                observation.pending = true;
-                            }
+                            observation.pending = true;
                         }
                         (FamilyThemeDisposition::TypedAdapter, _, _) => {
                             observation.incomplete = true;

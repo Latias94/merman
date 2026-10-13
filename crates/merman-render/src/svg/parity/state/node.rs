@@ -49,6 +49,23 @@ fn note_rough_cache_key(
     }
 }
 
+pub(super) fn state_rect_style(style: &str, radius: Option<f64>) -> std::borrow::Cow<'_, str> {
+    match radius {
+        Some(radius) => std::borrow::Cow::Owned(format!(
+            "{}{}rx:{}px;ry:{}px;",
+            style,
+            if style.is_empty() || style.ends_with(';') {
+                ""
+            } else {
+                ";"
+            },
+            fmt_display(radius.max(0.0)),
+            fmt_display(radius.max(0.0)),
+        )),
+        None => std::borrow::Cow::Borrowed(style),
+    }
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
@@ -705,7 +722,8 @@ pub(super) fn render_state_node_svg(
             if let Some(s) = label_html_start {
                 details.leaf_nodes_label_html += s.elapsed();
             }
-            let shape_style_escaped = escape_xml_display(shape_style_attr);
+            let rect_style = state_rect_style(shape_style_attr, radius_override);
+            let shape_style_escaped = escape_xml_display(&rect_style);
             let divider_style_escaped = escape_xml_display(shape_style_attr);
             let label_style_escaped = escape_xml_display(text_style_attr);
             let html_div_style_raw = format!(
@@ -972,7 +990,8 @@ pub(super) fn render_state_node_svg(
                 let rect_radius = radius_override
                     .unwrap_or(compatibility.rect_radius)
                     .max(0.0);
-                let rect_style = escape_xml_display(shape_style_attr);
+                let rect_style_raw = state_rect_style(shape_style_attr, radius_override);
+                let rect_style = escape_xml_display(&rect_style_raw);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
                 if ctx.html_labels {
                     let _ = write!(
@@ -1133,6 +1152,20 @@ pub(super) fn render_state_node_svg(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn rect_radius_style_preserves_prior_declarations_and_default_bytes() {
+        assert_eq!(
+            state_rect_style("fill:red !important", None),
+            "fill:red !important"
+        );
+        for style in ["fill:red !important", "fill:red !important;"] {
+            assert_eq!(
+                state_rect_style(style, Some(12.0)),
+                "fill:red !important;rx:12px;ry:12px;"
+            );
+        }
+    }
 
     #[test]
     fn note_cache_key_tracks_normalized_radius_without_colliding_with_rects() {

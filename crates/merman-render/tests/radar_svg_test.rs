@@ -16,11 +16,12 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::{DiagramFamilyId, LayoutOptions};
 
 fn radar_series_palette_theme(colors: &[&str]) -> DiagramTheme {
-    let palette =
-        OrdinalPalette::new(colors.iter().map(|color| {
-            ThemeColorValue::parse(*color).expect("valid Radar series palette color")
-        }))
-        .expect("non-empty Radar series palette");
+    let palette = OrdinalPalette::new(
+        colors
+            .iter()
+            .map(|color| ThemeColorValue::parse(color).expect("valid Radar series palette color")),
+    )
+    .expect("non-empty Radar series palette");
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::ChartSeries, palette),

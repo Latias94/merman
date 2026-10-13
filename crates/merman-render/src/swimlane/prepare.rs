@@ -481,6 +481,13 @@ pub(super) fn prepare(
             } else {
                 format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id)
             };
+            let mut unique_label_node_id = label_node_id.clone();
+            let mut suffix = 1usize;
+            while nodes.contains_key(&unique_label_node_id) {
+                unique_label_node_id = format!("{label_node_id}-{suffix}");
+                suffix += 1;
+            }
+            let label_node_id = unique_label_node_id;
             let source_parent = nodes
                 .get(&edge.from)
                 .and_then(|node| node.parent_id.clone());

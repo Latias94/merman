@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::sync::{Arc, OnceLock};
 
 use super::admission::ThemeCapability;
 use super::mechanisms::{
@@ -189,7 +190,6 @@ pub(crate) struct RootThemeReport {
     mechanisms: Vec<RootThemeMechanismEvidence>,
     required_mechanisms: Vec<RootThemeMechanismKey>,
     applied_mechanisms: Vec<RootThemeMechanismKey>,
-    required_capabilities: BTreeSet<ThemeCapability>,
     applied_capabilities: BTreeSet<ThemeCapability>,
     residuals: Vec<RootThemeResidual>,
 }
@@ -205,14 +205,25 @@ pub(crate) struct RootThemePlan {
 }
 
 impl RootThemePlan {
-    pub(crate) fn from_theme(theme: Option<&DiagramTheme>) -> Self {
-        let Some(theme) = theme else {
-            return Self::default();
-        };
+    pub(crate) fn from_spec(spec: &DiagramThemeSpec) -> Self {
         Self {
-            requirements: root_theme_requirements(theme.spec()),
-            canvas: theme.spec().canvas().clone(),
+            requirements: root_theme_requirements(spec),
+            canvas: spec.canvas().clone(),
         }
+    }
+
+    pub(crate) fn from_theme(theme: Option<&DiagramTheme>) -> Arc<Self> {
+        static EMPTY: OnceLock<Arc<RootThemePlan>> = OnceLock::new();
+        match theme {
+            Some(theme) => Arc::clone(theme.root_plan()),
+            None => Arc::clone(EMPTY.get_or_init(|| Arc::new(Self::default()))),
+        }
+    }
+
+    pub(crate) fn required_capabilities(&self) -> impl Iterator<Item = ThemeCapability> + '_ {
+        self.requirements
+            .iter()
+            .flat_map(RootThemeRequirement::capabilities)
     }
 
     pub(crate) const fn canvas(&self) -> &CanvasSpec {
@@ -318,10 +329,6 @@ impl RootThemeReport {
             })
             .map(|mechanism| mechanism.key.clone())
             .collect();
-        let required_capabilities = mechanisms
-            .iter()
-            .flat_map(|mechanism| mechanism.required_capabilities.iter().copied())
-            .collect();
         let applied_capabilities = mechanisms
             .iter()
             .flat_map(|mechanism| mechanism.applied_capabilities.iter().copied())
@@ -342,7 +349,6 @@ impl RootThemeReport {
             mechanisms,
             required_mechanisms,
             applied_mechanisms,
-            required_capabilities,
             applied_capabilities,
             residuals,
         }
@@ -593,6 +599,34 @@ mod tests {
             residual_capabilities: residual.iter().copied().collect(),
             residual_reason,
         }
+    }
+
+    #[test]
+    fn compiled_root_plan_is_shared_but_application_evidence_is_operation_local() {
+        let theme = super::super::DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_canvas(CanvasSpec::solid("#123456").unwrap()))
+            .unwrap();
+        let first = RootThemePlan::from_theme(Some(&theme));
+        let second = RootThemePlan::from_theme(Some(&theme));
+        assert!(Arc::ptr_eq(&first, &second));
+        assert!(Arc::ptr_eq(&first, theme.root_plan()));
+        assert!(Arc::ptr_eq(
+            &RootThemePlan::from_theme(None),
+            &RootThemePlan::from_theme(None)
+        ));
+        let mut applied = first.begin_svg_application();
+        assert!(applied.mark_applied(
+            &RootThemeMechanismKey::CanvasBase,
+            [ThemeCapability::SolidPaint]
+        ));
+        assert_eq!(
+            applied.finish().verification(),
+            RootThemeVerification::Verified
+        );
+        assert_eq!(
+            second.begin_svg_application().finish().verification(),
+            RootThemeVerification::Unverified
+        );
     }
 
     #[test]

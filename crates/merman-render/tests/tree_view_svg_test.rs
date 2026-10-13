@@ -1759,3 +1759,244 @@ fn tree_view_public_layout_accepts_max_allowed_chain() {
         Some(expected_last.as_str())
     );
 }
+
+#[test]
+fn tree_view_label_paint_preserves_winning_unsupported_sibling_facets() {
+    for target in [ThemeTarget::NodeLabel, ThemeTarget::Text] {
+        let theme = tree_view_rules_theme([ThemeRule::new(
+            target,
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").unwrap())
+                .with_padding(InsetsPx::all(2.0)),
+        )]);
+        let error = try_render_tree_view_svg_with_theme("treeView-beta\nRoot\n", &theme)
+            .expect_err("a supported label fill cannot prove an unsupported padding sibling");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::TREE_VIEW, 1)),
+            "target={target:?}",
+        );
+        let mut clear_padding = ThemeStylePatch::default();
+        clear_padding.spacing.padding = Specified::Clear;
+        let shadowed = tree_view_rules_theme([
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#123456").unwrap())
+                    .with_padding(InsetsPx::all(2.0)),
+            ),
+            ThemeRule::new(target, clear_padding),
+        ]);
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            "treeView-beta\nRoot\n",
+            &shadowed,
+            Engine::new(),
+            ThemePortabilityRequirement::BestEffort,
+            &RenderEnvironment::deterministic(),
+            "tree-view-shadowed-label-padding",
+        )
+        .expect("the old padding facet is shadowed while Clear remains unsupported");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        let error = try_render_tree_view_svg_with_theme("treeView-beta\nRoot\n", &shadowed)
+            .expect_err("the winning unsupported Clear facet must still fail closed");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::TREE_VIEW, 1))
+        );
+
+        let shadowed_fill = tree_view_rules_theme([
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ),
+        ]);
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            "treeView-beta\nRoot\n",
+            &shadowed_fill,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &RenderEnvironment::deterministic(),
+            "tree-view-shadowed-label-selector",
+        )
+        .expect("a later static fill shadows the unsupported ordinal fill route");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn tree_view_label_paint_does_not_hide_winning_ordinal_opacity() {
+    for target in [ThemeTarget::NodeLabel, ThemeTarget::Text] {
+        let mut unsupported = ThemeStylePatch::default();
+        unsupported.paint.opacity = Specified::Value(0.5);
+        let theme = tree_view_rules_theme([
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ),
+            ThemeRule::new(target, unsupported).with_ordinal(OrdinalSelector::exact(2).unwrap()),
+        ]);
+        let error = try_render_tree_view_svg_with_theme("treeView-beta\nRoot\n", &theme)
+            .expect_err("the real second label occurrence has an unsupported opacity winner");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::TREE_VIEW, 1))
+        );
+    }
+}
+
+#[test]
+fn tree_view_mixed_icons_do_not_block_label_or_font_evidence() {
+    let registry = IconRegistry::from_packs([IconPack::new(
+        br##"{"prefix":"test","icons":{"mixed":{"body":"<path fill=\"currentColor\" d=\"M0 0H16V8H0Z\"/><path fill=\"#ff0000\" d=\"M0 8H16V16H0Z\"/>"}}}"##,
+    )]).unwrap();
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
+    for theme in [
+        tree_view_typography_theme(
+            ThemeTextStyle::default().with_font_stack(FontStack::single("TreeTypedFace").unwrap()),
+        ),
+        tree_view_rules_theme([ThemeRule::new(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )]),
+    ] {
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            "treeView-beta\nMixed icon(test:mixed)\n",
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &environment,
+            "tree-view-independent-icon-channel",
+        )
+        .expect("unrequested icon color must not erase label or font evidence");
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn tree_view_mixed_marker_icons_retain_independent_font_evidence() {
+    let registry = IconRegistry::from_packs([IconPack::new(
+        br##"{"prefix":"test","icons":{"mixed":{"body":"<path fill=\"currentColor\" d=\"M0 0H16V8H0Z\"/><path fill=\"#ff0000\" d=\"M0 8H16V16H0Z\"/>"}}}"##,
+    )]).unwrap();
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::TREE_VIEW,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("TreeTypedFace").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Marker,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nMixed icon(test:mixed)\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::BestEffort,
+        &environment,
+        "tree-view-independent-font-marker",
+    )
+    .expect("best effort retains independent font facts beside an incomplete marker");
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+    let strict = try_render_tree_view_with_theme_and_environment(
+        "treeView-beta\nMixed icon(test:mixed)\n",
+        &theme,
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
+        &environment,
+        "tree-view-incomplete-marker",
+    );
+    let error = match strict {
+        Ok(_) => panic!("the marker color still requires its own proof"),
+        Err(error) => error,
+    };
+    assert_eq!(
+        error.incomplete_family_theme(),
+        Some((DiagramFamilyId::TREE_VIEW, 2, 1))
+    );
+}
+
+#[test]
+fn tree_view_icon_paint_tracks_inheritance_and_non_painting_channels() {
+    let registry = IconRegistry::from_packs([IconPack::new(br##"{
+        "prefix":"test","icons":{
+            "outline":{"body":"<path fill=\"none\" stroke=\"currentColor\" d=\"M0 0H16V16H0Z\"/>"},
+            "filled":{"body":"<path fill=\"currentColor\" stroke=\"none\" d=\"M0 0H16V16H0Z\"/>"},
+            "transparent":{"body":"<path fill=\"rgba(255,0,0,0)\" stroke=\"currentColor\" d=\"M0 0H16V16H0Z\"/>"},
+            "inherited":{"body":"<g fill=\"currentColor\"><path d=\"M0 0H16V16H0Z\"/></g>"},
+            "mixed":{"body":"<g fill=\"#ff0000\"><path stroke=\"currentColor\" d=\"M0 0H16V16H0Z\"/></g>"},
+            "defaultfill":{"body":"<path stroke=\"currentColor\" d=\"M0 0H16V16H0Z\"/>"}
+        }}"##)]).unwrap();
+    let environment = RenderEnvironment::deterministic().with_icon_registry(registry);
+    let theme = tree_view_rules_theme([ThemeRule::new(
+        ThemeTarget::Marker,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )]);
+    for name in ["outline", "filled", "transparent", "inherited"] {
+        let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+            &format!("treeView-beta\nIcon icon(test:{name})\n"),
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &environment,
+            "tree-view-icon-effective-paint",
+        )
+        .unwrap_or_else(|error| panic!("currentColor icon {name} must be portable: {error}"));
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            tree_view_icon_group_for_label(&document, "Icon")
+                .attribute("id")
+                .is_some_and(
+                    |id| id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX)
+                )
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    for name in ["mixed", "defaultfill"] {
+        let result = try_render_tree_view_with_theme_and_environment(
+            &format!("treeView-beta\nIcon icon(test:{name})\n"),
+            &theme,
+            Engine::new(),
+            ThemePortabilityRequirement::RequirePortable,
+            &environment,
+            "tree-view-icon-mixed-effective-paint",
+        );
+        let error = match result {
+            Ok(_) => panic!("visible fixed fill in {name} must fail closed"),
+            Err(error) => error,
+        };
+        assert_eq!(
+            error.incomplete_family_theme(),
+            Some((DiagramFamilyId::TREE_VIEW, 1, 0))
+        );
+    }
+}

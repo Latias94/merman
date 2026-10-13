@@ -1,7 +1,7 @@
 #[cfg(any(feature = "diagram-class", feature = "diagram-sequence"))]
 use rustc_hash::FxHashMap;
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "diagram-class")]
+#[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
 use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

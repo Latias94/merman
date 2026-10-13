@@ -88,9 +88,7 @@ fn native_fonts_reject_unmeasured_node_and_class_text_geometry() {
             RenderTarget::Svg(native_request()),
             OperationControl::new(),
         ));
-        let error = result
-            .err()
-            .expect("unsupported typography must fail admission");
+        let error = result.expect_err("unsupported typography must fail admission");
         assert!(error.to_string().contains("text geometry style"), "{error}");
     }
 }
@@ -116,8 +114,7 @@ fn native_class_rejects_relative_and_unsupported_theme_sizes() {
                     RenderTarget::Svg(native_request()),
                     OperationControl::new(),
                 ))
-                .err()
-                .expect("Class layout/CSS size mismatch must fail native admission");
+                .expect_err("Class layout/CSS size mismatch must fail native admission");
             assert!(
                 error.to_string().contains("native Class"),
                 "{header}, {size}: {error}"
@@ -183,9 +180,7 @@ fn native_fonts_reject_css_injected_by_output_policy() {
         RenderTarget::Svg(request),
         OperationControl::new(),
     ));
-    let error = result
-        .err()
-        .expect("post-layout CSS must fail native admission");
+    let error = result.expect_err("post-layout CSS must fail native admission");
     assert!(error.to_string().contains("scoped CSS"), "{error}");
 }
 
@@ -220,9 +215,7 @@ fn native_fonts_check_other_families_structured_style_slots() {
             RenderTarget::Svg(native_request()),
             OperationControl::new(),
         ));
-        let error = result
-            .err()
-            .expect("unmeasured text geometry must fail admission");
+        let error = result.expect_err("unmeasured text geometry must fail admission");
         assert!(
             error.to_string().contains("text geometry style"),
             "{source}: {error}"
@@ -309,8 +302,10 @@ mod binary_context_contract {
     fn render(
         source: &str,
         target: RenderTarget,
-    ) -> Result<merman::RenderOutput, merman::RenderError> {
-        Renderer::new().render(RenderRequest::new(source, target, OperationControl::new()))
+    ) -> Result<merman::RenderOutput, Box<merman::RenderError>> {
+        Renderer::new()
+            .render(RenderRequest::new(source, target, OperationControl::new()))
+            .map_err(Box::new)
     }
 
     #[test]
@@ -363,7 +358,7 @@ mod binary_context_contract {
                     .for_operation(&OperationControl::new()),
             );
             let error = render("flowchart LR\nA[Long label]", target).unwrap_err();
-            let merman::RenderError::ResourceLimitExceeded(limit) = error else {
+            let merman::RenderError::ResourceLimitExceeded(limit) = *error else {
                 panic!("expected active native measurement resource limit, got {error}");
             };
             assert_eq!(limit.id, "native_font_label_bytes");
@@ -516,8 +511,8 @@ mod document_context_contract {
                         .with_font_context(painting.clone()),
                     control.clone(),
                 )
-                .err()
-                .expect("PNG must reject a conflicting context"),
+                .map(|_| ())
+                .expect_err("PNG must reject a conflicting context"),
             #[cfg(feature = "jpeg")]
             document
                 .prepare_jpeg_export(
@@ -525,16 +520,16 @@ mod document_context_contract {
                         .with_font_context(painting.clone()),
                     control.clone(),
                 )
-                .err()
-                .expect("JPEG must reject a conflicting context"),
+                .map(|_| ())
+                .expect_err("JPEG must reject a conflicting context"),
             #[cfg(feature = "pdf")]
             document
                 .prepare_pdf_export(
                     &merman::svg::export::PdfOptions::default().with_font_context(painting.clone()),
                     control.clone(),
                 )
-                .err()
-                .expect("PDF must reject a conflicting context"),
+                .map(|_| ())
+                .expect_err("PDF must reject a conflicting context"),
         ]
     }
 

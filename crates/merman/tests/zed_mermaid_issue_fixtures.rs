@@ -35,7 +35,7 @@ fn render_with_profile(
     profile: RenderResourceProfile,
     parse_options: ParseOptions,
     pipeline: Option<SvgPipeline>,
-) -> Result<Option<String>, merman::RenderError> {
+) -> Result<Option<String>, Box<merman::RenderError>> {
     let policy = RenderResourcePolicy::for_profile(profile);
     let renderer = Renderer::new()
         .with_parse_options(parse_options)

@@ -631,13 +631,12 @@ mod tests {
             }
             for rule in recipe.styles.as_ref().unwrap() {
                 if let merman_theme_contract::ThemeRuleSetWireV1::Rule { target, style, .. } = rule
+                    && (target.ends_with("label") || target == "title")
                 {
-                    if target.ends_with("label") || target == "title" {
-                        assert!(matches!(
-                            style.effect,
-                            merman_theme_contract::SpecifiedWireV1::Unspecified
-                        ));
-                    }
+                    assert!(matches!(
+                        style.effect,
+                        merman_theme_contract::SpecifiedWireV1::Unspecified
+                    ));
                 }
             }
 
@@ -1499,52 +1498,96 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "diagram-kanban")]
     #[test]
     fn built_in_kanban_presets_pair_each_task_palette_slot_with_a_readable_label() {
         const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
-
+        let mut source = "kanban\n  todo[Todo]\n".to_owned();
+        for ordinal in 1..=24 {
+            source.push_str(&format!("    task{ordinal}[Task {ordinal}]\n"));
+        }
         for preset in all_presets() {
             let palette = preset_palette(preset);
-            let theme = DiagramThemeCompiler::new()
-                .compile_preset(preset)
-                .expect("built-in theme preset should compile");
-            let kanban = theme.resolve(DiagramFamilyId::KANBAN);
-
-            for item_ordinal in 1..=24 {
-                let terminal_ordinal = (item_ordinal - 1) % 12 + 1;
-                let task_fill = kanban
-                    .series_color(ThemeTarget::Task, terminal_ordinal)
-                    .map(ThemeColorValue::as_css)
-                    .expect("Kanban task palette slot");
-                let terminal_fill = if preset.is_dark() {
-                    merman_core::theme_color::darken(&task_fill, 10.0)
-                } else {
-                    merman_core::theme_color::lighten(&task_fill, 10.0)
-                }
-                .expect("built-in Kanban task color");
-                let label = kanban
-                    .style(
-                        ThemeTarget::TaskLabel,
-                        ThemeVariant::Default,
-                        Some(item_ordinal),
+            let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+            let dark_modes: &[Option<bool>] = if preset == ThemePreset::Cyberpunk {
+                &[None, Some(false), Some(true)]
+            } else {
+                &[None]
+            };
+            for &dark_mode in dark_modes {
+                let engine = match dark_mode {
+                    Some(value) => merman_core::Engine::new().with_site_config(
+                        merman_core::MermaidConfig::from_value(
+                            serde_json::json!({"darkMode": value}),
+                        ),
+                    ),
+                    None => merman_core::Engine::new(),
+                };
+                let parsed = crate::__private::install_parse_compatibility(&theme, engine)
+                    .parse_diagram_for_render_model_sync(
+                        &source,
+                        merman_core::ParseOptions::strict(),
                     )
-                    .fill()
-                    .and_then(solid_color)
-                    .expect("each Kanban task palette slot must own its label foreground");
-                assert_eq!(
-                    label,
-                    palette.kanban_task_labels
-                        [(terminal_ordinal - 1) % palette.kanban_task_labels.len()],
-                    "{} Kanban item {item_ordinal} terminal slot {terminal_ordinal} authored label foreground",
-                    preset.id()
-                );
-                let ratio = contrast_ratio(&label, &terminal_fill);
-
-                assert!(
-                    ratio >= MINIMUM_TEXT_CONTRAST,
-                    "{} Kanban item {item_ordinal} terminal slot {terminal_ordinal} contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({label} on {terminal_fill})",
-                    preset.id()
-                );
+                    .unwrap()
+                    .unwrap();
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .begin_session_with_theme(&theme)
+                    .unwrap();
+                let rendered =
+                    crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+                        .unwrap()
+                        .render_svg(
+                            &crate::svg::SvgRenderOptions {
+                                diagram_id: Some("kanban-contrast".into()),
+                                ..Default::default()
+                            },
+                            &crate::svg::SvgDebugOptions::default(),
+                        )
+                        .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                for ordinal in 1..=24 {
+                    let id = format!("kanban-contrast-task{ordinal}");
+                    let group = document
+                        .descendants()
+                        .find(|node| node.attribute("id") == Some(id.as_str()))
+                        .unwrap();
+                    let fill = group
+                        .children()
+                        .find(|node| node.has_tag_name("rect"))
+                        .and_then(|node| node.attribute("style"))
+                        .and_then(|style| {
+                            style
+                                .split(';')
+                                .filter_map(|declaration| declaration.split_once(':'))
+                                .find_map(|(property, value)| {
+                                    (property.trim() == "fill").then_some(value.trim())
+                                })
+                        })
+                        .unwrap();
+                    let label = group
+                        .descendants()
+                        .filter_map(|node| node.attribute("style"))
+                        .find_map(|style| {
+                            style
+                                .split(';')
+                                .filter_map(|declaration| declaration.split_once(':'))
+                                .find_map(|(property, value)| {
+                                    (property.trim() == "color").then_some(value.trim())
+                                })
+                        })
+                        .unwrap();
+                    let slot = (ordinal - 1) % 12;
+                    assert_eq!(
+                        label,
+                        palette.kanban_task_labels[slot % palette.kanban_task_labels.len()]
+                    );
+                    let ratio = contrast_ratio(label, fill);
+                    assert!(
+                        ratio >= MINIMUM_TEXT_CONTRAST,
+                        "{} darkMode={dark_mode:?} item {ordinal} terminal contrast {ratio:.2}:1 ({label} on {fill})",
+                        preset.id()
+                    );
+                }
             }
         }
     }

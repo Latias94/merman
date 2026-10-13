@@ -19,28 +19,3 @@ pub(super) fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelector
         });
     }
 }
-
-#[cfg(test)]
-pub(super) fn for_each_matrix_rule_facet(mut visit: impl FnMut(FamilyThemeRuleFacet)) {
-    for kind in FamilyThemePaintKind::ALL {
-        visit(FamilyThemeRuleFacet::Fill(kind));
-        visit(FamilyThemeRuleFacet::Stroke(kind));
-    }
-    for facet in [
-        FamilyThemeRuleFacet::StrokeWidth,
-        FamilyThemeRuleFacet::StrokeDasharray,
-        FamilyThemeRuleFacet::StrokeLinecap,
-        FamilyThemeRuleFacet::StrokeLinejoin,
-        FamilyThemeRuleFacet::Opacity,
-        FamilyThemeRuleFacet::FillOpacity,
-        FamilyThemeRuleFacet::StrokeOpacity,
-        FamilyThemeRuleFacet::Radius,
-        FamilyThemeRuleFacet::Padding,
-        FamilyThemeRuleFacet::Effect,
-    ] {
-        visit(facet);
-    }
-    for &property in ThemeTypographyProperty::ALL {
-        visit(FamilyThemeRuleFacet::Typography(property));
-    }
-}

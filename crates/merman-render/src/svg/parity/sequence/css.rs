@@ -483,7 +483,7 @@ mod tests {
             result,
             Err(crate::Error::ResourceLimitExceeded(_))
         ));
-        assert!(short.as_str().len() <= expected.len() - 1);
+        assert!(short.as_str().len() < expected.len());
     }
 
     #[test]

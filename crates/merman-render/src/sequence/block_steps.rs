@@ -141,6 +141,7 @@ pub(super) struct BlockStepPlanContext<'a> {
     pub(super) loop_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
     pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    pub(super) note_math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) message_metrics: SequenceMessageMetricView<'a>,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
@@ -280,6 +281,7 @@ struct BlockFrameWidthContext<'a> {
     loop_text_style: &'a TextStyle,
     math_config: &'a MermaidConfig,
     math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    note_math_terminal_style: super::SequenceTerminalTextStyle<'a>,
     math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     message_metrics: SequenceMessageMetricView<'a>,
     checkpoints: SequenceLayoutCheckpoints<'a>,
@@ -311,6 +313,7 @@ impl<'a> BlockStepPlanContext<'a> {
             loop_text_style: self.loop_text_style,
             math_config: self.math_config,
             math_terminal_style: self.math_terminal_style,
+            note_math_terminal_style: self.note_math_terminal_style,
             math_sidecar: self.math_sidecar,
             message_metrics: self.message_metrics,
             checkpoints: self.checkpoints,
@@ -525,7 +528,7 @@ fn calculate_sequence_block_bounds(
                     measurer: ctx.measurer,
                     note_text_style: ctx.note_text_style,
                     math_config: ctx.math_config,
-                    math_terminal_style: ctx.math_terminal_style,
+                    math_terminal_style: ctx.note_math_terminal_style,
                     math_sidecar: ctx.math_sidecar,
                     message_index,
                     checkpoints,
@@ -650,6 +653,12 @@ mod tests {
                 math_config: &math_config,
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &msg_style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &note_style,
                     foreground: "#333",
                     foreground_provenance:
                         crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
@@ -827,6 +836,12 @@ mod tests {
                 loop_text_style: &text_style,
                 math_config: &math_config,
                 math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &text_style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                note_math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
                     text_style: &text_style,
                     foreground: "#333",
                     foreground_provenance:

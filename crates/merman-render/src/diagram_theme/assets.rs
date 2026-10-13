@@ -232,6 +232,9 @@ impl fmt::Debug for FontAssetFingerprint {
     }
 }
 
+/// Compatibility projection for an embedded asset produced by earlier catalog implementations.
+///
+/// The current compiler admits system fonts only and never constructs this result type.
 #[derive(Clone)]
 pub struct FontAsset {
     id: String,
@@ -373,14 +376,17 @@ impl FontCatalog {
         Self(FontCatalogFingerprint(hasher.finalize().into()))
     }
 
+    /// Compatibility projection. System-font catalogs retain no embedded asset results.
     pub fn assets(&self) -> &[FontAsset] {
         &[]
     }
 
+    /// Compatibility projection. System-font catalogs retain no prepared font-face metadata.
     pub fn faces(&self) -> &[FontFaceMetadata] {
         &[]
     }
 
+    /// Compatibility projection. System-font catalogs retain no embedded family aliases.
     pub fn aliases(&self) -> &[FontFamilyAlias] {
         &[]
     }
@@ -476,6 +482,10 @@ pub enum FontAssetIdError {
     InvalidCharacter,
 }
 
+/// Font input failures and compatibility variants from the retired embedded-font compiler.
+///
+/// Current custom-byte compilation performs input, source and resource admission, then returns
+/// `EmbeddedFontsUnavailable`; parser and embedding variants remain for Rust API compatibility.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum FontCatalogError {

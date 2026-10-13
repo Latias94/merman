@@ -8,7 +8,6 @@ mod basis;
 mod boundary;
 mod compute;
 mod curve_path;
-mod degenerate_path;
 mod elk_points;
 mod intersect;
 mod line_with_offset;
@@ -22,7 +21,6 @@ pub(super) use crate::svg::parity::edge_path::maybe_fix_corners;
 pub(super) use basis::maybe_remove_redundant_cluster_run_point;
 pub(super) use boundary::{BoundaryNode, boundary_for_cluster, boundary_for_node};
 pub(super) use curve_path::curve_path_d_and_bounds;
-pub(super) use degenerate_path::maybe_collapse_degenerate_subgraph_edge_route;
 pub(super) use elk_points::{
     ElkEndpointAdapterCorners, apply_flowchart_elk_endpoint_cutter, missing_section_label_position,
     missing_section_points,
@@ -54,7 +52,6 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
     pub(super) origin_x: f64,
     pub(super) origin_y: f64,
     pub(super) trace_enabled: bool,
-    pub(super) collapse_degenerate_subgraph_route: bool,
 }
 
 pub(in crate::svg::parity::flowchart) fn flowchart_compute_edge_path_geom(

@@ -295,37 +295,13 @@ impl DiagramEffectSet {
         self.graphs.iter().find(|graph| graph.id == id)
     }
 
-    pub(crate) fn validate(&self) -> Result<(), ThemeCompileValidationError> {
-        if self.graphs.len() > MAX_EFFECT_GRAPHS_HARD_CAP {
-            return Err(ThemeCompileValidationError::LimitExceeded {
-                field: "effects.graphs",
-            });
-        }
-        if self.bindings.len() > MAX_EFFECT_BINDINGS_HARD_CAP {
-            return Err(ThemeCompileValidationError::LimitExceeded {
-                field: "effects.bindings",
-            });
-        }
-        let targets = self
-            .bindings
-            .iter()
-            .map(|binding| binding.target)
-            .collect::<std::collections::BTreeSet<_>>();
-        if targets.len() != self.bindings.len() {
-            return Err(ThemeCompileValidationError::DuplicateId {
-                field: "effects.binding.target",
-            });
-        }
+    /// Builders own local bounds and uniqueness; compilation owns cross-graph references.
+    pub(crate) fn validate_references(&self) -> Result<(), ThemeCompileValidationError> {
         let ids = self
             .graphs
             .iter()
             .map(|graph| graph.id.as_str())
             .collect::<std::collections::BTreeSet<_>>();
-        if ids.len() != self.graphs.len() {
-            return Err(ThemeCompileValidationError::DuplicateId {
-                field: "effects.graph.id",
-            });
-        }
         for binding in &self.bindings {
             if !ids.contains(binding.effect_id.as_str()) {
                 return Err(ThemeCompileValidationError::UnknownId {

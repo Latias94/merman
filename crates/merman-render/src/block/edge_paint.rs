@@ -110,8 +110,9 @@ impl BlockEdgePaintPlan {
             || model.class_defs.values().any(|class| {
                 class.id == "block"
                     && class.styles.iter().any(|raw| {
-                        crate::mermaid_style::parse_style_declaration(raw)
-                            .is_some_and(|declaration| declaration.property() == "stroke")
+                        crate::mermaid_style::parse_style_declaration(raw).is_some_and(
+                            |declaration| matches!(declaration.property(), "stroke" | "all"),
+                        )
                     })
             });
         let has_ordinal = theme

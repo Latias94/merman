@@ -137,8 +137,10 @@ fn svg_pipeline_selection_does_not_change_theme_identity() {
         panic!("expected a themed SVG");
     };
 
-    let mut readable_request = SvgRequest::default();
-    readable_request.pipeline = Some(SvgPipeline::readable());
+    let readable_request = SvgRequest {
+        pipeline: Some(SvgPipeline::readable()),
+        ..SvgRequest::default()
+    };
     let readable = renderer
         .render(
             RenderRequest::svg(SOURCE, OperationControl::new(), readable_request)

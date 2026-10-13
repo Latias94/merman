@@ -98,16 +98,20 @@ pub(super) fn write_class_svg_plain_node_text<'a>(
     terminal_style
 }
 
-pub(super) fn write_class_svg_text_markdown(
-    out: &mut impl SvgOutput,
-    markdown: &str,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_markdown(out, markdown, include_style);
-}
-
 pub(super) fn write_class_svg_edge_text(out: &mut impl SvgOutput, text: &str, include_style: bool) {
     crate::svg::parity::label::write_svg_text_centered(out, text, include_style);
+}
+
+pub(super) fn write_class_svg_empty_markdown_fallback(
+    out: &mut impl SvgOutput,
+    text: &str,
+    style: &str,
+) {
+    out.push_str(r#"<text y="-10.1""#);
+    super::super::util::write_style_attribute(out, Some(style));
+    out.push_str(r#"><tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+    escape_xml_into(out, text);
+    out.push_str("</tspan></text>");
 }
 
 pub(super) fn write_class_svg_text_markdown_with_style<'a>(
@@ -115,67 +119,16 @@ pub(super) fn write_class_svg_text_markdown_with_style<'a>(
     markdown: &str,
     terminal_style: &'a str,
 ) -> Option<&'a str> {
-    if terminal_style.trim().is_empty() {
-        write_class_svg_text_markdown(out, markdown, true);
-        return None;
-    }
-
-    let markdown = markdown
-        .strip_prefix('\x60')
-        .and_then(|value| value.strip_suffix('\x60'))
-        .unwrap_or(markdown);
-    let lines = crate::text::mermaid_markdown_to_lines(markdown, true);
-    out.push_str(r#"<text y="-10.1""#);
-    let emitted_style = super::super::util::write_style_attribute(out, Some(terminal_style));
-    out.push('>');
-
-    if lines.len() == 1 && lines[0].is_empty() {
-        out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/>"#);
-        out.push_str("</text>");
-        return emitted_style;
-    }
-
-    for (line_index, words) in lines.iter().enumerate() {
-        if line_index == 0 {
-            out.push_str(r#"<tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em">"#);
+    crate::svg::parity::label::write_svg_text_markdown_with_style(
+        out,
+        markdown,
+        Some(if terminal_style.trim().is_empty() {
+            ""
         } else {
-            let y_em = if line_index == 1 {
-                "1em".to_string()
-            } else {
-                format!("{:.1}em", 1.0 + (line_index as f64 - 1.0) * 1.1)
-            };
-            let _ = write!(
-                out,
-                r#"<tspan class="row text-outer-tspan" x="0" y="{}" dy="1.1em">"#,
-                y_em
-            );
-        }
-        for (word_index, (word, kind)) in words.iter().enumerate() {
-            let font_style = if *kind == crate::text::MermaidMarkdownWordType::Em {
-                "italic"
-            } else {
-                "normal"
-            };
-            let font_weight = if *kind == crate::text::MermaidMarkdownWordType::Strong {
-                "bold"
-            } else {
-                "normal"
-            };
-            let _ = write!(
-                out,
-                r#"<tspan font-style="{}" class="text-inner-tspan" font-weight="{}">"#,
-                font_style, font_weight
-            );
-            if word_index > 0 {
-                out.push(' ');
-            }
-            escape_xml_into(out, word);
-            out.push_str("</tspan>");
-        }
-        out.push_str("</tspan>");
-    }
-    out.push_str("</text>");
-    emitted_style
+            terminal_style
+        }),
+    )
+    .filter(|style| !style.is_empty())
 }
 
 pub(super) fn write_class_svg_edge_text_with_style<'a>(
@@ -561,6 +514,67 @@ mod paint_emission_tests {
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
         ThemeStylePatch, ThemeTarget,
     };
+
+    #[test]
+    fn styled_class_markdown_preserves_unstyled_dom_bytes() {
+        // These byte oracles retain the pre-consolidation Class writer's empty and multiline DOM.
+        for (markdown, expected) in [
+            (
+                "",
+                r#"<text y="-10.1" style=""><tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"/></text>"#,
+            ),
+            (
+                "`first\n\n**bold** *em*`",
+                concat!(
+                    r#"<text y="-10.1" style=""><tspan class="row text-outer-tspan" x="0" y="-0.1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="normal">first</tspan></tspan>"#,
+                    r#"<tspan class="row text-outer-tspan" x="0" y="1em" dy="1.1em"><tspan font-style="normal" class="text-inner-tspan" font-weight="bold">bold</tspan><tspan font-style="italic" class="text-inner-tspan" font-weight="normal"> em</tspan></tspan></text>"#,
+                ),
+            ),
+        ] {
+            for style in ["", " \t", "color:#123456;fill:#123456"] {
+                let mut output = String::new();
+                let receipt =
+                    write_class_svg_text_markdown_with_style(&mut output, markdown, style);
+                if style.trim().is_empty() {
+                    assert_eq!(receipt, None);
+                    assert_eq!(output, expected);
+                } else {
+                    assert_eq!(receipt, Some(style));
+                    assert_eq!(output.replacen(style, "", 1), expected);
+                    let document = roxmltree::Document::parse(&output).unwrap();
+                    assert_eq!(document.root_element().attribute("style"), Some(style));
+                }
+            }
+        }
+        for markdown in [
+            "",
+            "`first\n\n**bold** *em* &amp; &lt;`",
+            "plain &nbsp; text",
+            "\\\\method()",
+        ] {
+            let mut plain = String::new();
+            crate::svg::parity::label::write_svg_text_markdown_with_style(
+                &mut plain,
+                markdown,
+                Some(""),
+            );
+            let mut styled = String::new();
+            let style = "color:#123456;fill:#123456";
+            assert_eq!(
+                write_class_svg_text_markdown_with_style(&mut styled, markdown, style),
+                Some(style)
+            );
+            assert_eq!(styled.replacen(style, "", 1), plain, "{markdown:?}");
+            for empty in ["", " \t"] {
+                let mut empty_style = String::new();
+                assert_eq!(
+                    write_class_svg_text_markdown_with_style(&mut empty_style, markdown, empty),
+                    None
+                );
+                assert_eq!(empty_style, plain, "{markdown:?}");
+            }
+        }
+    }
 
     #[derive(Clone, Copy, Debug)]
     enum Channel {

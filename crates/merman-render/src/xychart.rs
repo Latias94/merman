@@ -15,7 +15,9 @@ mod paint;
 mod series;
 mod theme;
 
-pub(crate) use paint::{XyChartPaintPlan, XyChartPaintReceipt, XyChartPaintTerminalId};
+pub(crate) use paint::{
+    XyChartPaintPlan, XyChartPaintReceipt, XyChartPaintTerminalId, text_is_visible,
+};
 
 pub(crate) use series::{XyChartSeriesPaintPlan, XyChartSeriesPaintReceipt};
 pub(crate) use theme::{XyChartTextRole, XyChartTypographyThemePlan};

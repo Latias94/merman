@@ -231,7 +231,7 @@ impl CynefinTypographyThemePlan {
                 "themeVariables.cynefin.textColor",
             ));
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
-        let mut unsupported_routes = cynefin_unsupported_routes(theme).into_vec();
+        let mut unsupported_routes = cynefin_unsupported_routes(theme, &mut evidence).into_vec();
         if let Some(theme) = theme
             && theme.ordinal_palette_disposition(ThemeTarget::Text)
                 == Some(FamilyThemeDisposition::Unsupported)
@@ -431,6 +431,7 @@ impl CynefinTypographyThemePlan {
 
 fn cynefin_unsupported_routes(
     theme: Option<&ResolvedDiagramTheme>,
+    evidence: &mut FamilyThemeEvidence,
 ) -> Box<[CynefinUnsupportedRoute]> {
     let Some(theme) = theme else {
         return Box::new([]);
@@ -441,6 +442,23 @@ fn cynefin_unsupported_routes(
         .copied()
         .filter_map(|route| {
             if route.disposition() != FamilyThemeDisposition::Unsupported {
+                return None;
+            }
+            if let FamilyThemeMechanism::RuleFacet {
+                target: ThemeTarget::Text,
+                selector:
+                    crate::diagram_theme::FamilyThemeSelectorShape::Static {
+                        variant: Some(variant),
+                    }
+                    | crate::diagram_theme::FamilyThemeSelectorShape::Ordinal {
+                        variant: Some(variant),
+                        ..
+                    },
+                ..
+            } = route.mechanism()
+                && variant != ThemeVariant::Default
+            {
+                evidence.mark_not_applicable(theme.family_mechanism_key(route));
                 return None;
             }
             let reason = match route.mechanism() {

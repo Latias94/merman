@@ -341,8 +341,10 @@ impl RatexMathRenderer {
         for line in lines {
             match line {
                 prepared::ClassifiedPureMathLine::Formula(formula) => {
-                    let (line_width_em, line_height_em) =
-                        prepared::measure_compiled_ratex_formula(&formula, "#000000")?;
+                    let (line_width_em, line_height_em) = prepared::measure_compiled_ratex_formula(
+                        &formula,
+                        ratex_types::Color::BLACK,
+                    )?;
                     width_em = width_em.max(line_width_em);
                     height_em += line_height_em;
                 }
@@ -362,7 +364,10 @@ impl RatexMathRenderer {
     fn render_katex_like_line_html(parsed: DelimitedMathLine<'_>) -> Option<String> {
         let mut html = String::new();
         for fragment in parsed.fragments {
-            let rendered = prepared::render_compiled_ratex_formula(fragment.formula, "#000000")?;
+            let rendered = prepared::render_compiled_ratex_formula(
+                fragment.formula,
+                ratex_types::Color::BLACK,
+            )?;
             html.push_str(fragment.leading_text);
             html.push_str(&rendered.svg);
         }
@@ -452,7 +457,7 @@ impl MathRenderer for RatexMathRenderer {
             return None;
         }
         let measured =
-            Self::measure_math_only_label(text, crate::sequence::sequence_text_line_step_px(1.0))?;
+            Self::measure_math_only_label(text, crate::text::sequence_text_line_step_px(1.0))?;
         Some(Self::metrics_from_em(&measured, style.font_size))
     }
 }
@@ -563,7 +568,6 @@ struct NodeProbeResponse {
 #[derive(Debug)]
 pub(crate) struct NodeKatexMathRenderer {
     node_cwd: PathBuf,
-    node_command: PathBuf,
     render_cache: Mutex<HashMap<RenderCacheKey, Option<String>>>,
     probe_cache: Mutex<HashMap<ProbeCacheKey, Option<ProbeCacheValue>>>,
     sequence_probe_cache: Mutex<HashMap<ProbeCacheKey, Option<ProbeCacheValue>>>,
@@ -574,16 +578,10 @@ impl NodeKatexMathRenderer {
     pub(crate) fn new(node_cwd: impl Into<PathBuf>) -> Self {
         Self {
             node_cwd: node_cwd.into(),
-            node_command: PathBuf::from("node"),
             render_cache: Mutex::new(HashMap::new()),
             probe_cache: Mutex::new(HashMap::new()),
             sequence_probe_cache: Mutex::new(HashMap::new()),
         }
-    }
-
-    pub(crate) fn with_node_command(mut self, node_command: impl Into<PathBuf>) -> Self {
-        self.node_command = node_command.into();
-        self
     }
 
     fn script_path() -> PathBuf {
@@ -647,7 +645,7 @@ impl NodeKatexMathRenderer {
             return None;
         }
 
-        let mut child = Command::new(&self.node_command)
+        let mut child = Command::new("node")
             .arg(Self::script_path())
             .arg(mode)
             .current_dir(&self.node_cwd)
@@ -1106,7 +1104,7 @@ mod tests {
         let renderer = RatexMathRenderer;
         let config = MermaidConfig::default();
         let style = TextStyle::default();
-        let rendered = prepared::render_compiled_ratex_formula("x^2", "#000000")
+        let rendered = prepared::render_compiled_ratex_formula("x^2", ratex_types::Color::BLACK)
             .expect("ratex should emit the formula SVG");
         let svg = rendered.svg;
         let width_em = rendered.width_em;

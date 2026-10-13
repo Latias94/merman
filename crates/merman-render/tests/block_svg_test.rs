@@ -3470,3 +3470,185 @@ fn block_flat_records_preserve_nested_dom_order_and_directives() {
     assert!(svg.contains("fill:#112233;stroke:#445566"));
     assert!(svg.contains("merman-1-A-C"));
 }
+
+#[test]
+fn block_uppercase_source_color_reaches_svg_text_fill() {
+    let theme = block_node_label_theme(
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#abcdef").unwrap()),
+    );
+    let rendered = render_block_with_theme_and_engine(
+        "block\n A[\"Alpha\"]\n style A COLOR:#123456\n",
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            serde_json::json!({"htmlLabels":false}),
+        )),
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let text = document
+        .descendants()
+        .find(|n| n.has_tag_name("text") && n.descendants().any(|n| n.text() == Some("Alpha")))
+        .expect("visible SVG node text");
+    assert!(
+        text.attribute("style")
+            .unwrap_or("")
+            .contains("fill:#123456;")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_source_all_reset_owns_node_and_edge_paint() {
+    let node_theme = block_node_fill_and_stroke_theme(
+        CanvasPaint::solid("#aabbcc").unwrap(),
+        CanvasPaint::solid("#ddeeff").unwrap(),
+    );
+    for class in ["default", "node"] {
+        let rendered = render_block_with_theme_and_engine(
+            &format!("block\n A[\"Alpha\"]\n classDef {class} all:unset\n"),
+            &node_theme,
+            Engine::new(),
+        );
+        assert!(
+            rendered.svg().contains("all:unset !important")
+                || rendered.svg().contains("all:unset!important")
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let node = document
+            .descendants()
+            .find(|n| n.attribute("id") == Some("block-theme-A"))
+            .unwrap();
+        assert!(
+            !node
+                .descendants()
+                .any(|n| n.attribute("style").unwrap_or("").contains("#aabbcc"))
+        );
+        assert!(
+            !node
+                .descendants()
+                .any(|n| n.attribute("style").unwrap_or("").contains("#ddeeff"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "class={class}");
+        assert_eq!(evidence.not_applicable_count(), 1, "class={class}");
+        assert_eq!(evidence.theme_residual_count(), 0, "class={class}");
+    }
+    let edge_theme = block_edge_theme([ThemeRule::new(
+        ThemeTarget::Edge,
+        ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#aabbcc").unwrap()),
+    )]);
+    let rendered = render_block_with_theme_and_engine(
+        "block\n A --> B\n classDef block all:unset\n",
+        &edge_theme,
+        Engine::new(),
+    );
+    assert!(
+        rendered.svg().contains("all:unset !important")
+            || rendered.svg().contains("all:unset!important")
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn block_source_font_weight_priority_reaches_labels_and_measurement() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::TextMetrics;
+    use std::sync::{Arc, Mutex};
+    struct WeightHost(Arc<Mutex<Vec<Option<String>>>>);
+    impl HostTextMeasurer for WeightHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation == TextMeasurementOperation::Wrapped && request.text == "Alpha" {
+                self.0
+                    .lock()
+                    .unwrap()
+                    .push(request.style.font_weight.clone());
+                return Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                    width: if request.style.font_weight.as_deref() == Some("700") {
+                        70.0
+                    } else {
+                        40.0
+                    },
+                    height: 24.0,
+                    line_count: 1,
+                })));
+            }
+            Ok(None)
+        }
+    }
+    for html in [false, true] {
+        for (later, expected_css, expected_weight) in [
+            ("FONT-WEIGHT:normal", "font-weight:bold !important;", "700"),
+            (
+                "FONT-WEIGHT:normal !important",
+                "FONT-WEIGHT:normal !important;",
+                "400",
+            ),
+        ] {
+            let source = format!(
+                "%%{{init: {{\"htmlLabels\": {html}}}}}%%\nblock\n A[\"Alpha\"]\n style A font-weight:bold !important,{later}\n"
+            );
+            let parsed = Engine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let weights = Arc::new(Mutex::new(Vec::new()));
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.block-source-weight-priority").unwrap(),
+                "1",
+            )
+            .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                    identity,
+                    Arc::new(WeightHost(weights.clone())),
+                    TextMeasurementPhase::ALL,
+                ))
+                .begin_session()
+                .unwrap();
+            let artifact =
+                family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
+                .descendants()
+                .find(|n| n.attribute("id") == Some("merman-A"))
+                .unwrap();
+            let label = node
+                .descendants()
+                .find(|n| n.has_tag_name("g") && n.attribute("class") == Some("label"))
+                .unwrap();
+            assert_eq!(label.attribute("style"), Some(expected_css));
+            let terminal = label
+                .descendants()
+                .find(|n| {
+                    if html {
+                        n.has_tag_name("span")
+                    } else {
+                        n.has_tag_name("text")
+                    }
+                })
+                .unwrap();
+            assert_eq!(terminal.attribute("style"), Some(expected_css));
+            let measured = weights.lock().unwrap();
+            assert!(!measured.is_empty());
+            assert!(
+                measured
+                    .iter()
+                    .all(|weight| weight.as_deref() == Some(expected_weight)),
+                "html={html}, {later}: {measured:?}"
+            );
+        }
+    }
+}

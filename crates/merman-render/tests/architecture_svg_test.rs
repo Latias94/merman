@@ -532,16 +532,33 @@ fn architecture_typed_text_fill_reaches_all_text_terminals_for_unqualified_and_d
             !text_nodes.is_empty(),
             "Architecture fixture must emit text terminals"
         );
-        assert!(
-            text_nodes.iter().any(|node| {
-                node.attribute("style").is_some_and(|style| {
-                    style
-                        .split(';')
-                        .any(|declaration| declaration == "fill:#123456")
+        for label in ["Platform", "API", "DB", "request"] {
+            let terminals = text_nodes
+                .iter()
+                .filter(|node| {
+                    node.descendants()
+                        .filter_map(|child| child.is_text().then(|| child.text()).flatten())
+                        .collect::<String>()
+                        .trim()
+                        == label
                 })
-            }),
-            "typed Architecture Text.fill must reach a final text terminal for variant {variant:?}: {svg}"
-        );
+                .collect::<Vec<_>>();
+            assert_eq!(
+                terminals.len(),
+                1,
+                "missing or duplicated Architecture label {label}: {svg}"
+            );
+            assert!(
+                terminals
+                    .iter()
+                    .all(|node| node.attribute("style").is_some_and(|style| {
+                        style
+                            .split(';')
+                            .any(|declaration| declaration == "fill:#123456")
+                    })),
+                "typed Text.fill must reach {label} for variant {variant:?}: {svg}"
+            );
+        }
         let evidence = merman_render::__private::family_evidence(&report);
         assert_eq!(evidence.required_count(), 1);
         assert_eq!(evidence.applied_count(), 1);
@@ -1068,4 +1085,172 @@ fn architecture_root_width_diagnostic_matrix() {
         let max_width = svg_max_width(&svg);
         println!("{fixture}: max-width={max_width}");
     }
+}
+
+#[test]
+fn repair_u7_architecture_source_owned_stroke_suppresses_unsupported_stroke_only() {
+    use merman_render::diagram_theme::{
+        GradientStop, LinearGradient, OrdinalSelector, ThemeColorValue,
+    };
+    let gradient = CanvasPaint::LinearGradient(
+        LinearGradient::new(
+            0.0,
+            [
+                GradientStop::new(0.0, ThemeColorValue::parse("#ff0000").unwrap()).unwrap(),
+                GradientStop::new(1.0, ThemeColorValue::parse("#0000ff").unwrap()).unwrap(),
+            ],
+        )
+        .unwrap(),
+    );
+    let source =
+        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
+    for owner in ["archEdgeColor", "lineColor"] {
+        for ordinal in [false, true] {
+            let paint = if ordinal {
+                CanvasPaint::solid("#123456").unwrap()
+            } else {
+                gradient.clone()
+            };
+            let rule = ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default().with_stroke(paint),
+            );
+            let rule = if ordinal {
+                rule.with_ordinal(OrdinalSelector::Exact(1))
+            } else {
+                rule
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)),
+                )
+                .unwrap();
+            let config = json!({"themeVariables":{owner:"#abcdef"}});
+            let artifact = prepare_architecture_with_theme_and_environment(
+                source,
+                &theme,
+                Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                RenderEnvironment::deterministic(),
+            );
+            let rendered = artifact
+                .render_svg(
+                    &SvgRenderOptions {
+                        diagram_id: Some("owned-edge".into()),
+                        ..Default::default()
+                    },
+                    &SvgDebugOptions::default(),
+                )
+                .unwrap();
+            let stylesheet = architecture_stylesheet(rendered.svg());
+            let edge_stroke = stylesheet
+                .split('}')
+                .filter_map(|rule| rule.split_once('{'))
+                .find(|(selector, _)| selector.trim().ends_with(".edge"))
+                .and_then(|(_, declarations)| {
+                    declarations
+                        .split(';')
+                        .rev()
+                        .filter_map(|declaration| declaration.split_once(':'))
+                        .find_map(|(property, value)| {
+                            (property.trim() == "stroke").then_some(value.trim())
+                        })
+                });
+            assert_eq!(edge_stroke, Some("#abcdef"));
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let edges = document
+                .descendants()
+                .filter(|node| node.has_tag_name("path") && node.attribute("class") == Some("edge"))
+                .collect::<Vec<_>>();
+            assert!(!edges.is_empty());
+            assert!(edges.iter().all(|node| node.attribute("style").is_none()));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn repair_u7_architecture_without_theme_skips_unused_service_receipt_measurements() {
+    let source = "architecture-beta\nservice api(server)[API]";
+    let host = Arc::new(CountingArchitectureHost::default());
+    let environment = counting_architecture_environment(Arc::clone(&host));
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let artifact = family::prepare(
+        parsed,
+        &LayoutOptions::headless_svg_defaults(),
+        environment.begin_session().unwrap(),
+    )
+    .unwrap();
+    host.operations.lock().unwrap().clear();
+    let rendered = artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("unobserved-service".into()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+    let operations = host.operations.lock().unwrap();
+    for operation in [
+        TextMeasurementOperation::BBoxX,
+        TextMeasurementOperation::TspanBBoxHeight,
+        TextMeasurementOperation::CreateTextMiddleBBoxYOffset,
+    ] {
+        assert_eq!(
+            operations
+                .iter()
+                .filter(|actual| **actual == operation)
+                .count(),
+            1,
+            "only the retained viewport planning observes {operation:?}: {operations:?}"
+        );
+    }
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(
+        document
+            .descendants()
+            .any(|node| node.has_tag_name("tspan") && node.text() == Some("API"))
+    );
+}
+
+#[test]
+fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
+    let source =
+        "architecture-beta\nservice api(server)[API]\nservice db(database)[DB]\napi:R --> L:db";
+    let patch = ThemeStylePatch::default()
+        .with_stroke(CanvasPaint::solid("#123456").unwrap())
+        .with_fill(CanvasPaint::solid("#654321").unwrap());
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Edge, patch)),
+        ))
+        .unwrap();
+    let parsed = merman_render::__private::install_parse_compatibility(
+        &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(
+            json!({"themeVariables":{"archEdgeColor":"#abcdef"}}),
+        )),
+    )
+    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    .unwrap()
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let prepared = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session);
+    let result = prepared.and_then(|artifact| {
+        artifact.render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    });
+    assert!(
+        result.is_err(),
+        "the source-owned stroke cannot certify an unsupported Edge.fill sibling"
+    );
 }

@@ -334,78 +334,55 @@ pub(in crate::svg::parity) fn push_edge_marker(
     margin: bool,
     color: Option<(&str, Option<&str>)>,
 ) {
-    let (attrs, shape, shape_attrs) = match (base, margin) {
-        ("pointEnd", false) => (
-            r#"viewBox="0 0 10 10" refX="5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto""#,
-            "path",
-            r#"d="M 0 0 L 10 5 L 0 10 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
-        ),
-        ("pointStart", false) => (
-            r#"viewBox="0 0 10 10" refX="4.5" refY="5" markerUnits="userSpaceOnUse" markerWidth="8" markerHeight="8" orient="auto""#,
-            "path",
-            r#"d="M 0 5 L 10 10 L 10 0 z" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
-        ),
-        ("pointEnd", true) => (
-            r#"viewBox="0 0 11.5 14" refX="11.5" refY="7" markerUnits="userSpaceOnUse" markerWidth="10.5" markerHeight="14" orient="auto""#,
-            "path",
-            r#"d="M 0 0 L 11.5 7 L 0 14 z" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
-        ),
-        ("pointStart", true) => (
-            r#"viewBox="0 0 11.5 14" refX="1" refY="7" markerUnits="userSpaceOnUse" markerWidth="11.5" markerHeight="14" orient="auto""#,
-            "polygon",
-            r#"points="0,7 11.5,14 11.5,0" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
-        ),
-        ("circleEnd", false) => (
-            r#"viewBox="0 0 10 10" refX="11" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto""#,
-            "circle",
-            r#"cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
-        ),
-        ("circleStart", false) => (
-            r#"viewBox="0 0 10 10" refX="-1" refY="5" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto""#,
-            "circle",
-            r#"cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0;""#,
-        ),
-        ("circleEnd", true) => (
-            r#"viewBox="0 0 10 10" refY="5" refX="12.25" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto""#,
-            "circle",
-            r#"cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
-        ),
-        ("circleStart", true) => (
-            r#"viewBox="0 0 10 10" refX="-2" refY="5" markerUnits="userSpaceOnUse" markerWidth="14" markerHeight="14" orient="auto""#,
-            "circle",
-            r#"cx="5" cy="5" r="5" class="arrowMarkerPath" style="stroke-width: 0; stroke-dasharray: 1, 0;""#,
-        ),
-        ("crossEnd", false) => (
-            r#"viewBox="0 0 11 11" refX="12" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto""#,
-            "path",
-            r#"d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;""#,
-        ),
-        ("crossStart", false) => (
-            r#"viewBox="0 0 11 11" refX="-1" refY="5.2" markerUnits="userSpaceOnUse" markerWidth="11" markerHeight="11" orient="auto""#,
-            "path",
-            r#"d="M 1,1 l 9,9 M 10,1 l -9,9" class="arrowMarkerPath" style="stroke-width: 2; stroke-dasharray: 1, 0;""#,
-        ),
-        ("crossEnd", true) => (
-            r#"viewBox="0 0 15 15" refX="17.7" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto""#,
-            "path",
-            r#"d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5;""#,
-        ),
-        ("crossStart", true) => (
-            r#"viewBox="0 0 15 15" refX="-3.5" refY="7.5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto""#,
-            "path",
-            r#"d="M 1,1 L 14,14 M 1,14 L 14,1" class="arrowMarkerPath" style="stroke-width: 2.5; stroke-dasharray: 1, 0;""#,
-        ),
-        ("hierarchyEnd", false) => (
-            r#"viewBox="0 0 12 10" refX="10" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="10" orient="auto""#,
-            "path",
-            r#"d="M 0 0 L 6 5 L 0 10 M 4 0 L 10 5 L 4 10" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0; fill: none;""#,
-        ),
-        ("hierarchyStart", false) => (
-            r#"viewBox="0 0 12 10" refX="2" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="10" orient="auto""#,
-            "path",
-            r#"d="M 12 0 L 6 5 L 12 10 M 8 0 L 2 5 L 8 10" class="arrowMarkerPath" style="stroke-width: 1; stroke-dasharray: 1, 0; fill: none;""#,
-        ),
-        _ => return,
+    let kind = match (base, margin) {
+        ("pointEnd", false) => Some(BaseEdgeMarkerKind::PointEnd),
+        ("pointStart", false) => Some(BaseEdgeMarkerKind::PointStart),
+        ("pointEnd", true) => Some(BaseEdgeMarkerKind::PointEndMargin),
+        ("pointStart", true) => Some(BaseEdgeMarkerKind::PointStartMargin),
+        ("circleEnd", false) => Some(BaseEdgeMarkerKind::CircleEnd),
+        ("circleStart", false) => Some(BaseEdgeMarkerKind::CircleStart),
+        ("circleEnd", true) => Some(BaseEdgeMarkerKind::CircleEndMargin),
+        ("circleStart", true) => Some(BaseEdgeMarkerKind::CircleStartMargin),
+        ("crossEnd", false) => Some(BaseEdgeMarkerKind::CrossEnd),
+        ("crossStart", false) => Some(BaseEdgeMarkerKind::CrossStart),
+        ("crossEnd", true) => Some(BaseEdgeMarkerKind::CrossEndMargin),
+        ("crossStart", true) => Some(BaseEdgeMarkerKind::CrossStartMargin),
+        _ => None,
+    };
+    let geometry = if let Some(kind) = kind {
+        kind.geometry()
+    } else {
+        match (base, margin) {
+            ("hierarchyEnd", false) => BaseEdgeMarkerGeometry {
+                attributes: &[
+                    ("viewBox", "0 0 12 10"),
+                    ("refX", "10"),
+                    ("refY", "5"),
+                    ("markerUnits", "userSpaceOnUse"),
+                    ("markerWidth", "12"),
+                    ("markerHeight", "10"),
+                    ("orient", "auto"),
+                ],
+                shape: "path",
+                shape_attributes: &[("d", "M 0 0 L 6 5 L 0 10 M 4 0 L 10 5 L 4 10")],
+                style: "stroke-width: 1; stroke-dasharray: 1, 0; fill: none;",
+            },
+            ("hierarchyStart", false) => BaseEdgeMarkerGeometry {
+                attributes: &[
+                    ("viewBox", "0 0 12 10"),
+                    ("refX", "2"),
+                    ("refY", "5"),
+                    ("markerUnits", "userSpaceOnUse"),
+                    ("markerWidth", "12"),
+                    ("markerHeight", "10"),
+                    ("orient", "auto"),
+                ],
+                shape: "path",
+                shape_attributes: &[("d", "M 12 0 L 6 5 L 12 10 M 8 0 L 2 5 L 8 10")],
+                style: "stroke-width: 1; stroke-dasharray: 1, 0; fill: none;",
+            },
+            _ => return,
+        }
     };
     let _ = write!(
         out,
@@ -420,7 +397,7 @@ pub(in crate::svg::parity) fn push_edge_marker(
     }
     let _ = write!(
         out,
-        r#"" class="marker {}{}" {}><{} {}"#,
+        r#"" class="marker {}{}""#,
         if base.starts_with("cross") {
             "cross "
         } else if base.starts_with("hierarchy") {
@@ -429,12 +406,21 @@ pub(in crate::svg::parity) fn push_edge_marker(
             ""
         },
         escape_xml_display(diagram_type),
-        attrs,
-        shape,
-        shape_attrs
+    );
+    for (name, value) in geometry.attributes {
+        let _ = write!(out, r#" {}="{}""#, name, value);
+    }
+    let _ = write!(out, "><{}", geometry.shape);
+    for (name, value) in geometry.shape_attributes {
+        let _ = write!(out, r#" {}="{}""#, name, value);
+    }
+    let _ = write!(
+        out,
+        r#" class="arrowMarkerPath" style="{}""#,
+        geometry.style
     );
     // Mermaid clones only path/circle/line children; the Neo start-point polygon stays intact.
-    if shape != "polygon"
+    if geometry.shape != "polygon"
         && let Some((_, Some(color))) = color
     {
         let _ = write!(out, r#" stroke="{}""#, escape_xml_display(color));
@@ -443,4 +429,52 @@ pub(in crate::svg::parity) fn push_edge_marker(
         }
     }
     out.push_str("/></marker>");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base_marker_writers_share_exact_geometry_and_dom_order() {
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let projection = super::super::SvgDiagramIdProjection {
+            work_meter: &meter,
+            projected_bytes: std::cell::Cell::new(0),
+            error: std::cell::RefCell::new(None),
+        };
+        let id = SvgDiagramId {
+            value: "markers",
+            projection: &projection,
+        };
+        for kind in BaseEdgeMarkerKind::ALL {
+            let suffix = kind.suffix();
+            let (base, margin) = suffix
+                .strip_suffix("-margin")
+                .map_or((suffix, false), |base| (base, true));
+            let mut typed = String::new();
+            let mut legacy = String::new();
+            push_base_edge_marker(&mut typed, id, "block", kind, suffix, "");
+            push_edge_marker(&mut legacy, id, "block", base, margin, None);
+            assert_eq!(typed, legacy, "kind={kind:?}");
+            let mut colored = String::new();
+            push_edge_marker(
+                &mut colored,
+                id,
+                "block",
+                base,
+                margin,
+                Some(("red", Some("#ff0000"))),
+            );
+            if kind == BaseEdgeMarkerKind::PointStartMargin {
+                assert!(!colored.contains(r##" stroke="#ff0000""##));
+                assert!(!colored.contains(r##" fill="#ff0000""##));
+            } else {
+                assert!(colored.contains(r##" stroke="#ff0000""##));
+            }
+        }
+        projection.finish().unwrap();
+    }
 }

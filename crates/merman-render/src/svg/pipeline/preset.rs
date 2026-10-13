@@ -88,7 +88,7 @@ impl BuiltinSvgStage {
             }
             Self::StripForeignObject => apply_strip_foreign_objects(svg, checkpoint),
             Self::DropSwitchNativeFallbacks => apply_drop_switch_native_fallbacks(svg, checkpoint),
-            Self::SanitizeCss => apply_sanitize_style_elements(svg, checkpoint),
+            Self::SanitizeCss => apply_sanitize_style_elements(svg, execution),
             Self::LowerIdSuffixSelectors => apply_lower_id_suffix_selectors(svg, execution),
             Self::ResolveQuadrantResvgFallbacks => {
                 resolve_quadrant_resvg_fallbacks_with_checkpoints(svg, metadata, &mut checkpoint)

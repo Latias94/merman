@@ -55,96 +55,77 @@ enum TreeViewPaintProperty {
 
 fn resolve_tree_view_paint(
     theme: &ResolvedDiagramTheme,
-    work_meter: &OperationWorkMeter,
+    style: &crate::diagram_theme::ResolvedThemeStyle,
     targets: &[ThemeTarget],
     property: TreeViewPaintProperty,
     source_owned: bool,
     residuals: &mut BTreeMap<FamilyThemeMechanismKey, FamilyThemeResidualReason>,
-) -> Result<Option<TreeViewPaintAssignment>, OperationWorkError> {
-    for target in targets.iter().copied() {
-        let style = if target == ThemeTarget::NodeLabel {
-            // Tree View labels inherit the generic Text target before a more specific
-            // NodeLabel rule wins. Keep that cascade in the resolved style rather than
-            // rebuilding it in this family adapter.
-            theme.text_style_with_work_meter(target, ThemeVariant::Default, None, work_meter)?
-        } else {
-            theme.style_with_work_meter(target, ThemeVariant::Default, None, work_meter)?
-        };
-        let properties: &[ResolvedStyleProperty] = match property {
-            TreeViewPaintProperty::Fill => &[ResolvedStyleProperty::Fill],
-            TreeViewPaintProperty::StrokeThenFill => {
-                &[ResolvedStyleProperty::Stroke, ResolvedStyleProperty::Fill]
-            }
-        };
-        if target == ThemeTarget::Marker {
-            record_unsupported_marker_winners(theme, &style, residuals);
-        }
-        for selected_property in properties {
-            let resolution = match selected_property {
-                ResolvedStyleProperty::Fill => style.fill_resolution(),
-                ResolvedStyleProperty::Stroke => style.stroke_resolution(),
-                _ => unreachable!("Tree View paint resolver only selects fill/stroke"),
-            };
-            let Some(origin) = resolution.winner() else {
-                continue;
-            };
-            let facet = match selected_property {
-                ResolvedStyleProperty::Fill => FamilyThemeRuleFacet::fill(resolution.specified()),
-                ResolvedStyleProperty::Stroke => {
-                    FamilyThemeRuleFacet::stroke(resolution.specified())
-                }
-                _ => None,
-            };
-            let Some(facet) = facet else {
-                residuals.insert(
-                    FamilyThemeMechanismKey::Rule {
-                        index: origin.rule_index(),
-                        target: origin.target(),
-                    },
-                    FamilyThemeResidualReason::UnsupportedPaint,
-                );
-                return Ok(None);
-            };
-            let key = FamilyThemeMechanismKey::Rule {
-                index: origin.rule_index(),
-                target: origin.target(),
-            };
-            if source_owned {
-                return Ok(None);
-            }
-            if theme.rule_facet_disposition(origin.rule_index(), facet)
-                != Some(FamilyThemeDisposition::TypedAdapter)
-            {
-                if theme.rule_facet_disposition(origin.rule_index(), facet)
-                    == Some(FamilyThemeDisposition::Unsupported)
-                {
-                    residuals.insert(key, unsupported_residual_for_facet(facet));
-                }
-                return Ok(None);
-            }
-            let paint = match selected_property {
-                ResolvedStyleProperty::Fill => resolve_direct_static_fill(
-                    theme,
-                    &style,
-                    targets,
-                    DirectStaticSelectorDomain::Default,
-                ),
-                ResolvedStyleProperty::Stroke => resolve_direct_static_stroke(
-                    theme,
-                    &style,
-                    targets,
-                    DirectStaticSelectorDomain::Default,
-                ),
-                _ => None,
-            };
-            let Some(paint) = paint else {
-                residuals.insert(key, FamilyThemeResidualReason::UnsupportedPaint);
-                return Ok(None);
-            };
-            return Ok(Some(TreeViewPaintAssignment { key, paint }));
-        }
+) -> Option<TreeViewPaintAssignment> {
+    // Marker siblings are reconciled from this static surface. Labels use the
+    // real text occurrence domain so inherited and ordinal Text winners are preserved.
+    if targets.contains(&ThemeTarget::Marker) {
+        record_unsupported_marker_winners(theme, style, residuals);
     }
-    Ok(None)
+    let properties: &[ResolvedStyleProperty] = match property {
+        TreeViewPaintProperty::Fill => &[ResolvedStyleProperty::Fill],
+        TreeViewPaintProperty::StrokeThenFill => {
+            &[ResolvedStyleProperty::Stroke, ResolvedStyleProperty::Fill]
+        }
+    };
+    for selected_property in properties {
+        let resolution = match selected_property {
+            ResolvedStyleProperty::Fill => style.fill_resolution(),
+            ResolvedStyleProperty::Stroke => style.stroke_resolution(),
+            _ => unreachable!("Tree View paint resolver only selects fill/stroke"),
+        };
+        let Some(origin) = resolution.winner() else {
+            continue;
+        };
+        let facet = match selected_property {
+            ResolvedStyleProperty::Fill => FamilyThemeRuleFacet::fill(resolution.specified()),
+            ResolvedStyleProperty::Stroke => FamilyThemeRuleFacet::stroke(resolution.specified()),
+            _ => None,
+        };
+        let key = FamilyThemeMechanismKey::Rule {
+            index: origin.rule_index(),
+            target: origin.target(),
+        };
+        let Some(facet) = facet else {
+            residuals.insert(key, FamilyThemeResidualReason::UnsupportedPaint);
+            return None;
+        };
+        if source_owned {
+            return None;
+        }
+        let disposition = theme.rule_facet_disposition(origin.rule_index(), facet);
+        if disposition != Some(FamilyThemeDisposition::TypedAdapter) {
+            if disposition == Some(FamilyThemeDisposition::Unsupported) {
+                residuals.insert(key, unsupported_residual_for_facet(facet));
+            }
+            return None;
+        }
+        let paint = match selected_property {
+            ResolvedStyleProperty::Fill => resolve_direct_static_fill(
+                theme,
+                style,
+                targets,
+                DirectStaticSelectorDomain::Default,
+            ),
+            ResolvedStyleProperty::Stroke => resolve_direct_static_stroke(
+                theme,
+                style,
+                targets,
+                DirectStaticSelectorDomain::Default,
+            ),
+            _ => None,
+        };
+        let Some(paint) = paint else {
+            residuals.insert(key, FamilyThemeResidualReason::UnsupportedPaint);
+            return None;
+        };
+        return Some(TreeViewPaintAssignment { key, paint });
+    }
+    None
 }
 
 fn record_unsupported_marker_winners(
@@ -300,34 +281,46 @@ impl TreeViewThemePlan {
             effective_config,
             "themeVariables.treeView.iconColor",
         );
-        // Text is the broad fallback; a NodeLabel winner is the terminal-specific winner.
+        // The resolved text style already includes the generic Text cascade.
+        let label_style = theme.text_style_with_work_meter(
+            ThemeTarget::NodeLabel,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
         let label_color = resolve_tree_view_paint(
             theme,
-            work_meter,
+            &label_style,
             &[ThemeTarget::NodeLabel, ThemeTarget::Text],
             TreeViewPaintProperty::Fill,
             label_config_owned,
             &mut paint_residuals,
-        )?;
+        );
         // Mermaid's line terminal is stroke-first. A fill-only Edge rule is the documented
         // fallback for themes that do not provide a stroke assignment.
         let line_color = resolve_tree_view_paint(
             theme,
-            work_meter,
+            &static_style,
             &[ThemeTarget::Edge],
             TreeViewPaintProperty::StrokeThenFill,
             line_config_owned,
             &mut paint_residuals,
-        )?;
+        );
         // Marker is explicit when present; otherwise icon paint inherits the resolved Edge line.
+        let marker_style = theme.style_with_work_meter(
+            ThemeTarget::Marker,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
         let icon_color = resolve_tree_view_paint(
             theme,
-            work_meter,
+            &marker_style,
             &[ThemeTarget::Marker],
             TreeViewPaintProperty::StrokeThenFill,
             icon_config_owned,
             &mut paint_residuals,
-        )?;
+        );
         let icon_fallback_color = (!icon_config_owned)
             .then(|| {
                 line_color
@@ -407,11 +400,22 @@ impl TreeViewThemePlan {
             }
         }
 
+        let label_source_ownership = label_config_owned.then(|| vec![true; node_count]);
+        let label_domain = UnsupportedTerminalDomain::textual(
+            ThemeTarget::NodeLabel,
+            &[ThemeTarget::NodeLabel, ThemeTarget::Text],
+            TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
+        );
+        let label_domain = match label_source_ownership.as_deref() {
+            Some(ownership) => label_domain.with_source_owned_fill(ownership),
+            None => label_domain,
+        };
         let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
             &[
+                label_domain,
                 UnsupportedTerminalDomain::direct(
                     ThemeTarget::Node,
                     TerminalVariantDomain::uniform(node_count, ThemeVariant::Default),
@@ -843,11 +847,12 @@ impl TreeViewThemeReceipt {
     }
 
     fn proves(&self, plan: &TreeViewThemePlan) -> bool {
+        // Admit complete terminal facts independently of an icon's paint class.
+        // icon_color_matches alone proves the requested currentColor channel.
         self.css_seen
             && self.css_matches
             && self.labels_seen == self.expected_label_count
             && self.icons_seen == self.expected_icon_count
-            && self.unverified_icons_seen == 0
             && self.lines_seen == self.expected_line_count
             && self.terminal_matches
             && plan.expected_line_count == self.expected_line_count

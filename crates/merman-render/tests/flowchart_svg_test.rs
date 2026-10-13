@@ -85,6 +85,117 @@ fn assert_svg_ids_are_unique(svg: &str) {
     }
 }
 
+// These terminal oracles cover the simple scoped descendant selectors emitted by Flowchart.
+fn emitted_svg_property(
+    document: &roxmltree::Document<'_>,
+    terminal: roxmltree::Node<'_, '_>,
+    property: &str,
+) -> Option<String> {
+    fn matches_part(node: roxmltree::Node<'_, '_>, part: &str) -> bool {
+        if let Some(id) = part.strip_prefix('#') {
+            return node.attribute("id") == Some(id);
+        }
+        if let Some(class) = part.strip_prefix('.') {
+            return node
+                .attribute("class")
+                .is_some_and(|classes| classes.split_whitespace().any(|value| value == class));
+        }
+        node.is_element() && node.tag_name().name() == part
+    }
+    fn matches_selector(node: roxmltree::Node<'_, '_>, selector: &str) -> bool {
+        let mut parts = selector.split_whitespace().rev();
+        if !parts.next().is_some_and(|part| matches_part(node, part)) {
+            return false;
+        }
+        let mut ancestors = node.ancestors().skip(1);
+        parts.all(|part| {
+            ancestors
+                .by_ref()
+                .any(|ancestor| matches_part(ancestor, part))
+        })
+    }
+    for node in terminal.ancestors().filter(|node| node.is_element()) {
+        let mut winner: Option<((bool, usize, usize), String)> = None;
+        let mut order = 0;
+        for sheet in document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+        {
+            for rule in sheet.text().unwrap_or_default().split('}') {
+                let Some((selectors, declarations)) = rule.rsplit_once('{') else {
+                    continue;
+                };
+                order += 1;
+                for selector in selectors.split(',').map(str::trim) {
+                    if !matches_selector(node, selector) {
+                        continue;
+                    }
+                    let specificity = selector
+                        .split_whitespace()
+                        .map(|part| {
+                            if part.starts_with('#') {
+                                100
+                            } else if part.starts_with('.') {
+                                10
+                            } else {
+                                1
+                            }
+                        })
+                        .sum::<usize>();
+                    for declaration in declarations.split(';') {
+                        let Some((name, value)) = declaration.split_once(':') else {
+                            continue;
+                        };
+                        if name.trim() != property {
+                            continue;
+                        }
+                        let important = value.trim().ends_with("!important");
+                        let key = (important, specificity, order);
+                        if winner.as_ref().is_none_or(|(current, _)| key >= *current) {
+                            winner = Some((
+                                key,
+                                value
+                                    .trim()
+                                    .trim_end_matches("!important")
+                                    .trim()
+                                    .to_owned(),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        if let Some(value) = node.attribute(property) {
+            winner.get_or_insert(((false, 0, 0), value.to_owned()));
+        }
+        if let Some(style) = node.attribute("style") {
+            for declaration in style.split(';') {
+                let Some((name, value)) = declaration.split_once(':') else {
+                    continue;
+                };
+                if name.trim() != property {
+                    continue;
+                }
+                let key = (value.trim().ends_with("!important"), 1000, usize::MAX);
+                if winner.as_ref().is_none_or(|(current, _)| key >= *current) {
+                    winner = Some((
+                        key,
+                        value
+                            .trim()
+                            .trim_end_matches("!important")
+                            .trim()
+                            .to_owned(),
+                    ));
+                }
+            }
+        }
+        if let Some((_, value)) = winner {
+            return Some(value);
+        }
+    }
+    None
+}
+
 fn edge_label_padding_theme(padding: InsetsPx) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(
@@ -192,6 +303,7 @@ fn render_dagre_flowchart_svg_from_text(text: &str) -> String {
     )
 }
 
+#[cfg(feature = "layout-elk")]
 #[test]
 fn flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs() {
     for (source, expected) in [
@@ -234,6 +346,7 @@ fn flowchart_elk_svg_keeps_upstream_flat_node_order_across_subgraphs() {
     }
 }
 
+#[cfg(feature = "layout-elk")]
 #[test]
 fn flowchart_elk_ancestor_descendant_edges_keep_upstream_visible_routes() {
     let fixtures = [
@@ -4513,7 +4626,7 @@ outer@{ view: collapsed }
     assert!(!node_ids.contains(&"inner"), "{svg}");
     for hidden_id in ["A", "B", "C"] {
         assert!(
-            !node_ids.iter().any(|id| *id == hidden_id),
+            !node_ids.contains(&hidden_id),
             "hidden member {hidden_id} must not be emitted: {svg}"
         );
     }
@@ -7294,23 +7407,39 @@ fn flowchart_and_swimlane_generic_text_fill_has_typed_terminal_evidence() {
                         .expect("generic text paint must have direct terminal evidence");
                     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
                     for label in ["Alpha", "Beta", "Advance", "Group title", "Diagram title"] {
-                        assert!(
-                            document
-                                .descendants()
-                                .filter(|node| node.has_tag_name("text")
+                        let element = document
+                            .descendants()
+                            .find(|node| {
+                                (node.has_tag_name("text")
                                     || node.has_tag_name("p")
                                     || node.has_tag_name("span"))
-                                .any(|node| node
-                                    .descendants()
-                                    .filter(|child| child.is_text())
-                                    .filter_map(|child| child.text())
-                                    .collect::<String>()
-                                    .contains(label)),
-                            "missing {label}: {}",
-                            rendered.svg()
-                        );
+                                    && node
+                                        .descendants()
+                                        .filter(|child| child.is_text())
+                                        .filter_map(|child| child.text())
+                                        .collect::<String>()
+                                        == label
+                            })
+                            .unwrap_or_else(|| panic!("missing {label}: {}", rendered.svg()));
+                        for terminal in element.descendants().filter(|node| {
+                            node.is_text() && !node.text().unwrap().trim().is_empty()
+                        }) {
+                            let property = if terminal
+                                .ancestors()
+                                .any(|ancestor| ancestor.has_tag_name("foreignObject"))
+                            {
+                                "color"
+                            } else {
+                                "fill"
+                            };
+                            assert_eq!(
+                                emitted_svg_property(&document, terminal, property).as_deref(),
+                                Some("#2468ac"),
+                                "{label}, {property}, swimlane={swimlane}, html={html}, look={look}: {}",
+                                rendered.svg()
+                            );
+                        }
                     }
-                    assert!(rendered.svg().contains("#2468ac"));
                     let evidence = merman_render::__private::family_evidence(
                         rendered.into_completion().report(),
                     );
@@ -7479,17 +7608,64 @@ fn flowchart_and_swimlane_edge_label_background_fill_has_typed_terminal_evidence
                     let rendered = prepare_flowchart_family_with_theme(&source, &theme)
                         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                         .expect("edge label background must have direct terminal evidence");
-                    assert!(rendered.svg().contains("#2468ac"));
-                    if swimlane {
-                        let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
-                        assert!(doc.descendants().any(|node| node.has_tag_name("rect")
-                            && node.attribute("class") == Some("background")
-                            && ["width", "height"].iter().all(|name| {
-                                node.attribute(*name)
-                                    .and_then(|value| value.parse::<f64>().ok())
-                                    .is_some_and(|value| value > 1.0)
-                            })));
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let label = document
+                        .descendants()
+                        .find(|node| {
+                            node.attribute("data-id")
+                                .is_some_and(|id| id.starts_with("L_A_B_"))
+                                && node.attribute("class").is_some_and(|classes| {
+                                    classes.split_whitespace().any(|class| class == "label")
+                                })
+                        })
+                        .expect("Advance edge label occurrence");
+                    let background = label
+                        .descendants()
+                        .find(|node| {
+                            if html && !swimlane {
+                                node.has_tag_name("div")
+                                    && node.attribute("class") == Some("labelBkg")
+                            } else {
+                                node.has_tag_name("rect")
+                                    && node.attribute("class") == Some("background")
+                                    && node.attribute("width").is_some()
+                            }
+                        })
+                        .expect("actual Advance background terminal");
+                    let property = if html && !swimlane {
+                        "background-color"
+                    } else {
+                        "fill"
+                    };
+                    assert_eq!(
+                        emitted_svg_property(&document, background, property).as_deref(),
+                        Some("#2468ac"),
+                        "swimlane={swimlane}, html={html}, look={look}: {}",
+                        rendered.svg()
+                    );
+                    if background.has_tag_name("rect") {
+                        assert_eq!(
+                            emitted_svg_property(&document, background, "opacity")
+                                .as_deref()
+                                .unwrap_or("1"),
+                            "1"
+                        );
                     }
+                    let box_element = if background.has_tag_name("div") {
+                        background
+                            .ancestors()
+                            .find(|node| node.has_tag_name("foreignObject"))
+                            .unwrap()
+                    } else {
+                        background
+                    };
+                    assert!(
+                        ["width", "height"].iter().all(|name| box_element
+                            .attribute(*name)
+                            .and_then(|value| value.parse::<f64>().ok())
+                            .is_some_and(|value| value > 1.0)),
+                        "Advance background must have a visible area"
+                    );
                     let evidence = merman_render::__private::family_evidence(
                         rendered.into_completion().report(),
                     );
@@ -8181,4 +8357,275 @@ fn flowchart_elk_line_hops_rewrite_original_dashed_and_authored_masks() {
             );
         }
     }
+}
+
+#[test]
+fn flowchart_collapsed_hidden_edges_preserve_visible_self_loop_semantic_owner() {
+    for trailing_edge in ["", "D --> E\n"] {
+        let source = format!(
+            "flowchart TD\nsubgraph one[My Group]\nA --> B\nend\nC --> C\n{trailing_edge}one@{{ view: collapsed }}\n"
+        );
+        let svg = render_dagre_flowchart_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let edges = document
+            .descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .collect::<Vec<_>>();
+        assert_eq!(edges.len(), if trailing_edge.is_empty() { 1 } else { 2 });
+        assert_eq!(
+            edges
+                .iter()
+                .filter(|node| node.attribute("data-id") == Some("L_C_C_0"))
+                .count(),
+            1
+        );
+        assert!(!edges.iter().any(|node| {
+            node.attribute("data-id")
+                .is_some_and(|id| id.contains("cyclic-special"))
+        }));
+        assert_svg_ids_are_unique(&svg);
+    }
+}
+
+#[test]
+fn flowchart_reserved_prepared_text_diagram_ids_are_normalized_on_public_render() {
+    for raw in [
+        "merman-prepared-state-17",
+        "merman-prepared-malformed",
+        "merman.prepared---bad",
+    ] {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync("flowchart TD\nA --> B\n", ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let rendered = artifact
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some(raw.into()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .expect("caller id cannot enter prepared text namespace");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            document.root_element().attribute("id"),
+            Some(merman_render::svg::sanitize_svg_id(raw).as_str())
+        );
+        assert_svg_ids_are_unique(rendered.svg());
+    }
+}
+
+#[test]
+fn flowchart_ancestor_descendant_routes_retain_real_segments_for_supported_curves() {
+    for source in [
+        include_str!(
+            "../../../fixtures/flowchart/upstream_cypress_flowchart_v2_spec_5064_should_render_when_subgraph_child_has_links_to_outside_node_044.mmd"
+        ),
+        include_str!(
+            "../../../fixtures/flowchart/upstream_flowchart_v2_subgraph_child_links_outside_spec.mmd"
+        ),
+        "flowchart TB\nOut --> In\nsubgraph Sub\nIn\nend\nIn --> Sub\n",
+    ] {
+        for curve in ["linear", "basis", "rounded"] {
+            let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+                serde_json::json!({"layout":"dagre", "flowchart":{"curve":curve}}),
+            ));
+            let svg = render_flowchart_svg_from_text_with_engine(engine, source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path")
+                        && node.attribute("data-id").is_some_and(|id| {
+                            id.starts_with("L_Sub_In_") || id.starts_with("L_In_Sub_")
+                        })
+                })
+                .expect("ancestor/descendant edge terminal");
+            let d = path.attribute("d").unwrap();
+            assert!(
+                d.contains('L') || d.contains('C') || d.contains('Q'),
+                "real route must retain a segment for {curve}: {d}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_important_html_color_inheritance_is_portable_for_generic_text_fill() {
+    let theme = flowchart_title_theme([ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#2468ac").unwrap()),
+    )]);
+    for value in ["inherit", "currentColor", "unset"] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: true\n  flowchart:\n    htmlLabels: true\n---\nflowchart TD\nA[\"<span class='host' style='color:{value} !important'>Alpha</span>\"]\n"
+        );
+        let rendered = prepare_flowchart_family_with_theme(&source, &theme)
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("important inheritance proves theme paint reach");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let terminal = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("host"))
+            .expect("authored HTML class span");
+        assert_eq!(
+            terminal.attribute("style"),
+            Some(format!("color:{value} !important").as_str())
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn flowchart_hand_drawn_icon_circle_preserves_emit_resource_failures() {
+    let source = "---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 7\n---\nflowchart LR\nC@{ icon: \"missing:icon\", form: \"circle\" }\n";
+    let prepare = |policy| {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+            .unwrap()
+            .unwrap();
+        family::prepare(
+            parsed,
+            &LayoutOptions::default(),
+            RenderEnvironment::deterministic()
+                .with_resource_policy(policy)
+                .begin_session()
+                .unwrap(),
+        )
+    };
+    let baseline = prepare(RenderResourcePolicy::unbounded_for_trusted_input())
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let total_bytes = baseline.svg().len();
+    let total_work = baseline
+        .into_completion()
+        .report()
+        .session_report()
+        .layout_work_units();
+    for (id, max) in [
+        (ResourceLimitId::MaxLayoutWorkUnits, total_work - 1),
+        (ResourceLimitId::MaxSvgBytes, total_bytes - 1),
+    ] {
+        let artifact = prepare(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(id, max)
+                .unwrap(),
+        )
+        .expect("ceiling permits layout and rejects render-time hachure");
+        let error = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .err()
+            .expect("circle generation must stop at ceiling");
+        let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+            panic!("original resource terminal must survive iconCircle fallback: {error:?}");
+        };
+        assert_eq!(limit.limit, id.as_str());
+        assert_eq!(limit.max, max);
+        assert!(limit.actual > max);
+        assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
+fn flowchart_elk_collapsed_projection_preserves_theme_font_and_edge_padding() {
+    use merman_render::diagram_theme::{ThemeTextStyle, TypographySpec};
+    let source = "---\nconfig:\n  layout: elk\n  htmlLabels: false\n  flowchart:\n    htmlLabels: false\n---\nflowchart TD\nsubgraph Hidden\nA --> B\nend\nHidden@{ view: collapsed }\nC[one two three four five six seven eight nine ten] -->|Advance| D\n";
+    let prepare = |font_size, padding| {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(
+                        TypographySpec::default().with_default(
+                            ThemeTextStyle::default()
+                                .with_font_size_px(font_size)
+                                .unwrap(),
+                        ),
+                    )
+                    .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::EdgeLabel,
+                        ThemeStylePatch::default().with_padding(InsetsPx {
+                            top: padding,
+                            right: padding,
+                            bottom: padding,
+                            left: padding,
+                        }),
+                    ))),
+            )
+            .unwrap();
+        prepare_flowchart_family_with_theme_and_portability(
+            source,
+            &theme,
+            ThemePortabilityRequirement::BestEffort,
+        )
+    };
+    let small = prepare(16.0, 0.0);
+    let large = prepare(64.0, 9.0);
+    let layout = |artifact: &family::FamilyRenderArtifact| -> FlowchartLayout {
+        serde_json::from_value(artifact.layout_json().unwrap()["layout"]["FlowchartV2"].clone())
+            .unwrap()
+    };
+    let small_layout = layout(&small);
+    let large_layout = layout(&large);
+    let node_height = |layout: &FlowchartLayout| {
+        layout
+            .nodes
+            .iter()
+            .find(|node| node.id == "C")
+            .unwrap()
+            .height
+    };
+    assert!(
+        node_height(&large_layout) > node_height(&small_layout) + 100.0,
+        "visible node must measure the 64px theme after collapse"
+    );
+    let large_svg = large
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    let document = roxmltree::Document::parse(large_svg.svg()).unwrap();
+    let node = document
+        .descendants()
+        .find(|node| {
+            node.attribute("data-id") == Some("C") && node.attribute("data-et") == Some("node")
+        })
+        .unwrap();
+    let rect = node
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .unwrap();
+    assert!(
+        (rect.attribute("height").unwrap().parse::<f64>().unwrap() - node_height(&large_layout))
+            .abs()
+            < 0.01
+    );
+    let label = large_layout
+        .edges
+        .iter()
+        .find(|edge| edge.id == "L_C_D_0")
+        .unwrap()
+        .label
+        .as_ref()
+        .unwrap();
+    let no_padding = layout(&prepare(64.0, 0.0));
+    let no_padding_label = no_padding
+        .edges
+        .iter()
+        .find(|edge| edge.id == "L_C_D_0")
+        .unwrap()
+        .label
+        .as_ref()
+        .unwrap();
+    assert!((label.width - no_padding_label.width - 18.0).abs() < 0.01);
+    assert!((label.height - no_padding_label.height - 18.0).abs() < 0.01);
 }

@@ -173,7 +173,7 @@ struct PaintTerminalCheckpoint {
 #[derive(Debug, Clone)]
 pub(crate) struct ErEntityThemeReceipt {
     expectations: Vec<EntityExpectation>,
-    checkpointed_entities: Vec<bool>,
+    checkpointed_entities: Vec<Option<bool>>,
     text_terminals: BTreeMap<ErTextTerminalId, TextTerminalCheckpoint>,
     table_rows: BTreeMap<ErTableRowTerminalId, PaintTerminalCheckpoint>,
     relation_paths: BTreeMap<String, RelationTerminalCheckpoint>,
@@ -202,7 +202,7 @@ impl ErEntityThemeReceipt {
         typography_expected_font_family: Option<Box<str>>,
     ) -> Self {
         Self {
-            checkpointed_entities: vec![false; expectations.len()],
+            checkpointed_entities: vec![Some(false); expectations.len()],
             expectations,
             text_terminals: text_terminals
                 .into_iter()
@@ -388,13 +388,31 @@ impl ErEntityThemeReceipt {
         self
     }
 
+    pub(super) fn with_entity_terminal_domain(
+        mut self,
+        occurrences: &[(usize, crate::diagram_theme::ThemeVariant)],
+    ) -> Self {
+        self.checkpointed_entities.fill(None);
+        for (ordinal, _) in occurrences {
+            let Some(checkpoint) = self
+                .checkpointed_entities
+                .get_mut(ordinal.saturating_sub(1))
+            else {
+                self.attributes_match = false;
+                continue;
+            };
+            *checkpoint = Some(false);
+        }
+        self
+    }
+
     pub(crate) fn record_checkpointed_entity(
         &mut self,
         entity_index: usize,
         emitted_fill: Option<(usize, &str)>,
         emitted_stroke: Option<(usize, &str)>,
     ) {
-        let Some(checkpointed) = self.checkpointed_entities.get_mut(entity_index) else {
+        let Some(Some(checkpointed)) = self.checkpointed_entities.get_mut(entity_index) else {
             self.attributes_match = false;
             return;
         };
@@ -643,7 +661,10 @@ impl ErEntityThemeReceipt {
 
     pub(super) fn proves_complete(&self) -> bool {
         self.attributes_match
-            && self.checkpointed_entities.iter().all(|entry| *entry)
+            && self
+                .checkpointed_entities
+                .iter()
+                .all(|entry| entry.is_none_or(|checkpointed| checkpointed))
             && self.text_terminals.values().all(|entry| entry.checkpointed)
             && self.table_rows.values().all(|entry| entry.checkpointed)
             && self.relation_paths.values().all(|entry| entry.checkpointed)
@@ -845,6 +866,24 @@ mod tests {
 
     fn empty_receipt(expectations: Vec<EntityExpectation>) -> ErEntityThemeReceipt {
         ErEntityThemeReceipt::new(expectations, BTreeMap::new(), BTreeMap::new(), None)
+    }
+
+    #[test]
+    fn entity_receipt_requires_only_visible_sparse_source_checkpoints() {
+        let occurrences = [(2, crate::diagram_theme::ThemeVariant::Default)];
+        let receipt = empty_receipt(vec![EntityExpectation::default(); 2])
+            .with_entity_terminal_domain(&occurrences);
+        assert!(!receipt.proves_complete());
+        let mut visible = receipt.clone();
+        visible.record_checkpointed_entity(1, None, None);
+        assert!(visible.proves_complete());
+        let mut hidden = receipt;
+        hidden.record_checkpointed_entity(0, None, None);
+        hidden.record_checkpointed_entity(1, None, None);
+        assert!(
+            !hidden.proves_complete(),
+            "a hidden terminal cannot claim an emission checkpoint"
+        );
     }
 
     #[test]

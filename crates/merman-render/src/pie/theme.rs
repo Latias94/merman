@@ -1512,7 +1512,7 @@ mod tests {
         let palette = OrdinalPalette::new(
             colors
                 .iter()
-                .map(|color| ThemeColorValue::parse(*color).expect("valid Pie test color")),
+                .map(|color| ThemeColorValue::parse(color).expect("valid Pie test color")),
         )
         .expect("non-empty Pie test palette");
         DiagramThemeCompiler::new()

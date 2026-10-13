@@ -12,10 +12,10 @@ mod text_tracking;
 
 pub(crate) use builtin::set_root_background_color;
 pub(crate) use builtin::util::{
-    SvgTagScanner, checkpoint_loop, end_tag_name, escape_xml_attr_with_checkpoints,
-    escape_xml_text_with_checkpoints, extract_exact_double_quoted_attr_with_checkpoints,
-    find_tag_end_with_checkpoints, find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
-    trim_with_checkpoints,
+    SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
+    escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
+    extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
+    find_with_checkpoints, rfind_with_checkpoints, start_tag_name, trim_with_checkpoints,
 };
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,

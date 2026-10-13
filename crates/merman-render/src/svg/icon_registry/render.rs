@@ -313,6 +313,8 @@ fn icon_render_work_units(
 enum IconPaintValue {
     CurrentColor,
     Fixed,
+    NoPaint,
+    Inherit,
     Unverified,
 }
 
@@ -341,6 +343,23 @@ impl IconCurrentColorObservation {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct IconPaintContext {
+    non_rendering: bool,
+    fill: IconPaintValue,
+    stroke: IconPaintValue,
+}
+
+impl Default for IconPaintContext {
+    fn default() -> Self {
+        Self {
+            non_rendering: false,
+            fill: IconPaintValue::Fixed,
+            stroke: IconPaintValue::NoPaint,
+        }
+    }
+}
+
 fn observe_current_color_use(
     svg: &str,
     work_meter: &crate::resources::OperationWorkMeter,
@@ -348,24 +367,22 @@ fn observe_current_color_use(
     let mut reader = quick_xml::Reader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
     let mut observation = IconCurrentColorObservation::default();
-    let mut non_rendering_stack = Vec::new();
-
+    let mut paint_stack = Vec::new();
     loop {
         work_meter.checkpoint(OperationPhase::Postprocess)?;
         match reader.read_event() {
             Ok(Event::Start(element)) => {
-                let inside_non_rendering = non_rendering_stack.last().copied().unwrap_or(false)
-                    || is_non_rendering_container(element.name().local_name().as_ref());
-                observe_icon_element(&element, inside_non_rendering, work_meter, &mut observation)?;
-                non_rendering_stack.push(inside_non_rendering);
+                let inherited = paint_stack.last().copied().unwrap_or_default();
+                let context =
+                    observe_icon_element(&element, inherited, work_meter, &mut observation)?;
+                paint_stack.push(context);
             }
             Ok(Event::Empty(element)) => {
-                let inside_non_rendering = non_rendering_stack.last().copied().unwrap_or(false)
-                    || is_non_rendering_container(element.name().local_name().as_ref());
-                observe_icon_element(&element, inside_non_rendering, work_meter, &mut observation)?;
+                let inherited = paint_stack.last().copied().unwrap_or_default();
+                observe_icon_element(&element, inherited, work_meter, &mut observation)?;
             }
             Ok(Event::End(_)) => {
-                non_rendering_stack.pop().ok_or_else(|| {
+                paint_stack.pop().ok_or_else(|| {
                     crate::Error::icon_processing(
                         "validated icon SVG paint scan encountered an unmatched end tag",
                     )
@@ -386,10 +403,10 @@ fn observe_current_color_use(
 
 fn observe_icon_element(
     element: &BytesStart<'_>,
-    inside_non_rendering: bool,
+    inherited: IconPaintContext,
     work_meter: &crate::resources::OperationWorkMeter,
     observation: &mut IconCurrentColorObservation,
-) -> crate::Result<()> {
+) -> crate::Result<IconPaintContext> {
     let tag = element.name().local_name();
     let tag = tag.as_ref();
     if tag.eq_ignore_ascii_case("style") || tag.eq_ignore_ascii_case("use") {
@@ -435,25 +452,42 @@ fn observe_icon_element(
         }
     }
 
-    let fill = inline_fill.map(|winner| winner.value).or(fill);
-    let stroke = inline_stroke.map(|winner| winner.value).or(stroke);
-    for paint in [fill, stroke].into_iter().flatten() {
-        match paint {
-            IconPaintValue::CurrentColor
-                if is_direct_paint_terminal(tag) && !inside_non_rendering =>
-            {
-                observation.consumed = true;
+    let inherit = |paint: Option<IconPaintValue>, fallback| match paint {
+        None | Some(IconPaintValue::Inherit) => fallback,
+        Some(paint) => paint,
+    };
+    let context = IconPaintContext {
+        non_rendering: inherited.non_rendering || is_non_rendering_container(tag),
+        fill: inherit(
+            inline_fill.map(|winner| winner.value).or(fill),
+            inherited.fill,
+        ),
+        stroke: inherit(
+            inline_stroke.map(|winner| winner.value).or(stroke),
+            inherited.stroke,
+        ),
+    };
+    if is_direct_paint_terminal(tag) && !context.non_rendering {
+        // A line has no fill surface. Every other admitted direct terminal can paint
+        // an inherited fill; a missing fill therefore retains SVG's fixed black default.
+        for paint in [
+            (!tag.eq_ignore_ascii_case("line")).then_some(context.fill),
+            Some(context.stroke),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            match paint {
+                IconPaintValue::CurrentColor => observation.consumed = true,
+                IconPaintValue::Fixed => observation.fixed = true,
+                IconPaintValue::NoPaint => {}
+                IconPaintValue::Inherit | IconPaintValue::Unverified => {
+                    observation.unverified = true
+                }
             }
-            IconPaintValue::CurrentColor | IconPaintValue::Unverified => {
-                observation.unverified = true;
-            }
-            IconPaintValue::Fixed if is_direct_paint_terminal(tag) && !inside_non_rendering => {
-                observation.fixed = true;
-            }
-            IconPaintValue::Fixed => {}
         }
     }
-    Ok(())
+    Ok(context)
 }
 
 fn observe_inline_paint(
@@ -502,11 +536,16 @@ fn classify_icon_paint_value(value: &str) -> IconPaintValue {
     let value = value.trim();
     if value.eq_ignore_ascii_case("currentcolor") {
         IconPaintValue::CurrentColor
-    } else if value.eq_ignore_ascii_case("none")
-        || value.eq_ignore_ascii_case("transparent")
-        || merman_core::theme_color::ThemeColor::parse(value).is_ok()
-    {
-        IconPaintValue::Fixed
+    } else if value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("transparent") {
+        IconPaintValue::NoPaint
+    } else if value.eq_ignore_ascii_case("inherit") {
+        IconPaintValue::Inherit
+    } else if let Ok(color) = merman_core::theme_color::ThemeColor::parse(value) {
+        if color.rgba_channels().alpha == 0.0 {
+            IconPaintValue::NoPaint
+        } else {
+            IconPaintValue::Fixed
+        }
     } else {
         IconPaintValue::Unverified
     }

@@ -233,6 +233,10 @@ impl DiagramTheme {
         self.0.spec.as_ref()
     }
 
+    pub(crate) fn root_plan(&self) -> &Arc<application::RootThemePlan> {
+        &self.0.root_plan
+    }
+
     pub(crate) fn resource_restriction(&self) -> &ThemeResourcePolicy {
         &self.0.resource_restriction
     }
@@ -308,6 +312,7 @@ pub(crate) struct CompiledDiagramTheme {
     requirements: ThemeRequirements,
     parse_compatibility: merman_core::__private::ThemeCompatibilityPlan,
     family_programs: Arc<family_program::FamilyThemeProgramCache>,
+    root_plan: Arc<application::RootThemePlan>,
     recipe_fingerprint: ThemeRecipeFingerprint,
     report: ThemeRecipeReport,
 }
@@ -341,6 +346,8 @@ pub enum ThemeCompileValidationError {
     #[error("canvas theme rules cannot be scoped to render family `{family}`")]
     InvalidCanvasFamilyScope { family: &'static str },
 }
+
+pub(crate) use resources::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;
 
 #[cfg(test)]
 mod tests {
@@ -476,5 +483,3 @@ mod tests {
         }
     }
 }
-
-pub(crate) use resources::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;

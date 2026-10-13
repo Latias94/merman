@@ -311,15 +311,50 @@ fn push_mindmap_shadow_defs(
     out.checkpoint()
 }
 
+struct MindmapCssXmlOutput<'a, S> {
+    out: &'a mut S,
+}
+
+impl<S: SvgOutput> std::fmt::Write for MindmapCssXmlOutput<'_, S> {
+    fn write_str(&mut self, value: &str) -> std::fmt::Result {
+        super::super::util::escape_xml_raw_into(self.out, value);
+        self.out.checkpoint().map_err(|_| std::fmt::Error)
+    }
+}
+
+impl<S: SvgOutput> SvgOutput for MindmapCssXmlOutput<'_, S> {
+    fn push_str(&mut self, value: &str) {
+        super::super::util::escape_xml_raw_into(self.out, value);
+    }
+    fn push(&mut self, value: char) {
+        let mut encoded = [0; 4];
+        self.push_str(value.encode_utf8(&mut encoded));
+    }
+    fn len(&self) -> usize {
+        self.out.len()
+    }
+    fn as_str(&self) -> &str {
+        self.out.as_str()
+    }
+    fn replace_range(&mut self, _range: std::ops::Range<usize>, _replacement: &str) -> Result<()> {
+        Err(Error::InvalidModel {
+            message: "Mindmap CSS XML writer does not replace emitted text".to_owned(),
+        })
+    }
+    fn checkpoint(&mut self) -> Result<()> {
+        self.out.checkpoint()
+    }
+}
+
 struct MindmapCssEmission {
-    css: String,
     font_family_css: Box<str>,
 }
 
 fn mindmap_css(
-    diagram_id: &str,
+    out: &mut impl SvgOutput,
+    diagram_id: impl SvgDiagramIdValue,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
-) -> MindmapCssEmission {
+) -> Result<MindmapCssEmission> {
     // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last within the Mermaid baseline. The typed terminal overlay is appended after
@@ -327,12 +362,13 @@ fn mindmap_css(
     let binding = node_palette.css_binding();
     let theme_color_limit = binding.sections.len();
     let use_gradient = binding.use_gradient;
-    let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
-    let parts = info_css_parts_from_prepared(diagram_id, &binding.common);
-    let mut out = parts.css_prefix;
+    let id = super::super::util::css_selector_diagram_id(diagram_id);
+    let fragment_id = diagram_id;
+    let prefix = binding
+        .common
+        .write_prefix_with_font_emission(out, diagram_id)?;
 
-    let _ = write!(&mut out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
+    let _ = write!(out, r#"#{} .edge{{stroke-width:3;}}"#, diagram_id);
 
     // Mermaid default theme resolves `cScale0..11` into this palette for mindmap/kanban/timeline.
     // The first generated section is `section--1` (i=0).
@@ -343,10 +379,7 @@ fn mindmap_css(
     let node_border = writer_tokens.node_border_css();
     let main_bkg = writer_tokens.main_background_css();
     let stroke_width = &binding.stroke_width;
-    let scoped_drop_shadow = binding.drop_shadow.replace(
-        "url(#drop-shadow)",
-        &format!("url(#{fragment_id}-drop-shadow)"),
-    );
+    let scoped_drop_shadow = scoped_drop_shadow(fragment_id, &binding.drop_shadow);
     for i in 0..theme_color_limit {
         let section = i as i64 - 1;
         let slot = &binding.sections[i];
@@ -381,7 +414,7 @@ fn mindmap_css(
             c_scale_label.as_str()
         };
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .section-{} rect,#{} .section-{} path,#{} .section-{} circle,#{} .section-{} polygon,#{} .section-{} path{{fill:{};}}"#,
             diagram_id,
             section,
@@ -396,42 +429,42 @@ fn mindmap_css(
             c_scale
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .section-{} text{{fill:{};}}"#,
             diagram_id, section, c_scale_label
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .section-{} span{{color:{};}}"#,
             diagram_id, section, c_scale_label
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .node-icon-{}{{font-size:40px;color:{};}}"#,
             diagram_id, section, c_scale_label
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .section-edge-{}{{stroke:{};}}"#,
             diagram_id, section, c_scale
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .edge-depth-{}{{stroke-width:{};}}"#,
             diagram_id, section, sw
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .section-{} line{{stroke:{};stroke-width:3;}}"#,
             diagram_id, section, c_scale_inv
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} .disabled,#{} .disabled circle,#{} .disabled text{{fill:lightgray;}}#{} .disabled text{{fill:#efefef;}}"#,
             diagram_id, diagram_id, diagram_id, diagram_id
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} [data-look="neo"].mindmap-node.section-{} rect,#{} [data-look="neo"].mindmap-node.section-{} path,#{} [data-look="neo"].mindmap-node.section-{} circle,#{} [data-look="neo"].mindmap-node.section-{} polygon{{fill:{};stroke:{};stroke-width:{}px;}}"#,
             diagram_id,
             section,
@@ -446,15 +479,16 @@ fn mindmap_css(
             stroke_width
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} [data-look="neo"].section-edge-{}{{stroke:{};}}"#,
             diagram_id, section, neo_edge_stroke
         );
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} [data-look="neo"].mindmap-node.section-{} text{{fill:{};}}"#,
             diagram_id, section, neo_text_label
         );
+        out.checkpoint()?;
     }
 
     // Root section overrides.
@@ -464,33 +498,33 @@ fn mindmap_css(
         root_label.as_str()
     };
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .section-root rect,#{} .section-root path,#{} .section-root circle,#{} .section-root polygon{{fill:{};}}"#,
         diagram_id, diagram_id, diagram_id, diagram_id, root_fill
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .section-root text{{fill:{};}}"#,
         diagram_id, root_label
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .section-root span{{color:{};}}"#,
         diagram_id, root_span
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .icon-container{{height:100%;display:flex;justify-content:center;align-items:center;}}"#,
         diagram_id
     );
-    let _ = write!(&mut out, r#"#{} .edge{{fill:none;}}"#, diagram_id);
+    let _ = write!(out, r#"#{} .edge{{fill:none;}}"#, diagram_id);
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} .mindmap-node-label{{dy:1em;alignment-baseline:middle;text-anchor:middle;dominant-baseline:middle;text-align:center;}}"#,
         diagram_id
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} [data-look="neo"].mindmap-node{{filter:{scoped_drop_shadow};}}"#,
         diagram_id
     );
@@ -507,12 +541,12 @@ fn mindmap_css(
         binding.sections[0].label.as_str()
     };
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} [data-look="neo"].mindmap-node.section-root rect,#{} [data-look="neo"].mindmap-node.section-root path,#{} [data-look="neo"].mindmap-node.section-root circle,#{} [data-look="neo"].mindmap-node.section-root polygon{{fill:{};}}"#,
         diagram_id, diagram_id, diagram_id, diagram_id, neo_root_fill
     );
     let _ = write!(
-        &mut out,
+        out,
         r#"#{} [data-look="neo"].mindmap-node.section-root .text-inner-tspan{{fill:{};}}"#,
         diagram_id, neo_root_text
     );
@@ -520,26 +554,29 @@ fn mindmap_css(
         for i in 0..theme_color_limit {
             let section = i as i64 - 1;
             let _ = write!(
-                &mut out,
+                out,
                 r#"#{} [data-look="neo"].mindmap-node.section-{} rect,#{} [data-look="neo"].mindmap-node.section-{} path,#{} [data-look="neo"].mindmap-node.section-{} circle,#{} [data-look="neo"].mindmap-node.section-{} polygon{{stroke:url(#{}-gradient);fill:{};}}"#,
                 id, section, id, section, id, section, id, section, fragment_id, main_bkg
             );
             let _ = write!(
-                &mut out,
+                out,
                 r#"#{} .section-{} line{{stroke-width:0;}}"#,
                 diagram_id, section
             );
+            out.checkpoint()?;
         }
     }
 
-    out.push_str(&parts.root_rule);
+    binding
+        .common
+        .write_root_with_font_emission(out, diagram_id, fragment_id)?;
 
     // Shared CSS retains the original prepared values. When a direct
     // Mindmap Node.stroke historically replaced `nodeBorder`, retain only the shared Neo root
     // selector that actually consumed that token instead of cloning and globally rewriting config.
     if writer_tokens.has_direct_node_stroke() && !use_gradient {
         let _ = write!(
-            &mut out,
+            out,
             r#"#{} [data-look="neo"].mindmap-node.section-root rect,#{} [data-look="neo"].mindmap-node.section-root path,#{} [data-look="neo"].mindmap-node.section-root circle,#{} [data-look="neo"].mindmap-node.section-root polygon{{stroke:{};}}"#,
             id, id, id, id, node_border
         );
@@ -548,21 +585,22 @@ fn mindmap_css(
     for section in 0..crate::mindmap::MINDMAP_SECTION_COUNT {
         if let Some(fill) = node_palette.css_fill_for_section(section, theme_color_limit) {
             let _ = write!(
-                &mut out,
+                out,
                 r#"#{} [data-mindmap-section="{}"] rect,#{} [data-mindmap-section="{}"] path,#{} [data-mindmap-section="{}"] circle,#{} [data-mindmap-section="{}"] polygon{{fill:{};}}"#,
                 id, section, id, section, id, section, id, section, fill
             );
             let _ = write!(
-                &mut out,
+                out,
                 r#"#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] rect,#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] path,#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] circle,#{} [data-look="neo"].mindmap-node[data-mindmap-section="{}"] polygon{{fill:{};}}"#,
                 id, section, id, section, id, section, id, section, fill
             );
         }
+        out.checkpoint()?;
     }
-    MindmapCssEmission {
-        css: out,
-        font_family_css: parts.font_family.into_boxed_str(),
-    }
+    out.checkpoint()?;
+    Ok(MindmapCssEmission {
+        font_family_css: prefix.diagram_root_font_family_css().into(),
+    })
 }
 
 fn write_mindmap_edge_label(out: &mut impl SvgOutput, edge_id: &str) -> Result<()> {
@@ -780,8 +818,15 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let neo_fill_source = binding.neo_fill_source;
     let writer_tokens = &binding.tokens;
     let mut node_palette_receipt = node_palette.begin_terminal_receipt();
-    let css = mindmap_css(diagram_id.semantic_str(), node_palette);
-    let _ = write!(&mut out, "<style>{}</style>", css.css);
+    out.push_str("<style>");
+    out.checkpoint()?;
+    let css = mindmap_css(
+        &mut MindmapCssXmlOutput { out: &mut out },
+        diagram_id,
+        node_palette,
+    )?;
+    out.push_str("</style>");
+    out.checkpoint()?;
     node_palette_receipt.record_typography_css(&css.font_family_css);
     node_palette_receipt.record_node_paint_css(
         writer_tokens.main_background_css(),
@@ -1576,6 +1621,28 @@ mod tests {
     }
 
     #[test]
+    fn mindmap_css_stops_at_the_first_bounded_sink_checkpoint() {
+        let config = merman_core::MermaidConfig::empty_object();
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let plan = crate::mindmap::MindmapNodePalettePlan::resolve(
+            None,
+            &config,
+            &Default::default(),
+            &meter,
+        )
+        .unwrap();
+        let mut out = RejectAfterFirstWrite::default();
+        assert!(mindmap_css(&mut out, "bounded", &plan).is_err());
+        assert_eq!(
+            out.write_attempts, 1,
+            "failed prefix admission must stop all section expansion"
+        );
+        assert!(out.retained.is_empty());
+    }
+
+    #[test]
     fn mindmap_css_honors_mermaid_11_15_theme_sections() {
         let cfg = serde_json::json!({
             "theme": "redux",
@@ -1605,23 +1672,18 @@ mod tests {
         let node_palette =
             crate::mindmap::MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter)
                 .unwrap();
-        let css = mindmap_css("mm", &node_palette);
+        let mut css = String::new();
+        mindmap_css(&mut css, "mm", &node_palette).unwrap();
 
-        assert!(css.css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
-        assert!(css.css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));
-        assert!(css.css.contains(r#"#mm .section-0 span{color:#404040;}"#));
-        assert!(
-            css.css
-                .contains(r#"#mm .section-1 line{stroke:#808080;stroke-width:3;}"#)
-        );
-        assert!(css.css.contains(r#"#mm .edge-depth--1{stroke-width:12;}"#));
-        assert!(css.css.contains(r#"#mm .edge-depth-0{stroke-width:10;}"#));
-        assert!(css.css.contains(r#"#mm .section-root rect,#mm .section-root path,#mm .section-root circle,#mm .section-root polygon{fill:#909090;}"#));
-        assert!(css.css.contains(r#"#mm .section-root text{fill:#a0a0a0;}"#));
-        assert!(
-            css.css
-                .contains(r#"#mm .section-root span{color:#b0b0b0;}"#)
-        );
+        assert!(css.contains(r#"#mm .section--1 rect,#mm .section--1 path,#mm .section--1 circle,#mm .section--1 polygon,#mm .section--1 path{fill:#101010;}"#));
+        assert!(css.contains(r#"#mm .section--1 span{color:#f0f0f0;}"#));
+        assert!(css.contains(r#"#mm .section-0 span{color:#404040;}"#));
+        assert!(css.contains(r#"#mm .section-1 line{stroke:#808080;stroke-width:3;}"#));
+        assert!(css.contains(r#"#mm .edge-depth--1{stroke-width:12;}"#));
+        assert!(css.contains(r#"#mm .edge-depth-0{stroke-width:10;}"#));
+        assert!(css.contains(r#"#mm .section-root rect,#mm .section-root path,#mm .section-root circle,#mm .section-root polygon{fill:#909090;}"#));
+        assert!(css.contains(r#"#mm .section-root text{fill:#a0a0a0;}"#));
+        assert!(css.contains(r#"#mm .section-root span{color:#b0b0b0;}"#));
     }
 
     #[test]

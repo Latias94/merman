@@ -723,6 +723,6 @@ mod tests {
             write_scoped_sequence_base_defs(&mut short, diagram_id),
             Err(crate::Error::ResourceLimitExceeded(_))
         ));
-        assert!(short.as_str().len() <= expected.len() - 1);
+        assert!(short.as_str().len() < expected.len());
     }
 }

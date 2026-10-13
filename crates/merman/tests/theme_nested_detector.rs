@@ -22,16 +22,20 @@ fn replace_config_with_nested_theme(_source: &str, config: &mut MermaidConfig) -
     true
 }
 
-fn render_after_nested_detector(preset: ThemePreset) -> Result<RenderOutput, RenderError> {
+fn render_after_nested_detector(preset: ThemePreset) -> Result<RenderOutput, Box<RenderError>> {
     let mut engine = Engine::new();
     *engine.registry_mut() = DetectorRegistry::new();
     engine
         .registry_mut()
         .add_fn("stateDiagram", replace_config_with_nested_theme);
     let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
-    Renderer::new().with_engine(engine).render(
-        RenderRequest::svg(SOURCE, OperationControl::new(), Default::default()).with_theme(theme),
-    )
+    Renderer::new()
+        .with_engine(engine)
+        .render(
+            RenderRequest::svg(SOURCE, OperationControl::new(), Default::default())
+                .with_theme(theme),
+        )
+        .map_err(Box::new)
 }
 
 #[test]
@@ -48,7 +52,7 @@ fn nested_detector_preserves_matching_frozen_theme_binding() {
 #[test]
 fn nested_detector_rejects_different_frozen_theme_binding() {
     assert!(matches!(
-        render_after_nested_detector(ThemePreset::EditorLight),
+        render_after_nested_detector(ThemePreset::EditorLight).map_err(|error| *error),
         Err(RenderError::Svg(
             merman::svg::RenderError::ThemeParseBindingMismatch
         ))

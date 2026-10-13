@@ -45,7 +45,7 @@ fn mindmap_node_palette_theme(colors: &[&str]) -> DiagramTheme {
     let palette = OrdinalPalette::new(
         colors
             .iter()
-            .map(|color| ThemeColorValue::parse(*color).expect("valid Mindmap palette color")),
+            .map(|color| ThemeColorValue::parse(color).expect("valid Mindmap palette color")),
     )
     .expect("non-empty Mindmap Node palette");
     DiagramThemeCompiler::new()
@@ -591,16 +591,92 @@ fn mindmap_node_palette_reaches_branch_shapes_without_recoloring_the_root() {
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
+struct MindmapFontProbeMeasurer {
+    expected: String,
+    calls: std::sync::atomic::AtomicUsize,
+}
+
+impl merman_render::text::TextMeasurer for MindmapFontProbeMeasurer {
+    fn measure(
+        &self,
+        text: &str,
+        style: &merman_render::text::TextStyle,
+    ) -> merman_render::text::TextMetrics {
+        assert_eq!(
+            style.font_family.as_deref(),
+            Some(self.expected.as_str()),
+            "layout must measure with the resolved font winner"
+        );
+        self.calls
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        merman_render::text::TextMeasurer::measure(
+            &merman_render::text::DeterministicTextMeasurer::default(),
+            text,
+            style,
+        )
+    }
+}
+
+fn render_mindmap_with_observed_font(
+    source: &str,
+    theme: &DiagramTheme,
+    engine: Engine,
+    diagram_id: &str,
+    expected: &str,
+) -> family::RenderedFamilySvg {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    let probe = std::sync::Arc::new(MindmapFontProbeMeasurer {
+        expected: expected.to_owned(),
+        calls: Default::default(),
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.mindmap-font-probe").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let session = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            identity,
+            probe.clone(),
+        )))
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(theme)
+        .unwrap();
+    let parsed = merman_render::__private::install_parse_compatibility(theme, engine)
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let artifact =
+        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+    assert!(
+        probe.calls.load(std::sync::atomic::Ordering::Relaxed) > 0,
+        "layout must use the supplied measurer"
+    );
+    artifact
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some(diagram_id.to_owned()),
+                ..Default::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap()
+}
+
 #[test]
 fn mindmap_typed_font_stack_reaches_layout_css_and_strict_receipt() {
     let font_stack =
         FontStack::new(["Mindmap Typed", "monospace"]).expect("valid Mindmap typed font stack");
-    let rendered = render_mindmap_with_theme_and_engine(
+    let expected_font = font_stack.as_css();
+    let rendered = render_mindmap_with_observed_font(
         "mindmap\n  A root label that exercises the shared font measurement\n    Child\n",
         &mindmap_font_stack_theme(font_stack),
         Engine::new(),
         "mindmap-typed-font",
-        ThemePortabilityRequirement::RequirePortable,
+        &expected_font,
     );
 
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -620,14 +696,14 @@ fn mindmap_typed_font_stack_reaches_layout_css_and_strict_receipt() {
 fn mindmap_site_font_family_outranks_typed_font_stack() {
     let typed_stack = FontStack::single("Mindmap Typed").expect("valid Mindmap typed font");
     let theme = mindmap_font_stack_theme(typed_stack);
-    let rendered = render_mindmap_with_theme_and_engine(
+    let rendered = render_mindmap_with_observed_font(
         "mindmap\n  Root\n    Child\n",
         &theme,
         Engine::new().with_site_config(MermaidConfig::from_value(json!({
             "themeVariables": { "fontFamily": "Site Mindmap Font" }
         }))),
         "mindmap-site-font",
-        ThemePortabilityRequirement::RequirePortable,
+        "Site Mindmap Font",
     );
 
     let stylesheet = mindmap_stylesheet(rendered.svg());
@@ -954,9 +1030,7 @@ fn mindmap_combined_node_paint_fails_closed_when_only_one_property_has_a_termina
         stylesheet.contains("stroke:#654321;"),
         "the root stroke terminal must remain present: {stylesheet}"
     );
-    let root_selector = format!(
-        "#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root rect,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root path,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root circle,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root polygon{{fill:"
-    );
+    let root_selector = "#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root rect,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root path,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root circle,#mindmap-combined-node-paint-root-only [data-look=\"neo\"].mindmap-node.section-root polygon{fill:".to_owned();
     assert_ne!(
         mindmap_rule_fill(&stylesheet, &root_selector, ";}", "Neo root fill rule",),
         "#123456",
@@ -2091,4 +2165,137 @@ fn mindmap_sanitized_html_images_are_well_formed_xhtml() {
                 .any(|n| n.attribute("href") == Some("https://mermaid.js.org/"))
         );
     }
+}
+
+#[test]
+fn mindmap_long_id_css_rejects_before_the_complete_identifier_expansion() {
+    let diagram_id = "m".repeat(4096);
+    let max = 65_536;
+    let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, max)
+        .unwrap();
+    let error = try_render_mindmap_svg_with_resource_policy(
+        "mindmap\n  Root\n    Child\n",
+        &diagram_id,
+        policy,
+    )
+    .expect_err("expanded selectors must obey the output ceiling");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected byte ceiling, got {error}");
+    };
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert!(limit.actual > max);
+    assert!(
+        limit.actual <= max + diagram_id.len(),
+        "rejection must occur on one identifier append, before whole CSS expansion: {}",
+        limit.actual
+    );
+}
+
+#[test]
+fn mindmap_font_ampersand_preserves_raw_css_through_the_bounded_xml_text_sink() {
+    let stack = FontStack::new(["A&B", "monospace"]).unwrap();
+    let expected = stack.as_css();
+    let theme = mindmap_font_stack_theme(stack);
+    let rendered = render_mindmap_with_observed_font(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new(),
+        "mindmap-font-entity",
+        &expected,
+    );
+    let css = mindmap_stylesheet(rendered.svg());
+    assert!(css.contains(&format!("font-family:{expected};")));
+    assert!(rendered.svg().contains("A&amp;B"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn mindmap_native_finalization_preserves_the_typed_font_stack_and_hex_css() {
+    let stack = FontStack::new(["A&B", "monospace"]).unwrap();
+    let expected = stack.as_css();
+    let theme = mindmap_font_stack_theme(stack);
+    let rendered = render_mindmap_with_observed_font(
+        "mindmap\n  Root\n    Child\n",
+        &theme,
+        Engine::new(),
+        "mindmap-native-font-entity",
+        &expected,
+    );
+    let finalized = rendered
+        .finalize_resvg(&merman_render::svg::SvgPipeline::resvg_safe())
+        .expect("native SVG finalization must preserve logical CSS");
+    let document =
+        roxmltree::Document::parse(finalized.svg().as_str()).expect("valid native Mindmap XML");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap();
+    assert!(
+        css.contains(&format!("font-family:{expected};")),
+        "native stylesheet must preserve the typed stack: {css}"
+    );
+    assert!(css.contains("fill:#333;"));
+    let labels = document
+        .descendants()
+        .filter(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("merman-foreignobject-fallback-text")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(labels.len(), 2);
+    let actual_text = labels
+        .iter()
+        .map(|label| {
+            label
+                .descendants()
+                .filter(roxmltree::Node::is_text)
+                .filter_map(|node| node.text())
+                .collect::<String>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        actual_text
+            .iter()
+            .map(String::as_str)
+            .collect::<std::collections::BTreeSet<_>>(),
+        ["Root", "Child"]
+            .into_iter()
+            .collect::<std::collections::BTreeSet<_>>()
+    );
+
+    for label in labels {
+        let style = label.attribute("style").expect("actual native label style");
+        let family_value = style
+            .split(';')
+            .filter_map(|declaration| declaration.split_once(':'))
+            .find(|(property, _)| property.trim().eq_ignore_ascii_case("font-family"))
+            .map(|(_, value)| value.trim())
+            .unwrap_or_else(|| panic!("native label omitted font-family: {style}"));
+        let mut parser = cssparser::Parser::new(family_value);
+        assert_eq!(
+            parser.expect_string().unwrap().as_ref(),
+            "A&B",
+            "native font family: {style}"
+        );
+        parser.expect_comma().unwrap();
+        assert_eq!(
+            parser.expect_ident().unwrap().as_ref(),
+            "monospace",
+            "native fallback family: {style}"
+        );
+        assert!(
+            parser.is_exhausted(),
+            "unexpected font-family content: {style}"
+        );
+    }
+
+    assert!(
+        !document
+            .descendants()
+            .any(|node| node.has_tag_name("foreignObject"))
+    );
 }

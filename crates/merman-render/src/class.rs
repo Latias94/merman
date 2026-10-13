@@ -1302,6 +1302,24 @@ pub(crate) fn class_html_label_visible_style_facts(
     crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&fragment)
 }
 
+pub(crate) fn class_svg_empty_markdown_fallback(text: &str) -> Option<String> {
+    if text.is_empty()
+        || analyze_class_svg_markdown(text)
+            .lines
+            .iter()
+            .flatten()
+            .any(|(word, _)| !word.is_empty())
+    {
+        return None;
+    }
+    // Pinned shapeUtil.addText restores the first SVG row when createText produced no text.
+    let first = text.chars().next()?;
+    let remaining = text[first.len_utf8()..]
+        .replace("&gt;", ">")
+        .replace("&lt;", "<");
+    Some(format!("{first}{}", remaining.trim()))
+}
+
 pub(crate) fn class_svg_label_visible_style_facts(
     text: &str,
 ) -> crate::text::VisibleTextStyleFacts {
@@ -1319,7 +1337,7 @@ fn class_node_styles_own_color(styles: &[String]) -> bool {
     styles
         .iter()
         .filter_map(|style| crate::mermaid_style::parse_style_declaration(style))
-        .any(|declaration| matches!(declaration.property(), "color" | "fill"))
+        .any(|declaration| declaration.property() == "color")
 }
 
 fn class_label_style_facts(
@@ -1582,6 +1600,21 @@ fn class_box_dimensions(
                 prepare_html_labels.then_some(prepared),
                 style_facts,
             )
+        } else if let Some(fallback) = class_svg_empty_markdown_fallback(text) {
+            let visible_style_facts = crate::text::VisibleTextStyleFacts::plain_text(&fallback);
+            (
+                measurer.measure_wrapped(&fallback, style, None, wrap_mode),
+                None,
+                class_label_style_facts(
+                    &visible_style_facts,
+                    &fallback,
+                    css_style,
+                    node_owns_color,
+                    node_font_ownership,
+                    node_font_size_ownership,
+                    writer_uses_html_labels,
+                ),
+            )
         } else if analyze_class_svg_markdown(text).has_styled_runs {
             let visible_style_facts = class_svg_label_visible_style_facts(text);
             (
@@ -1757,7 +1790,8 @@ fn class_box_dimensions(
             if writer_uses_html_labels {
                 class_html_label_visible_style_facts(&title_text)
             } else {
-                class_svg_label_visible_style_facts(&title_text)
+                // The SVG title writer emits these rows literally, without Markdown tokens.
+                crate::text::VisibleTextStyleFacts::plain_text(&title_lines.join("\n"))
             }
         },
         crate::text::VisibleTextStyleFacts::from_xhtml_fragment,
@@ -1781,14 +1815,11 @@ fn class_box_dimensions(
         let mut prepared_out = prepare_html_labels.then(|| Vec::with_capacity(rows.len()));
         let mut y_offset = 0.0;
         for row in rows {
-            let mut t = if use_html_labels {
+            let t = if use_html_labels {
                 class_member_create_text_input(row)
             } else {
-                decode_entities_minimal(class_member_display_text(row).as_str())
+                row.display_text_for_render()
             };
-            if !use_html_labels && t.starts_with('\\') {
-                t = t.trim_start_matches('\\').to_string();
-            }
             let (metrics, prepared, row_style_facts) = measure_label(&t, row.css_style.as_str());
             style_facts.merge(row_style_facts);
             if let Some(out) = metrics_out.as_mut() {

@@ -514,6 +514,15 @@ impl KanbanTaskTheme {
                         continue;
                     }
                     observation.applicable = true;
+                    if matches!((target, facet),
+                        (ThemeTarget::Task, FamilyThemeRuleFacet::Fill(_)) if source_owned_card_fill)
+                        || matches!((target, facet),
+                            (ThemeTarget::Task, FamilyThemeRuleFacet::Stroke(_)) if source_owned_card_stroke)
+                        || matches!((target, facet),
+                            (ThemeTarget::TaskLabel, FamilyThemeRuleFacet::Fill(_)) if source_owned_label)
+                    {
+                        continue;
+                    }
                     match (target, route.disposition(), facet) {
                         (
                             ThemeTarget::TaskLabel,
@@ -523,12 +532,10 @@ impl KanbanTaskTheme {
                                 | crate::diagram_theme::FamilyThemePaintKind::Solid,
                             ),
                         ) => {
-                            if source_owned_label {
-                                observation.suppressed = true;
-                            } else if label_rule_visible.contains(&rule_index) {
+                            if label_rule_visible.contains(&rule_index) {
                                 observation.label_pending = true;
                             } else if label_rule_shadowed.contains(&rule_index) {
-                                observation.suppressed = true;
+                                continue;
                             } else {
                                 observation.residual =
                                     Some(FamilyThemeResidualReason::UnsupportedPaint);
@@ -541,21 +548,15 @@ impl KanbanTaskTheme {
                                 crate::diagram_theme::FamilyThemePaintKind::Transparent
                                 | crate::diagram_theme::FamilyThemePaintKind::Solid,
                             ),
-                        ) => {
-                            if source_owned_card_fill {
-                                observation.suppressed = true;
-                            } else {
-                                match typed_fill_rule_occurrences.get(&rule_index).copied() {
-                                    Some(count) if count == item_count => {
-                                        observation.fill_pending = true;
-                                    }
-                                    Some(_) | None => {
-                                        observation.residual =
-                                            Some(FamilyThemeResidualReason::UnsupportedPaint);
-                                    }
-                                }
+                        ) => match typed_fill_rule_occurrences.get(&rule_index).copied() {
+                            Some(count) if count == item_count => {
+                                observation.fill_pending = true;
                             }
-                        }
+                            Some(_) | None => {
+                                observation.residual =
+                                    Some(FamilyThemeResidualReason::UnsupportedPaint);
+                            }
+                        },
                         (
                             ThemeTarget::Task,
                             FamilyThemeDisposition::TypedAdapter,
@@ -563,21 +564,15 @@ impl KanbanTaskTheme {
                                 crate::diagram_theme::FamilyThemePaintKind::Transparent
                                 | crate::diagram_theme::FamilyThemePaintKind::Solid,
                             ),
-                        ) => {
-                            if source_owned_card_stroke {
-                                observation.suppressed = true;
-                            } else {
-                                match typed_stroke_rule_occurrences.get(&rule_index).copied() {
-                                    Some(count) if count == item_count => {
-                                        observation.stroke_pending = true;
-                                    }
-                                    Some(_) | None => {
-                                        observation.residual =
-                                            Some(FamilyThemeResidualReason::UnsupportedPaint);
-                                    }
-                                }
+                        ) => match typed_stroke_rule_occurrences.get(&rule_index).copied() {
+                            Some(count) if count == item_count => {
+                                observation.stroke_pending = true;
                             }
-                        }
+                            Some(_) | None => {
+                                observation.residual =
+                                    Some(FamilyThemeResidualReason::UnsupportedPaint);
+                            }
+                        },
                         (
                             ThemeTarget::Task,
                             FamilyThemeDisposition::TypedAdapter,
@@ -659,8 +654,6 @@ impl KanbanTaskTheme {
                 evidence.mark_residual(key, reason);
             } else if observation.incomplete {
                 // A mixed rule cannot be signed Applied until every winning facet is accounted.
-            } else if observation.suppressed {
-                evidence.mark_not_applicable(key);
             } else {
                 let mut pending = false;
                 if observation.radius_pending {
@@ -1478,7 +1471,6 @@ struct KanbanTaskRuleObservation {
     fill_pending: bool,
     stroke_pending: bool,
     label_pending: bool,
-    suppressed: bool,
 }
 
 #[cfg(test)]

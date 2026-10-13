@@ -61,7 +61,7 @@ fn kanban_task_palette_styles(colors: &[&str]) -> ThemeRuleSet {
     let palette = OrdinalPalette::new(
         colors
             .iter()
-            .map(|color| ThemeColorValue::parse(*color).expect("valid Kanban task palette color")),
+            .map(|color| ThemeColorValue::parse(color).expect("valid Kanban task palette color")),
     )
     .expect("non-empty Kanban task palette");
     ThemeRuleSet::default().with_ordinal_palette(ThemeTarget::Task, palette)
@@ -1752,10 +1752,17 @@ fn kanban_legacy_title_color_has_no_consumer_while_text_color_styles_labels() {
 
 #[test]
 fn kanban_task_radius_is_not_applicable_without_items() {
-    render_kanban_svg_with_theme(
+    let rendered = render_kanban_with_theme_and_engine(
         "kanban\n  todo[Todo]\n",
         &kanban_task_radius_theme(Specified::Value(8.0)),
+        Engine::new(),
+        ThemePortabilityRequirement::RequirePortable,
     );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]
@@ -1900,7 +1907,7 @@ fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
     ] {
         let source = "kanban\n  todo[Todo]\n    task[Task]\n";
         let rendered = render_kanban_with_theme_and_engine(
-            &source,
+            source,
             &theme,
             Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
                 "themeVariables": { "fontSize": value }
@@ -1922,7 +1929,7 @@ fn kanban_invalid_explicit_font_size_is_unverified_not_not_applicable() {
         assert_eq!(evidence.theme_residual_count(), 1, "value={label}");
 
         let error = match try_render_kanban_with_theme_and_engine(
-            &source,
+            source,
             &theme,
             Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
                 "themeVariables": { "fontSize": value }
@@ -2019,4 +2026,109 @@ fn kanban_source_owned_font_size_is_a_property_local_portability_residual() {
         error.unverified_family_theme(),
         Some((merman_render::DiagramFamilyId::KANBAN, 1))
     );
+}
+
+#[test]
+fn repair_u7_kanban_source_owned_facet_keeps_sibling_receipts() {
+    for (patch, config, expected_applied, expected_style) in [
+        (
+            kanban_task_radius_style(Specified::Value(8.0))
+                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+            serde_json::json!({"themeVariables":{"background":"#abcdef"}}),
+            1,
+            None,
+        ),
+        (
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").unwrap())
+                .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+            serde_json::json!({"themeVariables":{"background":"#abcdef"}}),
+            1,
+            Some("stroke:#654321"),
+        ),
+        (
+            ThemeStylePatch::default()
+                .with_fill(CanvasPaint::solid("#123456").unwrap())
+                .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+            serde_json::json!({"themeVariables":{"background":"#abcdef","nodeBorder":"#fedcba"}}),
+            0,
+            None,
+        ),
+    ] {
+        let has_radius = matches!(patch.geometry.radius, Specified::Value(_));
+        let theme = kanban_task_rules_theme([ThemeRule::new(ThemeTarget::Task, patch)]);
+        let rendered = render_kanban_with_theme_and_engine(
+            "kanban\n  todo[Todo]\n    task[Task]",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(config)),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let style = kanban_task_rect_style(&document, "kanban-palette-task");
+        assert!(!style.contains("fill:#123456"));
+        if let Some(expected) = expected_style {
+            assert!(style.contains(expected), "{style}");
+        }
+        if has_radius {
+            let rect = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some("kanban-palette-task"))
+                .unwrap()
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            assert_eq!(rect.attribute("rx"), Some("8"));
+            assert_eq!(rect.attribute("ry"), Some("8"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.applied_count(), expected_applied);
+        assert_eq!(evidence.not_applicable_count(), 1 - expected_applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn repair_u7_kanban_source_owned_fill_keeps_unsupported_radius_residual() {
+    let theme = kanban_task_rules_theme([ThemeRule::new(
+        ThemeTarget::Task,
+        kanban_task_radius_style(Specified::Value(8.0))
+            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+    )
+    .with_ordinal(OrdinalSelector::Exact(1))]);
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(
+        serde_json::json!({"themeVariables":{"background":"#abcdef"}}),
+    ));
+    let rendered = render_kanban_with_theme_and_engine(
+        "kanban\n  todo[Todo]\n    task[Task]",
+        &theme,
+        engine.clone(),
+        ThemePortabilityRequirement::BestEffort,
+    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert!(
+        try_render_kanban_with_theme_and_engine(
+            "kanban\n  todo[Todo]\n    task[Task]",
+            &theme,
+            engine,
+            ThemePortabilityRequirement::RequirePortable
+        )
+        .is_err()
+    );
+}
+
+#[test]
+fn repair_u7_kanban_configured_font_precedence_matches_prepared_layout_and_css() {
+    let theme = kanban_task_rules_theme([]);
+    let (layout, rendered) = try_render_kanban_with_layout_and_environment("kanban\n  todo[Todo]\n    task[Task]", &theme,
+        Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "fontFamily":"RootFallback, serif","themeVariables":{"fontFamily":"Configured, sans-serif","fontSize":"22px"}}))),
+        ThemePortabilityRequirement::RequirePortable, RenderEnvironment::deterministic()).unwrap();
+    assert!(!layout.items.is_empty());
+    assert!(rendered.svg().contains("font-family:Configured,sans-serif"));
+    assert!(rendered.svg().contains("font-size:22px"));
 }

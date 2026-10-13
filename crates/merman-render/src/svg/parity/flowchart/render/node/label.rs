@@ -623,6 +623,31 @@ fn flowchart_node_label_uses_markdown_bbox(label_type: &str, text: &str) -> bool
     label_type == "markdown" && crate::text::mermaid_markdown_to_lines(text, true).len() > 1
 }
 
+fn label_weight_is_verified(
+    ctx: &FlowchartRenderCtx<'_>,
+    label: &super::FlowchartNodeLabelState<'_>,
+    html: Option<&str>,
+    shell_classes: &[&str],
+    node_classes: &[String],
+) -> bool {
+    ctx.svg_label_sidecar.is_some_and(|sidecar| {
+        let weights = sidecar.label_weights();
+        weights.config_is_verified() && weights.get(ThemeTarget::NodeLabel).is_some()
+    }) && label.label_type != "markdown"
+        && !label.text.contains("$$")
+        && html.is_none_or(|html| {
+            let ancestor_classes = ["root", "nodes", "node", "default"]
+                .into_iter()
+                .chain(node_classes.iter().map(String::as_str));
+            crate::svg::parity::flowchart::style::html_label_font_weight_status(
+                ctx.class_defs,
+                shell_classes,
+                ancestor_classes,
+                html,
+            ) == crate::flowchart::FlowchartSourceFacetStatus::Absent
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -663,29 +688,4 @@ mod tests {
             "markdown", "one line"
         ));
     }
-}
-
-fn label_weight_is_verified(
-    ctx: &FlowchartRenderCtx<'_>,
-    label: &super::FlowchartNodeLabelState<'_>,
-    html: Option<&str>,
-    shell_classes: &[&str],
-    node_classes: &[String],
-) -> bool {
-    ctx.svg_label_sidecar.is_some_and(|sidecar| {
-        let weights = sidecar.label_weights();
-        weights.config_is_verified() && weights.get(ThemeTarget::NodeLabel).is_some()
-    }) && label.label_type != "markdown"
-        && !label.text.contains("$$")
-        && html.is_none_or(|html| {
-            let ancestor_classes = ["root", "nodes", "node", "default"]
-                .into_iter()
-                .chain(node_classes.iter().map(String::as_str));
-            crate::svg::parity::flowchart::style::html_label_font_weight_status(
-                ctx.class_defs,
-                shell_classes,
-                ancestor_classes,
-                html,
-            ) == crate::flowchart::FlowchartSourceFacetStatus::Absent
-        })
 }

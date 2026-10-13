@@ -783,6 +783,59 @@ mod tests {
     }
 
     #[test]
+    fn hand_drawn_circle_none_preserves_work_svg_and_cancellation_terminals() {
+        let diameter = 108.0;
+        let budget = hand_drawn_geometry_budget(
+            std::f64::consts::PI * diameter,
+            diameter,
+            diameter,
+            CIRCLE_HAND_DRAWN_HACHURE_GAP,
+            HAND_DRAWN_ROUGHNESS,
+            32,
+        )
+        .unwrap();
+        for (id, max, phase) in [
+            (
+                ResourceLimitId::MaxLayoutWorkUnits,
+                budget.work_units - 1,
+                ResourceLimitPhase::LayoutModel,
+            ),
+            (
+                ResourceLimitId::MaxSvgBytes,
+                budget.svg_bytes - 1,
+                ResourceLimitPhase::SvgOutput,
+            ),
+        ] {
+            let meter = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(id, max)
+                    .unwrap(),
+            );
+            assert!(
+                roughjs_paths_for_circle(diameter, 1.3, "0 0", true, &meter, &randomness())
+                    .is_none()
+            );
+            let error = meter
+                .checkpoint(OperationPhase::Emit)
+                .expect_err("circle admission retains the terminal cause");
+            assert_limit(error, id.as_str(), phase);
+        }
+        let control = OperationControl::new();
+        control.cancel();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        );
+        assert!(
+            roughjs_paths_for_circle(diameter, 1.3, "0 0", true, &meter, &randomness()).is_none()
+        );
+        assert!(matches!(
+            meter.checkpoint(OperationPhase::Emit),
+            Err(OperationWorkError::Cancelled(_))
+        ));
+    }
+
+    #[test]
     fn hand_drawn_hachure_replays_cancellation_before_generation() {
         let control = OperationControl::new();
         control.cancel();

@@ -202,18 +202,6 @@ pub(in crate::svg::parity) fn flowchart_label_plain_text(
     crate::flowchart::flowchart_label_plain_text_for_layout(label, label_type, html_labels)
 }
 
-pub(in crate::svg::parity) fn write_flowchart_svg_text_centered(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    text: &str,
-    include_style: bool,
-) {
-    crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
-        out,
-        text,
-        include_style,
-    );
-}
-
 pub(in crate::svg::parity) fn write_flowchart_empty_svg_text_centered(
     out: &mut impl crate::svg::parity::SvgOutput,
     include_style: bool,
@@ -232,16 +220,6 @@ pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines(
     include_style: bool,
 ) {
     crate::svg::parity::label::write_svg_text_source_word_lines(out, lines, include_style, false);
-}
-
-pub(in crate::svg::parity) fn write_flowchart_svg_source_word_lines_centered_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    lines: &[Vec<String>],
-    style: &str,
-) {
-    crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
-        out, lines, style, true, None,
-    );
 }
 
 pub(crate) fn write_flowchart_svg_label_plan(

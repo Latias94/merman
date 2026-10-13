@@ -6,11 +6,12 @@ use merman_core::MermaidConfig;
 use super::RailroadStyle;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, FamilyThemePaintKind,
-    FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme, ThemeCapability,
-    ThemeTarget, ThemeTypographyProperty, ThemeVariant,
+    FamilyThemeRuleFacet, ResolvedDiagramTheme, ThemeCapability, ThemeTarget,
+    ThemeTypographyProperty, ThemeVariant,
 };
 use crate::family::{
     DirectStaticPaint, DirectStaticSelectorDomain, FamilyThemeEvidence, FamilyThemeResidualReason,
+    TerminalVariantDomain, UnsupportedTerminalDomain, reconcile_unsupported_terminal_domains,
     resolve_direct_static_fill, unsupported_residual_for_facet,
 };
 
@@ -18,25 +19,7 @@ use crate::family::{
 struct RailroadUnsupportedRoute {
     key: FamilyThemeMechanismKey,
     target: ThemeTarget,
-    selector: Option<FamilyThemeSelectorShape>,
     reason: FamilyThemeResidualReason,
-    text_fill: bool,
-}
-
-impl RailroadUnsupportedRoute {
-    fn is_applicable(
-        &self,
-        receipt: &RailroadSurfaceReceipt,
-        text_fill_roles: RailroadTextFillRoles,
-    ) -> bool {
-        if self.text_fill {
-            return text_fill_roles.has_visible_occurrence(receipt);
-        }
-        let occurrence_count = receipt.occurrence_count(self.target);
-        self.selector.is_none_or(|selector| {
-            selector.ordinal_domain_intersects_occurrence_count(occurrence_count)
-        }) && occurrence_count != 0
-    }
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -57,6 +40,26 @@ impl RailroadTextFillRoles {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RailroadTextRole {
+    Terminal,
+    Nonterminal,
+    Comment,
+    Special,
+    RuleName,
+}
+
+impl RailroadTextFillRoles {
+    fn owns_role(self, role: RailroadTextRole) -> bool {
+        match role {
+            RailroadTextRole::Terminal => self.terminal,
+            RailroadTextRole::Nonterminal | RailroadTextRole::Special => self.nonterminal,
+            RailroadTextRole::Comment => self.comment,
+            RailroadTextRole::RuleName => self.rule_name,
+        }
+    }
+}
+
 /// Writer-owned proof of the styled Railroad text surfaces emitted to terminal SVG.
 #[derive(Debug, Default)]
 pub(crate) struct RailroadSurfaceReceipt {
@@ -68,6 +71,9 @@ pub(crate) struct RailroadSurfaceReceipt {
     comment_text_count: usize,
     special_text_count: usize,
     rule_name_count: usize,
+    expected_text_roles: Option<Box<[RailroadTextRole]>>,
+    next_text_role: usize,
+    text_roles_match: bool,
     expected_title_fill: Option<Box<str>>,
     expected_terminal_text_fill: Option<Box<str>>,
     expected_nonterminal_text_fill: Option<Box<str>>,
@@ -224,29 +230,34 @@ impl RailroadSurfaceReceipt {
     pub(crate) fn record_terminal_text(&mut self, text: &str) {
         if !text.trim().is_empty() {
             self.terminal_text_count = self.terminal_text_count.saturating_add(1);
+            self.record_text_role(RailroadTextRole::Terminal);
         }
     }
 
     pub(crate) fn record_nonterminal_text(&mut self, text: &str) {
         if !text.trim().is_empty() {
             self.nonterminal_text_count = self.nonterminal_text_count.saturating_add(1);
+            self.record_text_role(RailroadTextRole::Nonterminal);
         }
     }
 
     pub(crate) fn record_comment_text(&mut self, text: &str) {
         if !text.trim().is_empty() {
             self.comment_text_count = self.comment_text_count.saturating_add(1);
+            self.record_text_role(RailroadTextRole::Comment);
         }
     }
 
     pub(crate) fn record_special_text(&mut self, text: &str) {
         if !text.trim().is_empty() {
             self.special_text_count = self.special_text_count.saturating_add(1);
+            self.record_text_role(RailroadTextRole::Special);
         }
     }
 
     pub(crate) fn record_rule_name_occurrence(&mut self, emitted_fill: &str) {
         self.rule_name_count = self.rule_name_count.saturating_add(1);
+        self.record_text_role(RailroadTextRole::RuleName);
         if let Some(expected_fill) = self
             .expected_title_fill
             .as_deref()
@@ -256,12 +267,17 @@ impl RailroadSurfaceReceipt {
         }
     }
 
-    fn occurrence_count(&self, target: ThemeTarget) -> usize {
-        match target {
-            ThemeTarget::Text => self.styled_text_count(),
-            ThemeTarget::Title => self.rule_name_count,
-            _ => 0,
+    fn record_text_role(&mut self, role: RailroadTextRole) {
+        if let Some(expected) = &self.expected_text_roles {
+            self.text_roles_match &= expected.get(self.next_text_role) == Some(&role);
+            self.next_text_role = self.next_text_role.saturating_add(1);
         }
+    }
+
+    fn proves_terminal_domain(&self) -> bool {
+        self.expected_text_roles
+            .as_ref()
+            .is_some_and(|roles| self.text_roles_match && self.next_text_role == roles.len())
     }
 
     fn styled_text_count(&self) -> usize {
@@ -410,6 +426,8 @@ pub(crate) struct RailroadTypographyThemePlan {
     text_fill_roles: RailroadTextFillRoles,
     text_fill_config_owned: bool,
     text_fill_winner_rule: Option<usize>,
+    expected_text_roles: Option<Box<[RailroadTextRole]>>,
+    unsupported_terminal_evidence: Option<FamilyThemeEvidence>,
     text_fill_routes: Box<[FamilyThemeMechanismKey]>,
     unsupported_routes: Box<[RailroadUnsupportedRoute]>,
     terminal_receipt: OnceLock<RailroadSurfaceReceipt>,
@@ -419,10 +437,11 @@ impl RailroadTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
-    ) -> Self {
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<Self, crate::resources::OperationWorkError> {
         let mut style = super::railroad_style(effective_config.as_value());
         let Some(theme) = theme else {
-            return Self {
+            return Ok(Self {
                 style,
                 evidence: FamilyThemeEvidence::default(),
                 unsupported_properties: BTreeSet::new(),
@@ -437,10 +456,12 @@ impl RailroadTypographyThemePlan {
                 text_fill_roles: RailroadTextFillRoles::default(),
                 text_fill_config_owned: false,
                 text_fill_winner_rule: None,
+                expected_text_roles: None,
+                unsupported_terminal_evidence: None,
                 text_fill_routes: Box::new([]),
                 unsupported_routes: Box::new([]),
                 terminal_receipt: OnceLock::new(),
-            };
+            });
         };
 
         let config_owns_font_stack = railroad_config_owns_font_stack(effective_config);
@@ -474,7 +495,7 @@ impl RailroadTypographyThemePlan {
                 FamilyThemeMechanism::BaseTypography(_) => {}
                 FamilyThemeMechanism::RuleFacet {
                     target: ThemeTarget::Text,
-                    selector,
+                    selector: _,
                     facet:
                         FamilyThemeRuleFacet::Fill(
                             FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
@@ -490,9 +511,7 @@ impl RailroadTypographyThemePlan {
                             unsupported_routes.push(RailroadUnsupportedRoute {
                                 key,
                                 target: ThemeTarget::Text,
-                                selector: Some(selector),
                                 reason: FamilyThemeResidualReason::UnsupportedPaint,
-                                text_fill: true,
                             });
                         }
                     }
@@ -500,7 +519,7 @@ impl RailroadTypographyThemePlan {
                 FamilyThemeMechanism::RuleFacet {
                     rule_index: _,
                     target: ThemeTarget::Title,
-                    selector,
+                    selector: _,
                     facet:
                         FamilyThemeRuleFacet::Fill(
                             FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid,
@@ -515,26 +534,21 @@ impl RailroadTypographyThemePlan {
                             unsupported_routes.push(RailroadUnsupportedRoute {
                                 key,
                                 target: ThemeTarget::Title,
-                                selector: Some(selector),
                                 reason: FamilyThemeResidualReason::UnsupportedPaint,
-                                text_fill: false,
                             });
                         }
                     }
                 }
                 FamilyThemeMechanism::RuleFacet {
                     target,
-                    selector,
+                    selector: _,
                     facet,
                     ..
                 } if route.disposition() == FamilyThemeDisposition::Unsupported => {
                     unsupported_routes.push(RailroadUnsupportedRoute {
                         key: theme.family_mechanism_key(route),
                         target,
-                        selector: Some(selector),
                         reason: unsupported_residual_for_facet(facet),
-                        text_fill: target == ThemeTarget::Text
-                            && matches!(facet, FamilyThemeRuleFacet::Fill(_)),
                     });
                 }
                 FamilyThemeMechanism::RuleFacet { .. } => {}
@@ -543,9 +557,7 @@ impl RailroadTypographyThemePlan {
                     unsupported_routes.push(RailroadUnsupportedRoute {
                         key: theme.family_mechanism_key(route),
                         target,
-                        selector: None,
                         reason: FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                        text_fill: false,
                     });
                 }
                 FamilyThemeMechanism::EffectBinding { target, .. } => {
@@ -553,15 +565,18 @@ impl RailroadTypographyThemePlan {
                     unsupported_routes.push(RailroadUnsupportedRoute {
                         key: theme.family_mechanism_key(route),
                         target,
-                        selector: None,
                         reason: FamilyThemeResidualReason::UnsupportedEffect,
-                        text_fill: false,
                     });
                 }
             }
         }
 
-        let title_style = theme.style(ThemeTarget::Title, ThemeVariant::Default, Some(1));
+        let title_style = theme.style_with_work_meter(
+            ThemeTarget::Title,
+            ThemeVariant::Default,
+            Some(1),
+            work_meter,
+        )?;
         let title_style_has_winner = title_style.fill_resolution().winner().is_some();
         let title_fill = if title_fill_config_owned || title_fill_routes.is_empty() {
             None
@@ -574,7 +589,12 @@ impl RailroadTypographyThemePlan {
             )
         };
 
-        let text_style = theme.style(ThemeTarget::Text, ThemeVariant::Default, None);
+        let text_style = theme.style_with_work_meter(
+            ThemeTarget::Text,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
         let text_fill_winner_rule = text_style
             .fill_resolution()
             .winner()
@@ -623,7 +643,7 @@ impl RailroadTypographyThemePlan {
             style.font_size = f64::from(theme.typography().font_size_px());
         }
 
-        Self {
+        Ok(Self {
             style,
             evidence: FamilyThemeEvidence::from_theme(Some(theme)),
             unsupported_properties,
@@ -638,10 +658,75 @@ impl RailroadTypographyThemePlan {
             text_fill_roles,
             text_fill_config_owned,
             text_fill_winner_rule,
+            expected_text_roles: None,
+            unsupported_terminal_evidence: None,
             text_fill_routes: text_fill_routes.into_iter().collect(),
             unsupported_routes: unsupported_routes.into_boxed_slice(),
             terminal_receipt: OnceLock::new(),
+        })
+    }
+
+    pub(crate) fn prepare_terminal_domain(
+        &mut self,
+        theme: Option<&ResolvedDiagramTheme>,
+        layout: &crate::model::RailroadDiagramLayout,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<(), crate::resources::OperationWorkError> {
+        let Some(theme) = theme else {
+            return Ok(());
+        };
+        if !self
+            .unsupported_routes
+            .iter()
+            .any(|route| matches!(route.target, ThemeTarget::Text | ThemeTarget::Title))
+        {
+            return Ok(());
         }
+        let mut roles = Vec::new();
+        for rule in &layout.rules {
+            work_meter.charge(1)?;
+            for element in &rule.elements {
+                work_meter.charge(1)?;
+                if element.label.trim().is_empty() {
+                    continue;
+                }
+                let role = match element.kind.as_str() {
+                    "terminal" => RailroadTextRole::Terminal,
+                    "nonterminal" => RailroadTextRole::Nonterminal,
+                    "comment" => RailroadTextRole::Comment,
+                    "special" => RailroadTextRole::Special,
+                    _ => continue,
+                };
+                roles.push(role);
+            }
+            roles.push(RailroadTextRole::RuleName);
+        }
+        let text_owned_fill = roles
+            .iter()
+            .map(|role| !self.text_fill_roles.owns_role(*role))
+            .collect::<Vec<_>>();
+        let title_owned_fill = vec![self.title_fill_config_owned; layout.rules.len()];
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut evidence,
+            &[
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Text,
+                    TerminalVariantDomain::uniform(roles.len(), ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&text_owned_fill),
+                UnsupportedTerminalDomain::direct(
+                    ThemeTarget::Title,
+                    TerminalVariantDomain::uniform(layout.rules.len(), ThemeVariant::Default),
+                )
+                .with_source_owned_fill(&title_owned_fill),
+            ],
+            work_meter,
+        )?;
+        self.expected_text_roles = Some(roles.into_boxed_slice());
+        self.unsupported_terminal_evidence = Some(evidence);
+        Ok(())
     }
 
     pub(crate) const fn style(&self) -> &RailroadStyle {
@@ -667,6 +752,8 @@ impl RailroadTypographyThemePlan {
             expected_rule_name_text_fill: (text_fill_is_active && self.text_fill_roles.rule_name)
                 .then(|| self.style.rule_name_color.clone().into_boxed_str()),
             title_fill_terminal_matches: true,
+            expected_text_roles: self.expected_text_roles.clone(),
+            text_roles_match: true,
             ..RailroadSurfaceReceipt::default()
         }
     }
@@ -740,35 +827,19 @@ impl RailroadTypographyThemePlan {
                 FamilyThemeResidualReason::UnsupportedTypography,
             );
         }
+        if receipt.proves_terminal_domain() {
+            if let Some(terminal_evidence) = &self.unsupported_terminal_evidence {
+                evidence.merge_accounted_from(terminal_evidence.clone());
+            }
+        } else {
+            for route in &self.unsupported_routes {
+                if matches!(route.target, ThemeTarget::Text | ThemeTarget::Title) {
+                    evidence.mark_residual(route.key.clone(), route.reason);
+                }
+            }
+        }
         for route in &self.unsupported_routes {
-            let shadowed_by_config = (route.target == ThemeTarget::Title
-                && self.title_fill_config_owned)
-                || (route.text_fill
-                    && (self.text_fill_config_owned
-                        || !self.text_fill_roles.has_visible_occurrence(receipt)));
-            let shadowed_by_typed_winner = route.target == ThemeTarget::Title
-                && match (self.title_fill.as_ref(), &route.key) {
-                    (Some(winner), FamilyThemeMechanismKey::Rule { index, .. }) => {
-                        winner.rule_index() != *index
-                    }
-                    (
-                        Some(_),
-                        FamilyThemeMechanismKey::OrdinalPalette {
-                            target: ThemeTarget::Title,
-                        },
-                    ) => true,
-                    _ => false,
-                };
-            let shadowed_by_text_typed_winner = route.text_fill
-                && match (&route.key, self.text_fill_winner_rule) {
-                    (FamilyThemeMechanismKey::Rule { index, .. }, Some(winner)) => winner != *index,
-                    _ => false,
-                };
-            if shadowed_by_config || shadowed_by_typed_winner || shadowed_by_text_typed_winner {
-                evidence.mark_not_applicable(route.key.clone());
-            } else if route.is_applicable(receipt, self.text_fill_roles) {
-                evidence.mark_residual(route.key.clone(), route.reason);
-            } else {
+            if !matches!(route.target, ThemeTarget::Text | ThemeTarget::Title) {
                 evidence.mark_not_applicable(route.key.clone());
             }
         }
@@ -988,7 +1059,11 @@ mod tests {
         RailroadTypographyThemePlan::resolve(
             Some(&resolved),
             &MermaidConfig::from_value(serde_json::json!({})),
+            &crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
         )
+        .unwrap()
     }
 
     #[test]
@@ -1116,7 +1191,39 @@ mod tests {
             .expect("compile Railroad title fill and palette theme")
             .resolve(DiagramFamilyId::RAILROAD);
         let config = MermaidConfig::from_value(serde_json::json!({}));
-        let plan = RailroadTypographyThemePlan::resolve(Some(&resolved), &config);
+        let mut plan = RailroadTypographyThemePlan::resolve(
+            Some(&resolved),
+            &config,
+            &crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .unwrap();
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "railroad-beta\nexpr = terminal(\"\") ;",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let merman_core::RenderSemanticModel::Railroad(model) = parsed.model() else {
+            panic!("Railroad model");
+        };
+        let layout = super::super::layout_railroad_diagram_typed_for_type_with_theme(
+            model,
+            "railroad",
+            &plan,
+            &crate::text::DeterministicTextMeasurer::default(),
+        )
+        .unwrap();
+        plan.prepare_terminal_domain(
+            Some(&resolved),
+            &layout,
+            &crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .unwrap();
         let mut receipt = plan.begin_terminal_receipt();
         let stylesheet = VALID_CSS.replace(
             "#rr .railroad-rule-name{font-weight:bold;fill:black;",

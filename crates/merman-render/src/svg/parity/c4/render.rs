@@ -549,7 +549,11 @@ fn c4_write_unified_shape(
                 })?;
                 out.push_str(r#"<g class="basic label-container">"#);
                 out.checkpoint()?;
-                let _ = write!(out, r#"<g transform="translate(0,{})">"#, fmt(body_top));
+                let _ = write!(
+                    out,
+                    r#"<g transform="translate(0,{})">"#,
+                    fmt(body_top + body_height / 2.0)
+                );
                 out.checkpoint()?;
                 c4_write_hand_drawn_pair(out, &body_pair, fill, stroke, 2.0)?;
                 out.push_str("</g>");

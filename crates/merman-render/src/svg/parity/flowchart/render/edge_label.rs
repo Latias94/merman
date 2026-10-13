@@ -1180,6 +1180,38 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     Ok(Some(position))
 }
 
+fn weight_terminal_verified(
+    ctx: &FlowchartRenderCtx<'_>,
+    weights: crate::flowchart::FlowchartLabelWeights,
+    text: &str,
+    label_type: &str,
+    html: Option<&str>,
+    swimlane: bool,
+) -> bool {
+    weights.config_is_verified()
+        && weights.get(ThemeTarget::EdgeLabel).is_some()
+        && label_type != "markdown"
+        && !text.contains("$$")
+        && html.is_none_or(|html| {
+            let shell_classes: &[&str] = if swimlane {
+                &["label", "edgeLabel", "nodeLabel"]
+            } else {
+                &["label", "edgeLabel", "labelBkg"]
+            };
+            let ancestor_classes = if swimlane {
+                &["root", "nodes"]
+            } else {
+                &["root", "edgeLabels"]
+            };
+            crate::svg::parity::flowchart::style::html_label_font_weight_status(
+                ctx.class_defs,
+                shell_classes,
+                ancestor_classes.iter().copied(),
+                html,
+            ) == crate::flowchart::FlowchartSourceFacetStatus::Absent
+        })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1393,36 +1425,4 @@ mod tests {
         let positioned = position_flowchart_edge_label(anchor, &polyline, true);
         assert_eq!((positioned.x, positioned.y), (4.0, 5.0));
     }
-}
-
-fn weight_terminal_verified(
-    ctx: &FlowchartRenderCtx<'_>,
-    weights: crate::flowchart::FlowchartLabelWeights,
-    text: &str,
-    label_type: &str,
-    html: Option<&str>,
-    swimlane: bool,
-) -> bool {
-    weights.config_is_verified()
-        && weights.get(ThemeTarget::EdgeLabel).is_some()
-        && label_type != "markdown"
-        && !text.contains("$$")
-        && html.is_none_or(|html| {
-            let shell_classes: &[&str] = if swimlane {
-                &["label", "edgeLabel", "nodeLabel"]
-            } else {
-                &["label", "edgeLabel", "labelBkg"]
-            };
-            let ancestor_classes = if swimlane {
-                &["root", "nodes"]
-            } else {
-                &["root", "edgeLabels"]
-            };
-            crate::svg::parity::flowchart::style::html_label_font_weight_status(
-                ctx.class_defs,
-                shell_classes,
-                ancestor_classes.iter().copied(),
-                html,
-            ) == crate::flowchart::FlowchartSourceFacetStatus::Absent
-        })
 }
