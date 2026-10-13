@@ -14,6 +14,7 @@ pub(crate) use marker_paint::BlockMarkerPaintPlan;
 mod source;
 mod theme;
 
+pub(crate) use config::BlockShapeSettings;
 pub(crate) use source::resolve_block_node_sources;
 
 #[cfg(test)]
@@ -511,6 +512,7 @@ fn block_shape_size(
     label_height: f64,
     padding: f64,
     has_label: bool,
+    shape_settings: BlockShapeSettings,
 ) -> Option<(f64, f64)> {
     geometry::natural_shape_size(
         block_type,
@@ -519,12 +521,14 @@ fn block_shape_size(
         label_height,
         padding,
         has_label,
+        shape_settings,
     )
 }
 
 fn to_sized_block_shallow(
     node: &BlockNode,
     padding: f64,
+    shape_settings: BlockShapeSettings,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
     html_labels: bool,
@@ -560,6 +564,7 @@ fn to_sized_block_shallow(
         shape_label_height,
         padding,
         !label_effectively_empty && !label_decoded.trim().is_empty(),
+        shape_settings,
     ) {
         width = computed_width;
         height = computed_height;
@@ -892,12 +897,20 @@ pub(crate) fn layout_block_diagram_typed(
         text_style,
     } = BlockConfigView::new(effective_config).layout_settings();
     let html_labels = crate::config::config_effective_html_labels(effective_config);
-    layout_block_diagram_typed_with_text_style(model, padding, html_labels, text_style, measurer)
+    layout_block_diagram_typed_with_text_style(
+        model,
+        padding,
+        BlockShapeSettings::resolve(effective_config),
+        html_labels,
+        text_style,
+        measurer,
+    )
 }
 
 pub(crate) fn layout_block_diagram_typed_with_text_style(
     model: &merman_core::diagrams::block::BlockDiagramRenderModel,
     padding: f64,
+    shape_settings: BlockShapeSettings,
     html_labels: bool,
     text_style: TextStyle,
     measurer: &dyn TextMeasurer,
@@ -915,7 +928,16 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
     let mut records = model
         .blocks_flat
         .iter()
-        .map(|block| to_sized_block_shallow(block, padding, measurer, &text_style, html_labels))
+        .map(|block| {
+            to_sized_block_shallow(
+                block,
+                padding,
+                shape_settings,
+                measurer,
+                &text_style,
+                html_labels,
+            )
+        })
         .collect::<Vec<_>>();
     set_block_sizes(root, &mut records, padding);
     layout_blocks(root, &mut records, padding)?;
@@ -937,6 +959,7 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
             source.directions,
             padding,
             source.width_in_columns,
+            shape_settings,
         )
         .ok_or_else(|| Error::InvalidModel {
             message: format!("missing Block geometry for visible node `{}`", node.id),

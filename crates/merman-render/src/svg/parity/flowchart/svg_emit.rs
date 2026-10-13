@@ -505,26 +505,33 @@ pub(super) fn render_flowchart_svg_model(
     document.push_accessibility_metadata(&mut out);
     out.push_str("<style>");
     out.checkpoint()?;
-    write_flowchart_css(
-        &mut out,
-        diagram_id,
-        diagram_type,
-        document_ids.drop_shadow(),
-        document_ids.drop_shadow_small(),
-        document_ids.root_gradient(),
-        &prepared_theme.compatibility,
-        font_family,
-        font_size,
-        &model.class_defs,
-        Some(text_surface_paint),
-    )?;
-    if diagram_type == "agentflow" {
-        super::agentflow::write_css(&mut out, diagram_id, &prepared_theme.compatibility)?;
-    }
-    text_surface_paint.generic_text.record_stylesheet_emission();
-    text_surface_paint.background.record_stylesheet();
-    if swimlane_layout.is_some() {
-        super::swimlane::write_swimlane_css(&mut out, diagram_id);
+    {
+        let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+        write_flowchart_css(
+            &mut css_out,
+            diagram_id,
+            diagram_type,
+            document_ids.drop_shadow(),
+            document_ids.drop_shadow_small(),
+            document_ids.root_gradient(),
+            &prepared_theme.compatibility,
+            font_family,
+            font_size,
+            &model.class_defs,
+            Some(text_surface_paint),
+        )?;
+        if diagram_type == "agentflow" {
+            super::agentflow::write_css(&mut css_out, diagram_id, &prepared_theme.compatibility)?;
+        }
+        text_surface_paint.generic_text.record_stylesheet_emission();
+        text_surface_paint.background.record_stylesheet();
+        if swimlane_layout.is_some() {
+            super::swimlane::write_swimlane_css(
+                &mut css_out,
+                diagram_id,
+                &prepared_theme.compatibility.cluster_border,
+            );
+        }
     }
     out.push_str("</style>");
     out.checkpoint()?;

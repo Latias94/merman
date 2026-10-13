@@ -7,23 +7,6 @@
 
 #![forbid(unsafe_code)]
 
-/// Suffix reserved for renderer-owned paths whose SVG paint channel differs from their semantic
-/// facet. Native exporters may use this marker only after accepting a sealed renderer artifact.
-#[doc(hidden)]
-pub const RENDERER_SEMANTIC_FILL_PATH_SUFFIX: &str = "-merman-fill-paint";
-
-/// Suffix reserved for renderer-owned paths whose stroke channel proves both semantic fill and
-/// stroke facets. Native exporters may use this marker only after accepting a sealed renderer
-/// artifact.
-#[doc(hidden)]
-pub const RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX: &str = "-merman-fill-stroke-paint";
-
-/// Suffix reserved for renderer-owned paths or groups whose native SVG paint channel is the
-/// semantic fill channel. Native exporters may use this marker only after accepting a sealed
-/// renderer artifact.
-#[doc(hidden)]
-pub const RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX: &str = "-merman-native-paint";
-
 mod css_identifier;
 mod fallback;
 #[cfg_attr(

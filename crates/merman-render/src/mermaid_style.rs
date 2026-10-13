@@ -111,7 +111,61 @@ pub(crate) fn parse_safe_style_decl(s: &str) -> Option<(&str, &str)> {
 }
 
 pub(crate) fn is_safe_css_font_family_value(value: &str) -> bool {
-    css_value_is_safe(value, CssValuePolicy::MermaidSourceStyle) && !value.contains(':')
+    // Preserve existing dynamic host values. Literal font names have their own CSS grammar:
+    // markup punctuation inside a complete quoted name belongs to the terminal XML writer.
+    (css_value_is_safe(value, CssValuePolicy::MermaidSourceStyle) && !value.contains(':'))
+        || literal_css_font_family_list_is_valid(value)
+}
+
+fn literal_css_font_family_list_is_valid(value: &str) -> bool {
+    if value.chars().any(char::is_control) {
+        return false;
+    }
+
+    #[derive(Clone, Copy, PartialEq, Eq)]
+    enum FamilyName {
+        Missing,
+        Identifiers,
+        Quoted,
+    }
+
+    let mut parser = Parser::new(value);
+    let mut family = FamilyName::Missing;
+    loop {
+        let start = parser.position();
+        match parser.next_including_whitespace_and_comments() {
+            Ok(Token::WhiteSpace(_)) => {}
+            Ok(Token::Ident(name)) if family != FamilyName::Quoted => {
+                if crate::diagram_theme::is_css_wide_keyword(name)
+                    || name.eq_ignore_ascii_case("default")
+                {
+                    return false;
+                }
+                family = FamilyName::Identifiers;
+            }
+            Ok(Token::QuotedString(_)) if family == FamilyName::Missing => {
+                // cssparser recovers a string at EOF, so also require its actual closing quote.
+                let raw = parser.slice(start..parser.position());
+                if raw.len() < 2 || raw.as_bytes().first() != raw.as_bytes().last() {
+                    return false;
+                }
+                let trailing_backslashes = raw[..raw.len() - 1]
+                    .bytes()
+                    .rev()
+                    .take_while(|byte| *byte == b'\\')
+                    .count();
+                if !trailing_backslashes.is_multiple_of(2) {
+                    return false;
+                }
+                family = FamilyName::Quoted;
+            }
+            Ok(Token::Comma) if family != FamilyName::Missing => family = FamilyName::Missing,
+            Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+                return family != FamilyName::Missing;
+            }
+            _ => return false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1198,6 +1252,69 @@ fn source_closes_initial_block(raw_block: &str, close: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn font_family_value_accepts_complete_literal_lists_with_quoted_metacharacters() {
+        for value in [
+            r#""A<B", monospace"#,
+            r#""A>B", serif"#,
+            r#""A&B", monospace"#,
+            r#""A: B", serif"#,
+            r#""A&amp;B", serif"#,
+            r#""Comma, \"Quoted, Font\" Glyph", monospace"#,
+            r"Open\, Sans, monospace",
+            r#""字體 Ω", sans-serif"#,
+            "Times New Roman, serif",
+            "inherit",
+        ] {
+            assert!(is_safe_css_font_family_value(value), "{value}");
+        }
+    }
+
+    #[test]
+    fn font_family_value_rejects_injection_resources_and_incomplete_grammar() {
+        for value in [
+            "Arial;fill:red",
+            "Arial } #victim { fill:red",
+            "</style><svg>",
+            r#""Known";}</style><svg>"#,
+            "url(https://example.test/font.svg)",
+            r"u\72l(https://example.test/font.svg)",
+            "expression(alert(1))",
+            "var(--font",
+            "calc(12px",
+            r#""A<B" Arial"#,
+            r#"Known "A<B""#,
+            r#""A<B",,Other"#,
+            r#", "A<B""#,
+            r#""A<B","#,
+            r#""A<B"#,
+            r#""A<B\""#,
+            r#""A<B", inherit"#,
+            r#""A<B", default"#,
+            "Known/* comment */",
+            "Known\0",
+            "\"bad\u{1f}font\",serif",
+        ] {
+            assert!(!is_safe_css_font_family_value(value), "{value}");
+        }
+        // Font-specific parsing must not relax the generic inline/source admission boundary.
+        assert!(parse_style_declaration(r#"font-family:"A<B",serif"#).is_none());
+        assert!(!is_resource_free_css_value(r#""A<B""#));
+    }
+
+    #[test]
+    fn font_family_value_preserves_existing_dynamic_host_functions() {
+        for value in [
+            "var(--font)",
+            "var(--font, serif)",
+            "env(host-font, monospace)",
+            "attr(data-font)",
+            "var(--font, calc(1px + 2px))",
+        ] {
+            assert!(is_safe_css_font_family_value(value), "{value}");
+        }
+    }
 
     #[test]
     fn parse_safe_style_decl_accepts_mermaid_style_values() {

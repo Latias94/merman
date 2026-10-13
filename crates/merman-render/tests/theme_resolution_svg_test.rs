@@ -430,3 +430,73 @@ fn partial_dark_xychart_title_override_preserves_the_rendered_palette() {
         assert_eq!(plot_colors(&svg), expected_colors);
     }
 }
+
+#[cfg(all(
+    feature = "diagram-flowchart",
+    feature = "diagram-ishikawa",
+    feature = "diagram-tree-view"
+))]
+#[test]
+fn source_and_host_fonts_are_xml_encoded_once_at_the_stylesheet_boundary() {
+    for (name, body) in [
+        ("flowchart", "flowchart LR\nA[Alpha] --> B[Beta]\n"),
+        ("ishikawa", "ishikawa-beta\n  Effect\n  Cause\n    Detail\n"),
+        ("treeview", "treeView-beta\n  \"Root\"\n    \"Child\"\n"),
+    ] {
+        for font in ["A&B", "A<B", "A&amp;B", "Quoted \"Font\"\\Name", "字體 Ω"] {
+            let mut expected = String::new();
+            cssparser::serialize_string(font, &mut expected).unwrap();
+            expected.push_str(", monospace");
+            let config = json!({"themeVariables": {"fontFamily": expected}});
+            // Source presentation admission requires CSS spelling without XML metacharacters.
+            // Mermaid's public root fontFamily path preserves these CSS string escapes.
+            let source_font = expected
+                .replace('&', "\\26 ")
+                .replace('<', "\\3c ")
+                .replace('>', "\\3e ");
+            let source_config = json!({"fontFamily": source_font});
+            for (origin, engine, source, authored_font) in [
+                (
+                    "host",
+                    Engine::new().with_site_config(MermaidConfig::from_value(config.clone())),
+                    body.to_owned(),
+                    expected.as_str(),
+                ),
+                (
+                    "source",
+                    Engine::new(),
+                    format!("%%{{init: {source_config}}}%%\n{body}"),
+                    source_font.as_str(),
+                ),
+            ] {
+                let (svg, effective) = render_with_engine(&engine, &source, "font-css-boundary");
+                assert_eq!(
+                    effective.get_str("themeVariables.fontFamily"),
+                    Some(authored_font),
+                    "{name}/{origin}/{font}: selected theme {:?}",
+                    effective.get_str("theme")
+                );
+                let document = roxmltree::Document::parse(&svg)
+                    .unwrap_or_else(|error| panic!("{name}/{origin}/{font}: {error}"));
+                let css = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("style"))
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                let has_font = css.match_indices("font-family:").any(|(offset, _)| {
+                    let mut parser = cssparser::Parser::new(&css[offset + "font-family:".len()..]);
+                    matches!(
+                        parser.next(),
+                        Ok(cssparser::Token::QuotedString(actual) | cssparser::Token::Ident(actual))
+                            if actual.as_ref() == font
+                    )
+                });
+                assert!(
+                    has_font,
+                    "{name}/{origin}/{font}: decoded CSS lost the font; stylesheet prefix: {}",
+                    css.chars().take(160).collect::<String>()
+                );
+            }
+        }
+    }
+}

@@ -780,7 +780,7 @@ pub(crate) fn render_xychart_diagram_svg(
         diagram_id.semantic_str(),
         typography_theme.font_family_css(),
     );
-    out.push_str(&css);
+    super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
     drop(css);
     out.checkpoint()?;
     out.push_str("</style>");

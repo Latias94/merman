@@ -528,7 +528,9 @@ pub(crate) fn render_journey_diagram_svg_model(
             css.root_typography_emitted,
         );
     }
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
+    out.push_str("<style>");
+    super::super::output::XmlTextOutput::new(&mut out).push_str(&css.css);
+    out.push_str("</style>");
     out.push_str(r#"<g/>"#);
     let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
     let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");

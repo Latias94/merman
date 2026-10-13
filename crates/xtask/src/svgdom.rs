@@ -888,35 +888,6 @@ fn is_eventmodeling_swimlane_text(node: roxmltree::Node<'_, '_>) -> bool {
     })
 }
 
-fn is_ishikawa_text_bbox_attr(node: roxmltree::Node<'_, '_>, key: &str) -> bool {
-    key == "data-merman-text-bbox"
-        && node.is_element()
-        && node.tag_name().name() == "text"
-        && node.ancestors().any(|ancestor| {
-            ancestor.is_element()
-                && ancestor.tag_name().name() == "svg"
-                && ancestor.attribute("aria-roledescription") == Some("ishikawa")
-        })
-}
-
-fn is_tree_view_renderer_paint_marker_id(
-    node: roxmltree::Node<'_, '_>,
-    key: &str,
-    value: &str,
-) -> bool {
-    key == "id"
-        && node.is_element()
-        && node.tag_name().name() == "line"
-        && has_class_token(node, "treeView-node-line")
-        && value.starts_with("treeView-edge-")
-        && value.ends_with("-merman-fill-stroke-paint")
-        && node.ancestors().any(|ancestor| {
-            ancestor.is_element()
-                && ancestor.tag_name().name() == "svg"
-                && ancestor.attribute("aria-roledescription") == Some("treeView")
-        })
-}
-
 fn has_class_token_value(class: &str, token: &str) -> bool {
     class.split_whitespace().any(|value| value == token)
 }
@@ -1928,12 +1899,6 @@ fn build_node(
                 })
         }
 
-        fn is_flowchart_renderer_paint_marker_id(n: roxmltree::Node<'_, '_>, value: &str) -> bool {
-            is_flowchart_hand_drawn_cluster_path(n)
-                && (value.ends_with("-merman-fill-paint")
-                    || value.ends_with("-merman-fill-stroke-paint"))
-        }
-
         fn is_architecture_edge_arrow(n: roxmltree::Node<'_, '_>) -> bool {
             if !(n.tag_name().name() == "polygon" && has_class_token(n, "arrow")) {
                 return false;
@@ -2028,31 +1993,6 @@ fn build_node(
                 {
                     val = normalized;
                 }
-            }
-
-            if mode != DomMode::Strict
-                && key == "id"
-                && is_flowchart_renderer_paint_marker_id(n, &val)
-            {
-                // Renderer-owned paint markers are an internal evidence channel. Mermaid's
-                // reference path has no corresponding id, so keep the marker out of non-strict
-                // DOM parity while strict mode still detects its presence exactly.
-                continue;
-            }
-
-            if mode != DomMode::Strict && is_tree_view_renderer_paint_marker_id(n, &key, &val) {
-                // Tree View's line carries a renderer-owned dual-paint marker so native raster
-                // evidence can bind both semantic edge facets to the final stroke terminal.
-                // Mermaid's reference DOM has no equivalent id; strict mode still compares it.
-                continue;
-            }
-
-            if mode != DomMode::Strict && is_ishikawa_text_bbox_attr(n, &key) {
-                // Ishikawa's renderer-owned text bbox is evidence metadata for the local
-                // receipt, not an upstream Mermaid DOM semantic. Keep it in strict signatures
-                // and final SVG output, but do not make non-strict upstream DOM parity depend on
-                // this private attribute.
-                continue;
             }
 
             if matches!(mode, DomMode::Parity | DomMode::ParityRoot)
@@ -3364,47 +3304,34 @@ mod tests {
     }
 
     #[test]
-    fn flowchart_non_strict_ignores_only_renderer_paint_marker_ids() {
-        let upstream = r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path d="M0 0"/></g></g></svg>"#;
-        let local = r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path id="diagram-cluster-merman-fill-paint" d="M0 0"/></g></g></svg>"#;
-
-        assert_eq!(
-            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
-            dom_signature(local, DomMode::Structure, 3).unwrap()
-        );
-        assert_ne!(
-            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
-            dom_signature(local, DomMode::Strict, 3).unwrap()
-        );
-    }
-
-    #[test]
-    fn tree_view_non_strict_ignores_only_renderer_dual_paint_marker_ids() {
-        let upstream = r#"<svg aria-roledescription="treeView"><line x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#;
-        let local = r#"<svg aria-roledescription="treeView"><line id="treeView-edge-0-merman-fill-stroke-paint" x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#;
-
-        assert_eq!(
-            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
-            dom_signature(local, DomMode::Structure, 3).unwrap()
-        );
-        assert_ne!(
-            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
-            dom_signature(local, DomMode::Strict, 3).unwrap()
-        );
-
-        let wrong_class = local.replace("treeView-node-line", "treeView-node-icon");
-        assert_ne!(
-            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
-            dom_signature(&wrong_class, DomMode::Structure, 3).unwrap()
-        );
-        let wrong_family = local.replace(
-            "aria-roledescription=\"treeView\"",
-            "aria-roledescription=\"flowchart-v2\"",
-        );
-        assert_ne!(
-            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
-            dom_signature(&wrong_family, DomMode::Structure, 3).unwrap()
-        );
+    fn retired_renderer_metadata_is_observable_in_all_dom_modes() {
+        for (upstream, local) in [
+            (
+                r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path d="M0 0"/></g></g></svg>"#,
+                r#"<svg aria-roledescription="flowchart-v2"><g class="cluster" data-look="handDrawn"><g><path id="diagram-cluster-merman-fill-paint" d="M0 0"/></g></g></svg>"#,
+            ),
+            (
+                r#"<svg aria-roledescription="treeView"><line x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#,
+                r#"<svg aria-roledescription="treeView"><line id="treeView-edge-0-merman-fill-stroke-paint" x1="0" y1="0" x2="10" y2="0" class="treeView-node-line"/></svg>"#,
+            ),
+            (
+                r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label">Cause</text></svg>"#,
+                r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label" data-merman-text-bbox="0,0,10,10">Cause</text></svg>"#,
+            ),
+        ] {
+            for mode in [
+                DomMode::Strict,
+                DomMode::Structure,
+                DomMode::Parity,
+                DomMode::ParityRoot,
+            ] {
+                assert_ne!(
+                    dom_signature(upstream, mode, 3).unwrap(),
+                    dom_signature(local, mode, 3).unwrap(),
+                    "retired renderer metadata must remain visible to {mode:?}: {local}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -3626,27 +3553,6 @@ mod tests {
         assert_eq!(
             dom_signature(&quoted_upstream, DomMode::Parity, 3).unwrap(),
             dom_signature(&quoted_local, DomMode::Parity, 3).unwrap()
-        );
-    }
-
-    #[test]
-    fn parity_ignores_only_ishikawa_renderer_text_bbox_metadata() {
-        let upstream = r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label">Cause</text></svg>"#;
-        let local = r#"<svg aria-roledescription="ishikawa"><text class="ishikawa-label" data-merman-text-bbox="0,0,10,10">Cause</text></svg>"#;
-
-        assert_eq!(
-            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
-            dom_signature(local, DomMode::Structure, 3).unwrap()
-        );
-        assert_ne!(
-            dom_signature(upstream, DomMode::Strict, 3).unwrap(),
-            dom_signature(local, DomMode::Strict, 3).unwrap()
-        );
-
-        let unrelated = r#"<svg aria-roledescription="flowchart-v2"><text data-merman-text-bbox="0,0,10,10">Cause</text></svg>"#;
-        assert_ne!(
-            dom_signature(upstream, DomMode::Structure, 3).unwrap(),
-            dom_signature(unrelated, DomMode::Structure, 3).unwrap()
         );
     }
 

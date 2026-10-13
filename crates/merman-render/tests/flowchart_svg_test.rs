@@ -2600,6 +2600,7 @@ fn flowchart_and_swimlane_typed_edge_stroke_width_reaches_classic_and_neo_paths(
     }
 }
 
+#[cfg(feature = "layout-elk")]
 #[test]
 fn flowchart_default_edge_stroke_keeps_upstream_geometric_viewbox_height() {
     let svg = render_flowchart_svg_from_text(include_str!(
@@ -6482,9 +6483,16 @@ class A hot
 ",
     );
 
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect::<String>();
+
     assert!(
-        svg.contains(
-            "#merman .hot&gt;*{stroke:rgb(17, 24, 39)!important;fill:rgb(34, 197, 94)!important;}"
+        css.contains(
+            "#merman .hot>*{stroke:rgb(17, 24, 39)!important;fill:rgb(34, 197, 94)!important;}"
         ),
         "generated classDef CSS must use the CSSOM winner identity and order: {svg}"
     );
@@ -6504,14 +6512,21 @@ class A hot
 ",
     );
 
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let css = document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect::<String>();
+
     assert!(
-        svg.contains(
-            "#merman .hot&gt;*{color:rgb(34, 197, 94)!important;--Brand:#f59e0b!important;--fill-color:#2563eb!important;}"
+        css.contains(
+            "#merman .hot>*{color:rgb(34, 197, 94)!important;--Brand:#f59e0b!important;--fill-color:#2563eb!important;}"
         ),
         "generated classDef shape CSS must use CSSOM property identity and spelling: {svg}"
     );
     assert!(
-        svg.contains(
+        css.contains(
             "#merman .hot tspan{fill:rgb(239, 68, 68)!important;--bgFill-fill:#2563eb!important;}"
         ),
         "the tspan rule must come from Mermaid's source-classified lowercase color declaration: {svg}"

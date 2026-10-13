@@ -294,7 +294,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     let mut typography_receipt =
         typography.begin_terminal_receipt(layout.axes.len(), layout.legend_items.len());
     let typography_css_emission = write_radar_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         typography.css_binding(),
         axis_paint,

@@ -874,7 +874,8 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let css_emission = write_c4_css_with_typography(&mut out, diagram_id, typography_theme)?;
+    let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+    let css_emission = write_c4_css_with_typography(&mut css_out, diagram_id, typography_theme)?;
     if let Some(receipt) = typography_receipt.as_mut() {
         receipt.record_css_emission(
             &css_emission.font_family,
@@ -885,12 +886,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
     }
     // Preserve the root inheritance used by source-directed colors as well as the title.
     if let Some(fill) = text_paint.fill_css() {
-        let _ = write!(&mut out, "#{}{{fill:{};}}", diagram_id, fill);
-        out.checkpoint()?;
+        let _ = write!(&mut css_out, "#{}{{fill:{};}}", diagram_id, fill);
+        css_out.checkpoint()?;
     }
     if let Some(receipt) = text_paint_receipt.as_mut() {
         receipt.record_css(text_paint.fill_css());
     }
+    drop(css_out);
     out.push_str("</style>");
     out.checkpoint()?;
     out.push_str("<g/>");

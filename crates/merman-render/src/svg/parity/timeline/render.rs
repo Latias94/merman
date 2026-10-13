@@ -1024,7 +1024,9 @@ pub(crate) fn render_timeline_diagram_svg_model(
     };
     let css = timeline_css(diagram_id, theme, typography_theme, &mut event_emission);
     options.checkpoint_emit()?;
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
+    out.push_str("<style>");
+    super::super::output::XmlTextOutput::new(&mut out).push_str(&css.css);
+    out.push_str("</style>");
     out.checkpoint()?;
     typography_emission.record_css(&css);
     if let Some(receipt) = &mut text_emission.receipt {

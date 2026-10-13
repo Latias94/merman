@@ -725,7 +725,7 @@ where
                         &mut *css,
                         id,
                         sc.id(),
-                        format_args!("&gt;*"),
+                        format_args!(">*"),
                         sc.styles(),
                     )?;
                     write_state_class_rule(
@@ -1123,9 +1123,9 @@ mod tests {
 
         let declarations = "fill:rgb(255, 221, 221)!important;stroke:rgb(221, 51, 51)!important;stroke-width:2px!important;color:rgb(34, 34, 34)!important;";
         assert!(css.ends_with(&format!(
-            "#st .hot&gt;*{{{declarations}}}#st .hot span{{{declarations}}}#st .hot tspan{{fill:rgb(34, 34, 34)!important;}}"
+            "#st .hot>*{{{declarations}}}#st .hot span{{{declarations}}}#st .hot tspan{{fill:rgb(34, 34, 34)!important;}}"
         )));
-        assert_eq!(css.matches("#st .hot&gt;*").count(), 1);
+        assert_eq!(css.matches("#st .hot>*").count(), 1);
         assert!(!css.contains("color:rgb(34, 34, 34)!important;fill:rgb(34, 34, 34)!important"));
     }
 
@@ -1196,7 +1196,7 @@ mod tests {
         for element in ["rect", "polygon", "ellipse", "circle", "path"] {
             assert!(css.contains(&format!("#st .hot {element}{{")));
         }
-        assert!(!css.contains("#st .hot&gt;*"));
+        assert!(!css.contains("#st .hot>*"));
         assert!(!css.contains("#st .hot span{"));
         assert_eq!(css.matches("#st .hot tspan{").count(), 1);
     }
@@ -1216,7 +1216,7 @@ mod tests {
         let config = json!({});
         let plan = style_plan(&model, &config);
         let css = rendered_state_css("st", &plan, &config);
-        assert_eq!(css.matches("#st .emphasis&gt;*").count(), 1);
+        assert_eq!(css.matches("#st .emphasis>*").count(), 1);
         assert_eq!(css.matches("#st .emphasis span{").count(), 1);
     }
 

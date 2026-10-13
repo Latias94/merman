@@ -55,7 +55,7 @@ pub(crate) fn render_cynefin_diagram_svg_model(
     out.push_str("<style>");
     out.checkpoint()?;
     write_cynefin_css(
-        &mut out,
+        &mut super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         theme,
         typography_theme,

@@ -274,7 +274,7 @@ fn block_render_edge_points(
 }
 
 fn write_important_declaration(out: &mut impl SvgOutput, key: &str, value: &str) -> Result<()> {
-    let _ = write!(out, "{key}:{}!important;", escape_xml_display(value));
+    let _ = write!(out, "{key}:{value}!important;");
     out.checkpoint()
 }
 
@@ -515,10 +515,10 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
         for class_def in &theme.class_definitions {
             options.checkpoint_emit()?;
-            let class = escape_xml(&class_def.id);
+            let class = class_def.id.as_str();
             let mut shape_declarations = declarations(&class_def.shape);
             if let Some((key, value)) = shape_declarations.next() {
-                let _ = write!(out, r#"#{diagram_id} .{}&gt;*{{"#, class.as_str());
+                let _ = write!(out, r#"#{diagram_id} .{class}>*{{"#);
                 out.checkpoint()?;
 
                 write_important_declaration(out, key, value)?;
@@ -526,7 +526,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                     write_important_declaration(out, key, value)?;
                 }
 
-                let _ = write!(out, r#"}}#{diagram_id} .{} span{{"#, class.as_str());
+                let _ = write!(out, r#"}}#{diagram_id} .{class} span{{"#);
                 out.checkpoint()?;
                 write_important_declarations(out, declarations(&class_def.shape))?;
                 out.push('}');
@@ -535,7 +535,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
 
             let mut text_declarations = declarations(&class_def.text);
             if let Some((key, value)) = text_declarations.next() {
-                let _ = write!(out, r#"#{diagram_id} .{} tspan{{"#, class.as_str());
+                let _ = write!(out, r#"#{diagram_id} .{class} tspan{{"#);
                 out.checkpoint()?;
                 write_important_declaration(out, key, value)?;
                 write_important_declarations(out, text_declarations)?;
@@ -610,7 +610,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         out.checkpoint()?;
         let _ = write!(
             out,
-            r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:1px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
+            r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:{}px;}}#{} .flowchart-label text{{text-anchor:middle;}}#{} .node .label{{text-align:center;}}#{} .node.clickable{{cursor:pointer;}}"#,
             diagram_id,
             diagram_id,
             diagram_id,
@@ -618,6 +618,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             diagram_id,
             main_bkg,
             node_border,
+            stroke_width,
             diagram_id,
             diagram_id,
             diagram_id
@@ -691,7 +692,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let node_fill_color = node_theme.main_bkg.as_str();
     let node_stroke_color = node_theme.node_border.as_str();
     // RoughJS uses 1.3px as its default node stroke width in Mermaid's handDrawnShapeStyles.
-    // Keep this independent from the CSS `stroke-width: 1px` rule used by ordinary shapes.
+    // Keep this independent from the configured CSS stroke width used by ordinary shapes.
     let node_stroke_width = 1.3_f32;
 
     let layout_bounds = layout.bounds.clone().unwrap_or(Bounds {
@@ -740,7 +741,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     out.push_str("<style>");
     out.checkpoint()?;
     let css_emission = write_block_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         typography_theme,
         label_background_theme,
@@ -1305,7 +1306,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     let node_stroke_outset: f64 = if layout.shape_geometries.is_empty() {
         0.0
     } else {
-        0.5
+        node_theme.edge_stroke_width_px.map(f64::abs).unwrap_or(1.0) / 2.0
     };
     let rough_stroke_outset = if has_rough_path {
         f64::from(node_stroke_width) / 2.0

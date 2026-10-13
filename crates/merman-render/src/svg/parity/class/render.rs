@@ -122,7 +122,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
     let typography_css_emission = write_class_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         typography_theme,
         relation_theme,

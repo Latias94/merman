@@ -207,6 +207,7 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                 }
                 let text = text.xml10_content();
                 checkpoint()?;
+                validate_xml_characters(&text, checkpoint)?;
                 let text_outside_root = depth == 0 && !text.trim().is_empty();
                 checkpoint()?;
                 if text_outside_root {
@@ -215,7 +216,7 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                     ));
                 }
             }
-            Event::CData(_) => {
+            Event::CData(text) => {
                 document_started = true;
                 checkpoint()?;
                 if depth == 0 {
@@ -223,6 +224,7 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                         "CDATA is not allowed outside the SVG root",
                     ));
                 }
+                validate_xml_characters(text.as_ref(), checkpoint)?;
             }
             Event::GeneralRef(reference) => {
                 document_started = true;
@@ -255,8 +257,9 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                 validate_xml_declaration(&declaration)?;
                 document_started = true;
             }
-            Event::Comment(_) => {
+            Event::Comment(text) => {
                 checkpoint()?;
+                validate_xml_characters(text.as_ref(), checkpoint)?;
                 document_started = true;
             }
             Event::Eof => break,
@@ -332,6 +335,7 @@ fn validate_well_formed_element<const REFERENCES: bool>(
         let value = normalized.map_err(|error| {
             xml_validation_error(format!("invalid XML attribute value: {error}"))
         })?;
+        validate_xml_characters(&value, checkpoint)?;
 
         if attribute.key.as_namespace_binding().is_some() {
             continue;
@@ -422,6 +426,23 @@ fn validate_xml_declaration(declaration: &BytesDecl<'_>) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn validate_xml_characters(
+    value: &str,
+    mut checkpoint: &mut dyn FnMut() -> Result<()>,
+) -> Result<()> {
+    for (iteration, character) in value.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if !crate::xml::is_xml_1_0_char(character) {
+            checkpoint()?;
+            return Err(xml_validation_error(format!(
+                "the character U+{:04X} is forbidden in XML 1.0",
+                u32::from(character)
+            )));
+        }
+    }
+    checkpoint()
 }
 
 fn validate_xml_qname(name: &str) -> Result<()> {
@@ -1840,6 +1861,112 @@ mod tests {
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:x="urn:x"><x:item x:id="one"/></svg>"#,
         )
         .unwrap();
+    }
+
+    fn assert_xml_validation_error(svg: &str) {
+        let error = validate_xml(svg).expect_err("forbidden XML 1.0 content must be rejected");
+        assert!(
+            matches!(&error, Error::SvgPostprocess { pass, .. } if pass == XML_VALIDATION_PASS),
+            "{svg:?}: {error:?}"
+        );
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_text_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            assert_xml_validation_error(&format!("<svg><text>A{scalar}B</text></svg>"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_cdata_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            assert_xml_validation_error(&format!("<svg><![CDATA[A{scalar}B]]></svg>"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_attribute_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            for svg in [
+                format!(r#"<svg title="A{scalar}B"/>"#),
+                format!(r#"<svg xmlns:x="urn:A{scalar}B"><x:item/></svg>"#),
+            ] {
+                assert_xml_validation_error(&svg);
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_attribute_character_references() {
+        for entity in ["&#0;", "&#x1f;", "&#xFFFE;", "&#xFFFF;"] {
+            assert_xml_validation_error(&format!(r#"<svg title="A{entity}B"/>"#));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_comment_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            assert_xml_validation_error(&format!("<svg><!-- A{scalar}B --></svg>"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_keeps_existing_name_and_declaration_scalar_checks() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            for svg in [
+                format!("<svg><A{scalar}B/></svg>"),
+                format!(r#"<svg A{scalar}B="value"/>"#),
+                format!(r#"<?xml version="1.0{scalar}"?><svg/>"#),
+                format!(r#"<?xml version="1.0" encoding="UTF-8{scalar}"?><svg/>"#),
+            ] {
+                assert_xml_validation_error(&svg);
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_accepts_legal_scalars_and_single_entity_decoding() {
+        let legal = "\t\n\r café 中文 🙂 \u{85}\u{d7ff}\u{e000}\u{fffd}\u{10000}\u{10ffff}";
+        for svg in [
+            format!("<svg><text>{legal}&amp;&lt;&gt;&quot;&apos;&#9;&#10;&#13;</text></svg>"),
+            format!("<svg><![CDATA[{legal}&amp;<literal>]]></svg>"),
+            format!(r#"<svg title="{legal}&amp;&lt;&gt;&quot;&apos;&#9;&#10;&#13;"/>"#),
+            format!("<svg><!-- {legal}&amp;<literal> --></svg>"),
+            r#"<svg title="&amp;#0;">&amp;#xFFFE;</svg>"#.to_owned(),
+        ] {
+            validate_xml(&svg).unwrap_or_else(|error| panic!("{svg:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_checks_cancellation_inside_a_long_text_event() {
+        let svg = format!("<svg>{}<rect/></svg>", "A".repeat(4096));
+        let root_admitted = std::cell::Cell::new(false);
+        let mut text_checkpoints = 0usize;
+        let error = validate_well_formed_svg_with_controls(
+            &svg,
+            &mut || {
+                if root_admitted.get() {
+                    text_checkpoints += 1;
+                    if text_checkpoints == 16 {
+                        return Err(Error::Cancelled(merman_core::OperationCancelled {
+                            phase: merman_core::OperationPhase::Postprocess,
+                            reason: merman_core::CancelReason::Requested,
+                        }));
+                    }
+                }
+                Ok(())
+            },
+            &mut |elements, _depth| {
+                assert_eq!(elements, 1, "cancellation must precede the following rect");
+                root_admitted.set(true);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, Error::Cancelled(_)), "{error:?}");
     }
 
     #[test]

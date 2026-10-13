@@ -216,6 +216,7 @@ fn prepare_block_family(
     let layout = crate::block::layout_block_diagram_typed_with_text_style(
         &model,
         typography_theme.padding(),
+        crate::block::BlockShapeSettings::resolve(meta.effective_config.as_value()),
         typography_theme.css_binding().html_labels,
         typography_theme.text_style().clone(),
         execution.text_measurer(),

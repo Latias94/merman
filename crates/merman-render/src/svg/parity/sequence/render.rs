@@ -310,7 +310,11 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
     }
 
     out.push_str("<style>");
-    let css_emission = write_sequence_css(&mut out, diagram_id, prepared.css())?;
+    let css_emission = write_sequence_css(
+        &mut super::super::output::XmlTextOutput::new(&mut out),
+        diagram_id,
+        prepared.css(),
+    )?;
     sequence_number_receipt.record_stylesheet_emission(
         css_emission.sequence_number_fill(),
         css_emission.typed_sequence_number_fill(),

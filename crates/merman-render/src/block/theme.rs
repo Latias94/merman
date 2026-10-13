@@ -1835,6 +1835,9 @@ mod tests {
             let layout = crate::block::layout_block_diagram_typed_with_text_style(
                 model,
                 typography.padding(),
+                crate::block::BlockShapeSettings::resolve(
+                    parsed.metadata().effective_config.as_value(),
+                ),
                 typography.css_binding().html_labels,
                 typography.text_style().clone(),
                 &crate::text::DeterministicTextMeasurer::default(),

@@ -158,7 +158,7 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     out.push_str("<style>");
     out.checkpoint()?;
     let css_write = css::write_prepared_info_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         point_theme.common_css(),
     )?;

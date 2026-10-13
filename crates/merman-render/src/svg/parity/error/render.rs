@@ -28,7 +28,11 @@ pub(crate) fn render_error_diagram_svg_model(
     )
     .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str(r#"<style>"#);
-    let css_write = write_prepared_info_css(&mut out, diagram_id, typography_theme.css_binding())?;
+    let css_write = write_prepared_info_css(
+        &mut super::super::output::XmlTextOutput::new(&mut out),
+        diagram_id,
+        typography_theme.css_binding(),
+    )?;
     out.push_str("</style>");
     out.checkpoint()?;
     surface_receipt.record_css_emission(

@@ -23,7 +23,6 @@ use merman_render::resources::{
 use merman_render::svg::{IconPack, IconRegistry, SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
 use merman_render::{DiagramFamilyId, LayoutOptions};
-use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -397,53 +396,6 @@ treeView-beta
     assert!(svg.contains(r#"font-size: 20px"#));
     assert!(svg.contains(r#"fill: #FF0000"#));
     assert!(svg.contains(r#"stroke: #00FF00"#));
-}
-
-#[test]
-fn tree_view_line_terminals_carry_renderer_owned_dual_paint_markers() {
-    let svg = render_tree_view_svg_with_options(
-        "treeView-beta\nRoot/\n    Child\n        Leaf\n",
-        SvgRenderOptions {
-            diagram_id: Some("tree-view-paint-proof".to_string()),
-            ..SvgRenderOptions::default()
-        },
-    );
-    let document = roxmltree::Document::parse(&svg).expect("valid Tree View SVG XML");
-    let line_terminals = document
-        .descendants()
-        .filter(|node| node.attribute("class") == Some("treeView-node-line"))
-        .collect::<Vec<_>>();
-    assert!(
-        !line_terminals.is_empty(),
-        "fixture must emit line terminals"
-    );
-
-    let mut ids = BTreeSet::new();
-    for line in &line_terminals {
-        let id = line
-            .attribute("id")
-            .expect("every Tree View line needs a renderer-owned semantic id");
-        assert!(
-            id.starts_with("treeView-edge-"),
-            "unexpected Tree View line id: {id}"
-        );
-        assert!(
-            id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX),
-            "Tree View line id must bind both semantic paint facets: {id}"
-        );
-        assert!(ids.insert(id), "Tree View line ids must be unique: {id}");
-    }
-
-    let marked_nodes = document
-        .descendants()
-        .filter(|node| {
-            node.attribute("id").is_some_and(|id| {
-                id.ends_with(merman_render::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX)
-            })
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(marked_nodes.len(), line_terminals.len());
-    assert!(marked_nodes.iter().all(|node| node.has_tag_name("line")));
 }
 
 #[test]
@@ -1042,9 +994,19 @@ fn tree_view_marker_evidence_distinguishes_current_color_from_fixed_icon_bodies(
         );
     }
     let current = tree_view_icon_group_for_label(&document, "Current");
-    assert!(current.attribute("id").is_some_and(|id| {
-        id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX)
+    assert_eq!(current.attribute("id"), None);
+    assert!(current.descendants().any(|node| {
+        node.attributes().any(|attribute| {
+            matches!(attribute.name(), "fill" | "stroke") && attribute.value() == "currentColor"
+        })
     }));
+    assert!(
+        tree_view_css_rule(
+            &tree_view_stylesheet(rendered.svg()),
+            "#tree-view-marker-icon-facts .treeView-node-icon",
+        )
+        .contains("color: #123456;")
+    );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
@@ -1969,12 +1931,19 @@ fn tree_view_icon_paint_tracks_inheritance_and_non_painting_channels() {
         )
         .unwrap_or_else(|error| panic!("currentColor icon {name} must be portable: {error}"));
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let icon = tree_view_icon_group_for_label(&document, "Icon");
+        assert_eq!(icon.attribute("id"), None);
+        assert!(icon.descendants().any(|node| {
+            node.attributes().any(|attribute| {
+                matches!(attribute.name(), "fill" | "stroke") && attribute.value() == "currentColor"
+            })
+        }));
         assert!(
-            tree_view_icon_group_for_label(&document, "Icon")
-                .attribute("id")
-                .is_some_and(
-                    |id| id.ends_with(merman_render::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX)
-                )
+            tree_view_css_rule(
+                &tree_view_stylesheet(rendered.svg()),
+                "#tree-view-icon-effective-paint .treeView-node-icon",
+            )
+            .contains("color: #123456;")
         );
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());

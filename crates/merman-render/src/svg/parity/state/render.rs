@@ -364,7 +364,11 @@ fn render_state_diagram_svg_with_plan(
     // the bounded document so a large public diagram id or class catalog cannot allocate an
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
-    write_state_css(&mut out, diagram_id, style_plan)?;
+    write_state_css(
+        &mut super::super::output::XmlTextOutput::new(&mut out),
+        diagram_id,
+        style_plan,
+    )?;
     out.push_str("</style>");
     out.checkpoint()?;
 

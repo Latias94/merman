@@ -389,7 +389,7 @@ pub(crate) fn render_kanban_diagram_svg(
     );
     out.push_str("<style>");
     let typography_emission = write_kanban_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         prepared.css(),
         text_receipt.as_mut(),
