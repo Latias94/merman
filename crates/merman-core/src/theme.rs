@@ -839,7 +839,7 @@ impl ThemeProgram {
             for variable in [dependency.source, dependency.target] {
                 calculated_origins.entry(variable).or_insert_with(|| {
                     config
-                        .config_path_overrides_typed_default(&format!("themeVariables.{variable}"))
+                        .theme_variable_has_calculation_owner(variable)
                         .then_some(variable)
                 });
             }
@@ -2769,6 +2769,112 @@ mod tests {
         );
         assert_eq!(work.json_cow_copies, 0, "{work:?}");
         assert_eq!(work.selected_theme_materializations, 1, "{work:?}");
+    }
+
+    #[test]
+    fn legacy_owner_propagation_keeps_tracking_frozen_and_same_value_authorities() {
+        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
+            let input =
+                json!({"theme": theme.as_str(), "themeVariables": {"textColor": "#123456"}});
+            let mut expected = MermaidConfig::from_value(input.clone());
+            apply_theme_defaults(&mut expected).unwrap();
+            for authority in ["tracking", "frozen", "same-value", "parent"] {
+                let mut config = if matches!(authority, "tracking" | "frozen") {
+                    let binding = crate::config::ThemeParseBinding::try_new(
+                        [0x75; 32],
+                        MermaidConfig::from_value(input.clone()),
+                    )
+                    .unwrap();
+                    MermaidConfig::from_theme_parse_binding(binding)
+                } else {
+                    MermaidConfig::from_value(input.clone())
+                };
+                match authority {
+                    "frozen" => config.freeze_theme_compatibility(),
+                    "same-value" => {
+                        config.set_value_explicit("themeVariables.textColor", json!("#123456"))
+                    }
+                    "parent" => {
+                        config.set_value_explicit("themeVariables", input["themeVariables"].clone())
+                    }
+                    _ => {}
+                }
+                apply_theme_defaults(&mut config).unwrap();
+                config.freeze_theme_compatibility();
+                assert_eq!(
+                    config.as_value(),
+                    expected.as_value(),
+                    "{theme}/{authority}"
+                );
+                assert_eq!(
+                    config.get_str("themeVariables.signalTextColor"),
+                    Some("#123456")
+                );
+                assert!(
+                    config.config_path_overrides_typed_default("themeVariables.signalTextColor"),
+                    "{theme}/{authority}"
+                );
+                if authority != "parent" {
+                    assert!(
+                        !config.config_path_overrides_typed_default("themeVariables.radius"),
+                        "{theme}/{authority}"
+                    );
+                }
+            }
+
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x76; 32],
+                MermaidConfig::from_value(input),
+            )
+            .unwrap();
+            let mut shadowed = MermaidConfig::from_theme_parse_binding(binding);
+            shadowed.set_value("themeVariables.textColor", json!("#123456"));
+            apply_theme_defaults(&mut shadowed).unwrap();
+            assert_eq!(shadowed.as_value(), expected.as_value());
+            assert!(
+                !shadowed.config_path_overrides_typed_default("themeVariables.signalTextColor")
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_compatibility_derived_owners_survive_public_engine_initialization() {
+        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x77; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(), "themeVariables": {"textColor": "#123456"},
+                })),
+            )
+            .unwrap();
+            let parsed = crate::Engine::new()
+                .with_theme_compatibility(binding)
+                .parse_metadata_sync("sequenceDiagram\nA->>B: Hello")
+                .expect("parse initialized compatibility through the public operation");
+            assert_eq!(
+                parsed
+                    .effective_config
+                    .get_str("themeVariables.signalTextColor"),
+                Some("#123456")
+            );
+            assert!(
+                parsed
+                    .effective_config
+                    .config_path_overrides_typed_default("themeVariables.signalTextColor"),
+                "{theme} must retain its actual compatibility-derived owner"
+            );
+            let fields = parsed
+                .effective_config
+                .mermaid_compatibility_fields()
+                .unwrap();
+            assert!(
+                fields.iter().any(|field| field
+                    .surviving_paths()
+                    .iter()
+                    .any(|path| path.as_ref() == "themeVariables.signalTextColor")),
+                "{theme} must freeze the derived physical path into its conceptual input field"
+            );
+        }
     }
 
     #[test]

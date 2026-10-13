@@ -992,6 +992,32 @@ impl MermaidConfig {
             )
     }
 
+    pub(crate) fn theme_variable_has_calculation_owner(&self, variable: &str) -> bool {
+        let source_path = format!("themeVariables.{variable}");
+        if self.explicit_config_owns_path(&source_path) {
+            return true;
+        }
+        // Theme calculation precedes freezing. Read the same surviving physical inputs that
+        // propagation can extend, without changing the renderer's frozen-admission predicate.
+        match self.theme_compatibility.as_ref() {
+            Some(ThemeCompatibilityState::Tracking(ownership)) => {
+                ownership.fields.iter().any(|field| {
+                    field
+                        .paths
+                        .iter()
+                        .any(|path| path.owned && path.path.as_ref() == source_path)
+                })
+            }
+            Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.iter().any(|field| {
+                field
+                    .surviving_paths
+                    .iter()
+                    .any(|path| path.as_ref() == source_path)
+            }),
+            None => false,
+        }
+    }
+
     pub(crate) fn propagate_theme_variable_ownership(&mut self, source: &str, target: &str) {
         let source_path = format!("themeVariables.{source}");
         let target_path: Arc<str> = Arc::from(format!("themeVariables.{target}"));
