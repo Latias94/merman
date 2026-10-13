@@ -19,9 +19,13 @@ sudo pacman -U merman-cli-0.9.0-1-*.pkg.tar.zst
 ```
 
 Install `base-devel` first. The package requires Rust 1.95 or newer and Python 3.11 or newer.
-CMake and Ninja are available to the locked `aws-lc-sys` native build; the bundled TLS provider
-does not require OpenSSL at runtime. `prepare()` fetches the locked Cargo dependencies into the
-build directory. `build()` and `check()` use frozen dependency resolution and do not fetch crates.
+CMake and Ninja build the locked `aws-lc-sys` native dependency; the bundled TLS provider does
+not require OpenSSL at runtime. Both `build()` and `check()` select the
+[upstream CMake builder](https://aws.github.io/aws-lc-rs/resources.html#build-system) so
+[jitterentropy's per-source `-O0`](https://github.com/aws/aws-lc/blob/02561621ffa4cf17c0c4f70bc11a82df36b42ae9/third_party/jitterentropy/CMakeLists.txt#L63)
+follows makepkg's optimization flags. The package retains Arch's compiler flags and the CPU
+jitter entropy source. `prepare()` fetches the locked Cargo dependencies into the build
+directory. `build()` and `check()` use frozen dependency resolution and do not fetch crates.
 
 The package installs:
 

@@ -24,8 +24,9 @@ prepare() {
 build() {
   cd "merman-${pkgver}"
   # --locked with net.offline is Cargo's --frozen policy. Keep the upstream recipe.
+  # CMake applies jitterentropy's required -O0 after makepkg's CFLAGS.
   CARGO_HOME="${srcdir}/cargo-home" CARGO_TARGET_DIR="${PWD}/target" \
-    CARGO_NET_OFFLINE=true AWS_LC_SYS_USE_SYSTEM=0 \
+    CARGO_NET_OFFLINE=true AWS_LC_SYS_USE_SYSTEM=0 AWS_LC_SYS_CMAKE_BUILDER=1 \
     python3 scripts/artifact_profile_recipe.py \
       cli-release --build-host --locked
 }
@@ -35,7 +36,8 @@ check() {
   local features cargo_profile
   features="$(python3 scripts/artifact_profile_recipe.py cli-release --field features)"
   cargo_profile="$(python3 scripts/artifact_profile_recipe.py cli-release --field profile)"
-  CARGO_HOME="${srcdir}/cargo-home" CARGO_TARGET_DIR="${PWD}/target" AWS_LC_SYS_USE_SYSTEM=0 \
+  CARGO_HOME="${srcdir}/cargo-home" CARGO_TARGET_DIR="${PWD}/target" \
+    AWS_LC_SYS_USE_SYSTEM=0 AWS_LC_SYS_CMAKE_BUILDER=1 \
     cargo test --frozen --package merman-cli --profile "${cargo_profile}" \
       --no-default-features --features "${features}" --test distribution_assets
 }
