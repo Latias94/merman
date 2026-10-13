@@ -101,6 +101,40 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             self.assertLess(job.index("Build release runtime binaries"), job.index(check))
             self.assertLess(job.index(check), job.index("Stage runtime binaries"))
 
+    def test_native_runtime_builds_exact_profiles_once_before_staging(self) -> None:
+        text = read(WORKFLOW_ROOT / "vscode-extension.yml")
+        package = workflow_job(text, "package")
+        cli = workflow_job(text, "cli-profiles")
+        self.assertIn("inputs.check_cli_profiles && !inputs.package_vscode", cli)
+        self.assertIn("inputs.package_vscode || inputs.source_sha == ''", package)
+        self.assertIn("!cancelled()", package)
+        for job in (cli, package):
+            self.assertEqual(job.count("artifact_profile_recipe.py cli-analysis --build-host --locked"), 1)
+            self.assertEqual(job.count("artifact_profile_recipe.py cli-release --build-host --locked"), 1)
+            self.assertIn("scripts/verify_cli_assets.py --require powershell", job)
+        self.assertNotIn("os: ubuntu", cli)
+        self.assertIn("inputs.check_cli_profiles && runner.os != 'Linux'", package)
+        self.assertLess(package.index("artifact_profile_recipe.py cli-analysis"), package.index("artifact_profile_recipe.py lsp-stdio-release"))
+        self.assertLess(package.index("artifact_profile_recipe.py lsp-stdio-release"), package.index("artifact_profile_recipe.py cli-release"))
+        self.assertLess(package.index("artifact_profile_recipe.py cli-release"), package.index("npm run prepare:binaries"))
+        for command in ("npm run check", "npm test", "npm run test:extension-host", "npm run verify:vsix", "npm run smoke:vsix"):
+            self.assertIn(command, package)
+
+    def test_standalone_vscode_pins_validated_source_without_blocking_ci(self) -> None:
+        text = read(WORKFLOW_ROOT / "vscode-extension.yml")
+        validate = workflow_job(text, "validate-inputs")
+        self.assertIn("if: ${{ inputs.source_sha == '' }}", validate)
+        self.assertIn("source_ref must be a single line", validate)
+        self.assertIn("source_ref must be main, refs/heads/main, a version tag", validate)
+        self.assertIn("ref: ${{ steps.source.outputs.source_ref }}", validate)
+        self.assertIn('source_sha="$(git rev-parse HEAD)"', validate)
+        self.assertIn("source_sha: ${{ steps.pin-source.outputs.source_sha }}", validate)
+        for name in ("package", "editor-language-contract"):
+            job = workflow_job(text, name)
+            self.assertIn("!cancelled()", job)
+            self.assertIn("inputs.source_sha != '' || needs.validate-inputs.result == 'success'", job)
+            self.assertIn("ref: ${{ inputs.source_sha || needs.validate-inputs.outputs.source_sha }}", job)
+
     def test_cli_container_publication_uses_attested_archives_and_native_smokes(self) -> None:
         text = read(WORKFLOW_ROOT / "release-cli-container.yml")
         self.assertIn("  workflow_dispatch:", text)

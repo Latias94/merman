@@ -15,10 +15,15 @@ inside the workspace test job. These now have separate same-run results in `pr-g
 - `node-contracts` runs Node-WASM and N-API as parallel matrix members on PRs and main;
 - Pages builds its Web package once while compiling the optimized budget tool independently;
   budget and Playground consumers use that same uploaded Web package and run in parallel;
-- CLI non-Linux builds run independently of GNU archives and their container checks. Setup
-  Action checks start independently; Arch has its own path owner and source-build workflow;
-- VS Code package builds run alongside the editor contract rather than waiting for it. The
-  reusable workflow still fails when any required child job fails.
+- A shared native runtime workflow builds each non-Linux complete CLI once when both CLI
+  and VS Code are selected. The same platform job checks the analysis profile, builds LSP and
+  the complete CLI, then packages and tests VSIX. CLI-only runs retain their three-host profile
+  checks; VS Code-only runs retain all four packages without the additional analysis build;
+- GNU archives, containers and setup Action checks retain their independent paths. Arch has
+  its own source-build owner. VS Code package builds run alongside the editor contract;
+- Central CI passes its immutable source SHA directly into the runtime workflow. Standalone
+  dispatch still validates its protected branch or release tag and resolves it to a SHA before
+  consumers build it. Both selected owners require the shared workflow's successful result.
 
 Ordinary macOS/Windows runs compile the workspace and execute the existing host-sensitive
 regression inventory. Weekly and manual core safety nets additionally run full workspace tests

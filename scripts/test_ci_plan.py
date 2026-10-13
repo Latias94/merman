@@ -859,20 +859,57 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         caller = workflow_job(ci, "cli-distribution")
         self.assertIn("needs: ci-plan", caller)
-        self.assertNotIn("cli-artifact-profiles]", caller)
+        self.assertNotIn("native-runtime-owner", caller)
         distribution = (root / ".github/workflows/cli-distribution.yml").read_text(encoding="utf-8")
         self.assertNotIn("needs:", workflow_job(distribution, "setup-action"))
         self.assertIn("needs: gnu-archives", workflow_job(distribution, "container"))
         self.assertNotIn("arch-package", distribution)
         self.assertIn("needs.ci-plan.outputs.arch == 'true'", workflow_job(ci, "arch-package"))
         self.assertIn('"arch-package":{"owner":"arch","required":true', workflow_job(ci, "pr-gate"))
-        native = workflow_job(ci, "cli-artifact-profiles")
+        runtime = (root / ".github/workflows/vscode-extension.yml").read_text(encoding="utf-8")
+        native = workflow_job(runtime, "cli-profiles")
         self.assertNotIn("unknown-linux-gnu", native)
         gnu = workflow_job(distribution, "gnu-archives")
         self.assertIn("os: ubuntu-22.04", gnu)
         self.assertIn("os: ubuntu-22.04-arm", gnu)
         self.assertIn("scripts/linux_binary_compatibility.py", gnu)
         self.assertIn("--execute", gnu)
+
+    def test_native_runtime_routes_preserve_each_selected_owner(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        runtime = workflow_job(ci, "native-runtime-owner")
+        self.assertIn("needs.ci-plan.outputs.cli == 'true' || needs.ci-plan.outputs.vscode == 'true'", runtime)
+        self.assertIn("source_sha: ${{ github.sha }}", runtime)
+        self.assertIn("check_cli_profiles: ${{ needs.ci-plan.outputs.cli == 'true' }}", runtime)
+        self.assertIn("package_vscode: ${{ needs.ci-plan.outputs.vscode == 'true' }}", runtime)
+        self.assertNotIn("  cli-artifact-profiles:", ci)
+        self.assertNotIn("  vscode-owner:", ci)
+        gate = workflow_job(ci, "pr-gate")
+        for owner in ("cli", "vscode"):
+            self.assertIn(
+                f'"native-runtime-{owner}":{{"owner":"{owner}","required":true,"result":"${{{{ needs.native-runtime-owner.result }}}}"}}',
+                gate,
+            )
+
+        for cli, vscode in ((False, False), (True, False), (False, True), (True, True)):
+            owners = {name: False for name in OWNER_NAMES}
+            owners.update(cli=cli, vscode=vscode)
+            selected = cli or vscode
+            jobs = {
+                f"native-runtime-{owner}": {"owner": owner, "required": True, "result": "success" if selected else "skipped"}
+                for owner in ("cli", "vscode")
+            }
+            with self.subTest(cli=cli, vscode=vscode):
+                result = evaluate_gate(owners, jobs)
+                self.assertEqual(result["selected"], [f"native-runtime-{owner}" for owner in ("cli", "vscode") if owners[owner]])
+                if selected:
+                    for failed_result in ("failure", "cancelled", "skipped", ""):
+                        for entry in jobs.values():
+                            entry["result"] = failed_result
+                        with self.assertRaises(GateError):
+                            evaluate_gate(owners, jobs)
 
     def test_ordinary_host_runs_keep_focused_regressions_and_weekly_full_tests(self) -> None:
         from scripts.test_release_workflow_security import workflow_job

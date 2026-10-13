@@ -1,7 +1,20 @@
-name: VS Code Extension
+name: Native CLI and VS Code Extension
 
 on:
   workflow_call:
+    inputs:
+      source_sha:
+        description: "Immutable source commit selected by the CI caller"
+        required: true
+        type: string
+      check_cli_profiles:
+        description: "Check exact non-Linux CLI analysis and complete profiles"
+        required: true
+        type: boolean
+      package_vscode:
+        description: "Build, test, and package the VS Code extension on all four platforms"
+        required: true
+        type: boolean
   workflow_dispatch:
     inputs:
       source_ref:
@@ -20,17 +33,16 @@ concurrency:
 jobs:
   validate-inputs:
     name: validate-inputs
+    if: ${{ inputs.source_sha == '' }}
     runs-on: ubuntu-24.04
     outputs:
-      source_ref: ${{ steps.source.outputs.source_ref }}
+      source_sha: ${{ steps.pin-source.outputs.source_sha }}
     steps:
       - name: Validate package source ref
         id: source
         shell: bash
         env:
-          EVENT_NAME: ${{ github.event_name }}
           DISPATCH_SOURCE_REF: ${{ inputs.source_ref }}
-          GIT_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
 
@@ -40,11 +52,6 @@ jobs:
             echo "::error::$1" >&2
             exit 1
           }
-
-          if [[ "$EVENT_NAME" != "workflow_dispatch" ]]; then
-            printf 'source_ref=%s\n' "$GIT_SHA" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
 
           SOURCE_REF="$DISPATCH_SOURCE_REF"
           [[ "$SOURCE_REF" != *$'\n'* && "$SOURCE_REF" != *$'\r'* ]] || fail "source_ref must be a single line."
@@ -60,15 +67,72 @@ jobs:
 
           printf 'source_ref=%s\n' "$validated_source_ref" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve validated package source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ steps.source.outputs.source_ref }}
+          persist-credentials: false
+
+      - name: Pin immutable package source
+        id: pin-source
+        shell: bash
+        run: |
+          source_sha="$(git rev-parse HEAD)"
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
+
+  cli-profiles:
+    name: cli-profiles (${{ matrix.target }})
+    if: ${{ inputs.check_cli_profiles && !inputs.package_vscode }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    env:
+      CARGO_INCREMENTAL: "0"
+      CARGO_PROFILE_RELEASE_DEBUG: "0"
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15
+            target: aarch64-apple-darwin
+          - os: macos-15-intel
+            target: x86_64-apple-darwin
+          - os: windows-2025-vs2026
+            target: x86_64-pc-windows-msvc
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ inputs.source_sha }}
+          persist-credentials: false
+
+      - name: Validate PowerShell completion
+        if: runner.os == 'Windows'
+        run: python3 scripts/verify_cli_assets.py --require powershell
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.95.0
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2.9.2
+        with:
+          cache-targets: false
+
+      - name: Build exact CLI analysis profile
+        run: python3 scripts/artifact_profile_recipe.py cli-analysis --build-host --locked
+
+      - name: Build complete CLI
+        run: python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
+
   editor-language-contract:
     needs: validate-inputs
+    if: ${{ !cancelled() && (inputs.package_vscode || inputs.source_sha == '') && (inputs.source_sha != '' || needs.validate-inputs.result == 'success') }}
     name: editor-language-contract
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ inputs.source_sha || needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
       - name: Install Rust toolchain
@@ -86,8 +150,9 @@ jobs:
         run: cargo run --locked -p xtask -- verify-editor-language-contract
 
   package:
-    # The reusable workflow still requires both independent jobs to succeed.
+    # CI uses its immutable commit directly; standalone dispatch resolves the selected ref first.
     needs: validate-inputs
+    if: ${{ !cancelled() && (inputs.package_vscode || inputs.source_sha == '') && (inputs.source_sha != '' || needs.validate-inputs.result == 'success') }}
     name: package (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 75
@@ -113,8 +178,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          ref: ${{ needs.validate-inputs.outputs.source_ref }}
+          ref: ${{ inputs.source_sha || needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
+
+      - name: Validate PowerShell completion
+        if: inputs.check_cli_profiles && runner.os == 'Windows'
+        run: python3 scripts/verify_cli_assets.py --require powershell
 
       - name: Checkout GNU compatibility tooling
         if: runner.os == 'Linux'
@@ -152,6 +221,10 @@ jobs:
       - name: Install extension dependencies
         working-directory: tools/vscode-extension
         run: npm ci
+
+      - name: Build exact CLI analysis profile
+        if: inputs.check_cli_profiles && runner.os != 'Linux'
+        run: python3 scripts/artifact_profile_recipe.py cli-analysis --build-host --locked
 
       - name: Build release runtime binaries
         run: |

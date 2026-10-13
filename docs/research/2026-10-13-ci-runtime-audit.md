@@ -71,3 +71,33 @@ Intel VS Code packaging plus its runner queue. More parallel jobs would not auto
 that queue. Feature-matrix checks include standalone consumers and intentional compile failures;
 ordinary workspace tests cannot replace them. A further split would duplicate cold compilation
 and needs separate measurement. This change does not guarantee a sub-30-minute complete run.
+
+## Native runtime consolidation
+
+Run [38365243384](https://github.com/Latias94/merman/actions/runs/38365243384) took 50m20s,
+including an 18-minute queue before Linux core and Apple XCFramework execution. Its other
+67 checks passed; the Arch installation check failed because the official Docker image's
+`NoExtract` rules omitted documentation and manuals, not because they were absent from the
+package. The following run passed the complete Arch installation contract after clearing
+those container-only exclusions.
+
+The fifth run [38371285511](https://github.com/Latias94/merman/actions/runs/38371285511)
+passed all selected checks in 50m27s, including queues. It exposed two additional native
+costs. Intel CLI verification built the analysis profile in
+5m49s and the complete CLI in 15m06s. VS Code then independently built the same complete
+CLI recipe alongside LSP. Its input-validation job spent 12m50s in a runner queue for less
+than one second of validation; Intel packaging started 27m48s after the workflow began.
+Linux core passed in 22m48s, so it was no longer the longest path.
+
+The runtime workflow now handles the CLI and VS Code selectors together. When both are
+selected, each non-Linux package job checks analysis, builds LSP and the complete CLI, and
+continues its existing VSIX checks using the local target directory. CLI-only and VS Code-only
+runs preserve their respective profiles and platform coverage. No artifact transfer or
+cross-source cache is needed. Central CI passes its immutable SHA directly; independently
+dispatched packages still validate and resolve their selected source before building.
+Both selected owners remain fail-closed in the same-run gate.
+
+This removes three duplicate complete CLI compilations and the central input-validation
+runner barrier. The approximately 15-minute Intel compile is observed redundant work, not
+a predicted reduction in complete CI time: compilation sharing, queues and critical paths
+must be measured again on the consolidated workflow.
