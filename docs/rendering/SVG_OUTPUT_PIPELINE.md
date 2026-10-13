@@ -350,6 +350,8 @@ through local SVG references; this keeps them outside node-shape selectors even 
 CSS cascade. Source classes are inert metadata, and source IDs are not
 duplicated. A native `<switch>` fallback keeps the switch's presentation context when converted to
 an unconditional group.
+Generated label IDs use the source root's diagram namespace and avoid existing IDs, so separately
+named diagrams can retain distinct local references when embedded together.
 
 Fallback text stays native SVG text. The original foreignObject rectangle is represented by an
 invisible geometry rectangle, and its viewport clips visible overflow by default. Native glyph

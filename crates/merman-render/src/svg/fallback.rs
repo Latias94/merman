@@ -116,7 +116,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     preflight_generated(svg.len(), 0, 0)?;
     let mut out = String::with_capacity(svg.len());
     let mut overlays = String::new();
-    let mut identifiers = collect_svg_ids(svg, checkpoint)?;
+    let (mut identifiers, namespace) = collect_svg_ids(svg, checkpoint)?;
     let mut fallback_index = 0usize;
     let mut instance_bytes = 0usize;
     let mut generated_elements = 0usize;
@@ -369,7 +369,10 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     let overlay_start = overlays.len();
                     let generated_depth = geometry_stack.len().saturating_add(2).max(5);
                     let identifier = loop {
-                        let candidate = format!("merman-foreignobject-label-{fallback_index}");
+                        let candidate = format!(
+                            "{}-foreignobject-label-{fallback_index}",
+                            namespace.as_deref().unwrap_or("merman")
+                        );
                         fallback_index = fallback_index.saturating_add(1);
                         if identifiers.insert(candidate.clone()) {
                             break candidate;
@@ -590,17 +593,33 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
 fn collect_svg_ids<E>(
     svg: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<HashSet<String>, E> {
+) -> Result<(HashSet<String>, Option<String>), E> {
     let mut result = HashSet::new();
+    let mut namespace = None;
+    let mut saw_root = false;
     let mut scanner = SvgTagScanner::new(svg);
     while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
-        if start_tag_name(tag.raw()).is_some()
-            && let Some(id) = attribute(tag.raw(), "id", checkpoint)?
-        {
-            result.insert(id.into_owned());
+        if let Some(name) = start_tag_name(tag.raw()) {
+            let id = attribute(tag.raw(), "id", checkpoint)?;
+            if !saw_root && name.eq_ignore_ascii_case("svg") {
+                saw_root = true;
+                // Renderer roots carry document-unique, fragment-safe diagram IDs.
+                namespace = id
+                    .as_deref()
+                    .filter(|id| {
+                        !id.is_empty()
+                            && id
+                                .bytes()
+                                .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:".contains(&byte))
+                    })
+                    .map(str::to_owned);
+            }
+            if let Some(id) = id {
+                result.insert(id.into_owned());
+            }
         }
     }
-    Ok(result)
+    Ok((result, namespace))
 }
 
 #[derive(Default)]
