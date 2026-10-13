@@ -85,6 +85,12 @@ This is a bounded consumer adapter, not a browser CSS engine. Rich-text runs, br
 and CSS features outside the admitted subset remain residuals. Hosts that need metric-affecting
 styles must inject them before the fallback stage (through the same `SvgPipeline`); styling added
 after generated text exists may change paint, but cannot make Merman remeasure wrapping or geometry.
+
+The adapter also retains the source `foreignObject` overflow boundary. Compatibility measurement
+and consumer fonts can disagree about glyph bounds; expanding the viewport or discarding its
+clipping would change source behavior. Native encoded outputs can use `--font-measurement native`
+to share loaded fonts across layout and export. Source HTML `nowrap` and its width constraints
+still apply.
 Stable `data-merman-foreignobject` markers and fallback classes remain available to host consumers.
 
 For Mermaid 11.16 Quadrant, parity output intentionally retains upstream's invalid
