@@ -824,6 +824,10 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("python /workspace/scripts/verify_cli_installation.py", arch)
         self.assertIn("--contract-root src/merman-0.9.0", arch)
         self.assertNotIn("python src/merman-0.9.0/scripts/verify_cli_installation.py", arch)
+        remove_exclusions = 'sed -i "/^[[:space:]]*NoExtract[[:space:]]*=/d" /etc/pacman.conf'
+        self.assertIn(remove_exclusions, arch)
+        self.assertLess(arch.index(remove_exclusions), arch.index("pacman -U"))
+        self.assertLess(arch.index("pacman -U"), arch.index("pacman -Ql merman-cli"))
 
     def test_node_builds_and_svg_parity_have_independent_ci_owners(self) -> None:
         from scripts.test_release_workflow_security import workflow_job
