@@ -127,7 +127,6 @@ jobs:
       - uses: actions/download-artifact@v8.0.2
         with:
           name: cli-native-archives-${{ matrix.target }}
-          overwrite: true
           path: release-assets
       - name: Verify and extract the native archive
         env:

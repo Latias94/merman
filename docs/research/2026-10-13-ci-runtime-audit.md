@@ -46,3 +46,28 @@ Cold optimized-tool compilation, native artifact handoff and complete elapsed PR
 GitHub runner evidence. Historical costs justify the dependency changes but do not prove a new
 runtime. No less-than-30-minute claim is made before that run completes. Raw API responses and
 logs are local ignored experiment artifacts rather than tracked copies of GitHub logs.
+
+## First runner observation after the refactor
+
+PR run [38353444277](https://github.com/Latias94/merman/actions/runs/38353444277), at commit
+`47fd6806ee0a5e6c6f470bad02186bdb73438310`, ran from 05:50:12 to 06:33:41 UTC on October 13:
+43m29s including runner queues. It completed with two failures: Arch compiler flags overrode
+AWS-LC jitterentropy's required `-O0`, and the separated Playground consumer lacked Web checker
+dependencies and original compiled-package evidence. Fixes require a subsequent runner result;
+this run is timing evidence for successful paths, not a successful PR gate.
+
+| Path | Execution time | Result |
+| --- | --- | --- |
+| Linux workspace job | 29m42s | Passed, including 9,420 workspace tests and feature/documentation contracts |
+| macOS / Windows workspace jobs | 11m38s / 13m41s | Passed focused host coverage |
+| SVG parity and oracle | 13m14s | Passed independently |
+| Web WASM producer | 14m15s | Passed; one build feeds both consumers |
+| Optimized Web budget-tool producer | 6m37s | Passed, including 6m09s cold compilation |
+| Web size-budget consumer | 1m52s | Passed; budget command itself took 1m31s |
+| Intel VS Code package | 29m55s | Passed; started 13m19s after the workflow began |
+
+The Linux job's observed execution fell from 66m45s to 29m42s. The longest remaining path was
+Intel VS Code packaging plus its runner queue. More parallel jobs would not automatically shorten
+that queue. Feature-matrix checks include standalone consumers and intentional compile failures;
+ordinary workspace tests cannot replace them. A further split would duplicate cold compilation
+and needs separate measurement. This change does not guarantee a sub-30-minute complete run.
