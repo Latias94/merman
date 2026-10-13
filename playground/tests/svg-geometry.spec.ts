@@ -23,6 +23,8 @@ test.beforeAll(async () => {
   sourceServer = await createServer({
     root: path.resolve(import.meta.dirname, ".."),
     server: { host: "127.0.0.1", port: 0 },
+    // Prebundle the lazy editor dependency before it can reload the test page.
+    optimizeDeps: { include: ["web-tree-sitter"] },
   });
   await sourceServer.listen();
   const address = sourceServer.httpServer?.address();

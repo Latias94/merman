@@ -529,7 +529,7 @@ test("a current issue link restores workspace, view, and SVG Bounds", async ({
   errors.assertNone();
 });
 
-test("a legacy Host issue URL restores supported fields canonically without rewriting history", async ({
+test("a legacy host-size issue URL restores supported fields canonically without rewriting history", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
@@ -541,13 +541,12 @@ test("a legacy Host issue URL restores supported fields canonically without rewr
     code: "flowchart TD\n  LegacyHost --> CanonicalCanvas",
     theme: "forest",
     config: "{}",
-    renderViewportMode: "host",
     textMeasurementMode: "browser",
     diagramFont: "arial",
   });
   const search =
     "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare" +
-    "&renderViewportMode=host&hostWidth=640&hostHeight=480" +
+    "&hostWidth=640&hostHeight=480" +
     "&screenAvailableWidth=1512";
   await page.goto(`./${search}${hash}`, { waitUntil: "domcontentloaded" });
   await waitForPreviewSvg(page);
@@ -568,6 +567,63 @@ test("a legacy Host issue URL restores supported fields canonically without rewr
   await expect(page.locator('[data-merman-svg-bounds="true"]')).toHaveCount(0);
   await expect.poll(() => compareRealmUsesCanonicalViewport(page)).toBe(true);
   expect(await previewSvgText(page)).toContain("LegacyHost");
+  expect(new URL(page.url()).search).toBe(search);
+  expect(new URL(page.url()).hash).toBe(hash);
+  errors.assertNone();
+});
+
+test("a retired viewport field in a workspace fragment rejects hydration atomically", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  const hash = legacyWorkspaceHash({
+    code: "flowchart TD\n  RetiredWorkspace --> MustNotAppear",
+    theme: "forest",
+    renderViewportMode: "host",
+  });
+  const search = "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare";
+  await page.goto(`./${search}${hash}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+
+  await expect(page.getByRole("tab", { name: "Code", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+  await expect(page.getByTestId("share-view-warning")).toHaveCount(0);
+  expect(await previewSvgText(page)).toContain("Condition?");
+  expect(await previewSvgText(page)).not.toContain("RetiredWorkspace");
+  expect(new URL(page.url()).search).toBe(search);
+  expect(new URL(page.url()).hash).toBe(hash);
+  errors.assertNone();
+});
+
+test("a retired viewport query defaults only the view of a valid workspace", async ({
+  page,
+}) => {
+  const errors = monitorBrowserErrors(page);
+  const hash = legacyWorkspaceHash({
+    code: "flowchart TD\n  ValidWorkspace --> Preserved",
+    theme: "forest",
+  });
+  const search =
+    "?rv=1&workspacePane=preview&editorMode=config&previewMode=compare&renderViewportMode=host";
+  await page.goto(`./${search}${hash}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+
+  await expect(page.getByTestId("share-view-warning")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Code", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tab", { name: "Compare", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+  expect(await previewSvgText(page)).toContain("ValidWorkspace");
   expect(new URL(page.url()).search).toBe(search);
   expect(new URL(page.url()).hash).toBe(hash);
   errors.assertNone();
