@@ -461,7 +461,9 @@
       "status": "verified",
       "evidence": [
         "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification.json",
-        "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification-summary.json"
+        "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification-summary.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-clean-qualification.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-clean-qualification-summary.json"
       ]
     },
     "7": {
@@ -1930,6 +1932,42 @@
       "phase": "verification",
       "result": "Clean source aa2c6c81c, exact release build, 3 native presets / 18 SVG and PNG cells, zero residuals; all cells truthfully host-dependent. Public catalog unchanged.",
       "artifact": "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification.json"
+    },
+    {
+      "name": "beta-workspace-repaired-final",
+      "phase": "verification",
+      "result": "Rust1.100.0-beta.4 entire workspace and doctests passed; zero failures.",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/beta-workspace-repaired-final.json"
+    },
+    {
+      "name": "beta-rustdoc-complete",
+      "phase": "verification",
+      "result": "15/15 all-feature integration tests passed on beta.",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-complete.json"
+    },
+    {
+      "name": "pinned-rustdoc-final",
+      "phase": "verification",
+      "result": "15/15 all-feature integration tests passed on pinned1.95.",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/pinned-rustdoc-final.json"
+    },
+    {
+      "name": "beta-native-fonts",
+      "phase": "verification",
+      "result": "33/33 optional native-font cases passed.",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/beta-native-fonts.json"
+    },
+    {
+      "name": "beta-node",
+      "phase": "verification",
+      "result": "20/20 independent Node N-API cases passed.",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/beta-node.json"
+    },
+    {
+      "name": "beta-clean-qualification",
+      "phase": "verification",
+      "result": "Clean committed source c0e528f23; exact release artifact on beta; 3 presets/18 host-dependent cells, zero residuals; public catalog remains unpromoted.",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/beta-clean-qualification.json"
     }
   ],
   "integration_findings": {
@@ -2149,16 +2187,17 @@
     },
     {
       "request": "Read the Rust 1.100 breakage post and run cargo +beta test.",
-      "status": "runtime_verified_pending_clean_release_artifact",
+      "status": "implemented_and_verified",
       "toolchain": "1.100.0-beta.4",
       "evidence": [
         "/tmp/merman-theme-review-repair-20261013/verification/beta-toolchain.json",
         "/tmp/merman-theme-review-repair-20261013/verification/beta-workspace-repaired-final.json",
         "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-complete.json",
         "/tmp/merman-theme-review-repair-20261013/verification/beta-native-fonts.json",
-        "/tmp/merman-theme-review-repair-20261013/verification/beta-node.json"
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-node.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-clean-qualification.json"
       ],
-      "outcome": "Beta workspace and doctests passed; Rustdoc all-feature tests pass15/15 on beta1.100 and pinned1.95, native-font33/33, independentNode20/20. R17-R19 all verified; project pin unchanged."
+      "outcome": "Beta workspace, doctests and optional consumers passed. R17-R19 repaired and independently reviewed; Rustdoc15/15 on beta1.100 and pinned1.95. Clean beta release qualification3presets/18cells passed. Project pin unchanged."
     }
   ],
   "commits": [
@@ -2194,8 +2233,8 @@
       "outcome": "Rejected as unreachable: Railroad target validity filters Node/Edge before route creation. Required/accounted/NA=0 is the actual contract; not counted as a fixed production bug."
     }
   ],
-  "status": "all_repairs_verified_pending_clean_beta_artifact",
-  "remaining": [
-    "Run one exact clean release preset qualification under Rust 1.100.0-beta.4 at the committed source, then finalize verification/memory."
-  ]
+  "status": "complete",
+  "remaining": [],
+  "completion_source": "c0e528f23bd1b3e833dccbfc0beb057e54c274e1",
+  "summary": "All68 independently confirmed findings,26 concrete gaps,36 necessity assessments and all discovered integration repairs closed. Public compatibility preservation and rejected unreachable hypotheses remain explicit."
 }

@@ -879,6 +879,24 @@
       "exit_code": 0,
       "log": "/tmp/merman-theme-review-repair-20261013/verification/pinned-rustdoc-final.log",
       "log_sha256": "c01ecc89dc3e0e8e49465ebcb237518fa52ef6dc05639e322fb74f93759e55b3"
+    },
+    {
+      "name": "beta-clean-qualification",
+      "command": [
+        "rustup",
+        "run",
+        "beta",
+        "python3",
+        "scripts/qualify_theme_presets.py",
+        "--output",
+        "target/bench/experiments/theme-final-review-repair-20261013/beta-preset-qualification.json"
+      ],
+      "started_utc": "2026-10-13T07:56:49.484217+00:00",
+      "elapsed_seconds": 182.397,
+      "head": "c0e528f23bd1b3e833dccbfc0beb057e54c274e1",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-clean-qualification.log",
+      "log_sha256": "7514403cacb842e9fabf96960aa3d28d3883caa8024755d3bb3a43c3e31cd92e"
     }
   ],
   "independent_reviews": [
@@ -1459,9 +1477,14 @@
     "confirmed_findings": 68,
     "testing_gaps": 26,
     "necessity_assessments": 36,
-    "remaining": "Original 68 findings, 26 gaps and 36 assessments closed. Additional user-requested beta compatibility is running.",
+    "remaining": null,
     "public_compatibility": "N1 retained as assessed; N6 retired no-state signatures remain compatible.",
-    "rejected_review_candidate": "U6-R6 had no admitted Railroad target and is not counted as a repair."
+    "rejected_review_candidate": "U6-R6 had no admitted Railroad target and is not counted as a repair.",
+    "additional_beta_repairs": [
+      "R17",
+      "R18",
+      "R19"
+    ]
   },
   "clean_preset_qualification": {
     "schema_version": 1,
@@ -1540,7 +1563,7 @@
     "public_catalog_promoted": false
   },
   "beta_compatibility": {
-    "status": "all_runtime_checks_passed_pending_clean_release_qualification",
+    "status": "complete",
     "toolchain": {
       "rustc": "rustc 1.100.0-beta.4 (a2eb6097d 2026-10-04)\nbinary: rustc\ncommit-hash: a2eb6097d22d908142aa4a067bc2cb70860a95b7\ncommit-date: 2026-10-04\nhost: aarch64-apple-darwin\nrelease: 1.100.0-beta.4\nLLVM version: 23.1.1\n",
       "cargo": "cargo 1.100.0-beta.4 (7552a885e 2026-09-29)\n",
@@ -1723,7 +1746,89 @@
       "failed": 0
     },
     "project_pin_changed": false,
-    "clean_beta_qualification": "pending",
+    "clean_beta_qualification": {
+      "schema_version": 1,
+      "source_commit": "c0e528f23bd1b3e833dccbfc0beb057e54c274e1",
+      "lockfile_sha256": "88b0d0baa92a1b62b915e5d9c7c542219a84dcb1f043a42078e994ef35f2b068",
+      "executable_sha256": "f1aafbea8d6c0d5cd0da65ab1f14ac1ef47fddcf21f2bd48866fcf850345c300",
+      "build_command": [
+        "cargo",
+        "build",
+        "--release",
+        "--locked",
+        "-p",
+        "merman-theme-acceptance",
+        "--no-default-features",
+        "--features",
+        "png,layout-cytoscape,all-diagrams",
+        "--example",
+        "preset_qualification",
+        "--jobs",
+        "2",
+        "--message-format=json-render-diagnostics"
+      ],
+      "host": {
+        "machine": "arm64",
+        "release": "27.0.0",
+        "system": "Darwin"
+      },
+      "rustc": "rustc 1.100.0-beta.4 (a2eb6097d 2026-10-04)\nbinary: rustc\ncommit-hash: a2eb6097d22d908142aa4a067bc2cb70860a95b7\ncommit-date: 2026-10-04\nhost: aarch64-apple-darwin\nrelease: 1.100.0-beta.4\nLLVM version: 23.1.1",
+      "record": "target/bench/experiments/theme-final-review-repair-20261013/beta-preset-qualification.json",
+      "record_sha256": "b82495ef4f415c12ae2ab6e6f7559134f74b1fe508190648df2a167db2d5fb12",
+      "catalog_count": 10,
+      "qualified_presets": [
+        {
+          "id": "brutalist",
+          "recipe_fingerprint": "2fe24c68b5e6a208e8f4a031a9e91f5d31617fc4cfaaef4dd50942d566d5f32c",
+          "cell_count": 6,
+          "admissions": [
+            "host_dependent"
+          ],
+          "residual_totals": {
+            "theme": 0,
+            "mermaid": 0,
+            "bridge": 0,
+            "source": 0
+          }
+        },
+        {
+          "id": "spotless",
+          "recipe_fingerprint": "34a1906751cc8142e70d9e8f19019c78eb213d91d0212cfe929b624a8a70b1d7",
+          "cell_count": 6,
+          "admissions": [
+            "host_dependent"
+          ],
+          "residual_totals": {
+            "theme": 0,
+            "mermaid": 0,
+            "bridge": 0,
+            "source": 0
+          }
+        },
+        {
+          "id": "cyberpunk",
+          "recipe_fingerprint": "e1fb0df7864e83a73eeac50da40559d3768807f31cace4ce86529fd136abb1c2",
+          "cell_count": 6,
+          "admissions": [
+            "host_dependent"
+          ],
+          "residual_totals": {
+            "theme": 0,
+            "mermaid": 0,
+            "bridge": 0,
+            "source": 0
+          }
+        }
+      ],
+      "public_catalog_promoted": false
+    },
     "repair_commit": "292d515a7da276058f48da6958bb70374991c68b"
+  },
+  "completion": {
+    "status": "complete",
+    "completed_utc": "2026-10-13T08:02:35.688491+00:00",
+    "source_commit": "c0e528f23bd1b3e833dccbfc0beb057e54c274e1",
+    "compatibility_repair_commit": "292d515a7da276058f48da6958bb70374991c68b",
+    "summary": "All original 68 findings, 26 testing gaps and 36 necessity assessments closed; R17-R19 beta followup repairs verified on beta and pinned toolchains; clean beta release qualification passed."
   }
 }
