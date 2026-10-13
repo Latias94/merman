@@ -1260,7 +1260,7 @@ fn render_svg_target(
 ) -> Result<Option<SvgOutput>, RenderError> {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    let (rendered, _operation) = prepare_rendered_family_svg(semantic, &request)?;
+    let (rendered, operation) = prepare_rendered_family_svg(semantic, &request)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let finalized = merman_render::__private::finalize_standalone_for_target_admission(
         rendered,
@@ -1268,7 +1268,9 @@ fn render_svg_target(
     )
     .map_err(RenderError::from)?;
     let (svg, family) = finalized.into_completion().into_output_and_report();
-    let output = finish_standalone_svg_target(svg, family, required_capabilities).map(Some);
+    let output =
+        finish_standalone_svg_target(svg, family, required_capabilities, &operation.control)
+            .map(Some);
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
     output
@@ -1409,12 +1411,13 @@ fn render_document_target(
     semantic: SemanticArtifact,
     request: SvgRequest,
 ) -> Result<Option<RenderedDocument>, RenderError> {
-    let Some((completion, required_capabilities, _operation)) =
+    let Some((completion, required_capabilities, operation)) =
         prepare_resvg_target(semantic, &request)?
     else {
         unreachable!("semantic artifact always produces a finalized SVG or an error")
     };
-    Ok(Some(RenderedDocument::new(
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
+    let document = RenderedDocument::new(
         completion,
         required_capabilities,
         #[cfg(all(
@@ -1422,7 +1425,9 @@ fn render_document_target(
             any(feature = "png", feature = "jpeg", feature = "pdf")
         ))]
         request.environment.native_fonts,
-    )))
+    );
+    crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
+    Ok(Some(document))
 }
 
 #[cfg(feature = "ascii")]
