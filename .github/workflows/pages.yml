@@ -69,6 +69,7 @@ jobs:
           path: |
             platforms/web/packages
             platforms/web/pkg
+            platforms/web/dist
           if-no-files-found: error
           retention-days: 7
 
@@ -184,6 +185,7 @@ jobs:
           node-version: "24.21.0"
           cache: npm
           cache-dependency-path: |
+            platforms/web/package-lock.json
             playground/package-lock.json
             playground/tests/package-lock.json
 
@@ -198,6 +200,9 @@ jobs:
         with:
           artifact-ids: ${{ needs.web-package.outputs.artifact_id }}
           path: platforms/web
+
+      - name: Install Web package checker dependencies
+        run: npm ci --prefix platforms/web
 
       - name: Install playground dependencies
         run: npm ci --prefix playground

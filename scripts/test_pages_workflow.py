@@ -41,6 +41,7 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertLess(web.index("npm run smoke"), web.index("actions/upload-artifact@"))
         self.assertIn("platforms/web/packages", web)
         self.assertIn("platforms/web/pkg", web)
+        self.assertIn("platforms/web/dist", web)
         self.assertIn("if-no-files-found: error", web)
         self.assertIn("needs: web-package", browser)
         self.assertNotIn("size-budgets", browser)
@@ -56,6 +57,16 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("--web-package-root platforms/web/packages", budgets)
         self.assertIn("--budget-file docs/release/WASM_SIZE_BUDGETS.json", budgets)
         self.assertIn("tool: wasm-tools@1.261.0", budgets)
+
+    def test_browser_consumer_installs_the_web_checker_dependencies(self) -> None:
+        text = PAGES.read_text(encoding="utf-8")
+        browser = workflow_job(text, "build")
+        self.assertIn("platforms/web/package-lock.json", browser)
+        self.assertIn("npm ci --prefix platforms/web", browser)
+        self.assertLess(
+            browser.index("npm ci --prefix platforms/web"),
+            browser.index("npm run test:browser:chromium:desktop:built"),
+        )
 
     def test_partial_reruns_download_the_successful_producers_artifact_ids(self) -> None:
         text = PAGES.read_text(encoding="utf-8")
