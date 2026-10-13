@@ -17,6 +17,28 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 14 root-cause checkpoint](native_theme_root_cause_2026-10-14.md)
+classifies all nineteen changed-output fixtures and records 25 high-confidence repair
+items beyond the default timing cases. Public probes reproduce a shared stylesheet/XML
+boundary failure in 28 of 38 legal-font variants, incorrect scoped-theme derivation,
+Neo non-palette Swimlane border override and four Block geometry/configuration gaps.
+The [repair plan](../plans/2026-10-14-0053-refactor-native-theme-regressions-plan.md)
+fixes correctness first, then removes demonstrated configuration, family-evidence and
+reference-summary waste. No optimization or performance recovery is admitted by this
+investigation alone; retain the original timing receipts and qualify each repair separately.
+
+The [October 13 native main-versus-theme checkpoint](native_main_theme_2026-10-13.md)
+compares clean main `3a4b8c393` with theme branch `f47abded0` on macOS ARM64. Nine
+byte-identical default-SVG cases confirm regression after stable eight-pair A/A calibration
+per executable and eight fresh balanced AB/BA pairs. Class medium increases 82.35%
+(537.66 us); Journey increases 246.49% (67.85 us). All nine simultaneous 95% lower bounds
+clear the unchanged 10%/50 us gate. Nineteen of 38 discovery inputs change SVG bytes and
+remain outside same-output latency admission. Parse diagnostics and separate CPU captures
+identify selected-theme materialization/configuration copying and exact standalone SVG
+finalization as profiling priorities. Preserve output, resource, cancellation and admission
+contracts. This is current main-versus-branch evidence, separate from published release ranges;
+no performance implementation is included in the checkpoint.
+
 The [reference attribute-value experiment](reference_attribute_values_2026-09-20.md) rejects
 skipping repeated normalization of values the reference collector does not read. Class medium
 improves only 9.90 µs (0.84%) in two diagnostic pairs, below the registered joint latency gate.

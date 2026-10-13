@@ -1,0 +1,231 @@
+{
+  "base_revision": "3a4b8c393939b69372a8f05a2b971f7cdf6ae529",
+  "audited_revision": "f47abded02b540d7fe563af7bc75f2fa1bb90c51",
+  "findings": [
+    {
+      "id": "N01",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Theme rematerialization uses winner origin instead of root-directive truthiness and actual selected-theme transition",
+      "unit": "U1",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/core-selection-receipt.json"
+    },
+    {
+      "id": "N02",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Logical stylesheet font values reach XML text without terminal escaping; 28/38 A&B fixtures fail",
+      "unit": "U2",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/all-family-font-receipt.json"
+    },
+    {
+      "id": "N03",
+      "priority": "P2",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Neo non-palette Swimlane border is overridden by generic node CSS",
+      "unit": "U3",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/chart-variants/browser-computed-style.json"
+    },
+    {
+      "id": "N04",
+      "priority": "P2",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Block node CSS ignores authored strokeWidth including zero",
+      "unit": "U3",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/block-variants-output/upstream-receipt.json"
+    },
+    {
+      "id": "N05",
+      "priority": "P2",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Block square geometry ignores Neo-specific padding",
+      "unit": "U3",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/block-variants-output/upstream-receipt.json"
+    },
+    {
+      "id": "N06",
+      "priority": "P2",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Block round geometry ignores authored Mermaid radius truthiness",
+      "unit": "U3",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/block-variants-output/upstream-radius-receipt.json"
+    },
+    {
+      "id": "N07",
+      "priority": "P2",
+      "kind": "cleanup",
+      "confidence": "high",
+      "finding": "Ishikawa emits unconsumed per-text bbox metadata",
+      "unit": "U4",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/output-tail-families.md"
+    },
+    {
+      "id": "N08",
+      "priority": "P2",
+      "kind": "cleanup",
+      "confidence": "high",
+      "finding": "TreeView and Flowchart/Swimlane retain raster proof IDs after consumer retirement",
+      "unit": "U4",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/output-tail-families.md"
+    },
+    {
+      "id": "N09",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Legacy theme transactions copy and destroy the complete config rather than local theme state",
+      "unit": "U5",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/core-config.md"
+    },
+    {
+      "id": "N10",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Same-value config assignments detach JSON although only authority metadata changes",
+      "unit": "U5",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/architecture.md"
+    },
+    {
+      "id": "N11",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Derived-ownership pass allocates dependencies when no explicit or compatibility authority exists",
+      "unit": "U5",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/architecture.md"
+    },
+    {
+      "id": "N12",
+      "priority": "P2",
+      "kind": "test-gap",
+      "confidence": "high",
+      "finding": "Legacy transaction regression selects staged Base and misses Default/Extended",
+      "unit": "U5",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/core-config.md"
+    },
+    {
+      "id": "N13",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Class constructs full terminal proof objects before CompletionOnly discards them",
+      "unit": "U6",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/family-evidence-cross-review.md"
+    },
+    {
+      "id": "N14",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Class collects all label style facts without checking all actual consumers",
+      "unit": "U6",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/family-evidence-cross-review.md"
+    },
+    {
+      "id": "N15",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Class metrics-only helper constructs and discards XHTML style facts",
+      "unit": "U6",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/family-evidence-cross-review.md"
+    },
+    {
+      "id": "N16",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "VisibleTextStyleFacts retains unused copied content/kind and repeatedly derives summaries",
+      "unit": "U6",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/family-pipeline.md"
+    },
+    {
+      "id": "N17",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Kanban builds label classification when no paint/typography evidence consumer requests it",
+      "unit": "U6",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/family-evidence-cross-review.md"
+    },
+    {
+      "id": "N18",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Mindmap baseline prepares evidence-only edge identity/provenance",
+      "unit": "U6",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/family-pipeline.md"
+    },
+    {
+      "id": "N19",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "An empty root theme builds an empty prelude allocation",
+      "unit": "U8",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/family-pipeline.md"
+    },
+    {
+      "id": "N20",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "BestEffort admission builds detailed reference occurrence evidence then discards it",
+      "unit": "U7",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/svg-finalization.md"
+    },
+    {
+      "id": "N21",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Validated documents without expansion/effects still build indexes and reference graph",
+      "unit": "U7",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/svg-finalization.md"
+    },
+    {
+      "id": "N22",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Explicit non-resvg pipelines discard exact-generation XML proof at String boundary",
+      "unit": "U8",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/svg-finalization.md"
+    },
+    {
+      "id": "N23",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Owned terminal validation is deep-cloned into finalization report then dropped",
+      "unit": "U8",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/svg-finalization.md"
+    },
+    {
+      "id": "N24",
+      "priority": "P2",
+      "kind": "repeated-work",
+      "confidence": "high",
+      "finding": "Consuming family completion clones style evidence and temporary strict checks clone it again",
+      "unit": "U8",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/architecture.md"
+    },
+    {
+      "id": "N25",
+      "priority": "P2",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Block round rectangles incorrectly route edges through the visual rounded arc instead of the upstream rectangular boundary",
+      "unit": "U3",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/block-variants-output/routing-receipt.json"
+    }
+  ]
+}

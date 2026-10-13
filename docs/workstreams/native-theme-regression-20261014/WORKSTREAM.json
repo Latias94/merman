@@ -1,0 +1,136 @@
+{
+  "registration_id": "native-theme-regression-20261014",
+  "branch": "refactor/theme-ownership-performance",
+  "plan": "docs/plans/2026-10-14-0053-refactor-native-theme-regressions-plan.md",
+  "audit_revision": "f47abded02b540d7fe563af7bc75f2fa1bb90c51",
+  "phase": "implementation",
+  "findings": {
+    "N01": {
+      "unit": "U1",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N02": {
+      "unit": "U2",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N03": {
+      "unit": "U3",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N04": {
+      "unit": "U3",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N05": {
+      "unit": "U3",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N06": {
+      "unit": "U3",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N07": {
+      "unit": "U4",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N08": {
+      "unit": "U4",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N09": {
+      "unit": "U5",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N10": {
+      "unit": "U5",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N11": {
+      "unit": "U5",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N12": {
+      "unit": "U5",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N13": {
+      "unit": "U6",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N14": {
+      "unit": "U6",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N15": {
+      "unit": "U6",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N16": {
+      "unit": "U6",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N17": {
+      "unit": "U6",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N18": {
+      "unit": "U6",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N19": {
+      "unit": "U8",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N20": {
+      "unit": "U7",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N21": {
+      "unit": "U7",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N22": {
+      "unit": "U8",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N23": {
+      "unit": "U8",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N24": {
+      "unit": "U8",
+      "state": "confirmed",
+      "verification": []
+    },
+    "N25": {
+      "unit": "U3",
+      "state": "confirmed",
+      "verification": []
+    }
+  },
+  "plan_review": "docs/workstreams/native-theme-regression-20261014/plan-review.json",
+  "execution_engine": "native Codex workers; root owns serial Cargo, integration and exact-path commits"
+}
