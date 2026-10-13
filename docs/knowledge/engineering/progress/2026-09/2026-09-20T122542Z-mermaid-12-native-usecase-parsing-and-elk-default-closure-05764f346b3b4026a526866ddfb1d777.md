@@ -85,5 +85,5 @@ The earlier staged-runtime evidence remains valid; do not redo package authentic
 # Citations
 
 - [Implementation plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
-- [Previous checkpoint](2026-09-20T103217Z-mermaid-12-root-provider-registration-and-graph-family-missing-sections-c3254522c0a0493ebc49f583bcdcbbc6.md)
+- [Previous checkpoint](2026-09-20T103217Z-mermaid-12-root-provider-registration-an-c3254522c0a0493ebc49f583bcdcbbc6.md)
 - Pinned Mermaid source: `98a0945418c76238f15df2afaddbba4272656c3b` under repo-ref/mermaid.

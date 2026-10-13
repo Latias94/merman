@@ -4,6 +4,25 @@ Merman separates pull-request feedback, scheduled maintenance, and release evide
 in the earliest layer that can justify its cost, but it should not be repeated in every later job
 unless that job produces an independently releasable artifact.
 
+## Windows Checkout Paths
+
+Repository-relative tracked paths are limited to 160 UTF-16 code units by
+`python scripts/check_path_lengths.py` in the hygiene job. This leaves 99 units for the checkout
+prefix, including its final separator, under Windows' traditional 260-unit limit including NUL.
+Cargo Git dependencies check out the repository beneath their cache path, including documentation
+that Cargo packages may exclude. Keep filenames short and put detailed titles in the document.
+
+For engineering memory, retain timestamp and record identity while using a short filename slug;
+see the [memory index](../knowledge/engineering/index.md#portable-filenames). The gate reads the
+Git index, so stage intended renames before checking locally. It does not scan build caches or
+untracked user files.
+
+An already-published tag retains its original paths. For consumers of such a tag on Windows,
+use a short Cargo cache directory and enable `core.longpaths` for Git commands when appropriate.
+Changing a dependency's repository config cannot repair a checkout that fails before that config
+can be read. Long-path support also depends on the application and Windows configuration; a
+short cache prefix avoids relying on every tool's long-path support.
+
 ## Pull Requests
 
 Pull requests answer whether a change is safe to review and merge:
