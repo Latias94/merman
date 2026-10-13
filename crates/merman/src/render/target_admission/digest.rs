@@ -6,7 +6,7 @@ use super::{
 };
 use crate::render::{RenderEvidence, ThemeEvidenceStatus, ThemeEvidenceSummary};
 
-const TARGET_EVIDENCE_DIGEST_DOMAIN: &[u8] = b"merman-target-evidence-experimental-v4";
+const TARGET_EVIDENCE_DIGEST_DOMAIN: &[u8] = b"merman-target-evidence-experimental-v1";
 
 #[cfg(feature = "svg")]
 fn render_digest(domain: &[u8], update: impl FnOnce(&mut Sha256)) -> [u8; 32] {
@@ -86,7 +86,7 @@ pub(in crate::render) fn document_digest(
     evidence: &RenderEvidence,
     portability: &DocumentPortabilityReport,
 ) -> [u8; 32] {
-    render_digest(b"merman-rendered-document-experimental-v5", |hasher| {
+    render_digest(b"merman-rendered-document-experimental-v1", |hasher| {
         update_digest_field(hasher, &public_svg_digest);
         update_digest_field(hasher, &native_svg_digest);
         update_digest_field(hasher, resource_fingerprint.as_bytes());

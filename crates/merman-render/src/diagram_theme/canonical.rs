@@ -13,7 +13,7 @@ use super::typography::{
 };
 use super::{FontCatalog, FontStack, FontStyle};
 
-const RECIPE_FINGERPRINT_DOMAIN: &[u8] = b"merman-theme-recipe-v4";
+const RECIPE_FINGERPRINT_DOMAIN: &[u8] = b"merman-theme-recipe-v1";
 
 pub(crate) fn recipe_fingerprint(
     spec: &DiagramThemeSpec,

@@ -44,25 +44,25 @@ const NO_IDS: &[&str] = &[];
 const DEFAULT_RESOURCE_FINGERPRINT: &str =
     "c6aa7af73322aac35ce4548369140848c9a4d093700abccb063ea47a1797d0aa";
 const EDITOR_LIGHT_RECIPE_FINGERPRINT: &str =
-    "d2cbade1e7e81d86aa1c6995aac84340ca15406749d09a6b45ec0b0e1eeda5ad";
+    "2465acc576dd1f8f7e67c9fc1c0f90eb912b95b3d5cd66a6e56719ee912a64ec";
 const EDITOR_DARK_RECIPE_FINGERPRINT: &str =
-    "743f995495a6ea4e74ac909f7c1bd4e1c5829d2d369c5c9ae37f5623c348a02d";
+    "59248821736574ffe32a27126c3850dec5c0f8f3bb1cbc00ab69b4cbc221feaf";
 const ONE_DARK_RECIPE_FINGERPRINT: &str =
-    "2a8f78e1e64c9b26016521844160be968cbca63c44b2d0b07c2a5415d812b3f4";
+    "418c9e92199fda85a598ab7a4ef094578f896fa8bafc003413f231cf97af3345";
 const GRUVBOX_LIGHT_RECIPE_FINGERPRINT: &str =
-    "029c8362527ca52a40ead3405d1bcfe49ae4925cbcbbfbad8f7684a375d21257";
+    "dad751c81601ebb36b29a77cee28e9cbb1d810b215d1a3ba103ae831e45ce710";
 const GRUVBOX_DARK_RECIPE_FINGERPRINT: &str =
-    "1265568916289193ed22d5e21e93928ac7e887f8a2871cf7e1d81374ad42f5f7";
+    "8e1a0bfbc323356693315fd2a16211d20496071aedcc744fbdea7bb74437e5b7";
 const AYU_LIGHT_RECIPE_FINGERPRINT: &str =
-    "7d05be599daf0f00a0195c0c602a740643c374153a2a33dc9f1586941f2947ab";
+    "3c90d4b8be9fc1bf18db04e649b2394862b6e65a319779d58f4290357629c572";
 const AYU_DARK_RECIPE_FINGERPRINT: &str =
-    "d536b1d7e3f51df82efe65a8d43597f49697b3508a06ffea2efd176263a67bb0";
+    "4104892549840b7648816e27ea0effdf4cfffdbaaaf774fb8fa38d53144de4d4";
 const BRUTALIST_RECIPE_FINGERPRINT: &str =
-    "6faa2180687da0186bbf2991af85949374a661a18b470b2d90b61efaa862236e";
+    "2fe24c68b5e6a208e8f4a031a9e91f5d31617fc4cfaaef4dd50942d566d5f32c";
 const SPOTLESS_RECIPE_FINGERPRINT: &str =
-    "c7c64b17820ae6d43d6fc9afe6bf3b671b09a8e07a52a9c4a9563d35e6082b27";
+    "34a1906751cc8142e70d9e8f19019c78eb213d91d0212cfe929b624a8a70b1d7";
 const CYBERPUNK_RECIPE_FINGERPRINT: &str =
-    "af00e9dd770d06f8aaea3c85332f184800a2e5a9623d6de0607205a0812fb6f6";
+    "e1fb0df7864e83a73eeac50da40559d3768807f31cace4ce86529fd136abb1c2";
 type PresetRecipeBuilder = fn(
     PresetPalette,
     &ThemeResourcePolicy,
@@ -418,7 +418,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             ],
             kanban_task_labels: &[
                 "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
-                "#ffffff",
+                "#000000",
             ],
         },
     ),
@@ -495,7 +495,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 10] = [
             ],
             kanban_task_labels: &[
                 "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
-                "#ffffff",
+                "#000000",
             ],
         },
     ),

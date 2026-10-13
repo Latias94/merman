@@ -533,7 +533,7 @@ pub(super) fn summarize_theme_support(
     summary
 }
 
-/// Projects the family-wide base typography classifier into public V2 discovery facts.
+/// Projects the family-wide base typography classifier into public V1 discovery facts.
 ///
 /// The property match is only a contract-to-renderer vocabulary translation. Route ownership
 /// remains exclusively defined by `classify_base_typography`.

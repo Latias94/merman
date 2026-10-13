@@ -201,8 +201,9 @@ not carry effect graphs; authors who need effects use a complete `DiagramThemeSp
 
 Unknown top-level or nested fields are rejected. Serialized, cached, or cross-process definitions
 must carry both version fields. A Rust-only ephemeral builder may select the current versions before
-serialization, but persisted data never silently means `latest`. Unknown versions fail closed or
-enter an explicit migration operation. Before `C7a-contract`, this candidate version 1 table may be
+serialization, but persisted data never silently means `latest`. Unknown versions fail closed;
+the first release provides no migration from unpublished development versions. Before
+`C7a-contract`, this candidate version 1 table may be
 corrected, reduced, or reordered as an alpha breaking change regardless of the ADR status. Once
 `C7a-contract` records expansion version 1, any semantic change to a default, expansion row, row
 order, or collision rule requires a new `expansion_version`.

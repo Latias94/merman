@@ -4,6 +4,10 @@ Checked on 2026-09-15 at candidate source `646ac9228`. This is a development dec
 release or a C7a freeze record. The release baseline is the latest artifact for each surface,
 not the largest number found on the development branch.
 
+The 2026-10-13 theme hash-domain follow-up below supersedes the earlier decision to retain
+unpublished theme hash-domain counters. It compares the new domains with frozen main
+`f754a3c3077d35d2a372c2fec04f9e9b87db1c3f`.
+
 The maintainer selected `v0.8.0-alpha.7` as the next workspace release on 2026-09-15.
 New theme schemas, recipes, catalogs and qualification formats remain version 1.
 The package release number does not change those independent protocol identities.
@@ -60,10 +64,10 @@ different historical observations or encodings as the same evidence:
 - The reference fixture catalog, expectation and theme-input schemas at 2 belong to internal
   reference evidence. Their versioned parsing and recorded source inputs are not authoring
   APIs or public package versions.
-- Hash domain labels such as recipe `v4`, raster binding `v3`, cutover receipt `v2`, and
-  historical projection `v2` separate byte encodings and bind existing independent evidence.
-  They are not advertised format compatibility versions. Preserve the domains and digests;
-  do not recompute proof expectations just to reduce a number.
+- Archived recipe `v4`, raster binding `v3`, cutover receipt `v2`, and historical projection
+  `v2` domains remain part of their original source and proof identities. Preserve those
+  recorded digests. The live first-release theme domains follow the policy below; changing
+  their domains requires fresh compiled fingerprints and execution evidence.
 - Plan sections C5/C6/C7a/C7b, ADR/KTD identifiers, dated verification records, upstream Mermaid
   versions and externally defined font/container versions are identifiers, not release counters.
 
@@ -82,22 +86,50 @@ rejects mixed epochs. This changes no theme schema or independently versioned na
 
 A follow-up at `cad8b2051` found one implementation mismatch with this policy: the preset
 entry factory still assigned recipe revision 4 to retained compatibility recipes and 5 to
-native recipes, and its metadata test expected those values. All ten unpublished recipes
-now use revision 1. Fingerprint constant names no longer contain development revision
-suffixes. Their hash values, the canonical hash domain, recipe contents and qualification
-scope remain unchanged. Existing archive records keep their original source identity.
+native recipes, and its metadata test expected those values. That follow-up set all ten
+unpublished recipes to revision 1 and removed development revision suffixes from fingerprint
+constant names. At that source, hash values, the canonical hash domain, recipe contents and
+qualification scope stayed unchanged. The 2026-10-13 follow-up below supersedes the decision
+to retain the live canonical domain. Existing archive records keep their original source identity.
 
 The follow-up checked theme contract and renderer version owners, binding projections,
 qualification metadata, current theme plans and coverage documentation. Authoring, expansion,
 complete spec, materialization, support, catalog, claim, text-layout and qualification versions
 are already 1. Version 2 and higher in rejection fixtures remain intentional invalid input;
-KTD/C6/reference evidence and hash domains retain the identities listed above. The pre-existing
+KTD/C6/reference evidence and archived hashes retain the identities listed above. The pre-existing
 Mermaid theme artifact schema 2 is the successor of published schema 1, not an additional
 version of the new compiled-theme format.
 
 Validation for this follow-up: all 13 renderer preset tests passed, including the all-entry
 metadata check, exact compiled fingerprints and complete-spec round trips. `cargo fmt --all
 -- --check` and `git diff --check` passed. No platform artifacts were rebuilt for this change.
+
+## Theme hash-domain follow-up
+
+On 2026-10-13, the maintainer consolidated the remaining unpublished theme hash domains to
+version 1. Frozen main `f754a3c3077d35d2a372c2fec04f9e9b87db1c3f` contains none of these
+namespaces; their higher suffixes identified development iterations rather than published
+contracts. The live domains are now:
+
+- `merman-theme-recipe-v1` for canonical compiled theme recipes.
+- `merman-target-evidence-experimental-v1` for target-admission evidence.
+- `merman-rendered-document-experimental-v1` for rendered-document evidence.
+
+The canonical encoding and all resource, operation, capability, text, math, and terminal-proof
+bindings remain intact. The ten preset catalog fingerprints are regenerated from the real
+compiler and checked by `preset_catalog_fingerprints_match_the_exact_compiled_recipes`.
+Document and target evidence likewise derive their digests from the current execution.
+Old qualification and verification records keep their original source and digest identities;
+they cannot be relabeled as evidence for these domains.
+
+The theme wire contracts remain closed version 1 formats. The authoring registry recognizes
+only `(authoring_schema_version = 1, expansion_version = 1, spec_schema_version = 1)`;
+unknown tuples and schemas fail closed. There are no decoders, aliases, or upgrade adapters
+for unpublished older theme versions. Version-rejection tests remain required input validation.
+
+This decision does not reset the existing Mermaid runtime or audit artifacts, native text
+measurement domain, Options grammar, or published transport and ABI namespaces. Their
+compatibility histories are independent from the new theme contracts.
 
 ## Local validation
 

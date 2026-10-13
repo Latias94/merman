@@ -367,8 +367,8 @@ A Rust-only ephemeral builder may default the current expansion before serializa
 definition cannot silently select `latest`. Before the first publication, the expansion version
 remains 1 and source commits distinguish development iterations. After publication, an expansion-table
 semantic change advances the version relative to the last published contract; multiple unreleased
-changes share that successor version. Unknown versions fail closed or enter an explicit migration
-operation. Omitted token fields use that
+changes share that successor version. Unknown versions fail closed; the first release provides no
+migration from unpublished development versions. Omitted token fields use that
 expansion version's documented defaults. Token `null` is rejected rather than overloaded as clear;
 explicit clear remains the existing typed `Specified::Clear` behavior inside `ThemeRuleSet`. Empty
 required collections such as `series` are validation errors, and fatal authoring errors return no
