@@ -650,6 +650,235 @@
       "exit_code": 0,
       "log": "/tmp/merman-theme-review-repair-20261013/verification/facade-final.log",
       "log_sha256": "4c928fedc27564a0cca03ab7227b2a9dc5fcf7e3abdcd80ae23d04f8a185d60a"
+    },
+    {
+      "name": "preset-clean-qualification",
+      "command": [
+        "python3",
+        "scripts/qualify_theme_presets.py",
+        "--output",
+        "target/bench/experiments/theme-final-review-repair-20261013/preset-qualification.json"
+      ],
+      "started_utc": "2026-10-13T07:05:47.264989+00:00",
+      "elapsed_seconds": 166.154,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification.log",
+      "log_sha256": "72a970e84e383062c690df5d37862e39fc2736c66dd03e758d2e1ad5ec394d66"
+    },
+    {
+      "name": "beta-workspace",
+      "command": [
+        "cargo",
+        "+beta",
+        "test",
+        "--offline",
+        "--locked",
+        "--workspace",
+        "-j",
+        "2",
+        "--",
+        "--test-threads=2"
+      ],
+      "started_utc": "2026-10-13T07:16:21.833864+00:00",
+      "elapsed_seconds": 522.716,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 101,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-workspace.log",
+      "log_sha256": "34bcd92be4eedab528fd1778808e48ff1af6feadac1e56f802d74284489cc34b"
+    },
+    {
+      "name": "beta-rustdoc-layout-red",
+      "command": [
+        "rustup",
+        "run",
+        "beta",
+        "target/debug/build/merman-rustdoc/99e9b5a4ebb76ea3/out/regressions-99e9b5a4ebb76ea3",
+        "facade_reexport_works_without_a_direct_macro_dependency",
+        "--exact",
+        "--test-threads=1"
+      ],
+      "started_utc": "2026-10-13T07:26:41.763194+00:00",
+      "elapsed_seconds": 47.063,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 101,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-layout-red.log",
+      "log_sha256": "2ee986103fd4f9084f35f57bd4b874d4b1128e4fa651d4709f327f6d735b8857"
+    },
+    {
+      "name": "beta-rustdoc-all-features-green",
+      "command": [
+        "cargo",
+        "+beta",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-rustdoc",
+        "--all-features",
+        "--test",
+        "regressions",
+        "--test",
+        "rustdoc_e2e",
+        "--test",
+        "inheritance",
+        "--test",
+        "feature_selection",
+        "--test",
+        "complete_svg_e2e",
+        "-j",
+        "2",
+        "--",
+        "--test-threads=2"
+      ],
+      "started_utc": "2026-10-13T07:29:10.356620+00:00",
+      "elapsed_seconds": 57.527,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 101,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-all-features-green.log",
+      "log_sha256": "5d6556a4614781402e85212e50f5f7c360a2207a85fb9cd9a9ff77f7be677ec6"
+    },
+    {
+      "name": "beta-workspace-repaired-final",
+      "command": [
+        "cargo",
+        "+beta",
+        "test",
+        "--offline",
+        "--locked",
+        "--workspace",
+        "--no-fail-fast",
+        "-j",
+        "2",
+        "--",
+        "--test-threads=2"
+      ],
+      "started_utc": "2026-10-13T07:37:36.453017+00:00",
+      "elapsed_seconds": 606.876,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-workspace-repaired-final.log",
+      "log_sha256": "4c2595c45bf9273bfd9b1d111e690aa3203d68b66d2ecac3ec2640cf658aae59"
+    },
+    {
+      "name": "beta-rustdoc-complete",
+      "command": [
+        "cargo",
+        "+beta",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-rustdoc",
+        "--all-features",
+        "--test",
+        "regressions",
+        "--test",
+        "rustdoc_e2e",
+        "--test",
+        "inheritance",
+        "--test",
+        "feature_selection",
+        "--test",
+        "complete_svg_e2e",
+        "-j",
+        "2",
+        "--",
+        "--test-threads=2"
+      ],
+      "started_utc": "2026-10-13T07:48:37.872634+00:00",
+      "elapsed_seconds": 49.539,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-complete.log",
+      "log_sha256": "affce61ef91eb1f6591bc0eef68e8cf4c2b4fc607856daadec1153e7a69ab946"
+    },
+    {
+      "name": "beta-native-fonts",
+      "command": [
+        "cargo",
+        "+beta",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman",
+        "--features",
+        "all-diagrams,svg,png,jpeg,pdf,native-fonts,math,layout-elk,layout-cytoscape",
+        "--test",
+        "native_font_context",
+        "--test",
+        "native_flowchart_typography",
+        "--test",
+        "native_swimlane_typography",
+        "-j",
+        "2",
+        "--",
+        "--test-threads=2"
+      ],
+      "started_utc": "2026-10-13T07:49:45.941457+00:00",
+      "elapsed_seconds": 47.607,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-native-fonts.log",
+      "log_sha256": "0a8851c4b2e218e5f06298e1fb7e43123dc60057af6ca3e14aedabffb42b5090"
+    },
+    {
+      "name": "beta-node",
+      "command": [
+        "cargo",
+        "+beta",
+        "test",
+        "--offline",
+        "--locked",
+        "--manifest-path",
+        "crates/merman-node/Cargo.toml",
+        "--features",
+        "svg,all-diagrams,layout-cytoscape,layout-elk,transport-napi",
+        "--lib",
+        "-j",
+        "2",
+        "--",
+        "--test-threads=2"
+      ],
+      "started_utc": "2026-10-13T07:51:17.009970+00:00",
+      "elapsed_seconds": 29.239,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/beta-node.log",
+      "log_sha256": "7933c81b473932a20652ece79a950abe6aba9f0e406cbf3e5cc713e83ad5058b"
+    },
+    {
+      "name": "pinned-rustdoc-final",
+      "command": [
+        "cargo",
+        "test",
+        "--offline",
+        "--locked",
+        "-p",
+        "merman-rustdoc",
+        "--all-features",
+        "--test",
+        "regressions",
+        "--test",
+        "rustdoc_e2e",
+        "--test",
+        "inheritance",
+        "--test",
+        "feature_selection",
+        "--test",
+        "complete_svg_e2e",
+        "-j",
+        "2",
+        "--",
+        "--test-threads=2"
+      ],
+      "started_utc": "2026-10-13T07:52:02.997603+00:00",
+      "elapsed_seconds": 163.144,
+      "head": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "exit_code": 0,
+      "log": "/tmp/merman-theme-review-repair-20261013/verification/pinned-rustdoc-final.log",
+      "log_sha256": "c01ecc89dc3e0e8e49465ebcb237518fa52ef6dc05639e322fb74f93759e55b3"
     }
   ],
   "independent_reviews": [
@@ -1230,8 +1459,271 @@
     "confirmed_findings": 68,
     "testing_gaps": 26,
     "necessity_assessments": 36,
-    "remaining": "Exact release clean-candidate preset qualification only.",
+    "remaining": "Original 68 findings, 26 gaps and 36 assessments closed. Additional user-requested beta compatibility is running.",
     "public_compatibility": "N1 retained as assessed; N6 retired no-state signatures remain compatible.",
     "rejected_review_candidate": "U6-R6 had no admitted Railroad target and is not counted as a repair."
+  },
+  "clean_preset_qualification": {
+    "schema_version": 1,
+    "source_commit": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+    "lockfile_sha256": "6ee0f431d0d85955e79203a5a4420283e89316fca9ea10930a93a73a5ae4bdc2",
+    "executable_sha256": "1f73b389b0d8c30035787e21eb7f70f033bbffc75e4b2ad11fe7e9459ed32d9f",
+    "build_command": [
+      "cargo",
+      "build",
+      "--release",
+      "--locked",
+      "-p",
+      "merman-theme-acceptance",
+      "--no-default-features",
+      "--features",
+      "png,layout-cytoscape,all-diagrams",
+      "--example",
+      "preset_qualification",
+      "--jobs",
+      "2",
+      "--message-format=json-render-diagnostics"
+    ],
+    "host": {
+      "machine": "arm64",
+      "release": "27.0.0",
+      "system": "Darwin"
+    },
+    "rustc": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2",
+    "record": "target/bench/experiments/theme-final-review-repair-20261013/preset-qualification.json",
+    "record_sha256": "8900254e9d245087ca8fe189f19a86f19664f83dd8637d1dbc58e0e23e6e82c1",
+    "catalog_count": 10,
+    "qualified_presets": [
+      {
+        "id": "brutalist",
+        "recipe_fingerprint": "2fe24c68b5e6a208e8f4a031a9e91f5d31617fc4cfaaef4dd50942d566d5f32c",
+        "cell_count": 6,
+        "admissions": [
+          "host_dependent"
+        ],
+        "residual_totals": {
+          "theme": 0,
+          "mermaid": 0,
+          "bridge": 0,
+          "source": 0
+        }
+      },
+      {
+        "id": "spotless",
+        "recipe_fingerprint": "34a1906751cc8142e70d9e8f19019c78eb213d91d0212cfe929b624a8a70b1d7",
+        "cell_count": 6,
+        "admissions": [
+          "host_dependent"
+        ],
+        "residual_totals": {
+          "theme": 0,
+          "mermaid": 0,
+          "bridge": 0,
+          "source": 0
+        }
+      },
+      {
+        "id": "cyberpunk",
+        "recipe_fingerprint": "e1fb0df7864e83a73eeac50da40559d3768807f31cace4ce86529fd136abb1c2",
+        "cell_count": 6,
+        "admissions": [
+          "host_dependent"
+        ],
+        "residual_totals": {
+          "theme": 0,
+          "mermaid": 0,
+          "bridge": 0,
+          "source": 0
+        }
+      }
+    ],
+    "public_catalog_promoted": false
+  },
+  "beta_compatibility": {
+    "status": "all_runtime_checks_passed_pending_clean_release_qualification",
+    "toolchain": {
+      "rustc": "rustc 1.100.0-beta.4 (a2eb6097d 2026-10-04)\nbinary: rustc\ncommit-hash: a2eb6097d22d908142aa4a067bc2cb70860a95b7\ncommit-date: 2026-10-04\nhost: aarch64-apple-darwin\nrelease: 1.100.0-beta.4\nLLVM version: 23.1.1\n",
+      "cargo": "cargo 1.100.0-beta.4 (7552a885e 2026-09-29)\n",
+      "project_toolchain": "[toolchain]\nchannel = \"1.95.0\"\ncomponents = [\"rustfmt\", \"clippy\"]\n",
+      "host": "arm64",
+      "test_environment": {
+        "CARGO_BUILD_JOBS": "2",
+        "CARGO_PROFILE_DEV_DEBUG": "0",
+        "CARGO_PROFILE_TEST_DEBUG": "0",
+        "CARGO_INCREMENTAL": "0",
+        "CARGO_TARGET_DIR": "/Users/frankorz/Documents/projects/rust/merman/.worktrees/theme-ownership-performance/target"
+      },
+      "sources": [
+        {
+          "url": "https://github.com/rust-lang/rust/pull/155499",
+          "purpose": "Never type stabilization and Infallible alias changes"
+        },
+        {
+          "url": "https://blog.rust-lang.org/2026/03/13/call-for-testing-build-dir-layout-v2/",
+          "purpose": "Intermediate build-dir layout changes; final artifact paths retained"
+        },
+        {
+          "url": "https://github.com/rust-lang/cargo/pull/17354",
+          "purpose": "Build-dir layout stabilization"
+        }
+      ],
+      "verified_utc": "2026-10-13T07:19:48.256654+00:00"
+    },
+    "workspace": {
+      "completed_target_summaries": 341,
+      "passed": 12615,
+      "failed": 0,
+      "ignored": 15,
+      "filtered_out": 11384,
+      "doc_test_groups": 28,
+      "toolchain": "1.100.0-beta.4",
+      "all_workspace_and_doctests_exit": 0,
+      "optional_native_fonts": "separate followup",
+      "node_external_workspace": "separate followup",
+      "aggregate_note": "Counts are printed pass summaries, including child lifecycle probes and doctest groups; not a unique-case coverage metric."
+    },
+    "rustdoc_all_features": {
+      "passed": 15,
+      "failed": 0
+    },
+    "native_font_context": {
+      "passed": 33,
+      "failed": 0
+    },
+    "new_repairs": [
+      "R17 Cargo layout artifact discovery",
+      "R18 XML-decoded Mindmap CSS smoke assertions",
+      "R19 atomic RAII temporary directories"
+    ],
+    "independent_review": {
+      "reviewer": "adversarial",
+      "scope": "beta rustdoc 6 test files",
+      "reviewed_at_utc": "2026-10-13T07:39:27.780694+00:00",
+      "review_depth": {
+        "level": "Quick",
+        "production_changed_lines": 0,
+        "test_changed_lines": 162,
+        "technique": "\u9650\u5b9a\u5047\u8bbe\u7834\u574f\u4e0e\u8c03\u7528\u5951\u7ea6\u590d\u6838"
+      },
+      "baseline": "aa2c6c81cb3594e24a5ac1e9cb8d59664f36b479",
+      "reviewed_paths": [
+        "crates/merman-rustdoc/tests/support/mod.rs",
+        "crates/merman-rustdoc/tests/regressions.rs",
+        "crates/merman-rustdoc/tests/rustdoc_e2e.rs",
+        "crates/merman-rustdoc/tests/inheritance.rs",
+        "crates/merman-rustdoc/tests/feature_selection.rs",
+        "crates/merman-rustdoc/tests/complete_svg_e2e.rs",
+        "crates/merman-rustdoc/Cargo.toml",
+        "Cargo.lock",
+        "crates/merman/tests/theme_renderability_smoke.rs"
+      ],
+      "source_sha256": {
+        "crates/merman-rustdoc/tests/support/mod.rs": "09c39e9a36d8b7e6498433b6637996f4157b0e9a572c826473dffacca90c8f27",
+        "crates/merman-rustdoc/tests/regressions.rs": "f28aa08172f944a8b81e6384cacb802bf9edc0a8fdfa83dee6b7cd98976f75c8",
+        "crates/merman-rustdoc/tests/rustdoc_e2e.rs": "8c8f54b424f4def4d6c86b617b78ff9b72e7078cb76a2f173d59e720affeda76",
+        "crates/merman-rustdoc/tests/inheritance.rs": "2bd89019e9c36c0c2c2f7f30b7751fd3badf7385e8b0164d8f092dced2f5185d",
+        "crates/merman-rustdoc/tests/feature_selection.rs": "0f63691be9e0eda5dc0575787b84b25fa01c22481c62dd33d8fd3e41030c8f81",
+        "crates/merman-rustdoc/tests/complete_svg_e2e.rs": "719a36806bbf2a5ab52653d4d6fa63059e5e603c808753c9183acb59496141d5",
+        "crates/merman-rustdoc/Cargo.toml": "87f10b71935dd7bf3cd68601c9174feaa273b518eaef67910758447a846c1b68",
+        "Cargo.lock": "88b0d0baa92a1b62b915e5d9c7c542219a84dcb1f043a42078e994ef35f2b068",
+        "crates/merman/tests/theme_renderability_smoke.rs": "c7179cd9162d61da66624d4b6700f2f601272a09fbf34d5986e6ca5a9607d86b"
+      },
+      "findings": [],
+      "guards": [
+        {
+          "subject": "target \u6839\u76ee\u5f55",
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "support/mod.rs:78-103 \u7528\u540c\u4e00\u4e2aCARGO\u7a0b\u5e8f\u3001manifest\u3001\u5f53\u524d\u76ee\u5f55\u548c\u7ee7\u627f\u73af\u5883\u6267\u884cmetadata --format-version1 --locked --offline\uff0c\u518d\u628a\u5176target_directory\u7528\u4e8e\u5d4c\u5957build\u3002\u5f7b\u5e95\u79fb\u9664current_exe\u7956\u5148\u548cdeps\u7236\u540d\u5047\u8bbe\uff0cCARGO_TARGET_DIR/build-dir\u5206\u79bb\u914d\u7f6e\u4ecd\u7531Cargo\u89e3\u91ca\u3002"
+        },
+        {
+          "subject": "\u5b9e\u9645\u4f9d\u8d56\u76ee\u5f55\u548c\u5b8f\u6587\u4ef6",
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "\u4ec5\u8bfb\u53d6\u540c\u6b21cargo build -p merman-rustdoc --lib --no-default-features --features <\u539f\u5b8c\u6574cfg\u5217\u8868> \u7684compiler-artifact filenames\uff0c\u7236\u76ee\u5f55\u7ecfBTreeSet\u53bb\u91cd\u3002\u5b8f\u4ecd\u6309target name merman_rustdoc\u3001kind proc-macro\u3001\u5f53\u524d\u5e73\u53f0DLL\u6269\u5c55\u9009\u4e2d\uff1b\u5305\u542b\u660e\u786e\u5b8fartifact\u7236\u76ee\u5f55\uff0c\u6545Facade/upstream\u91cd\u5bfc\u51fa\u80fd\u641c\u7d22\u5230\u5bf9\u5e94macro\u3002old filenames\u542bdebug/deps\u6216finaldebug\uff0c\u65b0filenames\u542bpackage/hash/out\uff0c\u5747\u65e0\u9700\u5206\u652f\u3002\u6ca1\u6709\u904d\u5386target\u7f13\u5b58\u3001\u731chash\u3001\u626b\u63cf\u5176\u5b83feature\u76ee\u5f55\u3002"
+        },
+        {
+          "subject": "fresh artifacts",
+          "status": "\u5b98\u65b9\u5951\u7ea6\u6838\u5b9e",
+          "evidence": "Cargo compiler-artifact JSON fresh=true\u4e5f\u643a\u5e26filenames\u3002\u6b63\u5e38\u7f13\u5b58\u547d\u4e2d\u4e0d\u4f1a\u5bfc\u81f4\u5f53\u524dbuild\u4f9d\u8d56\u76ee\u5f55\u96c6\u5408\u6d88\u5931\u3002"
+        },
+        {
+          "subject": "\u5168\u90e8\u8c03\u7528\u8005\u8fc1\u79fb",
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "9\u5904proc_macro_artifact\u8c03\u7528\uff0c10\u4e2a\u76f4\u63a5rustc/rustdoc\u547d\u4ee4\u7684-L\u5e8f\u5217\u4e0e1\u4e2acargo-doc encoded flags\u5168\u90e8\u8c03\u7528\u540c\u4e00dependency_args(Vec<PathBuf>)\u3002Facade\u91cd\u5bfc\u51fa\u7b2c1/2\u9636\u6bb5\u3001upstream/downstream\u7b2c1/2\u9636\u6bb5\u90fd\u4f20\u540c\u4e00\u771f\u5b9e\u96c6\u5408\uff1bfeature_selection\u3001inheritance\u3001completeSVG\u4fdd\u6301\u5404\u81ea--extern\u3001source\u3001output\u4e0e\u65ad\u8a00\u3002\u5168\u6d4b\u8bd5\u76ee\u5f55\u65e0\u65e7deps.display()\u786c\u62fc\u6216ancestor\u6b8b\u7559\u3002"
+        },
+        {
+          "subject": "encoded flags \u53c2\u6570\u8fb9\u754c",
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "OsString\u5e8f\u5217\u4ecd\u4e3a--extern\u3001merman_rustdoc=<\u771f\u5b9e\u5b8f\u8def\u5f84>\u3001\u5404-L\u3001dependency=<\u76ee\u5f55>\uff1benumerate fold\u53ea\u5728\u53c2\u6570\u4e4b\u95f4\u6dfb\u52a0U+001F\uff0c\u4e0d\u6dfb\u52a0\u5934\u5c3e\u5206\u9694\u7b26\u3002-L\u8def\u5f84\u65e0display\u8f6c\u6362\uff0c\u4fddOsString\u8fb9\u754c\uff1b--extern\u6b64\u524d\u5df2\u6709display\u884c\u4e3a\u6b64\u6b21\u672a\u6539\u53d8\u3002\u539fCARGO_ENCODED_RUSTDOCFLAGS owner\u4e0econsumer\u73af\u5883\u4fdd\u6301\u3002"
+        },
+        {
+          "subject": "\u7279\u6027\u4e0e\u7f13\u5b58\u8fb9\u754c",
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "\u5df2\u6709cfg feature\u5217\u8868\u548cOnceLock\u6bcftestbinary memoization\u672a\u6539\uff1b--no-default-features\u4e0e\u5177\u4f53selectedfeatures\u4ecd\u76f8\u540c\u3002\u65e7layout\u5171\u4eabdeps\u76ee\u5f55\u53ef\u6709\u5386\u53f2\u6587\u4ef6\u662fCargo\u6b63\u5e38\u5e03\u5c40\uff0c\u4f46\u4fee\u590d\u53ea\u9009\u62e9\u5f53\u524dbuild\u4e8b\u5b9e\u76ee\u5f55\uff0c\u672a\u65b0\u589e\u8de8feature/stale\u7f13\u5b58\u626b\u63cf\u6216\u5bfc\u5165\u5176\u5b83proc-macro graph\u3002"
+        }
+      ],
+      "sources": [
+        {
+          "title": "Rust Build Dir Layout v2",
+          "url": "https://blog.rust-lang.org/2026/03/13/call-for-testing-build-dir-layout-v2/"
+        },
+        {
+          "title": "Cargo compiler artifact messages",
+          "url": "https://doc.rust-lang.org/cargo/reference/external-tools.html#artifact-messages"
+        }
+      ],
+      "verification": {
+        "cargo_runs_by_reviewer": 0,
+        "source_edits": 0,
+        "git_index_mutations": 0,
+        "diff_check": "git diff --check on six owned paths passed",
+        "runtime": "root\u62e5\u6709beta/stable\u771f\u5b9e\u8fd0\u884c\uff0c\u672c\u62a5\u544a\u4e0d\u5ba3\u79f0\u65b0\u7684runtime green\u3002"
+      },
+      "residual_risks": [
+        {
+          "kind": "validation_limit",
+          "description": "\u539f\u95ee\u9898\u4e24\u6761\u8def\u5f84\u7684\u52a8\u6001\u7ea2\u4e0e\u4fee\u590d\u540e\u7684beta/stable\u5b8f\u91cd\u5bfc\u51fa\u53caencodedflag\u8fd0\u884c\u9a8c\u8bc1\u4ecd\u7531root\u4e32\u884c\u6267\u884c\u3002\u672c\u8f6e\u53ea\u8bfb\u6e90\u7801\u72ec\u7acb\u5ba1\u67e5\u53d1\u73b00\u65b0\u5b9e\u9645\u7f3a\u9677\u3002"
+        }
+      ],
+      "testing_gaps": [],
+      "followup_temporary_and_mindmap_review": {
+        "findings": [],
+        "temporary_directories": {
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "\u4e94\u96c6\u6210\u6d4b\u8bd5\u5168\u90e8\u6539tempfile::TempDir::new()\u4e0etemp.path()\uff1b\u4e34\u65f6\u6839\u7531\u539f\u5b50\u521b\u5efa\u4fdd\u552f\u4e00\uff0c\u7ed1\u5b9a\u7559\u5230\u540c\u6b65rustc/rustdoc/Cargo\u6267\u884c\u4e0e\u65ad\u8a00\u5b8c\u6210\uff0c\u6790\u6784RAII\u8d1f\u8d23\u56de\u6536\u3002\u6ca1\u6709\u63d0\u524ddrop\u6216spawn\u5b50\u8fdb\u7a0b\u9003\u9038\uff0c\u6ca1\u6709\u4f7f\u7528create_dir_all\u63a9\u76d6root\u78b0\u649e\uff1bconsumer/shared-diagrams\u4e24\u771f\u6b63\u5b50\u76ee\u5f55\u4ecdcreate_dir\u3002",
+          "actual_red": "beta-rustdoc-all-features-green.log:557\uff0c\u539finheritance\u5e76\u53d1\u6d4b\u8bd5\u771f\u5b9eAlreadyExists\uff1b\u672a\u628a\u6b64\u5047\u5b9a\u4e3a\u65b0\u7684beta\u7f16\u8bd1\u5668\u8bed\u4e49\u3002",
+          "assertions": "regressions69/69\u3001rustdoc_e2e12/12\u3001inheritance8/8\u3001feature_selection5/5\u3001complete_svg2/2 assertions\u4fdd\u7559\uff0c15/15\u6d4b\u8bd5\u4fdd\u7559\uff1b\u6587\u4ef6\u4e2d\u7684fixture\u4e0e\u7ed3\u679c\u9884\u671f\u672a\u5f31\u5316\u3002"
+        },
+        "dependency_wiring": {
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "\u4ec5merman-rustdoc Cargo.toml dev-dependency tempfile3.27.0\uff1bCargo.lock\u53ea\u5728\u8be5\u5305dependencies\u589e\u52a0\u5df2\u6709tempfile\u5173\u7cfb\uff0c\u672a\u65b0\u589epackage/version\u6216\u6539\u53d8\u751f\u4ea7\u4f9d\u8d56\u3002\u5df2\u6709tempfile\u9501\u7248\u672c3.27.0\u3002"
+        },
+        "mindmap_css": {
+          "status": "\u9759\u6001\u901a\u8fc7",
+          "evidence": "\u4ec5\u8be5test\u589e\u52a0roxmltree XMLparse\u4e0eSVG\u547d\u540d\u7a7a\u95f4style text\u63d0\u53d6\uff0c\u628a\u56db\u6761\u5b8c\u6574CSS selector+declaration\u4eceserializedSVG substring\u6539\u4e3adecoded CSS text\u6bd4\u8f83\u3002XMLserialization\u8f6c\u4e49\u5f15\u53f7\u4ecd\u7531parser\u6807\u51c6\u8fd8\u539f\uff1b\u539f\u56db\u6761\u5b8c\u6574\u89c4\u5219\u5b57\u9762\u503c\u9010\u9879\u4e0d\u53d8\uff0cnode/edge DOM\u4e0egradientdefs\u4e09\u7ec4\u65ad\u8a00\u4fdd\u6301\u3002\u6574\u4f53\u8be5function7\u4e2arawstring\u5b57\u9762\u503c\u524d\u540e\u76f8\u540c\u3002",
+          "boundary": "\u672a\u5bbd\u6cdbnormalizeCSS\u3001\u5220\u9664selector/\u58f0\u660e\u6216\u901a\u8fc7\u91cd\u751f\u6210golden\u9690\u85cf\u5dee\u5f02\uff1b\u82e5SVG\u4e0d\u662f\u5408\u6cd5XML\u6216\u627e\u4e0d\u5230style/\u5b8c\u6574rule\u4ecd\u5931\u8d25\u3002"
+        },
+        "runtime": "root\u6b63\u5728workspace --no-fail-fast\u4e32\u884c\u771f\u5b9e\u9a8c\u8bc1\uff0c\u672c\u4ee3\u7406\u65e0Cargo\u8fd0\u884c/\u6e90\u7801/index\u4fee\u6539\u3002",
+        "diff_check": "ownedmanifest/lock/tests/Mindmap path\u5168\u90e8\u901a\u8fc7git diff --check",
+        "post_compile_correction": {
+          "root_fix": "regressions.rs\u591a\u884ctemp .0\u5728\u771f\u5b9e\u7f16\u8bd1\u5b88\u95e8\u4e2d\u88ab\u53d1\u73b0\uff0croot\u5df2\u6539temp.path()\uff1b\u672c\u4ee3\u7406\u5148\u524d\u5355\u884c\u6587\u672c\u626b\u63cf\u9057\u6f0f\uff0c\u5df2\u91cd\u65b0\u8de8\u884c\u626b\u63cf\u6240\u6709test Rust files\u3002",
+          "latest_scan": "multiline regex temp\\s*\\.\\s*0\u6ca1\u6709\u5269\u4f59\uff1binheritance.rs155 .0\u662fsplit_once\u8fd4\u56detuple\u8bbf\u95ee\uff0c\u6b63\u786e\u4fdd\u7559\u3002",
+          "regressions_sha256": "f28aa08172f944a8b81e6384cacb802bf9edc0a8fdfa83dee6b7cd98976f75c8",
+          "runtime": "root workspace\u91cd\u65b0\u7f16\u8bd1\u8fdb\u884c\u4e2d\uff0c\u672c\u62a5\u544a\u53ea\u58f0\u660e\u6700\u65b0\u6e90\u7801\u590d\u6838\u65e0\u65b0\u95ee\u9898\uff0c\u4e0d\u4ee3\u66ff\u7f16\u8bd1\u901a\u8fc7\u3002"
+        }
+      }
+    },
+    "node_external_workspace": {
+      "passed": 20,
+      "failed": 0,
+      "features": "svg,all-diagrams,layout-cytoscape,layout-elk,transport-napi"
+    },
+    "pinned_rustdoc": {
+      "toolchain": "1.95.0",
+      "passed": 15,
+      "failed": 0
+    },
+    "project_pin_changed": false,
+    "clean_beta_qualification": "pending",
+    "repair_commit": "292d515a7da276058f48da6958bb70374991c68b"
   }
 }

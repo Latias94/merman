@@ -223,7 +223,7 @@
         "platforms/flutter/tool/"
       ],
       "agent": "/root/repair_u5_public_tooling",
-      "status": "verified_pending_clean_candidate_qualification",
+      "status": "verified",
       "root_owned_integration_paths": [
         ".github/workflows/ci.yml"
       ]
@@ -458,8 +458,11 @@
     },
     "5": {
       "unit": "U5",
-      "status": "implemented_pending_same_source_artifact_verification",
-      "evidence": []
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification-summary.json"
+      ]
     },
     "7": {
       "unit": "U4",
@@ -1914,13 +1917,19 @@
       "name": "final-runtime",
       "record": "/tmp/merman-theme-review-repair-20261013/verification/final-runtime.json",
       "status": "passed_4968_of_4968",
-      "limits": "All renderer tests plus matching public tests; unrelated fa\u00e7ade filters excluded373 tests. Explicit fa\u00e7ade targets are rerun separately."
+      "limits": "All renderer tests plus matching public tests; unrelated façade filters excluded373 tests. Explicit façade targets are rerun separately."
     },
     {
       "name": "facade-final",
       "record": "/tmp/merman-theme-review-repair-20261013/verification/facade-final.json",
       "status": "passed_135_of_135_no_skips",
       "limits": "Explicit library plus13 public integration targets, all diagram and native export/math/layout features."
+    },
+    {
+      "name": "preset-clean-qualification",
+      "phase": "verification",
+      "result": "Clean source aa2c6c81c, exact release build, 3 native presets / 18 SVG and PNG cells, zero residuals; all cells truthfully host-dependent. Public catalog unchanged.",
+      "artifact": "/tmp/merman-theme-review-repair-20261013/verification/preset-clean-qualification.json"
     }
   ],
   "integration_findings": {
@@ -2080,6 +2089,36 @@
         "/tmp/merman-theme-review-repair-20261013/verification/clippy-all-targets-final.json",
         "/tmp/merman-theme-review-repair-20261013/final-cleanup-independent-review.json"
       ]
+    },
+    "R17": {
+      "title": "Cargo 1.100 intermediate layout invalidates rustdoc test target and dependency inference",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-layout-red.json",
+        "/tmp/merman-theme-review-repair-20261013/beta-rustdoc-independent-review.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-complete.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/pinned-rustdoc-final.json"
+      ],
+      "outcome": "Cargo metadata supplies target_directory; same-build artifact filenames supply all dependency search directories, preserving direct and reexport macro consumers."
+    },
+    "R18": {
+      "title": "Mindmap neo smoke assertion compares serialized XML CSS to logical CSS",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-workspace-first-summary.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-workspace-repaired-final.json"
+      ],
+      "outcome": "Parse style text as XML and retain all four exact CSS rule checks plus DOM/gradient assertions."
+    },
+    "R19": {
+      "title": "Concurrent rustdoc tests collide in timestamp-based temporary directories",
+      "status": "verified",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-all-features-green.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-complete.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/pinned-rustdoc-final.json"
+      ],
+      "outcome": "Five integration files now use mature tempfile::TempDir with RAII; no weakened concurrency or assertions."
     }
   },
   "user_steering": [
@@ -2107,6 +2146,19 @@
         "/tmp/merman-theme-review-repair-20261013/verification/facade-green-retry.json"
       ],
       "outcome": "New unmerged theme formats and three domains remain V1; no old-version adapters exist. Live migration alternative wording removed, necessary closed V1 rejection preserved. Published ABI and historical evidence identities unchanged."
+    },
+    {
+      "request": "Read the Rust 1.100 breakage post and run cargo +beta test.",
+      "status": "runtime_verified_pending_clean_release_artifact",
+      "toolchain": "1.100.0-beta.4",
+      "evidence": [
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-toolchain.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-workspace-repaired-final.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-rustdoc-complete.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-native-fonts.json",
+        "/tmp/merman-theme-review-repair-20261013/verification/beta-node.json"
+      ],
+      "outcome": "Beta workspace and doctests passed; Rustdoc all-feature tests pass15/15 on beta1.100 and pinned1.95, native-font33/33, independentNode20/20. R17-R19 all verified; project pin unchanged."
     }
   ],
   "commits": [
@@ -2129,6 +2181,11 @@
       "hash": "2fd71b54d",
       "message": "fix(render): close theme ownership and terminal evidence gaps",
       "scope": "Renderer families, math/Sequence, bounded geometry/resources, XML native pipeline, feature closures and theme test cleanup"
+    },
+    {
+      "hash": "292d515a7",
+      "message": "fix(tests): support Cargo 1.100 artifact discovery",
+      "scope": "Cargo-reported rustdoc artifacts, atomic RAII test directories and logical XML CSS smoke assertions; beta and pinned runtime verified."
     }
   ],
   "review_rejections": [
@@ -2137,8 +2194,8 @@
       "outcome": "Rejected as unreachable: Railroad target validity filters Node/Edge before route creation. Required/accounted/NA=0 is the actual contract; not counted as a fixed production bug."
     }
   ],
-  "status": "source_repairs_verified_pending_clean_qualification",
+  "status": "all_repairs_verified_pending_clean_beta_artifact",
   "remaining": [
-    "Finding5: exact clean release preset qualification with corrected standalone feature recipe."
+    "Run one exact clean release preset qualification under Rust 1.100.0-beta.4 at the committed source, then finalize verification/memory."
   ]
 }
