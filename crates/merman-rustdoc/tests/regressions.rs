@@ -2,18 +2,18 @@
 
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Command, Output};
-use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::TempDir;
 
 mod support;
 use support::proc_macro_artifact;
 
 #[test]
 fn conditional_documentation_retains_source_order() {
-    let temp = TempDir::new();
+    let temp = TempDir::new().expect("create unique test directory");
     let output = rustdoc(
-        &temp.0,
+        temp.path(),
         r#"
 #[merman_rustdoc::merman(scope = "tree")]
 pub mod ordered {
@@ -30,7 +30,7 @@ pub mod ordered {
     );
     assert_success(&output);
     let html = fs::read_to_string(
-        temp.0
+        temp.path()
             .join("doc/merman_regressions/ordered/struct.Example.html"),
     )
     .unwrap();
@@ -46,17 +46,16 @@ pub mod ordered {
 
 #[test]
 fn facade_reexport_works_without_a_direct_macro_dependency() {
-    let temp = TempDir::new();
+    let temp = TempDir::new().expect("create unique test directory");
     let (deps_dir, macro_artifact) = proc_macro_artifact();
-    let facade = temp.0.join("facade.rs");
+    let facade = temp.path().join("facade.rs");
     fs::write(&facade, "pub use merman_rustdoc::{merman, __render_doc};").unwrap();
-    let facade_artifact = temp.0.join("libfacade.rlib");
+    let facade_artifact = temp.path().join("libfacade.rlib");
     let output = Command::new(std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into()))
         .args(["--edition=2024", "--crate-type=rlib", "--crate-name=facade"])
         .arg("--extern")
         .arg(format!("merman_rustdoc={}", macro_artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
+        .args(support::dependency_args(&deps_dir))
         .arg("-o")
         .arg(&facade_artifact)
         .arg(facade)
@@ -64,7 +63,7 @@ fn facade_reexport_works_without_a_direct_macro_dependency() {
         .unwrap();
     assert_success(&output);
     fs::write(
-        temp.0.join("Cargo.toml"),
+        temp.path().join("Cargo.toml"),
         r#"[package]
 name = "merman-regressions"
 version = "0.0.0"
@@ -74,7 +73,7 @@ facade = "*"
 "#,
     )
     .unwrap();
-    let input = temp.0.join("lib.rs");
+    let input = temp.path().join("lib.rs");
     fs::write(
         &input,
         r#"
@@ -91,24 +90,26 @@ pub mod example {
     )
     .unwrap();
     let output = Command::new(std::env::var_os("RUSTDOC").unwrap_or_else(|| "rustdoc".into()))
-        .env("CARGO_MANIFEST_DIR", &temp.0)
+        .env("CARGO_MANIFEST_DIR", temp.path())
         .env("CARGO_PKG_NAME", "merman-regressions")
         .args(["--edition=2024", "--crate-name=merman_regressions"])
         .arg("--extern")
         .arg(format!("facade={}", facade_artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
+        .args(support::dependency_args(&deps_dir))
         .arg("-o")
-        .arg(temp.0.join("doc"))
+        .arg(temp.path().join("doc"))
         .arg(input)
         .output()
         .unwrap();
     assert_success(&output);
-    let page =
-        fs::read_to_string(temp.0.join("doc/merman_regressions/example/index.html")).unwrap();
+    let page = fs::read_to_string(
+        temp.path()
+            .join("doc/merman_regressions/example/index.html"),
+    )
+    .unwrap();
     assert!(page.contains("Facade documentation."));
     let diagram = fs::read_to_string(
-        temp.0
+        temp.path()
             .join("doc/merman_regressions/example/struct.Diagram.html"),
     )
     .unwrap();
@@ -117,9 +118,9 @@ pub mod example {
 
 #[test]
 fn rustdoc_preserves_markdown_and_scopes_diagrams_to_their_embedding() {
-    let temp = TempDir::new();
+    let temp = TempDir::new().expect("create unique test directory");
     let output = rustdoc(
-        &temp.0,
+        temp.path(),
         r####"
 #[merman_rustdoc::merman]
 #[doc = "Introduction.\n\n```mermaid\nflowchart TD\nA-->B\n```\n**After the diagram**"]
@@ -289,7 +290,7 @@ pub mod inherited {
         "fn.interleaved_attributes.html",
         "conditional/struct.Fields.html",
     ] {
-        let html = read_page(&temp.0, page);
+        let html = read_page(temp.path(), page);
         assert_eq!(
             diagram_svgs(&html).len(),
             2,
@@ -297,19 +298,19 @@ pub mod inherited {
         );
         assert_background(&html, "transparent");
     }
-    let multiline = read_page(&temp.0, "fn.multiline_attribute.html");
+    let multiline = read_page(temp.path(), "fn.multiline_attribute.html");
     assert!(multiline.contains("<strong>After the diagram</strong>"));
-    let dynamic_tail = read_page(&temp.0, "fn.diagram_before_dynamic_documentation.html");
+    let dynamic_tail = read_page(temp.path(), "fn.diagram_before_dynamic_documentation.html");
     assert_eq!(diagram_svgs(&dynamic_tail).len(), 2);
     assert!(dynamic_tail.contains("<strong>Dynamic tail</strong>"));
-    let literal = read_page(&temp.0, "fn.literal_markdown.html");
+    let literal = read_page(temp.path(), "fn.literal_markdown.html");
     assert!(diagram_svgs(&literal).is_empty());
     assert!(literal.contains("EXAMPLE_ONLY"));
     assert_eq!(
         preformatted_text(&literal, "EXAMPLE_ONLY").trim(),
         "```mermaid\nflowchart TD\nEXAMPLE_ONLY-->B\n```"
     );
-    let dynamic = read_page(&temp.0, "fn.dynamic_intro_with_example.html");
+    let dynamic = read_page(temp.path(), "fn.dynamic_intro_with_example.html");
     assert!(diagram_svgs(&dynamic).is_empty());
     assert!(dynamic.contains("Intro."));
     assert_eq!(
@@ -317,7 +318,7 @@ pub mod inherited {
         "```mermaid\nflowchart TD\nDYNAMIC_EXAMPLE-->B\n```"
     );
 
-    let repeated = read_page(&temp.0, "struct.RepeatedDiagram.html");
+    let repeated = read_page(temp.path(), "struct.RepeatedDiagram.html");
     let svgs = diagram_svgs(&repeated);
     assert_eq!(
         svgs.len(),
@@ -326,7 +327,7 @@ pub mod inherited {
     );
     assert_unique_svg_ids(&svgs);
 
-    let custom = read_page(&temp.0, "fn.custom_background.html");
+    let custom = read_page(temp.path(), "fn.custom_background.html");
     assert_eq!(diagram_svgs(&custom).len(), 2);
     assert_background(&custom, "#123456");
     for svg in diagram_svgs(&custom) {
@@ -341,7 +342,7 @@ pub mod inherited {
         );
     }
 
-    let source = read_page(&temp.0, "fn.escaped_source.html");
+    let source = read_page(temp.path(), "fn.escaped_source.html");
     let details_start = source
         .find("<details class=\"merman-rustdoc-source\"")
         .unwrap();
@@ -364,13 +365,13 @@ pub mod inherited {
     );
 
     for page in ["parent_options", "inactive_override"] {
-        let html = read_page(&temp.0, &format!("inherited/fn.{page}.html"));
+        let html = read_page(temp.path(), &format!("inherited/fn.{page}.html"));
         assert_eq!(diagram_svgs(&html).len(), 1, "parent fixed theme in {page}");
         assert_background(&html, "#112233");
         assert!(html.contains("class=\"merman-rustdoc-source\""));
     }
     for page in ["local_options", "active_override"] {
-        let html = read_page(&temp.0, &format!("inherited/fn.{page}.html"));
+        let html = read_page(temp.path(), &format!("inherited/fn.{page}.html"));
         assert_eq!(diagram_svgs(&html).len(), 1, "local fixed theme in {page}");
         assert_background(&html, "#112233");
         assert!(html.contains("class=\"merman-rustdoc-source\""));
@@ -380,21 +381,21 @@ pub mod inherited {
 #[cfg(all(feature = "diagram-class", feature = "layout-elk"))]
 #[test]
 fn rustdoc_layout_budgets_are_configurable_inherited_and_per_diagram() {
-    let temp = TempDir::new();
+    let temp = TempDir::new().expect("create unique test directory");
     let diagram = include_str!("fixtures/class_nested_namespaces.mmd");
     let documentation = format!("```mermaid\n{diagram}\n```");
     let default_output = rustdoc(
-        &temp.0,
+        temp.path(),
         &format!(
             "#[merman_rustdoc::merman]\n#[doc = {documentation:?}]\npub fn default_budget() {{}}"
         ),
     );
     assert_success(&default_output);
-    let default_html = read_page(&temp.0, "fn.default_budget.html");
+    let default_html = read_page(temp.path(), "fn.default_budget.html");
     assert_eq!(diagram_svgs(&default_html).len(), 2);
 
     let strict_output = rustdoc(
-        &temp.0,
+        temp.path(),
         &format!(
             "#[merman_rustdoc::merman(resource_profile = \"interactive\", max_layout_work_units = 800_000)]\n#[doc = {documentation:?}]\npub fn strict_budget() {{}}"
         ),
@@ -405,7 +406,7 @@ fn rustdoc_layout_budgets_are_configurable_inherited_and_per_diagram() {
 
     let repeated_documentation = format!("{documentation}\n\n{documentation}");
     let output = rustdoc(
-        &temp.0,
+        temp.path(),
         &format!(
             r#"
 #[merman_rustdoc::merman(scope = "tree", resource_profile = "interactive", max_layout_work_units = 2_000_000)]
@@ -431,7 +432,10 @@ pub mod resource_options {{
         ),
     );
     assert_success(&output);
-    let repeated = read_page(&temp.0, "resource_options/nested/fn.inherited_budget.html");
+    let repeated = read_page(
+        temp.path(),
+        "resource_options/nested/fn.inherited_budget.html",
+    );
     let svgs = diagram_svgs(&repeated);
     assert_eq!(
         svgs.len(),
@@ -440,7 +444,7 @@ pub mod resource_options {{
     );
     assert_unique_svg_ids(&svgs);
     let local_profile = read_page(
-        &temp.0,
+        temp.path(),
         "resource_options/fn.inherited_limit_with_local_profile.html",
     );
     assert_eq!(
@@ -448,13 +452,13 @@ pub mod resource_options {{
         2,
         "changing the resource profile must preserve the inherited explicit limit"
     );
-    let reset = read_page(&temp.0, "resource_options/fn.reset_budget.html");
+    let reset = read_page(temp.path(), "resource_options/fn.reset_budget.html");
     assert_eq!(
         diagram_svgs(&reset).len(),
         2,
         "inherit=off restores offline defaults"
     );
-    let rejected = read_page(&temp.0, "resource_options/fn.local_limit.html");
+    let rejected = read_page(temp.path(), "resource_options/fn.local_limit.html");
     assert!(diagram_svgs(&rejected).is_empty());
     assert_eq!(
         preformatted_text(&rejected, "classDiagram")
@@ -468,9 +472,9 @@ pub mod resource_options {{
 
 #[test]
 fn renamed_dependency_supports_macro_generated_items_with_distinct_ids() {
-    let temp = TempDir::new();
+    let temp = TempDir::new().expect("create unique test directory");
     fs::write(
-        temp.0.join("Cargo.toml"),
+        temp.path().join("Cargo.toml"),
         r#"[package]
 name = "merman-regressions"
 version = "0.0.0"
@@ -482,7 +486,7 @@ diagrams = { package = "merman-rustdoc", version = "*" }
     )
     .unwrap();
     let output = rustdoc_with_dependency(
-        &temp.0,
+        temp.path(),
         r#"
 pub struct Generated;
 
@@ -564,7 +568,7 @@ pub mod nested {
         "diagrams",
     );
     assert_success(&output);
-    let generated = read_page(&temp.0, "struct.Generated.html");
+    let generated = read_page(temp.path(), "struct.Generated.html");
     let svgs = diagram_svgs(&generated);
     assert_eq!(
         svgs.len(),
@@ -576,12 +580,12 @@ pub mod nested {
         "struct.SeparateInvocations.html",
         "struct.TreeGenerated.html",
     ] {
-        let html = read_page(&temp.0, page);
+        let html = read_page(temp.path(), page);
         let svgs = diagram_svgs(&html);
         assert_eq!(svgs.len(), 4, "both trait implementations render in {page}");
         assert_unique_svg_ids(&svgs);
     }
-    let nested = read_page(&temp.0, "nested/fn.enabled.html");
+    let nested = read_page(temp.path(), "nested/fn.enabled.html");
     assert_eq!(diagram_svgs(&nested).len(), 2);
 }
 
@@ -639,7 +643,7 @@ style A fill:u\72l(https://example.invalid/image.svg)"#,
             false,
         ),
     ] {
-        let temp = TempDir::new();
+        let temp = TempDir::new().expect("create unique test directory");
         let fixture = |mode| {
             format!(
                 "#[merman_rustdoc::merman(sanitize = {mode:?}, theme = \"default\")]\n{doc}\npub fn {name}() {{}}",
@@ -650,9 +654,9 @@ style A fill:u\72l(https://example.invalid/image.svg)"#,
                     .join("\n"),
             )
         };
-        let permissive = rustdoc(&temp.0, &fixture("off"));
+        let permissive = rustdoc(temp.path(), &fixture("off"));
         assert_success(&permissive);
-        let html = read_page(&temp.0, &format!("fn.{name}.html"));
+        let html = read_page(temp.path(), &format!("fn.{name}.html"));
         let svgs = diagram_svgs(&html);
         assert_eq!(svgs.len(), 1);
         assert_eq!(
@@ -661,12 +665,12 @@ style A fill:u\72l(https://example.invalid/image.svg)"#,
             "unexpected renderer resource filtering: {name}"
         );
 
-        let strict = rustdoc(&temp.0, &fixture("strict"));
+        let strict = rustdoc(temp.path(), &fixture("strict"));
         if !reaches_svg {
             // Mermaid style admission already rejects resource functions, including
             // escaped URLs. Strict embedding must preserve that safe output.
             assert_success(&strict);
-            let html = read_page(&temp.0, &format!("fn.{name}.html"));
+            let html = read_page(temp.path(), &format!("fn.{name}.html"));
             let svgs = diagram_svgs(&html);
             assert_eq!(svgs.len(), 1);
             assert!(!svgs[0].contains(evidence));
@@ -687,9 +691,9 @@ style A fill:u\72l(https://example.invalid/image.svg)"#,
 
 #[test]
 fn cargo_build_script_tracks_external_diagram_changes_and_recovery() {
-    let temp = TempDir::new();
-    let consumer = temp.0.join("consumer");
-    let diagrams = temp.0.join("shared-diagrams");
+    let temp = TempDir::new().expect("create unique test directory");
+    let consumer = temp.path().join("consumer");
+    let diagrams = temp.path().join("shared-diagrams");
     fs::create_dir(&consumer).unwrap();
     fs::create_dir(&diagrams).unwrap();
     fs::write(
@@ -720,23 +724,30 @@ pub struct Diagram {
     fs::write(&diagram, "flowchart TD\nA[FIRST_REVISION]-->B\n").unwrap();
     let (deps_dir, macro_artifact) = proc_macro_artifact();
     let flags = [
-        "--extern".to_string(),
-        format!("merman_rustdoc={}", macro_artifact.display()),
-        "-L".to_string(),
-        format!("dependency={}", deps_dir.display()),
+        std::ffi::OsString::from("--extern"),
+        std::ffi::OsString::from(format!("merman_rustdoc={}", macro_artifact.display())),
     ]
-    .join("\u{1f}");
+    .into_iter()
+    .chain(support::dependency_args(&deps_dir))
+    .enumerate()
+    .fold(std::ffi::OsString::new(), |mut encoded, (index, flag)| {
+        if index != 0 {
+            encoded.push("\u{1f}");
+        }
+        encoded.push(flag);
+        encoded
+    });
     let build = || {
         Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
             .args(["doc", "--offline", "--no-deps", "--quiet"])
             .current_dir(&consumer)
-            .env("CARGO_TARGET_DIR", temp.0.join("target"))
+            .env("CARGO_TARGET_DIR", temp.path().join("target"))
             .env("CARGO_ENCODED_RUSTDOCFLAGS", &flags)
             .output()
             .unwrap()
     };
     let page = temp
-        .0
+        .path()
         .join("target/doc/tracked_diagrams/struct.Diagram.html");
     assert_success(&build());
     let html = fs::read_to_string(&page).unwrap();
@@ -770,15 +781,15 @@ pub struct Diagram {
 
 #[test]
 fn rustdoc_renders_diagrams_inside_markdown_containers() {
-    let temp = TempDir::new();
+    let temp = TempDir::new().expect("create unique test directory");
     fs::write(
-        temp.0.join("Cargo.toml"),
+        temp.path().join("Cargo.toml"),
         "[package]\nname = \"merman-regressions\"\nversion = \"0.0.0\"\n",
     )
     .unwrap();
-    fs::write(temp.0.join("diagram.mmd"), "flowchart TD\nA-->B\n").unwrap();
+    fs::write(temp.path().join("diagram.mmd"), "flowchart TD\nA-->B\n").unwrap();
     let output = rustdoc(
-        &temp.0,
+        temp.path(),
         r#"
 #[merman_rustdoc::merman(theme = "default")]
 /// > Quoted diagram.
@@ -817,19 +828,19 @@ pub fn footnoted() {}
 "#,
     );
     assert_success(&output);
-    let quoted = read_page(&temp.0, "fn.quoted.html");
+    let quoted = read_page(temp.path(), "fn.quoted.html");
     let quote_start = quoted.find("<blockquote>").unwrap();
     let quote_end = quoted[quote_start..].find("</blockquote>").unwrap() + quote_start;
     assert_eq!(diagram_svgs(&quoted[quote_start..quote_end]).len(), 1);
     assert!(quoted[quote_start..quote_end].contains("<strong>Quoted tail</strong>"));
     assert!(quoted[quote_end..].contains("<strong>Outside quote</strong>"));
-    let listed = read_page(&temp.0, "fn.listed.html");
+    let listed = read_page(temp.path(), "fn.listed.html");
     let item_start = listed.find("Diagram item.").unwrap();
     let item_end = listed[item_start..].find("</li>").unwrap() + item_start;
     assert_eq!(diagram_svgs(&listed[item_start..item_end]).len(), 1);
     assert!(listed[item_start..item_end].contains("<strong>Item tail</strong>"));
     assert!(listed[item_end..].contains("<strong>Next item</strong>"));
-    let footnoted = read_page(&temp.0, "fn.footnoted.html");
+    let footnoted = read_page(temp.path(), "fn.footnoted.html");
     let note_start = footnoted.find("id=\"fn1\"").unwrap();
     let note_end = footnoted[note_start..].find("</li>").unwrap() + note_start;
     assert_eq!(diagram_svgs(&footnoted[note_start..note_end]).len(), 1);
@@ -838,9 +849,9 @@ pub fn footnoted() {}
 
 #[test]
 fn rustdoc_math_requires_explicit_feature() {
-    let temp = TempDir::new();
+    let temp = TempDir::new().expect("create unique test directory");
     let output = rustdoc(
-        &temp.0,
+        temp.path(),
         r####"
 #[merman_rustdoc::merman(theme = "default")]
 /// ```mermaid
@@ -854,7 +865,7 @@ pub fn math_diagram() {}
     #[cfg(feature = "math")]
     {
         assert_success(&output);
-        let html = read_page(&temp.0, "fn.math_diagram.html");
+        let html = read_page(temp.path(), "fn.math_diagram.html");
         assert!(html.contains(r#"class="merman-rustdoc-diagram""#));
         assert!(html.contains("<svg"));
         assert!(!html.contains("$$x^2$$"));
@@ -938,8 +949,7 @@ fn rustdoc_with_dependency(temp: &Path, source: &str, dependency: &str) -> Outpu
         .args(["--crate-name", "merman_regressions"])
         .arg("--extern")
         .arg(format!("{dependency}={}", macro_artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
+        .args(support::dependency_args(&deps_dir))
         .arg("-o")
         .arg(temp.join("doc"))
         .arg(input)
@@ -955,27 +965,4 @@ fn assert_success(output: &Output) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );
-}
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = std::env::temp_dir().join(format!(
-            "merman-rustdoc-regressions-{}-{now}",
-            std::process::id()
-        ));
-        fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
 }

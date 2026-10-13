@@ -1,17 +1,16 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::TempDir;
 
 mod support;
 use support::proc_macro_artifact;
 
 #[test]
 fn complete_svg_profile_renders_each_optional_engine() {
-    let temp = unique_temp_dir();
-    let source = temp.join("lib.rs");
-    let out_dir = temp.join("doc");
-    fs::create_dir_all(&temp).unwrap();
+    let temp = TempDir::new().expect("create unique test directory");
+    let source = temp.path().join("lib.rs");
+    let out_dir = temp.path().join("doc");
     fs::write(
         &source,
         r####"
@@ -48,8 +47,7 @@ pub fn math_diagram() {}
         .arg("merman_rustdoc_complete_svg_e2e")
         .arg("--extern")
         .arg(format!("merman_rustdoc={}", macro_artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
+        .args(support::dependency_args(&deps_dir))
         .arg("-o")
         .arg(&out_dir)
         .arg(&source)
@@ -72,8 +70,6 @@ pub fn math_diagram() {}
     ] {
         assert_doc_contains_svg(&out_dir, page);
     }
-
-    let _ = fs::remove_dir_all(temp);
 }
 
 fn assert_doc_contains_svg(out_dir: &Path, page: &str) {
@@ -82,15 +78,4 @@ fn assert_doc_contains_svg(out_dir: &Path, page: &str) {
         .unwrap_or_else(|error| panic!("failed to read rustdoc HTML `{relative}`: {error}"));
     assert!(html.contains(r#"class="merman-rustdoc-diagram""#));
     assert!(html.contains("<svg"));
-}
-
-fn unique_temp_dir() -> PathBuf {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!(
-        "merman-rustdoc-complete-svg-e2e-{}-{now}",
-        std::process::id()
-    ))
 }

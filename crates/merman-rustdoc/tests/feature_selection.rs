@@ -1,22 +1,13 @@
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::TempDir;
 
 mod support;
 use support::proc_macro_artifact;
 
 #[test]
 fn proc_macro_accepts_only_selected_diagram_families() {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    let temp = TempDir(std::env::temp_dir().join(format!(
-        "merman-rustdoc-feature-selection-{}-{now}",
-        std::process::id()
-    )));
-    fs::create_dir(&temp.0).unwrap();
+    let temp = TempDir::new().expect("create unique test directory");
     let (dependencies, artifact) = proc_macro_artifact();
 
     for (family, selected, source, diagram_type) in [
@@ -45,7 +36,7 @@ fn proc_macro_accepts_only_selected_diagram_families() {
             "gantt",
         ),
     ] {
-        let source_path = temp.0.join(format!("{family}.rs"));
+        let source_path = temp.path().join(format!("{family}.rs"));
         let documentation = format!("```mermaid\n{source}```");
         fs::write(
             &source_path,
@@ -54,14 +45,13 @@ fn proc_macro_accepts_only_selected_diagram_families() {
             ),
         )
         .unwrap();
-        let output_dir = temp.0.join(format!("{family}-doc"));
+        let output_dir = temp.path().join(format!("{family}-doc"));
         let output = Command::new(std::env::var_os("RUSTDOC").unwrap_or_else(|| "rustdoc".into()))
             .arg("--edition=2024")
             .args(["--crate-name", family])
             .arg("--extern")
             .arg(format!("merman_rustdoc={}", artifact.display()))
-            .arg("-L")
-            .arg(format!("dependency={}", dependencies.display()))
+            .args(support::dependency_args(&dependencies))
             .arg("-o")
             .arg(&output_dir)
             .arg(&source_path)
@@ -87,13 +77,5 @@ fn proc_macro_accepts_only_selected_diagram_families() {
                 "unselected {family} must report its missing parser: {stderr}"
             );
         }
-    }
-}
-
-struct TempDir(PathBuf);
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
     }
 }

@@ -1,9 +1,8 @@
 #![cfg(feature = "svg")]
 
 use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::TempDir;
 
 mod support;
 use support::proc_macro_artifact;
@@ -11,8 +10,8 @@ use support::proc_macro_artifact;
 #[test]
 #[cfg(feature = "diagram-flowchart")]
 fn nested_macros_inherit_explicitly_override_and_reset_parent_configuration() {
-    let temp = TempDir::new();
-    let source = temp.0.join("lib.rs");
+    let temp = TempDir::new().expect("create unique test directory");
+    let source = temp.path().join("lib.rs");
     fs::write(&source, r####"
 #[merman_rustdoc::merman(scope = "tree", theme = "dark", background = "#123456", source = "details", id_prefix = "parent")]
 pub mod parent {
@@ -111,10 +110,9 @@ pub mod parent {
         .args(["--crate-name", "inheritance"])
         .arg("--extern")
         .arg(format!("merman_rustdoc={}", artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", dependencies.display()))
+        .args(support::dependency_args(&dependencies))
         .arg("-o")
-        .arg(temp.0.join("doc"))
+        .arg(temp.path().join("doc"))
         .arg(source)
         .output()
         .unwrap();
@@ -149,7 +147,8 @@ pub mod parent {
             1,
         ),
     ] {
-        let html = fs::read_to_string(temp.0.join("doc/inheritance/parent").join(page)).unwrap();
+        let html =
+            fs::read_to_string(temp.path().join("doc/inheritance/parent").join(page)).unwrap();
         let html = if page.ends_with("index.html") {
             html.split_once("<h2 id=\"functions\"")
                 .expect("module has a function section after its own documentation")
@@ -193,8 +192,8 @@ pub mod parent {
 
 #[test]
 fn tree_scope_preserves_missing_documentation_diagnostics() {
-    let temp = TempDir::new();
-    let source = temp.0.join("lib.rs");
+    let temp = TempDir::new().expect("create unique test directory");
+    let source = temp.path().join("lib.rs");
     fs::write(
         &source,
         r#"
@@ -215,10 +214,9 @@ pub mod documented {
         .args(["--crate-name", "missing_documentation"])
         .arg("--extern")
         .arg(format!("merman_rustdoc={}", artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", dependencies.display()))
+        .args(support::dependency_args(&dependencies))
         .arg("-o")
-        .arg(temp.0.join("doc"))
+        .arg(temp.path().join("doc"))
         .arg(source)
         .output()
         .unwrap();
@@ -232,25 +230,4 @@ pub mod documented {
         "{stderr}"
     );
     assert!(stderr.contains("undocumented"), "{stderr}");
-}
-
-struct TempDir(PathBuf);
-
-impl TempDir {
-    fn new() -> Self {
-        let now = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path =
-            std::env::temp_dir().join(format!("merman-inheritance-{}-{now}", std::process::id()));
-        fs::create_dir(&path).unwrap();
-        Self(path)
-    }
-}
-
-impl Drop for TempDir {
-    fn drop(&mut self) {
-        let _ = fs::remove_dir_all(&self.0);
-    }
 }
