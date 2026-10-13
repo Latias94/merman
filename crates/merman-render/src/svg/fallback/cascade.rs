@@ -80,6 +80,7 @@ pub(super) struct ResolvedStyle {
     color: Option<String>,
     pub(super) background_color: Option<String>,
     background_color_specified: bool,
+    paint: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -114,6 +115,7 @@ pub(super) struct ResolvedFallbackTypography {
 pub(super) struct ResolvedForeignObject {
     pub(super) typography: ResolvedFallbackTypography,
     pub(super) fragments: Vec<HtmlTextFragment>,
+    pub(super) paint: Vec<(String, String)>,
 }
 
 impl ResolvedFallbackTypography {
@@ -593,6 +595,15 @@ impl CascadeIndex {
             "fill",
             "color",
             "background-color",
+            "opacity",
+            "display",
+            "visibility",
+            "clip-path",
+            "mask",
+            "filter",
+            "overflow",
+            "transform",
+            "transform-origin",
         ] {
             if let Some(value) = attribute_value(&attributes, property) {
                 presentation.push(Declaration {
@@ -794,6 +805,14 @@ impl CascadeIndex {
             color,
             background_color,
             background_color_specified,
+            paint: PAINT_PROPERTIES
+                .iter()
+                .filter_map(|property| {
+                    specified
+                        .get(*property)
+                        .map(|value| ((*property).to_string(), value.value.clone()))
+                })
+                .collect(),
         })
     }
 
@@ -847,6 +866,7 @@ impl CascadeIndex {
             .last()
             .cloned()
             .unwrap_or_else(default_style);
+        let paint = base_style.paint.clone();
         let mut observed = TextTypographyObserver::default();
         let mut fragments = Vec::new();
         let mut cursor = 0usize;
@@ -988,6 +1008,7 @@ impl CascadeIndex {
             return Ok(ResolvedForeignObject {
                 typography: default_fallback_typography(),
                 fragments,
+                paint,
             });
         }
         let style = if observed.differing_styles {
@@ -1027,6 +1048,7 @@ impl CascadeIndex {
         Ok(ResolvedForeignObject {
             typography: fallback_typography(style, label_background),
             fragments,
+            paint,
         })
     }
 }
@@ -1334,6 +1356,7 @@ fn default_style() -> ResolvedStyle {
         color: None,
         background_color: None,
         background_color_specified: false,
+        paint: Vec::new(),
     }
 }
 
@@ -1358,6 +1381,18 @@ fn fallback_typography(
     }
 }
 
+pub(super) const PAINT_PROPERTIES: [&str; 9] = [
+    "opacity",
+    "display",
+    "visibility",
+    "clip-path",
+    "mask",
+    "filter",
+    "overflow",
+    "transform",
+    "transform-origin",
+];
+
 fn is_supported_property(property: &str) -> bool {
     matches!(
         property,
@@ -1370,6 +1405,15 @@ fn is_supported_property(property: &str) -> bool {
             | "fill"
             | "color"
             | "background-color"
+            | "opacity"
+            | "display"
+            | "visibility"
+            | "clip-path"
+            | "mask"
+            | "filter"
+            | "overflow"
+            | "transform"
+            | "transform-origin"
     )
 }
 
@@ -1420,6 +1464,27 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
                     .iter()
                     .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
         }
+        "opacity" => lower
+            .strip_suffix('%')
+            .unwrap_or(&lower)
+            .parse::<f64>()
+            .ok()
+            .is_some_and(f64::is_finite),
+        "display" => matches!(
+            lower.as_str(),
+            "none" | "inline" | "block" | "contents" | "inline-block"
+        ),
+        "visibility" => matches!(lower.as_str(), "visible" | "hidden" | "collapse"),
+        "overflow" => matches!(
+            lower.as_str(),
+            "visible" | "hidden" | "clip" | "scroll" | "auto"
+        ),
+        "clip-path" | "mask" | "filter" => {
+            lower == "none" || svgtypes::FuncIRI::from_str(value).is_ok()
+        }
+        "transform" | "transform-origin" => !value
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '{' | '}' | ';')),
         "font-weight" => is_admitted_font_weight(&lower),
         "font-style" => matches!(lower.as_str(), "normal" | "italic" | "oblique"),
         "fill" => is_admitted_paint(&lower),

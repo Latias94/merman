@@ -337,6 +337,25 @@ postprocessor:
 ```
 
 `resvg-safe` includes structural cleanup for generated fallback groups tied to native SVG
-`<switch>` text fallbacks. `drop_native_duplicate_fallbacks` is the broader opt-in cleanup for
-additional native/fallback duplicate surfaces, and it also works with `readable` when a host keeps
-the original `<foreignObject>` labels. It does not apply host palette replacement.
+`<switch>` text fallbacks. `drop_native_duplicate_fallbacks` applies that same proven source
+relationship to `readable` when a host keeps the original `<foreignObject>` labels. Other generated
+labels are preserved: equal text or positions do not establish equivalent background, typography,
+or visibility.
+
+Generated label references stay beside their source `<foreignObject>` under the original SVG ancestors.
+That preserves transform order, nested viewport clipping, opacity, visibility, and paint order,
+including rotated Swimlane headers. Resolved text and background styles are explicit so node-shape
+CSS does not recolor the generated label. Label primitives live in root definitions and are painted
+through local SVG references; this keeps them outside node-shape selectors even in resvg's limited
+CSS cascade. Source classes are inert metadata, and source IDs are not
+duplicated. A native `<switch>` fallback keeps the switch's presentation context when converted to
+an unconditional group.
+
+Fallback text stays native SVG text. The original foreignObject rectangle is represented by an
+invisible geometry rectangle, and its viewport clips visible overflow by default. Native glyph
+bounds may still enlarge a group's geometric bounding box, so `objectBoundingBox` clip or mask
+resources can retain a font-dependent residual. This fallback does not replace the native SVG
+consumer's font or bounding-box engine. Resvg-safe admission continues to reject embedded SVG
+images; its raster-image and resource contracts are unchanged.
+Geometry validation covers SVG transform lists and compatible CSS matrices. Unit-based CSS
+transforms remain consumer-resolved instead of being interpreted by a second CSS geometry engine.

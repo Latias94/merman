@@ -6,6 +6,16 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## Unreleased
 
+- Host presentation themes now reach C4 text, boundaries and relationships; ZenUML colors and
+  typography; Wardley anchors and dividers; Gantt axes; XY Chart styles and font measurement; and
+  Mindmap icon-label backgrounds. Partial backgrounds infer readable text where no explicit text
+  role is supplied. Usecase actor and label fonts also receive host typography. Fixes
+  [#197](https://github.com/Latias94/merman/issues/197),
+  [#198](https://github.com/Latias94/merman/issues/198), and
+  [#199](https://github.com/Latias94/merman/issues/199).
+- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated
+  Swimlane titles in PNG, JPEG, and PDF exports.
+  [#200](https://github.com/Latias94/merman/issues/200)
 - Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`,
   center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions,
   including HandDrawn circle paths with resource checks before generation;
