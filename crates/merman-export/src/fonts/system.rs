@@ -985,30 +985,37 @@ mod tests {
         let control = OperationControl::new();
         let context = context(&root, NativeFontLimits::default(), &control).unwrap();
         let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100"><text x="0" y="20" font-family="__missing__">AVA</text><text x="0" y="40" font-family="Cousine">中文&#x10ffff;</text></svg>"#;
-        let session = merman_render::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
-        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
-            &sealed,
-            &context,
-            observer.clone(),
-        );
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        let seed = {
+            let session = merman_render::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+            crate::font_environment::ExportFontPlanSeed::from_native_context(
+                &sealed,
+                &context,
+                observer.clone(),
+            )
+        };
         let tree = usvg::Tree::from_str(source, &options).unwrap();
         context.check().unwrap();
-        let plan = seed.finish_with_tree(&tree);
-        assert!(plan.used_system_fonts());
+        assert!(!tree.root().children().is_empty());
         assert!(observer.family_fallback_used());
         assert!(observer.glyph_fallback_used());
         assert!(observer.unresolved_glyph_fallback());
-        assert!(plan.family_fallback_used());
-        assert!(plan.glyph_fallback_used());
-        assert!(plan.unresolved_glyph_fallback());
-        assert!(!plan.unresolved_font_request());
-        assert_eq!(plan.unclassified_face_count(), 0);
-        assert!(plan.notdef_glyph_count() > 0);
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        {
+            let plan = seed.finish_with_tree(&tree);
+            assert!(plan.used_system_fonts());
+            assert!(plan.family_fallback_used());
+            assert!(plan.glyph_fallback_used());
+            assert!(plan.unresolved_glyph_fallback());
+            assert!(!plan.unresolved_font_request());
+            assert_eq!(plan.unclassified_face_count(), 0);
+            assert!(plan.notdef_glyph_count() > 0);
+        }
     }
 
     #[test]
@@ -1038,17 +1045,20 @@ mod tests {
         let control = OperationControl::new();
         let context = context(&root, NativeFontLimits::default(), &control).unwrap();
         let source = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20" font-family="Cousine">AVA</text></svg>"#;
-        let session = merman_render::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
-        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
-            &sealed,
-            &context,
-            observer.clone(),
-        );
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        let seed = {
+            let session = merman_render::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+            crate::font_environment::ExportFontPlanSeed::from_native_context(
+                &sealed,
+                &context,
+                observer.clone(),
+            )
+        };
         let tree = usvg::Tree::from_str(source, &options)
             .expect("bounded system fixture parses through export resolver");
         let glyphs = tree
@@ -1067,9 +1077,12 @@ mod tests {
         assert!(glyphs.iter().all(|glyph| {
             admitted.get(&glyph.font) == Some(&super::super::NativeExportFontSource::System)
         }));
-        let plan = seed.finish_with_tree(&tree);
-        assert!(plan.used_system_fonts());
-        assert_eq!(plan.unclassified_face_count(), 0);
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        {
+            let plan = seed.finish_with_tree(&tree);
+            assert!(plan.used_system_fonts());
+            assert_eq!(plan.unclassified_face_count(), 0);
+        }
     }
 
     #[test]
@@ -1081,17 +1094,20 @@ mod tests {
         loader.file(&explicit).unwrap();
         let context = context_from_loader(&root, loader, &control).unwrap();
         let source = r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20" font-family="Cousine">AVA</text></svg>"#;
-        let session = merman_render::environment::RenderEnvironment::deterministic()
-            .begin_session()
-            .unwrap();
-        let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
-        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
-            &sealed,
-            &context,
-            observer.clone(),
-        );
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        let seed = {
+            let session = merman_render::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+            crate::font_environment::ExportFontPlanSeed::from_native_context(
+                &sealed,
+                &context,
+                observer.clone(),
+            )
+        };
         let tree = usvg::Tree::from_str(source, &options)
             .expect("explicit fixture parses through discovery resolver");
         let glyphs = tree
@@ -1110,9 +1126,12 @@ mod tests {
         assert!(glyphs.iter().all(|glyph| {
             admitted.get(&glyph.font) == Some(&super::super::NativeExportFontSource::Caller)
         }));
-        let plan = seed.finish_with_tree(&tree);
-        assert!(!plan.used_system_fonts());
-        assert_eq!(plan.unclassified_face_count(), 0);
+        #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+        {
+            let plan = seed.finish_with_tree(&tree);
+            assert!(!plan.used_system_fonts());
+            assert_eq!(plan.unclassified_face_count(), 0);
+        }
     }
 
     #[cfg(unix)]
