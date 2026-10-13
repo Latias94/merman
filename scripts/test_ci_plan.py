@@ -818,6 +818,13 @@ class PlannerTests(unittest.TestCase):
 
 
 class WorkflowFontDependenciesTests(unittest.TestCase):
+    def test_arch_uses_current_packaging_tools_with_the_stable_source_contract(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        arch = (root / ".github/workflows/arch-package.yml").read_text(encoding="utf-8")
+        self.assertIn("python /workspace/scripts/verify_cli_installation.py", arch)
+        self.assertIn("--contract-root src/merman-0.9.0", arch)
+        self.assertNotIn("python src/merman-0.9.0/scripts/verify_cli_installation.py", arch)
+
     def test_node_builds_and_svg_parity_have_independent_ci_owners(self) -> None:
         from scripts.test_release_workflow_security import workflow_job
 
