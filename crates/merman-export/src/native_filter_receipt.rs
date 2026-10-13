@@ -1425,6 +1425,7 @@ mod tests {
         )
     }
 
+    #[cfg(any(feature = "png", feature = "jpeg"))]
     #[test]
     fn srgb_expanded_template_preserves_dark_color_pixels() {
         let svg = srgb_svg(false);
@@ -1444,6 +1445,7 @@ mod tests {
         );
     }
 
+    #[cfg(any(feature = "png", feature = "jpeg"))]
     #[test]
     fn srgb_identity_offset_elision_preserves_pixels_and_receipts() {
         for offsets in [[(0, 0), (0, 0)], [(0, 0), (0, 6)], [(4, 0), (0, 0)]] {

@@ -214,6 +214,76 @@ fn support_unknown_subject_round_trip_preserves_bounded_opaque_fields() {
 }
 
 #[test]
+fn support_unknown_subject_preserves_integer_boundaries_recursively() {
+    for number in [
+        serde_json::json!(9_007_199_254_740_991_u64),
+        serde_json::json!(9_007_199_254_740_992_u64),
+        serde_json::json!(9_007_199_254_740_993_u64),
+        serde_json::json!(u64::MAX),
+        serde_json::json!(i64::MIN),
+        serde_json::json!(i64::MAX),
+        serde_json::json!(-9_007_199_254_740_993_i64),
+    ] {
+        let input = serde_json::json!({ "schema_version":1, "family":"flowchart", "output":"standalone-svg",
+            "subject":{"kind":"future-subject", "id":number, "nested":{"array":[number]}} });
+        let query: ThemeSupportQueryV1 = serde_json::from_value(input.clone()).unwrap();
+        assert_eq!(serde_json::to_value(&query).unwrap(), input);
+        let ThemeSupportSubjectV1::Unknown(subject) = query.subject() else {
+            panic!("opaque subject expected")
+        };
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(subject.field_json("id").unwrap()).unwrap(),
+            number
+        );
+    }
+}
+
+#[test]
+fn support_unknown_subject_retains_jcs_bytes_for_existing_numeric_domain() {
+    for (number, expected) in [
+        (serde_json::json!(1_u64), "1"),
+        (serde_json::json!(1.0_f64), "1"),
+        (serde_json::json!(-0.0_f64), "0"),
+        (
+            serde_json::json!(9_007_199_254_740_992_u64),
+            "9007199254740992",
+        ),
+        (
+            serde_json::json!(9_007_199_254_740_992.0_f64),
+            "9007199254740992",
+        ),
+        (serde_json::json!(1e30_f64), "1e+30"),
+    ] {
+        let query: ThemeSupportQueryV1 = serde_json::from_value(serde_json::json!({ "schema_version":1,
+            "family":"flowchart", "output":"standalone-svg", "subject":{"kind":"future-subject", "id":number} })).unwrap();
+        let ThemeSupportSubjectV1::Unknown(subject) = query.subject() else {
+            panic!("opaque subject expected")
+        };
+        assert_eq!(subject.field_json("id"), Some(expected));
+    }
+}
+
+#[test]
+fn support_unknown_subject_lossless_extension_keeps_jcs_nested_order_and_float_spelling() {
+    let input = serde_json::json!({ "schema_version":1, "family":"flowchart", "output":"standalone-svg",
+        "subject":{"kind":"future-subject", "options":{"\u{e000}": -0.0, "😀":[1e30, 9_007_199_254_740_993_u64], "a":"\n"}} });
+    let query: ThemeSupportQueryV1 = serde_json::from_value(input).unwrap();
+    let ThemeSupportSubjectV1::Unknown(subject) = query.subject() else {
+        panic!("opaque subject expected")
+    };
+    assert_eq!(
+        subject.field_json("options"),
+        Some("{\"a\":\"\\n\",\"😀\":[1e+30,9007199254740993],\"\u{e000}\":0}")
+    );
+    let again: ThemeSupportQueryV1 =
+        serde_json::from_value(serde_json::to_value(&query).unwrap()).unwrap();
+    assert_eq!(
+        again, query,
+        "forwarding must not change the deterministic opaque representation"
+    );
+}
+
+#[test]
 fn support_unknown_subject_rejects_unbounded_opaque_fields() {
     let fields = (0..17)
         .map(|index| (format!("field-{index}"), serde_json::json!(index)))

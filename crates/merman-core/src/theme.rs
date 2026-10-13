@@ -339,7 +339,16 @@ enum ThemeVariableDependencyAssignment {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ThemeVariableDependencyCondition {
     Always,
-    SourceExplicit,
+    SourceExplicitTruthy,
+}
+
+impl ThemeVariableDependencyCondition {
+    fn permits(self, explicit_source_truthiness: Option<bool>) -> bool {
+        match self {
+            Self::Always => true,
+            Self::SourceExplicitTruthy => explicit_source_truthiness == Some(true),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -383,7 +392,7 @@ impl ThemeVariableDependency {
         }
     }
 
-    const fn copied_when_source_explicit(
+    const fn copied_when_source_explicit_truthy(
         scope: ThemeVariableDependencyScope,
         source: &'static str,
         target: &'static str,
@@ -394,7 +403,7 @@ impl ThemeVariableDependency {
             target,
             transform: ThemeVariableDependencyTransform::Copy,
             assignment: ThemeVariableDependencyAssignment::IfMissing,
-            condition: ThemeVariableDependencyCondition::SourceExplicit,
+            condition: ThemeVariableDependencyCondition::SourceExplicitTruthy,
         }
     }
 
@@ -563,7 +572,7 @@ const THEME_VARIABLE_DEPENDENCIES: &[ThemeVariableDependency] = &[
     copied_theme_dependency!(LegacyNonDefault, "titleColor", "vennTitleTextColor"),
     copied_theme_dependency!(LegacyNonDefault, "textColor", "vennSetTextColor"),
     copied_theme_dependency!(LegacyNonDefault, "primaryTextColor", "stateLabelColor"),
-    ThemeVariableDependency::copied_when_source_explicit(
+    ThemeVariableDependency::copied_when_source_explicit_truthy(
         ThemeVariableDependencyScope::LegacyNonDefault,
         "stateBkg",
         "stateLabelColor",
@@ -812,7 +821,7 @@ impl ThemeProgram {
 
     fn propagate_derived_ownership(
         self,
-        explicit_dependency_variables: &[&str],
+        explicit_dependency_variables: &[(&str, bool)],
         config: &mut MermaidConfig,
     ) {
         match self.dependencies {
@@ -838,13 +847,19 @@ impl ThemeProgram {
 
         let mut winning_assignments = BTreeMap::new();
         for (index, dependency) in dependencies.iter().enumerate() {
-            if dependency.condition == ThemeVariableDependencyCondition::SourceExplicit
-                && !explicit_dependency_variables.contains(&dependency.source)
-            {
+            if !dependency.condition.permits(
+                explicit_dependency_variables
+                    .iter()
+                    .find_map(|(variable, truthy)| {
+                        (*variable == dependency.source).then_some(*truthy)
+                    }),
+            ) {
                 continue;
             }
             if dependency.assignment == ThemeVariableDependencyAssignment::IfMissing
-                && explicit_dependency_variables.contains(&dependency.target)
+                && explicit_dependency_variables
+                    .iter()
+                    .any(|(variable, _)| *variable == dependency.target)
             {
                 continue;
             }
@@ -854,7 +869,9 @@ impl ThemeProgram {
         }
 
         for (index, dependency) in dependencies.iter().enumerate() {
-            if explicit_dependency_variables.contains(&dependency.target)
+            if explicit_dependency_variables
+                .iter()
+                .any(|(variable, _)| *variable == dependency.target)
                 || winning_assignments.get(dependency.target) != Some(&index)
             {
                 continue;
@@ -897,8 +914,9 @@ fn apply_theme_variable_dependencies(
     calculated: &mut Map<String, Value>,
 ) -> Result<(), ColorError> {
     for dependency in program.variable_dependencies() {
-        if dependency.condition == ThemeVariableDependencyCondition::SourceExplicit
-            && !explicit.contains_key(dependency.source)
+        if !dependency
+            .condition
+            .permits(explicit.get(dependency.source).map(is_js_truthy))
         {
             continue;
         }
@@ -1855,7 +1873,11 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), The
     let explicit_dependency_variables = program
         .variable_dependencies()
         .flat_map(|dependency| [dependency.source, dependency.target])
-        .filter(|variable| explicit.contains_key(*variable))
+        .filter_map(|variable| {
+            explicit
+                .get(variable)
+                .map(|value| (variable, is_js_truthy(value)))
+        })
         .collect::<Vec<_>>();
     resolved_config
         .set_value_preserving_theme_compatibility("themeVariables", Value::Object(explicit));
@@ -1973,28 +1995,6 @@ fn apply_extended_theme_visible_derivations(
             "secondaryBorderColor".to_string(),
             Value::String(mk_border(&secondary, dark_mode)?),
         );
-    }
-
-    if explicit.contains_key("background") {
-        let background = required_color(tv, "background")?;
-        if !explicit.contains_key("lineColor") {
-            let line_color = theme_color::invert(&background)?;
-            tv.insert("lineColor".to_string(), Value::String(line_color));
-        }
-    }
-
-    if explicit.contains_key("lineColor") || explicit.contains_key("background") {
-        let line_color = required_color(tv, "lineColor")?;
-        for key in [
-            "defaultLinkColor",
-            "archEdgeColor",
-            "archEdgeArrowColor",
-            "relationColor",
-            "transitionColor",
-            "specialStateColor",
-        ] {
-            set_derived_string_unless_explicit(tv, explicit, key, line_color.clone());
-        }
     }
 
     if explicit.contains_key("secondaryColor") || explicit.contains_key("primaryColor") {
@@ -3242,6 +3242,51 @@ mod tests {
                 !config.config_path_overrides_typed_default("themeVariables.sequenceNumberColor"),
                 "theme {theme} source {source} must not own an unrelated Sequence variable"
             );
+        }
+    }
+
+    #[test]
+    fn extended_state_label_fallback_ignores_falsy_authored_background() {
+        for theme in [
+            "neo",
+            "neo-dark",
+            "redux",
+            "redux-dark",
+            "redux-color",
+            "redux-dark-color",
+        ] {
+            for background in [json!(false), json!(0)] {
+                for owned_primary in [false, true] {
+                    let mut config = MermaidConfig::from_value(json!({
+                        "theme": theme,
+                        "themeVariables": { "primaryTextColor": "#123456" }
+                    }));
+                    config.deep_merge_explicit(
+                        &json!({ "themeVariables": { "stateBkg": background } }),
+                    );
+                    if owned_primary {
+                        config.deep_merge_explicit(
+                            &json!({ "themeVariables": { "primaryTextColor": "#123456" } }),
+                        );
+                    }
+                    apply_theme_defaults(&mut config).unwrap();
+                    assert_eq!(
+                        config.get_str("themeVariables.stateLabelColor"),
+                        Some("#123456"),
+                        "{theme}: {background}"
+                    );
+                    assert_eq!(
+                        config
+                            .config_path_overrides_typed_default("themeVariables.stateLabelColor"),
+                        owned_primary,
+                        "the winning primary text source must own the derived label"
+                    );
+                    assert_eq!(
+                        config.as_value().pointer("/themeVariables/stateBkg"),
+                        Some(&background)
+                    );
+                }
+            }
         }
     }
 

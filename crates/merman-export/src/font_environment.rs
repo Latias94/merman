@@ -454,7 +454,8 @@ fn system_font_resolver(
 
     usvg::FontResolver {
         select_font: Box::new(move |font, combined_db| {
-            if let Some(id) = query_font(font, &select_fontdb) {
+            if let Some(id) = super::select_requested_font_case_insensitively(font, &select_fontdb)
+            {
                 debug_assert!(combined_db.face(id).is_some());
                 return Some(id);
             }
@@ -509,27 +510,6 @@ fn face_has_char(database: &usvg::fontdb::Database, id: usvg::fontdb::ID, charac
                 .is_some()
         })
         .unwrap_or(false)
-}
-
-fn query_font(font: &usvg::Font, fontdb: &usvg::fontdb::Database) -> Option<usvg::fontdb::ID> {
-    let families = font
-        .families()
-        .iter()
-        .map(|family| match family {
-            usvg::FontFamily::Serif => usvg::fontdb::Family::Serif,
-            usvg::FontFamily::SansSerif => usvg::fontdb::Family::SansSerif,
-            usvg::FontFamily::Cursive => usvg::fontdb::Family::Cursive,
-            usvg::FontFamily::Fantasy => usvg::fontdb::Family::Fantasy,
-            usvg::FontFamily::Monospace => usvg::fontdb::Family::Monospace,
-            usvg::FontFamily::Named(name) => usvg::fontdb::Family::Name(name),
-        })
-        .collect::<Vec<_>>();
-    fontdb.query(&usvg::fontdb::Query {
-        families: &families,
-        weight: usvg::fontdb::Weight(font.weight()),
-        stretch: font.stretch().into(),
-        style: font.style().into(),
-    })
 }
 
 fn query_default_serif(
@@ -724,6 +704,84 @@ mod tests {
             },
         )
         .unwrap()
+    }
+
+    #[test]
+    fn system_export_matches_unicode_family_case_before_generic_fallback() {
+        let mut database = fixture_font_environment().fontdb.as_ref().clone();
+        let mut target = database
+            .faces()
+            .find(|face| face.weight == usvg::fontdb::Weight::BOLD)
+            .unwrap()
+            .clone();
+        target.families = vec![(
+            "Maße Test Sans".to_owned(),
+            usvg::fontdb::Language::English_UnitedStates,
+        )];
+        let target_id = database.push_face_info(target);
+        database.set_serif_family("DejaVu Serif");
+        let database = Arc::new(database);
+        let mut boxes = Vec::new();
+        // Quoted family names avoid svgtypes' unquoted identifier restriction for U+00DF.
+        for family in [
+            "'Maße Test Sans'",
+            "'maße test sans'",
+            "'__missing__', 'MASSE TEST SANS'",
+        ] {
+            assert!(
+                svgtypes::parse_font_families(family).is_ok(),
+                "the fixture must reach font selection"
+            );
+            let environment = ExportFontEnvironment::from_resources(
+                &FontCatalog::system_fonts(),
+                &FontSourcePolicy::system_only(),
+                || Arc::clone(&database),
+            )
+            .unwrap();
+            let options = usvg::Options {
+                fontdb: Arc::clone(&database),
+                font_resolver: environment.resolver,
+                ..usvg::Options::default()
+            };
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100"><text x="0" y="40" font-family="{family}" font-weight="700">Browse Products</text></svg>"#
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let text = tree
+                .root()
+                .children()
+                .iter()
+                .find_map(|node| {
+                    if let usvg::Node::Text(text) = node {
+                        Some(text)
+                    } else {
+                        None
+                    }
+                })
+                .unwrap();
+            let glyphs = text
+                .layouted()
+                .iter()
+                .flat_map(|span| &span.positioned_glyphs)
+                .collect::<Vec<_>>();
+            assert!(!glyphs.is_empty());
+            assert!(
+                glyphs.iter().all(|glyph| glyph.font == target_id),
+                "requested stack must select its named face: {family}; expected {target_id:?}, actual {:?}",
+                glyphs.iter().map(|glyph| glyph.font).collect::<Vec<_>>()
+            );
+            boxes.push(text.bounding_box());
+            assert!(
+                !environment
+                    .plan
+                    .finish_with_tree(&tree)
+                    .family_fallback_used()
+            );
+        }
+        assert!(
+            boxes.windows(2).all(|pair| pair[0] == pair[1]),
+            "equivalent case-folded requests must retain shaped metrics"
+        );
     }
 
     #[test]

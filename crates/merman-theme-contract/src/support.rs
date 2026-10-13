@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use serde_json::Value;
 
 use crate::ThemeRuleFacetV1;
-use crate::canonical_json::canonical_json_bytes;
+use crate::canonical_json::{CanonicalJsonError, canonical_json_bytes};
 
 /// Schema version used by the version 1 subject-based theme-support discovery query.
 pub const THEME_SUPPORT_SCHEMA_VERSION_V1: u32 = 1;
@@ -151,8 +151,10 @@ pub enum ThemeSupportSubjectV1 {
 
 /// A bounded, forward-compatible subject payload unknown to this contract version.
 ///
-/// Opaque values are stored as canonical JSON so decoding and re-encoding preserves additive
-/// fields without exposing an unbounded arbitrary-value tree as part of the Rust API.
+/// Opaque values use deterministic JSON with JCS key ordering, strings and floating-point
+/// numbers. Integers use their exact decimal spelling when JCS would change their value on
+/// decoding. This lossless extension preserves additive fields across older consumers without
+/// exposing an unbounded arbitrary-value tree as part of the Rust API.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ThemeSupportUnknownSubjectV1 {
     kind: String,
@@ -165,7 +167,7 @@ impl ThemeSupportUnknownSubjectV1 {
         &self.kind
     }
 
-    /// Returns one preserved opaque field as canonical JSON.
+    /// Returns one preserved field in the deterministic, lossless JSON format described above.
     pub fn field_json(&self, key: &str) -> Option<&str> {
         self.fields.get(key).map(String::as_str)
     }
@@ -342,7 +344,7 @@ where
             )));
         }
         validate_unknown_subject_value::<D>(kind, &value, 0)?;
-        let encoded = canonical_json_bytes(&value).map_err(|error| {
+        let encoded = lossless_opaque_json_bytes(&value).map_err(|error| {
             D::Error::custom(format!(
                 "theme support subject `{kind}` has a non-canonical opaque field: {error}"
             ))
@@ -361,6 +363,62 @@ where
         preserved.insert(key, encoded);
     }
     Ok(preserved)
+}
+
+// Opaque forwarding admits the complete serde_json integer domain. Keep the existing JCS bytes
+// whenever their decoded integer is exact; extend only the cases binary64 serialization changes.
+// This encoder is local to bounded unknown subjects, never the recipe fingerprint contract.
+fn lossless_opaque_json_bytes(value: &Value) -> Result<Vec<u8>, CanonicalJsonError> {
+    fn append(value: &Value, output: &mut Vec<u8>) -> Result<(), CanonicalJsonError> {
+        match value {
+            Value::Array(values) => {
+                output.push(b'[');
+                for (index, value) in values.iter().enumerate() {
+                    if index != 0 {
+                        output.push(b',');
+                    }
+                    append(value, output)?;
+                }
+                output.push(b']');
+            }
+            Value::Object(values) => {
+                let mut fields = values.iter().collect::<Vec<_>>();
+                fields.sort_unstable_by(|(left, _), (right, _)| {
+                    left.encode_utf16().cmp(right.encode_utf16())
+                });
+                output.push(b'{');
+                for (index, (key, value)) in fields.into_iter().enumerate() {
+                    if index != 0 {
+                        output.push(b',');
+                    }
+                    output.extend(canonical_json_bytes(key)?);
+                    output.push(b':');
+                    append(value, output)?;
+                }
+                output.push(b'}');
+            }
+            Value::Number(number) if number.is_i64() || number.is_u64() => {
+                let canonical = canonical_json_bytes(number)?;
+                let decoded: serde_json::Number = serde_json::from_slice(&canonical)
+                    .map_err(|error| CanonicalJsonError::invalid_input(error.to_string()))?;
+                let exact = if let Some(signed) = number.as_i64() {
+                    decoded.as_i64() == Some(signed)
+                } else {
+                    decoded.as_u64() == number.as_u64()
+                };
+                if exact {
+                    output.extend(canonical);
+                } else {
+                    output.extend(number.to_string().as_bytes());
+                }
+            }
+            _ => output.extend(canonical_json_bytes(value)?),
+        }
+        Ok(())
+    }
+    let mut output = Vec::new();
+    append(value, &mut output)?;
+    Ok(output)
 }
 
 fn validate_unknown_subject_value<'de, D>(

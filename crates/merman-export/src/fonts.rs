@@ -551,11 +551,19 @@ fn native_export_font_resolver(observer: NativeExportFontObserver) -> usvg::Font
     let fallback_observer = observer.clone();
     usvg::FontResolver {
         select_font: Box::new(move |font, fontdb| {
-            if let Some(id) = super::select_font_case_insensitively(font, fontdb.as_ref()) {
+            if let Some(id) = super::select_requested_font_case_insensitively(font, fontdb.as_ref())
+            {
                 return Some(id);
             }
-            let selected = super::query_browser_like_fallback_font(font, fontdb.as_ref())
-                .or_else(|| fontdb.faces().next().map(|face| face.id));
+            let selected = super::query_font_family(
+                fontdb.as_ref(),
+                usvg::fontdb::Family::Serif,
+                usvg::fontdb::Weight(font.weight()),
+                font.stretch().into(),
+                font.style().into(),
+            )
+            .or_else(|| super::query_browser_like_fallback_font(font, fontdb.as_ref()))
+            .or_else(|| fontdb.faces().next().map(|face| face.id));
             if selected.is_some() {
                 select_observer.mark_family_fallback();
             } else {

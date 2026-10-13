@@ -92,13 +92,28 @@ impl SystemCatalog {
         &self,
         font: &usvg::Font,
         control: &OperationControl,
-    ) -> Result<Option<FontCandidate>, NativeFontError> {
+    ) -> Result<Option<super::resolver::FontSelection>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        let selector = super::super::browser_like_font_resolver().select_font;
-        let id = selector(font, &mut Arc::clone(&self.database));
+        let requested =
+            super::super::select_requested_font_case_insensitively(font, &self.database);
+        let id = requested
+            .or_else(|| {
+                super::super::query_font_family(
+                    &self.database,
+                    usvg::fontdb::Family::Serif,
+                    usvg::fontdb::Weight(font.weight()),
+                    font.stretch().into(),
+                    font.style().into(),
+                )
+            })
+            .or_else(|| super::super::query_browser_like_fallback_font(font, &self.database))
+            .or_else(|| self.database.faces().next().map(|face| face.id));
         Ok(id
             .and_then(|id| self.database.face(id))
-            .map(|face| self.candidate(face)))
+            .map(|face| super::resolver::FontSelection {
+                candidate: self.candidate(face),
+                family_fallback_used: requested.is_none(),
+            }))
     }
 
     pub(super) fn fallback(
@@ -960,6 +975,60 @@ mod tests {
         assert_eq!(catalog.database.faces().count(), 1);
         assert!(catalog.faces.is_empty());
         assert!(binary_bytes(&catalog.database) > 0);
+    }
+
+    #[test]
+    fn discovery_export_reports_family_glyph_and_unresolved_fallbacks() {
+        let root = Root::new();
+        root.copy("Cousine-Regular.ttf");
+        root.copy("NotoSansSC-subset.ttf");
+        let control = OperationControl::new();
+        let context = context(&root, NativeFontLimits::default(), &control).unwrap();
+        let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="500" height="100"><text x="0" y="20" font-family="__missing__">AVA</text><text x="0" y="40" font-family="Cousine">中文&#x10ffff;</text></svg>"#;
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
+        let mut options = usvg::Options::default();
+        let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
+            &sealed,
+            &context,
+            observer.clone(),
+        );
+        let tree = usvg::Tree::from_str(source, &options).unwrap();
+        context.check().unwrap();
+        let plan = seed.finish_with_tree(&tree);
+        assert!(plan.used_system_fonts());
+        assert!(observer.family_fallback_used());
+        assert!(observer.glyph_fallback_used());
+        assert!(observer.unresolved_glyph_fallback());
+        assert!(plan.family_fallback_used());
+        assert!(plan.glyph_fallback_used());
+        assert!(plan.unresolved_glyph_fallback());
+        assert!(!plan.unresolved_font_request());
+        assert_eq!(plan.unclassified_face_count(), 0);
+        assert!(plan.notdef_glyph_count() > 0);
+    }
+
+    #[test]
+    fn discovery_export_failure_marks_unresolved_font_without_admitting_candidate() {
+        let root = Root::new();
+        let font_path = root.copy("Cousine-Regular.ttf");
+        let control = OperationControl::new();
+        let context = context(&root, NativeFontLimits::default(), &control).unwrap();
+        fs::remove_file(font_path).unwrap();
+        let mut options = usvg::Options::default();
+        let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+        let tree = usvg::Tree::from_str(r#"<svg xmlns="http://www.w3.org/2000/svg"><text x="0" y="20" font-family="Cousine">AVA</text></svg>"#, &options).unwrap();
+        assert!(
+            context.check().is_err(),
+            "a discovered source failure must remain terminal"
+        );
+        assert!(observer.unresolved_font_request());
+        assert!(observer.admitted_faces().is_empty());
+        assert!(!observer.family_fallback_used());
+        assert!(tree.root().children().is_empty());
     }
 
     #[test]

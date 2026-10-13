@@ -1507,6 +1507,7 @@ pub struct PreparedRaster {
     translate_min_to_origin: bool,
     report: RasterReportSeed,
     matte: Option<ExportRgbaColor>,
+    #[cfg(feature = "jpeg")]
     jpeg_quality: u8,
     control: OperationControl,
     #[cfg(feature = "native-fonts")]
@@ -1880,6 +1881,7 @@ fn prepare_raster_source_on_backend_stack(
             fonts: font_plan,
         },
         matte,
+        #[cfg(feature = "jpeg")]
         jpeg_quality: options.jpeg_quality,
         control: control.clone(),
         #[cfg(feature = "native-fonts")]
@@ -3351,6 +3353,30 @@ fn select_font_case_insensitively(
     font: &usvg::Font,
     fontdb: &usvg::fontdb::Database,
 ) -> Option<usvg::fontdb::ID> {
+    select_requested_font_case_insensitively(font, fontdb).or_else(|| {
+        // Preserve usvg's final family fallback after the complete requested CSS stack.
+        query_font_family(
+            fontdb,
+            usvg::fontdb::Family::Serif,
+            usvg::fontdb::Weight(font.weight()),
+            font.stretch().into(),
+            font.style().into(),
+        )
+    })
+}
+
+#[cfg(any(
+    feature = "native-fonts",
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
+))]
+// Return only a match from the authored CSS stack. Fallback-aware callers need this boundary
+// to distinguish an admitted request from the default family used after the stack misses.
+fn select_requested_font_case_insensitively(
+    font: &usvg::Font,
+    fontdb: &usvg::fontdb::Database,
+) -> Option<usvg::fontdb::ID> {
     let weight = usvg::fontdb::Weight(font.weight());
     let stretch = font.stretch().into();
     let style = font.style().into();
@@ -3397,13 +3423,14 @@ fn select_font_case_insensitively(
         }
     }
 
-    // Preserve usvg's default final family fallback after the complete requested CSS stack.
-    query_font_family(fontdb, usvg::fontdb::Family::Serif, weight, stretch, style)
+    None
 }
 
 #[cfg(any(
     feature = "native-fonts",
-    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
 ))]
 fn query_named_font_family_case_insensitively(
     fontdb: &usvg::fontdb::Database,
@@ -3438,7 +3465,9 @@ fn query_named_font_family_case_insensitively(
 
 #[cfg(any(
     feature = "native-fonts",
-    all(test, any(feature = "png", feature = "jpeg", feature = "pdf"))
+    feature = "png",
+    feature = "jpeg",
+    feature = "pdf"
 ))]
 fn query_font_family(
     fontdb: &usvg::fontdb::Database,

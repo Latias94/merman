@@ -3,6 +3,12 @@
 use super::*;
 use usvg::fontdb::{Database, FaceInfo, ID};
 
+/// Discovery-owned selection evidence before bounded binary admission.
+pub(super) struct FontSelection {
+    pub(super) candidate: FontCandidate,
+    pub(super) family_fallback_used: bool,
+}
+
 pub(super) enum FontCandidate {
     Loaded(FaceInfo),
     File {
@@ -61,7 +67,7 @@ impl DiscoveryProvider {
         &self,
         font: &usvg::Font,
         control: &OperationControl,
-    ) -> Result<Option<FontCandidate>, NativeFontError> {
+    ) -> Result<Option<FontSelection>, NativeFontError> {
         match self {
             Self::Bounded(catalog) => catalog.select(font, control),
             #[cfg(feature = "experimental-system-font-query")]
@@ -130,13 +136,13 @@ pub(super) fn resolver(
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
                 provider
                     .select(font, &select_control)?
-                    .map(|candidate| {
-                        let source = candidate.export_source();
+                    .map(|selection| {
+                        let source = selection.candidate.export_source();
                         select_context
                             .0
                             .sources
                             .materialize(
-                                candidate,
+                                selection.candidate,
                                 database,
                                 &select_context.0.limits,
                                 &select_control,
@@ -144,11 +150,19 @@ pub(super) fn resolver(
                             .inspect(|id| {
                                 if let Some(observer) = &select_observer {
                                     observer.admit(*id, source);
+                                    if selection.family_fallback_used {
+                                        observer.mark_family_fallback();
+                                    }
                                 }
                             })
                     })
                     .transpose()
             })();
+            if let Some(observer) = &select_observer
+                && !matches!(&result, Ok(Some(_)))
+            {
+                observer.mark_unresolved_font();
+            }
             resolve_or_record(&select_context, result)
         }),
         select_fallback: Box::new(move |character, excluded, database| {
@@ -180,9 +194,6 @@ pub(super) fn resolver(
                             &context.0.limits,
                             &control,
                         )?;
-                        if let Some(observer) = &observer {
-                            observer.admit(id, source);
-                        }
                         if excluded.contains(&id) {
                             return Ok(None);
                         }
@@ -202,10 +213,24 @@ pub(super) fn resolver(
                             &probe_excluded,
                             &mut Arc::new(probe),
                         );
-                        Ok((selected == Some(candidate_id)).then_some(id))
+                        if selected == Some(candidate_id) {
+                            if let Some(observer) = &observer {
+                                observer.admit(id, source);
+                            }
+                            Ok(Some(id))
+                        } else {
+                            Ok(None)
+                        }
                     },
                 )
             })();
+            if let Some(observer) = &observer {
+                if matches!(&result, Ok(Some(_))) {
+                    observer.mark_glyph_fallback();
+                } else {
+                    observer.mark_unresolved_glyph();
+                }
+            }
             resolve_or_record(&context, result)
         }),
     }
