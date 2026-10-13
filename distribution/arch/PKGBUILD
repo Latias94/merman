@@ -9,6 +9,8 @@ url='https://github.com/Latias94/merman'
 license=('MIT OR Apache-2.0' 'EPL-2.0')
 depends=('gcc-libs' 'glibc')
 makedepends=('cmake' 'ninja' 'python>=3.11' 'rust>=1.95')
+# GCC LTO objects cannot be consumed by Rust's LLD; Cargo retains its own ThinLTO.
+options=('!lto')
 optdepends=(
   'fontconfig: system font discovery configuration'
   'ttf-dejavu: fallback fonts for native text measurement and raster/PDF output'

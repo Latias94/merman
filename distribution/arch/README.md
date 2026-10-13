@@ -24,8 +24,12 @@ not require OpenSSL at runtime. Both `build()` and `check()` select the
 [upstream CMake builder](https://aws.github.io/aws-lc-rs/resources.html#build-system) so
 [jitterentropy's per-source `-O0`](https://github.com/aws/aws-lc/blob/02561621ffa4cf17c0c4f70bc11a82df36b42ae9/third_party/jitterentropy/CMakeLists.txt#L63)
 follows makepkg's optimization flags. The package retains Arch's compiler flags and the CPU
-jitter entropy source. `prepare()` fetches the locked Cargo dependencies into the build
-directory. `build()` and `check()` use frozen dependency resolution and do not fetch crates.
+jitter entropy source. Following the
+[Arch Rust packaging guidelines](https://wiki.archlinux.org/title/Rust_package_guidelines#Build),
+`options=('!lto')` disables makepkg's GCC LTO injection into native C objects, which Rust's LLD
+cannot link. The canonical Cargo `dist` profile retains its own ThinLTO and other Arch build
+flags remain enabled. `prepare()` fetches the locked Cargo dependencies into the build directory.
+`build()` and `check()` use frozen dependency resolution and do not fetch crates.
 
 The package installs:
 
