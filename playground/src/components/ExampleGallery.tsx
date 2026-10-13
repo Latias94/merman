@@ -56,6 +56,25 @@ export function ExampleGallery({
   const scrollTopRef = useRef(0);
   const viewportWidthRef = useRef(0);
   const scrollAnchorRef = useRef<{ id: string; offset: number } | null>(null);
+  const rememberViewport = (viewport: HTMLDivElement) => {
+    scrollTopRef.current = viewport.scrollTop;
+    viewportWidthRef.current = viewport.clientWidth;
+    const card = Array.from(
+      viewport.querySelectorAll<HTMLElement>("[data-example-id]"),
+    ).find(
+      (card) => card.offsetTop + card.offsetHeight > viewport.scrollTop,
+    );
+    scrollAnchorRef.current = card
+      ? { id: card.dataset.exampleId!, offset: card.offsetTop - viewport.scrollTop }
+      : null;
+  };
+  const handleOpenChange = (nextOpen: boolean) => {
+    // Closing can precede delivery of the browser's queued scroll event.
+    if (open && !nextOpen && viewportRef.current) {
+      rememberViewport(viewportRef.current);
+    }
+    onOpenChange(nextOpen);
+  };
   const restoreViewport = useCallback((viewport: HTMLDivElement | null) => {
     viewportRef.current = viewport;
     if (!viewport) return;
@@ -147,7 +166,7 @@ export function ExampleGallery({
 
   const handleSelectExample = (example: Example) => {
     setCode(example.source);
-    onOpenChange(false);
+    handleOpenChange(false);
   };
 
   const getCategoryLabel = (category: string) => {
@@ -156,7 +175,7 @@ export function ExampleGallery({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         safeArea={false}
         showCloseButton={false}
@@ -283,20 +302,7 @@ export function ExampleGallery({
               ref: restoreViewport,
               onScroll: (event) => {
                 if (!open) return;
-                const viewport = event.currentTarget;
-                scrollTopRef.current = viewport.scrollTop;
-                viewportWidthRef.current = viewport.clientWidth;
-                const card = Array.from(
-                  viewport.querySelectorAll<HTMLElement>("[data-example-id]"),
-                ).find(
-                  (card) => card.offsetTop + card.offsetHeight > viewport.scrollTop,
-                );
-                scrollAnchorRef.current = card
-                  ? {
-                      id: card.dataset.exampleId!,
-                      offset: card.offsetTop - viewport.scrollTop,
-                    }
-                  : null;
+                rememberViewport(event.currentTarget);
               },
             }}
           >
