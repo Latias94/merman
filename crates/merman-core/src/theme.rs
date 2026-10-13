@@ -1901,45 +1901,6 @@ pub(crate) fn materialize_selected_theme(
     Ok(effective_config)
 }
 
-#[cfg(test)]
-fn materialize_source_selected_theme(
-    site_config: &MermaidConfig,
-    initialization_config: &MermaidConfig,
-    source_config: &MermaidConfig,
-) -> Result<Option<MermaidConfig>, ThemeResolutionError> {
-    let Some(requested) = source_config.get_str("theme") else {
-        return Ok(None);
-    };
-    if MermaidThemeId::parse(requested).is_err() {
-        return Ok(None);
-    }
-
-    // Mermaid updates ordinary source config from the already materialized site config. A source
-    // directive that selects a registered theme is the one exception: it rebuilds themeVariables
-    // from the raw initialize inputs plus the source inputs, then materializes the selected theme.
-    // Reconstruct from the unmaterialized site config so ownership is derived exactly once for the
-    // newly selected theme instead of carrying derived paths from the previous site theme.
-    let mut effective_config = site_config.clone();
-    effective_config.deep_merge_explicit(source_config.as_value());
-
-    let initial_theme_variables = initialization_config
-        .as_value()
-        .get("themeVariables")
-        .filter(|value| is_js_truthy(value))
-        .map(crate::compatibility_json::clone_value_nonrecursive)
-        .unwrap_or_else(|| Value::Object(Map::new()));
-    let mut raw_theme_variables = MermaidConfig::from_value(initial_theme_variables);
-    if let Some(source_theme_variables) = source_config.as_value().get("themeVariables") {
-        raw_theme_variables.deep_merge(source_theme_variables);
-    }
-    effective_config.set_value_preserving_theme_compatibility(
-        "themeVariables",
-        crate::compatibility_json::clone_value_nonrecursive(raw_theme_variables.as_value()),
-    );
-    apply_theme_defaults(&mut effective_config)?;
-    Ok(Some(effective_config))
-}
-
 fn apply_snapshot_theme_defaults(
     config: &mut MermaidConfig,
     theme: MermaidThemeId,
@@ -2812,20 +2773,12 @@ mod tests {
 
     #[test]
     fn source_theme_materialization_merges_array_sources_without_object_coercion() {
-        let source = MermaidConfig::from_value(json!({
-            "theme": "base",
-            "themeVariables": [
-                {"primaryColor": "#123456"},
-                {"secondaryColor": "#654321"}
-            ]
-        }));
-        let materialized = materialize_source_selected_theme(
-            &crate::generated::default_site_config(),
-            &MermaidConfig::empty_object(),
-            &source,
-        )
-        .expect("materialize source theme")
-        .expect("registered source theme");
+        let materialized = crate::Engine::new()
+            .parse_metadata_sync(
+                "%%{init: {\"theme\": \"base\", \"themeVariables\": [{\"primaryColor\": \"#123456\"}, {\"secondaryColor\": \"#654321\"}]}}%%\nflowchart TD\nA-->B",
+            )
+            .expect("materialize source theme through the public parse pipeline")
+            .effective_config;
 
         assert_eq!(
             materialized.get_str("themeVariables.primaryColor"),
@@ -3451,8 +3404,11 @@ mod tests {
     }
 
     #[test]
-    fn source_text_color_does_not_rematerialize_signal_color_through_the_parse_pipeline() {
-        for (theme, expected_signal) in [(None, "#28253D"), (Some("default"), "#333")] {
+    fn source_text_color_recalculates_scoped_sequence_but_preserves_unchanged_global_theme() {
+        for (theme, initialized_signal, source_signal, source_owns_signal) in [
+            (None, "#28253D", "#22c55e", true),
+            (Some("default"), "#333", "#333", false),
+        ] {
             let mut site = json!({
                 "secure": [
                     "secure", "securityLevel", "startOnLoad", "maxTextSize",
@@ -3470,7 +3426,7 @@ mod tests {
                 initialized
                     .effective_config
                     .get_str("themeVariables.signalColor"),
-                Some(expected_signal)
+                Some(initialized_signal)
             );
             let metadata = engine
                 .parse_metadata_sync(
@@ -3495,15 +3451,21 @@ Alice->>Bob: Hello
                 metadata
                     .effective_config
                     .get_str("themeVariables.signalColor"),
-                initialized
+                Some(source_signal)
+            );
+            assert_eq!(
+                metadata
                     .effective_config
-                    .get_str("themeVariables.signalColor")
+                    .config_path_overrides_typed_default("themeVariables.signalColor"),
+                source_owns_signal,
+                "source ownership follows actual recalculation of the selected Sequence theme"
             );
             assert!(
-                !metadata
+                metadata
                     .effective_config
-                    .config_path_overrides_typed_default("themeVariables.signalColor")
+                    .explicit_config_owns_path("themeVariables.textColor")
             );
+            assert_eq!(metadata.config.get_str("themeVariables.signalColor"), None);
         }
     }
 

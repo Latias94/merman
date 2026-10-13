@@ -178,6 +178,93 @@ graph TD;A-->B;"##;
 }
 
 #[test]
+fn default_scoped_theme_calculates_with_source_variables() {
+    let metadata = Engine::new()
+        .parse_metadata_sync(
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("materialize the default scoped theme with source variables");
+
+    assert_eq!(
+        metadata.effective_config.get_str("theme"),
+        Some("redux-color")
+    );
+    assert_eq!(
+        metadata.effective_config.get_str("themeVariables.nodeBkg"),
+        Some("#123456")
+    );
+    assert_eq!(metadata.config.get_str("theme"), None);
+    assert_eq!(metadata.config.get_str("themeVariables.nodeBkg"), None);
+    assert!(
+        metadata
+            .effective_config
+            .explicit_config_owns_path("themeVariables.primaryColor")
+    );
+}
+
+#[test]
+fn host_scoped_theme_calculates_with_source_variables() {
+    let metadata = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "default",
+            "flowchart": {"theme": "base"}
+        })))
+        .parse_metadata_sync(
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("materialize the host scoped theme with source variables");
+
+    assert_eq!(metadata.effective_config.get_str("theme"), Some("base"));
+    for key in ["mainBkg", "nodeBkg", "actorBkg"] {
+        assert_eq!(
+            metadata
+                .effective_config
+                .get_str(&format!("themeVariables.{key}")),
+            Some("#123456"),
+            "the scoped theme must calculate {key} from raw source primaryColor"
+        );
+    }
+}
+
+#[test]
+fn source_color_validation_follows_actual_theme_rematerialization() {
+    let source = "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\nflowchart TD\nA-->B";
+    for (name, engine) in [
+        ("default scoped theme", Engine::new()),
+        (
+            "host scoped theme",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "theme": "default",
+                "flowchart": {"theme": "base"}
+            }))),
+        ),
+    ] {
+        assert!(
+            matches!(
+                engine.parse_metadata_sync(source),
+                Err(crate::Error::ThemeColor(_))
+            ),
+            "{name} must validate source colors during recalculation"
+        );
+    }
+
+    let metadata = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({"theme": "base"})))
+        .parse_metadata_sync(source)
+        .expect("an ordinary source update retains initialized derivations");
+    assert_eq!(
+        metadata
+            .effective_config
+            .get_str("themeVariables.primaryColor"),
+        Some("not-a-color")
+    );
+    assert_eq!(
+        metadata.effective_config.get_str("themeVariables.mainBkg"),
+        Some("#fff4dd")
+    );
+}
+
+#[test]
 fn init_directive_theme_variables_use_source_value_admission() {
     let engine = Engine::new();
     let text = r##"%%{init: {"themeVariables": {"primaryColor": "url(javascript:alert(1))", "secondaryColor": "rgb(1, 2, 3)"}}}%%

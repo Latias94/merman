@@ -23,15 +23,13 @@ struct AppearanceWinner<'a> {
 pub(crate) struct AppearanceDecision<'a> {
     section: &'a str,
     winners: [Option<AppearanceWinner<'a>>; 3],
+    source_root_theme_is_truthy: bool,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum MaterializationPlan {
     InheritInitialized,
-    Materialize {
-        selected: MermaidThemeId,
-        source_selects_theme: bool,
-    },
+    Materialize { selected: MermaidThemeId },
 }
 
 impl<'a> AppearanceDecision<'a> {
@@ -80,17 +78,14 @@ impl<'a> AppearanceDecision<'a> {
                 })
             })
         });
-        Self { section, winners }
-    }
-
-    fn source_selects_theme(&self) -> bool {
-        self.winners[0].as_ref().is_some_and(|winner| {
-            matches!(winner.origin, AppearanceOrigin::Source)
-                && winner
-                    .value
-                    .as_str()
-                    .is_some_and(|name| MermaidThemeId::parse(name).is_ok())
-        })
+        Self {
+            section,
+            winners,
+            source_root_theme_is_truthy: source
+                .as_value()
+                .get("theme")
+                .is_some_and(crate::theme::is_js_truthy),
+        }
     }
 
     pub(crate) fn materialization_plan(
@@ -102,8 +97,10 @@ impl<'a> AppearanceDecision<'a> {
             .as_ref()
             .and_then(|winner| winner.value.as_str())
             .or(current_theme);
-        let source_selects_theme = self.source_selects_theme();
-        if resolved_theme == Some("null") || (!source_selects_theme && resolved_theme == site_theme)
+        // Mermaid evaluates root directive truthiness independently of appearance precedence.
+        // A scoped same-value source winner still owns appearance without forcing recalculation.
+        if resolved_theme == Some("null")
+            || (!self.source_root_theme_is_truthy && resolved_theme == site_theme)
         {
             MaterializationPlan::InheritInitialized
         } else {
@@ -112,7 +109,6 @@ impl<'a> AppearanceDecision<'a> {
                     resolved_theme.expect("appearance resolves a registered theme"),
                 )
                 .expect("appearance validates registered themes"),
-                source_selects_theme,
             }
         }
     }
@@ -159,11 +155,10 @@ pub(crate) fn resolve_appearance(
     compatibility: Option<&MermaidConfig>,
     defaults: &MermaidConfig,
     effective: &mut MermaidConfig,
-) -> bool {
+) {
     let decision =
         AppearanceDecision::resolve(diagram_type, source, initialize, compatibility, defaults);
     decision.apply_to(effective);
-    decision.source_selects_theme()
 }
 
 fn read_appearance<'a>(layer: &'a MermaidConfig, section: &str, key: &str) -> Option<&'a Value> {
@@ -246,8 +241,18 @@ mod tests {
                 MaterializationPlan::InheritInitialized,
             ),
             (
-                json!({"theme": "unknown"}),
+                json!({"theme": false}),
                 MaterializationPlan::InheritInitialized,
+            ),
+            (
+                json!({"flowchart": {"theme": "dark"}}),
+                MaterializationPlan::InheritInitialized,
+            ),
+            (
+                json!({"theme": "unknown"}),
+                MaterializationPlan::Materialize {
+                    selected: MermaidThemeId::Dark,
+                },
             ),
             (
                 json!({"theme": "null"}),
@@ -257,14 +262,12 @@ mod tests {
                 json!({"theme": "dark"}),
                 MaterializationPlan::Materialize {
                     selected: MermaidThemeId::Dark,
-                    source_selects_theme: true,
                 },
             ),
             (
                 json!({"theme": "base", "flowchart": {"theme": "forest"}}),
                 MaterializationPlan::Materialize {
                     selected: MermaidThemeId::Forest,
-                    source_selects_theme: true,
                 },
             ),
         ] {
@@ -283,7 +286,6 @@ mod tests {
             decision.materialization_plan(Some("dark"), Some("dark")),
             MaterializationPlan::Materialize {
                 selected: MermaidThemeId::Forest,
-                source_selects_theme: false,
             }
         );
     }

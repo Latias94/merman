@@ -142,22 +142,14 @@ impl OperationConfigBuilder {
             engine.site_config.get_str("theme"),
         ) {
             MaterializationPlan::InheritInitialized => decision.apply_to(&mut effective),
-            MaterializationPlan::Materialize {
-                selected,
-                source_selects_theme,
-            } => {
+            MaterializationPlan::Materialize { selected } => {
                 // Detection must observe initialized config. Keep that result only when its
                 // assignments actually need replay onto a newly materialized theme.
-                effective = match Self::materialize_operation_theme(
-                    engine,
-                    &decision,
-                    &source,
-                    selected,
-                    source_selects_theme,
-                ) {
-                    Ok(config) => config,
-                    Err(error) => return Ok(Err(error.into())),
-                };
+                effective =
+                    match Self::materialize_operation_theme(engine, &decision, &source, selected) {
+                        Ok(config) => config,
+                        Err(error) => return Ok(Err(error.into())),
+                    };
                 if let Some(changes) = &detector_changes {
                     changes.replay(&mut effective, control)?;
                 }
@@ -189,11 +181,10 @@ impl OperationConfigBuilder {
         decision: &AppearanceDecision<'_>,
         source_config: &MermaidConfig,
         selected: theme::MermaidThemeId,
-        source_selects_theme: bool,
     ) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
         let mut raw_config = engine.site_config.clone();
-        // Registered source selection rebuilds variables from raw initialization inputs.
-        // Ordinary source updates retain initialized derivations instead.
+        // Every actual theme recalculation consumes raw initialization and allowed source inputs.
+        // The inherited path instead keeps ordinary updates to initialized derivations.
         let initial_variables = engine
             .initialization_inputs
             .as_value()
@@ -202,15 +193,9 @@ impl OperationConfigBuilder {
             .map(crate::compatibility_json::clone_value_nonrecursive)
             .unwrap_or_else(|| serde_json::json!({}));
         raw_config.set_value_preserving_theme_compatibility("themeVariables", initial_variables);
-        if source_selects_theme {
-            raw_config.deep_merge_explicit(source_config.as_value());
-        }
+        raw_config.deep_merge_explicit(source_config.as_value());
         decision.apply_to(&mut raw_config);
-        let mut effective_config = theme::materialize_selected_theme(raw_config, selected)?;
-        if !source_selects_theme {
-            effective_config.deep_merge_explicit(source_config.as_value());
-        }
-        Ok(effective_config)
+        theme::materialize_selected_theme(raw_config, selected)
     }
 }
 
