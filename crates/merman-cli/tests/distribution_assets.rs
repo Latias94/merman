@@ -135,26 +135,82 @@ fn complete_profile_bash_completion_preserves_native_and_mmdc_contracts() {
     );
 }
 
+fn preset_completion_entry(
+    relative: &str,
+    descriptor: &merman::svg::ThemePresetDescriptor,
+) -> String {
+    match relative {
+        "completions/_merman-cli" => format!(
+            r#"{}\:"\[{}\] {}""#,
+            descriptor.id(),
+            descriptor.maturity(),
+            descriptor.display_name()
+        ),
+        "completions/merman-cli.fish" => format!(
+            r#"{}\t'[{}] {}'"#,
+            descriptor.id(),
+            descriptor.maturity(),
+            descriptor.display_name()
+        ),
+        _ => panic!("shell has no per-value maturity descriptions"),
+    }
+}
+
+fn preset_completion_entries_are_labelled(asset: &str, id: &str, expected: &str) -> bool {
+    let mut entries = asset.lines().filter(|line| line.contains(id)).peekable();
+    entries.peek().is_some() && entries.all(|line| line.contains(expected))
+}
+
+#[test]
+fn preset_completion_guard_rejects_one_missing_label_among_other_alpha_candidates() {
+    let descriptor = merman::svg::theme_preset_descriptors()
+        .iter()
+        .find(|descriptor| descriptor.id() == "cyberpunk")
+        .expect("Cyberpunk descriptor");
+    for relative in ["completions/_merman-cli", "completions/merman-cli.fish"] {
+        let asset = read_asset(relative);
+        let expected = preset_completion_entry(relative, descriptor);
+        let changed = asset.replacen(&expected, descriptor.id(), 1);
+        assert!(
+            changed.contains("alpha"),
+            "other candidates must retain their labels"
+        );
+        assert!(
+            asset.contains(&expected),
+            "the mutation must change a real candidate"
+        );
+        assert!(!preset_completion_entries_are_labelled(
+            &changed,
+            descriptor.id(),
+            &expected
+        ));
+    }
+}
+
 #[test]
 fn generated_cli_assets_do_not_publish_theme_presets_without_maturity() {
+    for relative in ["completions/_merman-cli", "completions/merman-cli.fish"] {
+        let asset = read_asset(relative);
+        for descriptor in merman::svg::theme_preset_descriptors() {
+            let expected = preset_completion_entry(relative, descriptor);
+            assert!(
+                preset_completion_entries_are_labelled(&asset, descriptor.id(), &expected),
+                "generated CLI asset {relative} must label every candidate `{}` with its own maturity and display name",
+                descriptor.id()
+            );
+        }
+    }
     for relative in [
-        "completions/_merman-cli",
         "completions/merman-cli.bash",
         "completions/merman-cli.elv",
-        "completions/merman-cli.fish",
         "completions/merman-cli.ps1",
     ] {
         let asset = read_asset(relative);
         for descriptor in merman::svg::theme_preset_descriptors() {
-            if asset.contains(descriptor.id()) {
-                let maturity = descriptor.maturity().to_string();
-                assert!(
-                    asset.contains(&format!("[{maturity}]"))
-                        || asset.contains(&format!(r"\[{maturity}\]")),
-                    "generated CLI asset {relative} publishes preset `{}` without catalog maturity",
-                    descriptor.id()
-                );
-            }
+            assert!(
+                !asset.contains(descriptor.id()),
+                "generated CLI asset {relative} cannot label value maturity and must not advertise preset candidates"
+            );
         }
     }
 

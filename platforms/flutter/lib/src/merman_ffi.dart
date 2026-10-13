@@ -2521,7 +2521,11 @@ Iterable<({String key, String prefix, String value})> _rawOptionsMembers(
   // Keep the original byte charge: removing constructor fields must not let the
   // authoring request bypass the shared max_options_json_bytes preflight.
   final removedBytes =
-      utf8.encode(optionsJson).length - utf8.encode(request).length;
+      _boundedUtf8Length(
+        optionsJson,
+        byteCeiling: optionsJson.length * 3,
+      ).byteLength -
+      _boundedUtf8Length(request, byteCeiling: request.length * 3).byteLength;
   if (removedBytes > 0) request += ' ' * removedBytes;
   final constructorFields = <String>[];
   if (policy != null) constructorFields.add('"runtime_policy":$policy');
@@ -2586,6 +2590,9 @@ class Merman {
     // Preserve the original JSON until native admission has checked duplicate fields.
     // Authoring requests need their own resource scope rather than engine limits.
     final authoring = _isThemeAuthoringOperation(operation);
+    if (authoring && optionsJson != null) {
+      _preflightOptionsJson(optionsJson, runtimeCatalog);
+    }
     final rawOptionsJson = optionsJson == null || optionsJson.trim().isEmpty
         ? null
         : optionsJson;
@@ -4879,12 +4886,69 @@ Never _throwIconRegistryResourceLimit(
   );
 }
 
+void _preflightOptionsJson(String value, MermanRuntimeCatalog catalog) {
+  final id = MermanResourceLimitId.maxOptionsJsonBytes;
+  final maximum = catalog.generalBindingDefaultResourceProfile.limits[id]!;
+  final actual = _boundedUtf8Length(value, byteCeiling: maximum).byteLength;
+  if (actual <= maximum) return;
+  final descriptor = catalog.resourceLimits.firstWhere(
+    (limit) => limit.id == id,
+  );
+  throw MermanException(
+    code: native.MERMAN_NATIVE_STATUS_RESOURCE_LIMIT_EXCEEDED,
+    codeName: 'resource-limit-exceeded',
+    message: 'options_json exceeds the preflight byte limit of $maximum bytes',
+    exactResourceDetails: MermanExactResourceErrorDetails(
+      cause: 'ceiling',
+      limitId: id,
+      phase: descriptor.phase,
+      actual: '$actual',
+      max: '$maximum',
+      profile: 'binding-json',
+    ),
+    resourceDetails: MermanResourceErrorDetails(
+      cause: 'ceiling',
+      limitId: id,
+      phase: descriptor.phase,
+      actual: actual,
+      max: maximum,
+      profile: 'binding-json',
+    ),
+    details: Map.unmodifiable({
+      'resource': Map.unmodifiable({
+        'cause': 'ceiling',
+        'limit_id': id.id,
+        'phase': descriptor.phase,
+        'actual': actual,
+        'max': maximum,
+        'profile': 'binding-json',
+      }),
+    }),
+  );
+}
+
 int _boundedIconRegistryUtf8Length(
   String value, {
   required int byteCeiling,
   required int packIndex,
   required String field,
   String? registrationName,
+}) {
+  final measured = _boundedUtf8Length(value, byteCeiling: byteCeiling);
+  if (measured.byteLength <= byteCeiling && measured.hasInvalidSurrogate) {
+    _throwIconRegistryInvalidUtf16(
+      packIndex: packIndex,
+      field: field,
+      registrationName: registrationName,
+    );
+  }
+  return measured.byteLength;
+}
+
+// Stop at the first code point over the cap without allocating an encoded copy.
+({int byteLength, bool hasInvalidSurrogate}) _boundedUtf8Length(
+  String value, {
+  required int byteCeiling,
 }) {
   var byteLength = 0;
   var hasInvalidSurrogate = false;
@@ -4915,17 +4979,10 @@ int _boundedIconRegistryUtf8Length(
       byteLength += 3;
     }
     if (byteLength > byteCeiling) {
-      return byteLength;
+      return (byteLength: byteLength, hasInvalidSurrogate: hasInvalidSurrogate);
     }
   }
-  if (hasInvalidSurrogate) {
-    _throwIconRegistryInvalidUtf16(
-      packIndex: packIndex,
-      field: field,
-      registrationName: registrationName,
-    );
-  }
-  return byteLength;
+  return (byteLength: byteLength, hasInvalidSurrogate: hasInvalidSurrogate);
 }
 
 Never _throwIconRegistryInvalidUtf16({

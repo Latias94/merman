@@ -1,5 +1,5 @@
 #import "@preview/merman:0.5.0": mermaid, mermaid-svg
-#import "../../src/options.typ": config-with-context-width, context-host-theme, context-text-style, mermaid-profile, render-config
+#import "../../src/options.typ": config-with-context-width, context-text-style, mermaid-profile, render-config
 #import "../../src/units.typ": context-width-css-px, typst-length-to-css-px
 
 #set page(width: 12cm, margin: 10mm)
@@ -8,6 +8,8 @@
 #assert.eq(typst-length-to-css-px(72pt), 96)
 #assert.eq(context-width-css-px(float.inf * 1pt), none)
 #assert.eq(context-text-style("Arial", 12pt).font_size_px, 16)
+#assert.eq(context-text-style("Arial", 16).font_size_px, 16)
+#assert.eq(context-text-style("Arial", 16.5).font_size_px, 16.5)
 #assert.eq(
   context-text-style((name: "Inria Serif", covers: "latin-in-cjk"), 12pt).font_stack,
   ("Inria Serif",),

@@ -92,7 +92,7 @@ Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `ca
 
 Theme authoring operations (`materialize-theme-json`, `describe-theme-support-json`, and
 `export-theme-preset-json`) use the same generic `execute()` path for one-shot and reusable
-consumers. Read the schema-3 catalog through `theme_catalog_json()`; the old
+consumers. Read the schema-1 theme catalog through `theme_catalog_json()`; the old
 `presentation_catalog_json()` method is removed. `MermanError.Binding.details_json` preserves
 the shared `theme_authoring` envelope with diagnostic code, path, and details.
 

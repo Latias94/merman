@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 
 import type { Locator, Page } from "@playwright/test";
 
+const MAX_OBSERVATION_PIXELS = 4_000_000;
+
 export interface ThemeTextSurfaceProbe {
   role: string;
   occurrenceId: string;
@@ -117,27 +119,64 @@ export async function observeMountedThemeTextSurfaces(
         return matches[0];
       };
 
+      const requireVisibleOpaque = (element: Element, kind: string, selector: string) => {
+        if (getComputedStyle(element).visibility !== "visible") {
+          throw new Error(`Terminal ${kind} must be visible and opaque: ${selector}`);
+        }
+        for (let ancestor: Element | null = element; ancestor;) {
+          const style = getComputedStyle(ancestor);
+          if (
+            style.display === "none" ||
+            Number(style.opacity) !== 1 || style.contentVisibility === "hidden"
+          ) {
+            throw new Error(`Terminal ${kind} must be visible and opaque: ${selector}`);
+          }
+          if (kind === "text" && (style.filter !== "none" || style.mixBlendMode !== "normal")) {
+            throw new Error(`Terminal ${kind} requires unfiltered, normally blended paint: ${selector}`);
+          }
+          if (kind === "text" && style.maskImage !== "none") {
+            throw new Error(`Terminal text requires unmasked paint: ${selector}`);
+          }
+          const root = ancestor.getRootNode();
+          ancestor = ancestor.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+        }
+      };
+
       return requestedProbes.map((probe) => {
         const text = exactlyOne(probe.textSelector, "text");
         const surface = exactlyOne(probe.surfaceSelector, "surface");
         const textStyle = getComputedStyle(text);
         const surfaceStyle = getComputedStyle(surface);
-        if (textStyle.visibility !== "visible" || !text.textContent?.trim()) {
+        if (!text.textContent?.trim()) {
           throw new Error(`Terminal text must be visible: ${probe.textSelector}`);
         }
-        for (let ancestor: Element | null = text; ancestor;) {
-          const style = getComputedStyle(ancestor);
-          if (
-            style.display === "none" || Number(style.opacity) !== 1 ||
-            style.contentVisibility === "hidden"
-          ) {
-            throw new Error(`Terminal text must be visible and opaque: ${probe.textSelector}`);
-          }
-          const root = ancestor.getRootNode();
-          ancestor = ancestor.parentElement ?? (root instanceof ShadowRoot ? root.host : null);
+        requireVisibleOpaque(text, "text", probe.textSelector);
+        requireVisibleOpaque(surface, "surface", probe.surfaceSelector);
+        const textNodes = document.createTreeWalker(text, NodeFilter.SHOW_TEXT);
+        const textParents = new Set<Element>([text]);
+        for (let node = textNodes.nextNode(); node; node = textNodes.nextNode()) {
+          if (node.textContent?.trim() && node.parentElement) textParents.add(node.parentElement);
         }
-        if (text instanceof SVGElement && Number(textStyle.fillOpacity) !== 1) {
-          throw new Error(`Terminal text fill must be visible and opaque: ${probe.textSelector}`);
+        for (const parent of textParents) {
+          requireVisibleOpaque(parent, "text", probe.textSelector);
+          const style = getComputedStyle(parent);
+          if (parent instanceof SVGElement && Number(style.fillOpacity) !== 1) {
+            throw new Error(`Terminal text fill must be visible and opaque: ${probe.textSelector}`);
+          }
+          if (parent instanceof SVGElement && style.stroke !== "none" &&
+            Number(style.strokeOpacity) !== 0 && Number.parseFloat(style.strokeWidth) > 0) {
+            throw new Error(`Terminal text requires fill-only paint: ${probe.textSelector}`);
+          }
+          const paint = parent instanceof SVGElement ? style.fill : style.color;
+          const reportedPaint = text instanceof SVGElement ? textStyle.fill : textStyle.color;
+          if (paint !== reportedPaint || style.fontFamily !== textStyle.fontFamily) {
+            throw new Error(`Terminal text requires uniform resolved paint and font: ${probe.textSelector}`);
+          }
+        }
+        const surfaceUsesFill = probe.surfacePaintProperty !== "background-color" &&
+          surface instanceof SVGElement;
+        if (surfaceUsesFill && Number(surfaceStyle.fillOpacity) !== 1) {
+          throw new Error(`Terminal surface fill must be visible and opaque: ${probe.surfaceSelector}`);
         }
         const textBounds = bounds(text);
         const surfaceBounds = bounds(surface);
@@ -171,30 +210,90 @@ export async function observeMountedThemeTextSurfaces(
     artifactDigest,
   }));
 
-  // Geometry and computed paint alone cannot prove that clipping or occlusion left any ink.
-  // Compare actual browser pixels with only this occurrence's paint suppressed, then restore
-  // its exact authored style before returning the observation of the original artifact.
-  for (const probe of probes) {
+  // Compare paint at the actual ink pixels, not elsewhere in the surface's bounding box.
+  // A selected surface must change every text-suppressed ink pixel and supply its reported
+  // opaque RGB there. Equal underlying paint is deliberately insufficient provenance.
+  const rootBounds = await svgLocator.boundingBox();
+  if (!rootBounds || Math.ceil(rootBounds.width) * Math.ceil(rootBounds.height) > MAX_OBSERVATION_PIXELS) {
+    throw new Error("Theme text/surface observation exceeds the bounded pixel area.");
+  }
+  for (const [index, probe] of probes.entries()) {
     const text = svgLocator.locator(probe.textSelector);
-    const before = await svgLocator.screenshot({ animations: "disabled", caret: "hide" });
-    const authoredStyle = await text.getAttribute("style");
-    let after: Buffer;
+    const surface = probe.surfaceSelector === ":scope" ? svgLocator : svgLocator.locator(probe.surfaceSelector);
+    const textStyle = await text.getAttribute("style");
+    const surfaceStyle = await surface.getAttribute("style");
+    const visible = await svgLocator.screenshot({ animations: "disabled", caret: "hide", scale: "css" });
+    let textSuppressed: Buffer;
+    let bothSuppressed: Buffer;
     try {
       await text.evaluate((element) => {
-        if (!(element instanceof SVGElement || element instanceof HTMLElement)) {
-          throw new Error("Terminal text requires a styleable element.");
-        }
-        element.style.setProperty("opacity", "0", "important");
+        (element as SVGElement | HTMLElement).style.setProperty("opacity", "0", "important");
       });
-      after = await svgLocator.screenshot({ animations: "disabled", caret: "hide" });
+      textSuppressed = await svgLocator.screenshot({ animations: "disabled", caret: "hide", scale: "css" });
+      await surface.evaluate((element, paintProperty) => {
+        const property = paintProperty === "background-color" || element instanceof HTMLElement
+          ? "background-color" : "fill";
+        (element as SVGElement | HTMLElement).style.setProperty(property, "transparent", "important");
+      }, probe.surfacePaintProperty);
+      bothSuppressed = await svgLocator.screenshot({ animations: "disabled", caret: "hide", scale: "css" });
     } finally {
-      await text.evaluate((element, style) => {
-        if (style === null) element.removeAttribute("style");
-        else element.setAttribute("style", style);
-      }, authoredStyle);
+      for (const [terminal, style] of [[surface, surfaceStyle], [text, textStyle]] as const) {
+        await terminal.evaluate((element, authoredStyle) => {
+          if (authoredStyle === null) element.removeAttribute("style");
+          else element.setAttribute("style", authoredStyle);
+        }, style);
+      }
     }
-    if (before.equals(after)) {
+    const evidence = await svgLocator.evaluate(async (_svg, input) => {
+      const pixels = [];
+      let width = 0;
+      let height = 0;
+      for (const encoded of input.images) {
+        const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+        const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+        try {
+          if (bitmap.width * bitmap.height > input.maxPixels ||
+            (width !== 0 && (bitmap.width !== width || bitmap.height !== height))) {
+            throw new Error("Theme text/surface observation requires bounded, matching pixel geometry.");
+          }
+          width = bitmap.width;
+          height = bitmap.height;
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+          const context = canvas.getContext("2d", { willReadFrequently: true });
+          if (!context) throw new Error("Theme text/surface observation requires browser pixels.");
+          context.drawImage(bitmap, 0, 0);
+          pixels.push(context.getImageData(0, 0, width, height).data);
+        } finally {
+          bitmap.close();
+        }
+      }
+      const [original, withoutText, withoutBoth] = pixels;
+      const samePixel = (left: Uint8ClampedArray, right: Uint8ClampedArray, offset: number) =>
+        left[offset] === right[offset] && left[offset + 1] === right[offset + 1] &&
+        left[offset + 2] === right[offset + 2] && left[offset + 3] === right[offset + 3];
+      let inkPixels = 0;
+      for (let offset = 0; offset < original.length; offset += 4) {
+        if (samePixel(original, withoutText, offset)) continue;
+        inkPixels += 1;
+        if (withoutText[offset + 3] !== 255 ||
+          input.backgroundPaint.some((channel, component) => Math.abs(channel - withoutText[offset + component]) > 1) ||
+          samePixel(withoutText, withoutBoth, offset)) {
+          return { inkPixels, backgroundProven: false };
+        }
+      }
+      return { inkPixels, backgroundProven: true };
+    }, {
+      images: [visible, textSuppressed, bothSuppressed].map((bytes) => bytes.toString("base64")),
+      backgroundPaint: observations[index].backgroundPaint,
+      maxPixels: MAX_OBSERVATION_PIXELS,
+    });
+    if (evidence.inkPixels === 0) {
       throw new Error(`Terminal text must contribute visible pixels: ${probe.textSelector}`);
+    }
+    if (!evidence.backgroundProven) {
+      throw new Error(`Terminal surface must supply the opaque background at every visible text pixel: ${probe.surfaceSelector}`);
     }
   }
 

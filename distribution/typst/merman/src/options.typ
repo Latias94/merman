@@ -125,7 +125,7 @@
   } else if type(size) == length {
     typst-length-to-css-px(size, name: "merman typography size")
   } else if type(size) == int or type(size) == float {
-    css-px-number-string(size, name: "merman typography size")
+    let validated = css-px-number-string(size, name: "merman typography size")
     size
   } else {
     panic("merman typography size must be a CSS px string, absolute Typst length, or pixel number")

@@ -1263,6 +1263,13 @@ jobs:
           MERMAN_AUTO_INSTALL_RUST_TARGETS: "false"
         run: bash scripts/build-apple-xcframework.sh
 
+      - name: Reject the complete published API 7 projection
+        run: |
+          git fetch --no-tags --depth=1 origin 580e39b69cc1b0ca35c4f8272683e622b2e9b8db
+          merman_native_host="$(rustc -vV | sed -n 's/^host: //p')"
+          python3 platforms/apple/tests/test_published_api7_loader.py \
+            --library "target/${merman_native_host}/native-sdk/libmerman_uniffi.dylib"
+
       - name: Validate Swift package
         run: |
           swift package describe

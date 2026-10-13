@@ -470,32 +470,11 @@ fn runtime_catalog_wire_inner() -> Result<String, BindingError> {
     Ok(text)
 }
 
-pub(crate) fn metadata_wire(id: &str) -> Result<String, BindingError> {
-    binding_boundary(|| metadata_wire_inner(id))
-}
-
 pub(crate) fn metadata_wire_for_engine(
     engine: &BindingEngine,
     id: &str,
 ) -> Result<String, BindingError> {
     binding_boundary(|| metadata_wire_inner_for_engine(engine, id))
-}
-
-fn metadata_wire_inner(id: &str) -> Result<String, BindingError> {
-    let contract = node_wire_contract();
-    if id.is_empty() {
-        return Err(BindingError::invalid_argument(
-            "Node metadata id must be non-empty",
-        ));
-    }
-    ensure_field(id, "metadata id", contract.fields.metadata_id_utf8_bytes)
-        .map_err(caller_argument_error)?;
-    let bytes = node_artifact_contract().metadata_json(id)?;
-    let text = String::from_utf8(bytes)
-        .map_err(|error| BindingError::internal(format!("Node metadata was not UTF-8: {error}")))?;
-    deserialize_bounded_json::<Value>(&text, "metadata", contract.documents.metadata)
-        .map_err(producer_error)?;
-    Ok(text)
 }
 
 fn metadata_wire_inner_for_engine(
@@ -1347,8 +1326,8 @@ mod tests {
     use super::{
         NodeDocumentLimits, NodeTransportKind, admitted_operation_control, create_engine,
         deserialize_bounded_json, error_envelope, execute_wire, execute_wire_with_admitted_control,
-        execute_wire_with_control, metadata_wire, node_artifact_contract, node_wire_contract,
-        parse_operation_request, runtime_catalog_wire, scan_bounded_json_text,
+        execute_wire_with_control, metadata_wire_for_engine, node_artifact_contract,
+        node_wire_contract, parse_operation_request, runtime_catalog_wire, scan_bounded_json_text,
         transport_identity_wire, validate_bounded_json_text, validate_runtime_catalog,
     };
 
@@ -1569,18 +1548,19 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(advertised_ids, expected_ids);
 
+        let engine = create_engine("").expect("Node engine");
         for id in advertised_ids {
             let payload: serde_json::Value =
-                serde_json::from_str(&metadata_wire(id).unwrap_or_else(|error| {
-                    panic!("advertised Node metadata `{id}` failed: {error:?}")
-                }))
+                serde_json::from_str(&metadata_wire_for_engine(&engine, id).unwrap_or_else(
+                    |error| panic!("advertised Node metadata `{id}` failed: {error:?}"),
+                ))
                 .unwrap_or_else(|error| panic!("Node metadata `{id}` was not JSON: {error}"));
             assert!(!payload.is_null(), "Node metadata `{id}` returned null");
         }
 
         for key in merman_bindings_core::MetadataKey::ALL {
             if !expected_ids.contains(&key.id()) {
-                let error = match metadata_wire(key.id()) {
+                let error = match metadata_wire_for_engine(&engine, key.id()) {
                     Ok(_) => panic!("unadvertised metadata `{}` succeeded", key.id()),
                     Err(error) => error,
                 };
@@ -1589,6 +1569,49 @@ mod tests {
                     merman_bindings_core::BindingStatus::UnsupportedOperation
                 );
             }
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn theme_catalog_transport_uses_constrained_engine_limits_and_preset_availability() {
+        let engine = create_engine(r#"{"resources":{"profile":"constrained"}}"#)
+            .expect("constrained Node engine");
+        let catalog: serde_json::Value = serde_json::from_str(
+            &metadata_wire_for_engine(&engine, "theme-catalog").expect("engine theme catalog"),
+        )
+        .expect("Node theme catalog JSON");
+        assert_eq!(catalog["schema_version"], 1);
+        let limits = catalog["resource_limits"].as_array().expect("theme limits");
+        for (id, expected) in [
+            ("max_theme_encoded_bytes", 512 * 1024),
+            ("max_effect_graphs", 8),
+        ] {
+            let matching = limits
+                .iter()
+                .filter(|limit| limit["id"] == id)
+                .collect::<Vec<_>>();
+            assert_eq!(matching.len(), 1, "one transport descriptor for {id}");
+            assert_eq!(
+                matching[0]["effective_value"], expected,
+                "constrained engine limit {id}"
+            );
+        }
+        for preset in catalog["presets"].as_array().expect("preset catalog") {
+            let request = serde_json::json!({
+                "operation_id": "export-theme-preset-json",
+                "source": preset["id"], "uri": null,
+            });
+            let result: serde_json::Value = serde_json::from_str(&execute_wire(
+                &engine,
+                &serde_json::to_string(&request).unwrap(),
+            ))
+            .expect("Node preset export envelope");
+            assert_eq!(
+                result["ok"], preset["available"],
+                "preset availability must match actual admission through the same engine: {}",
+                preset["id"]
+            );
         }
     }
 

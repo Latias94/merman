@@ -3,7 +3,7 @@
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
 `merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents Typst package `0.5.0`, bundling Merman `0.9.0`. It requires Typst `0.15.0` or newer.
-Theme catalog discovery and authoring are source-tree ABI 3 additions and require a matching local package build; the published `0.5.0` baseline uses ABI 2.
+This source tree prepares package `0.5.0`; it does not assert registry publication. Theme catalog discovery and authoring require a matching local ABI 3 package build. Published `0.4.0` uses ABI 2.
 
 ## Quick Start
 
@@ -33,8 +33,7 @@ See the [package changelog](CHANGELOG.md) for the 0.4.0 to 0.5.0 behavior change
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| `0.5.0` | `0.9.0` | `2` | Requires Typst `0.15.0` or newer; corrected wrapping and SVG behavior. |
-| Development snapshot (package version pending) | `0.9.0` | `3` | Includes theme catalog discovery and authoring; requires a local build and Typst `--package-path`. |
+| `0.5.0` source candidate | `0.9.0` | `3` | Includes theme catalog discovery and authoring; requires a matching local build and Typst `--package-path`. Registry publication remains separate. |
 | `0.4.0` | `0.8.0` | `2` | Mermaid 12.1 rendering; requires Typst `0.15.0` or newer. |
 | `0.3.0` | `0.8.0-alpha.6` | `2` | Previous size-optimized WASM package. |
 | `0.2.0` | Previously published source revision | `2` | Published registry channel; do not infer alpha.6 source provenance from this version. |
@@ -42,11 +41,11 @@ See the [package changelog](CHANGELOG.md) for the 0.4.0 to 0.5.0 behavior change
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 3 and native ABI 3.
 
-The API and example sections below describe the `0.5.0` package unless they explicitly call out the local ABI 3 development snapshot.
+The API and example sections below describe the local `0.5.0` source candidate with ABI 3 and Options 3. Build the package locally and pass its package directory with Typst `--package-path` to use these additions.
 
 ## Upgrading from 0.4.0
 
-The wrapper retains its rendering functions, profiles, raw-block handlers, options schema 2, plugin ABI 2, and minimum Typst 0.15.0. Update the package import to `@preview/merman:0.5.0`; the bundled engine moves from Merman 0.8.0 to 0.9.0. Review long-label wrapping, Markdown code/escaped markup, hollow relationship markers, and Block metadata in document snapshots. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md) for the corresponding fixes and PRs.
+The source candidate retains rendering functions, profiles, raw-block handlers, and minimum Typst 0.15.0. It advances the plugin from ABI 2 to ABI 3 and render options from schema 2 to schema 3 for compiled themes and theme authoring; pair the wrapper with its locally built plugin. Update the package import to `@preview/merman:0.5.0`; the bundled engine moves from Merman 0.8.0 to 0.9.0. Review long-label wrapping, Markdown code/escaped markup, hollow relationship markers, and Block metadata in document snapshots. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md) for the corresponding fixes and PRs.
 
 The ELK layout defaults and Dagre recipes already shipped in 0.4.0. Upgrading from 0.4.0 does not introduce another default-layout migration; users upgrading from 0.3.0 can use [Choose a Layout](#choose-a-layout).
 
@@ -422,8 +421,9 @@ Alpha; an available preset with empty `qualified_cells` has no qualified artifac
 #let preset = export-theme-preset(catalog.presets.at(0).id)
 ```
 
-Success returns catalog schema 3. Failure returns the structured operation envelope with operation
-`theme-catalog`. Discovery takes no options and describes the plugin's fixed default ceiling;
+Success returns theme catalog schema 1. This version is independent of plugin ABI 3, Options JSON
+schema 3, and operation envelope schema 1. Failure returns the structured operation envelope with
+operation `theme-catalog`. Discovery takes no options and describes the plugin's fixed default ceiling;
 individual authoring calls may tighten that ceiling.
 
 ### `merman-capabilities()`

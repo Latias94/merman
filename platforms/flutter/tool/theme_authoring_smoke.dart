@@ -190,17 +190,62 @@ void _checkAuthoringRuntimePolicies(
     final oversized =
         '{"runtime_policy":$padding"deterministic",'
         '"resources":$padding{"profile":"constrained"}}';
-    try {
-      oneShot.execute(input.key, input.value, optionsJson: oversized);
-      throw StateError(
-        '${input.key.operationId}: total options budget was lost',
-      );
-    } on MermanException catch (error) {
-      _expectJson(
-        error.exactResourceDetails?.limitId.id,
-        'max_options_json_bytes',
-        '${input.key.operationId} original options byte budget',
-      );
+    for (final options in [
+      oversized,
+      '{"invalid":"${'雪' * (byteLimit ~/ 3 + 1)}',
+      '{"invalid":"${'😀' * (byteLimit ~/ 4 + 1)}',
+      ' ' * (byteLimit + 1),
+    ]) {
+      try {
+        oneShot.execute(input.key, input.value, optionsJson: options);
+        throw StateError(
+          '${input.key.operationId}: total options budget was lost',
+        );
+      } on MermanException catch (error) {
+        _expectJson(
+          error.codeName,
+          'resource-limit-exceeded',
+          'options preflight status',
+        );
+        _expectJson(
+          error.exactResourceDetails?.limitId.id,
+          'max_options_json_bytes',
+          '${input.key.operationId} original options byte budget',
+        );
+        _expectJson(
+          error.resourceDetails?.phase,
+          'options-json-preflight',
+          'options preflight phase',
+        );
+        _expectJson(
+          error.resourceDetails?.profile,
+          'binding-json',
+          'options preflight profile',
+        );
+        _expectJson(
+          error.resourceDetails?.max,
+          byteLimit,
+          'options preflight maximum',
+        );
+        _expectJson(
+          error.details?['resource'],
+          {
+            'cause': 'ceiling',
+            'limit_id': 'max_options_json_bytes',
+            'phase': 'options-json-preflight',
+            'actual': error.resourceDetails?.actual,
+            'max': byteLimit,
+            'profile': 'binding-json',
+          },
+          'options preflight complete resource details',
+        );
+        if (error.resourceDetails!.actual <= byteLimit ||
+            error.resourceDetails!.actual > byteLimit + 4) {
+          throw StateError(
+            'options UTF-8 count must stop at the first code point over the cap',
+          );
+        }
+      }
     }
     // Punctuation, escaped quotes, Unicode and nested values must remain opaque.
     const invalidRecipe =

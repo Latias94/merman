@@ -122,7 +122,7 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
   },
   "raster": {
     "scale": 2,
-    "background": "#ffffff",
+    "matte": "#ffffff",
     "fit_to": {
       "width": 1200
     }
@@ -131,7 +131,7 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
     "quality": 85
   },
   "pdf": {
-    "background": "transparent",
+    "page_paint": "transparent",
     "page_policy": {
       "kind": "fit-css-width",
       "max_width_px": 1200
@@ -162,9 +162,9 @@ Every field is optional.
 | `resources` | object | `interactive` | Source, layout-model, label, and SVG byte/cardinality budgets. |
 | `lint` | object | none | Lint rule enable/disable and severity overrides shared across analysis consumers. |
 | `svg` | object | defaults | SVG postprocessing behavior. |
-| `raster` | object | defaults | Shared PNG/JPEG scale, background, and fit-box behavior. Requires a compiled PNG or JPEG output. |
+| `raster` | object | defaults | Shared PNG/JPEG scale, matte, and fit-box behavior. Requires a compiled PNG or JPEG output. |
 | `jpeg` | object | defaults | JPEG-specific encoding behavior. Requires the compiled JPEG output. |
-| `pdf` | object | defaults | PDF page and background behavior. Requires the compiled PDF output. |
+| `pdf` | object | defaults | PDF page-paint and sizing behavior. Requires the compiled PDF output. |
 
 ## Runtime Policy
 
@@ -827,11 +827,11 @@ diagram canvas to match the host surface. The value must be a single CSS declara
 | Field | Type | Default | Notes |
 | --- | --- | --- | --- |
 | `raster.scale` | positive finite number | `1` | Device-pixel scaling applied before the output resource ceiling. |
-| `raster.background` | supported color string | transparent | `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. |
+| `raster.matte` | supported color string | PNG: transparent; JPEG: white | Optional export matte: `transparent`, `white`, `black`, or 3/4/6/8-digit hex. JPEG requires an opaque result. |
 | `raster.fit_to.width` | positive integer | none | Optional target width in pixels. At least one fit dimension is required. |
 | `raster.fit_to.height` | positive integer | none | Optional target height in pixels. At least one fit dimension is required. |
 | `jpeg.quality` | integer from `1` to `100` | exporter default | JPEG encoder quality. |
-| `pdf.background` | supported color string | transparent | Optional PDF page background using the same supported color vocabulary. |
+| `pdf.page_paint` | supported color string | transparent | Optional PDF page background using the same supported color vocabulary. |
 | `pdf.filter_scale` / `pdf.filterScale` | positive finite number | `4` | Requested sampling scale for localized SVG filter images. The exporter may reduce it to satisfy `max_pdf_filter_image_pixels`. |
 | `pdf.page_policy.kind` | string | `fit-svg` | `fit-svg`, `fixed`, or `fit-css-width`. |
 | `pdf.page_policy.width_pt` / `height_pt` | positive finite number | required by `fixed` | Fixed PDF page dimensions in points. |

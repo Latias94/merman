@@ -905,7 +905,7 @@ fn theme_file_obeys_the_compiler_encoded_input_budget() {
 }
 
 #[test]
-fn unbounded_theme_file_retains_the_compiler_hard_cap() {
+fn unbounded_theme_file_accepts_small_selection_without_panicking() {
     let tmp = tempfile::tempdir().expect("tempdir");
     fs::write(
         tmp.path().join("theme.json"),
@@ -931,6 +931,36 @@ fn unbounded_theme_file_retains_the_compiler_hard_cap() {
         output.status.success(),
         "unbounded theme files must retain the compiler hard cap without panicking: {}",
         String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn unbounded_theme_file_rejects_over_hard_cap_before_json_decoding() {
+    let tmp = tempfile::tempdir().expect("tempdir");
+    let path = tmp.path().join("oversized-theme.json");
+    let file = fs::File::create(&path).expect("create oversized theme selection");
+    file.set_len(u64::try_from(merman::svg::MAX_THEME_ENCODED_BYTES_HARD_CAP).unwrap() + 1)
+        .expect("size sparse invalid JSON beyond the compiler hard cap");
+    let output = run_with_stdin_in_dir(
+        &[
+            "render",
+            "--resource-profile",
+            "unbounded-for-trusted-input",
+            "--theme-file",
+            "oversized-theme.json",
+            "--format",
+            "svg",
+            "-",
+        ],
+        "flowchart LR\nA-->B\n",
+        Some(tmp.path()),
+    );
+    assert_eq!(support::exit_code(output.status), 2);
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
+    assert!(
+        stderr.contains("max_theme_encoded_bytes"),
+        "the compiler hard cap must reject the invalid JSON before decoding:\n{stderr}"
     );
 }
 

@@ -243,7 +243,7 @@ test("terminal observation exposes a role whose paint declaration is missing", a
   expect(observation.finalTextPaint).not.toEqual([0xfe, 0xf3, 0xc7]);
 });
 
-test("terminal observation exposes a tspan moved outside its owning surface", async ({
+test("terminal observation rejects a tspan moved outside its owning surface", async ({
   page,
 }) => {
   const svg = fixtureSvg({ tspanDy: "4em" });
@@ -251,16 +251,15 @@ test("terminal observation exposes a tspan moved outside its owning surface", as
     ...PROBE,
     textSelector: `${NOTE_TEXT} tspan`,
   };
-  const [observation] = await observeThemeTextSurfaces(page, svg, [movedProbe]);
-
-  expect(containsTextBounds(observation, 1_000)).toBe(false);
+  await expect(observeThemeTextSurfaces(page, svg, [movedProbe])).rejects.toThrow(
+    "Terminal surface must supply the opaque background at every visible text pixel",
+  );
 });
 
-test("terminal text geometry includes a displaced child tspan", async ({ page }) => {
-  const [observation] = await observeThemeTextSurfaces(
+test("terminal observation checks background behind a displaced child tspan", async ({ page }) => {
+  await expect(observeThemeTextSurfaces(
     page, fixtureSvg({ tspanDy: "4em" }), [PROBE],
-  );
-  expect(containsTextBounds(observation, 1_000)).toBe(false);
+  )).rejects.toThrow("Terminal surface must supply the opaque background at every visible text pixel");
 });
 
 test("terminal text geometry follows the surface transform", async ({ page }) => {
@@ -339,6 +338,89 @@ test("terminal observation rejects a non-RGB computed paint", async ({
   ).rejects.toThrow("Unsupported terminal computed color");
 });
 
+for (const [name, extraCss] of [
+  ["hidden surface", `${NOTE_SURFACE}{visibility:hidden}`],
+  ["transparent surface", `${NOTE_SURFACE}{opacity:0}`],
+  ["partially transparent surface", `${NOTE_SURFACE}{opacity:0.5}`],
+  ["transparent surface fill", `${NOTE_SURFACE}{fill-opacity:0}`],
+  ["surface-only transparent ancestor", ".surface-group{opacity:0}"],
+  ["surface-only hidden ancestor", ".surface-group{visibility:hidden}"],
+]) {
+  test(`terminal observation rejects ${name}`, async ({ page }) => {
+    await expect(
+      observeThemeTextSurfaces(page, fixtureSvg({ extraCss }), [PROBE]),
+    ).rejects.toThrow(/surface.*visible and opaque/u);
+  });
+}
+
+test("terminal observation rejects a surface occluded beneath visible text", async ({ page }) => {
+  const svg = fixtureSvg({}).replace(
+    '<text data-c6-role="note-label"',
+    '<rect x="20" y="20" width="200" height="48" fill="white"/><text data-c6-role="note-label"',
+  );
+  await expect(observeThemeTextSurfaces(page, svg, [PROBE])).rejects.toThrow(
+    "Terminal surface must supply the opaque background at every visible text pixel",
+  );
+});
+
+test("terminal observation rejects a surface occluded only beneath the glyphs", async ({ page }) => {
+  const svg = fixtureSvg({}).replace(
+    '<text data-c6-role="note-label"',
+    '<rect x="28" y="28" width="130" height="34" fill="white"/><text data-c6-role="note-label"',
+  );
+  await expect(observeThemeTextSurfaces(page, svg, [PROBE])).rejects.toThrow(
+    "Terminal surface must supply the opaque background at every visible text pixel",
+  );
+});
+
+test("terminal observation accepts surface occlusion away from the glyphs", async ({ page }) => {
+  const svg = fixtureSvg({}).replace(
+    '<text data-c6-role="note-label"',
+    '<rect x="200" y="28" width="18" height="34" fill="white"/><text data-c6-role="note-label"',
+  );
+  const [observation] = await observeThemeTextSurfaces(page, svg, [PROBE]);
+  expectReadableProductionSurface(observation, [0xfe, 0xf3, 0xc7], [0x42, 0x20, 0x06]);
+});
+
+test("terminal observation rejects a partially transparent child tspan", async ({ page }) => {
+  await expect(
+    observeThemeTextSurfaces(page, fixtureSvg({ extraCss: "tspan{fill-opacity:0.5}" }), [PROBE]),
+  ).rejects.toThrow("Terminal text fill must be visible and opaque");
+});
+
+test("terminal observation rejects a child tspan whose paint differs from the report", async ({ page }) => {
+  await expect(
+    observeThemeTextSurfaces(page, fixtureSvg({ extraCss: "tspan{fill:#422006}" }), [PROBE]),
+  ).rejects.toThrow("Terminal text requires uniform resolved paint and font");
+});
+
+for (const [name, extraCss] of [
+  ["text brightness filter", `${NOTE_TEXT}{filter:brightness(0.2)}`],
+  ["text multiply blend", `${NOTE_TEXT}{mix-blend-mode:multiply}`],
+] as const) {
+  test(`terminal observation rejects ${name}`, async ({ page }) => {
+    await expect(
+      observeThemeTextSurfaces(page, fixtureSvg({ extraCss }), [PROBE]),
+    ).rejects.toThrow("Terminal text requires unfiltered, normally blended paint");
+  });
+}
+
+test("terminal observation rejects a text stroke that covers the reported fill", async ({ page }) => {
+  await expect(observeThemeTextSurfaces(page, fixtureSvg({
+    extraCss: `${NOTE_TEXT}{stroke:blue;stroke-width:5px;paint-order:fill stroke}`,
+  }), [PROBE])).rejects.toThrow("Terminal text requires fill-only paint");
+});
+
+test("terminal observation rejects a text mask that changes glyph opacity", async ({ page }) => {
+  const svg = fixtureSvg({ extraCss: `${NOTE_TEXT}{mask:url(#dim-text)}` }).replace(
+    "</defs>",
+    '<mask id="dim-text" maskUnits="userSpaceOnUse" x="0" y="0" width="240" height="120"><rect width="240" height="120" fill="white" fill-opacity="0.1"/></mask></defs>',
+  );
+  await expect(observeThemeTextSurfaces(page, svg, [PROBE])).rejects.toThrow(
+    "Terminal text requires unmasked paint",
+  );
+});
+
 interface FixtureOptions {
   declaredTextPaint?: string | null;
   duplicateText?: boolean;
@@ -363,7 +445,7 @@ function fixtureSvg({
       </defs>
       <style>${extraCss}</style>
       <g class="legacy-note">
-        <rect data-c6-surface="note-0" x="20" y="20" width="200" height="48" fill="#422006" />
+        <g class="surface-group"><rect data-c6-surface="note-0" x="20" y="20" width="200" height="48" fill="#422006" /></g>
         <text data-c6-role="note-label" data-c6-occurrence="note-0-line-0" x="30" y="48"${fill} font-family="Inter">
           <tspan x="30" dy="${tspanDy}">Terminal note</tspan>
         </text>

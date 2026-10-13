@@ -187,7 +187,7 @@ test("Chinese theme editing remains usable on a narrow screen", async ({ page })
   await page.setViewportSize({ width: 320, height: 740 });
   await page.addInitScript(() => localStorage.setItem("merman-language", "zh"));
   await page.goto("./", { waitUntil: "domcontentloaded" });
-  await expect(page.locator("footer")).toContainText("0.8.0");
+  await expect(page.locator("footer")).toContainText("WASM: 就绪");
   await page.getByRole("button", { name: "主题", exact: true }).click();
   await page.getByRole("menuitem", { name: "自定义主题…", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "自定义 Merman 主题" });

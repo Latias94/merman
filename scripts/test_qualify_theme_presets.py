@@ -12,8 +12,8 @@ from scripts.qualify_theme_presets import BUILD, clean_revision, qualify_cli, ve
 
 
 class PresetQualificationTests(unittest.TestCase):
-    def test_build_recipe_includes_svg_and_png_layout_features(self):
-        self.assertEqual(BUILD[BUILD.index("--features") + 1], "png,layout-cytoscape")
+    def test_build_recipe_includes_all_scenario_families_and_png_layout_features(self):
+        self.assertEqual(BUILD[BUILD.index("--features") + 1], "png,layout-cytoscape,all-diagrams")
 
     def test_clean_revision_rejects_untracked_unstaged_and_staged_work(self):
         with tempfile.TemporaryDirectory() as temporary:

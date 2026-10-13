@@ -1,4 +1,4 @@
-#import "@preview/merman:0.4.0": mermaid-svg
+#import "@preview/merman:0.5.0": mermaid-svg
 #import "../../src/options.typ": config-with-theme-spec, context-text-style, mermaid-profile, render-config
 #import "../../src/render.typ": render-svg-result-with-config, with-theme-definition-render-config
 
@@ -45,6 +45,13 @@
     ),
   ),
 )
+
+#for size in (16, 16.5) {
+  let numeric-config = render-config(typography: (font: "Numeric Sans", size: size))
+  assert.eq(numeric-config.binding_options.theme.spec.typography.default.font_size_px, size)
+  let encoded = json(bytes(json.encode(numeric-config.binding_options)))
+  assert.eq(encoded.theme.spec.typography.default.font_size_px, size)
+}
 
 #let spec-config = render-config(
   diagram-theme: (
