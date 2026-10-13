@@ -12,6 +12,7 @@ mod elk_points;
 mod intersect;
 mod line_with_offset;
 mod rect_clip;
+mod swimlane_points;
 mod terminal_jogs;
 mod trace;
 pub(super) use compute::{finish_edge_route, prepare_edge_route};

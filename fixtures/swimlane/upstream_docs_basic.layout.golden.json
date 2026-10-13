@@ -13,9 +13,9 @@
           "top_lane_id": "Customer",
           "x": 36.0,
           "y": 0.0,
-          "width": 121.18,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 89.18,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 0.0,
           "order": 0.0,
@@ -28,11 +28,11 @@
           "shape": "squareRect",
           "parent_id": "Customer",
           "top_lane_id": "Customer",
-          "x": 704.923,
+          "x": 1092.127,
           "y": 0.0,
-          "width": 115.16,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 83.16,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 2.0,
           "order": 0.0,
@@ -46,10 +46,10 @@
           "parent_id": "Support",
           "top_lane_id": "Support",
           "x": 36.0,
-          "y": 218.17,
-          "width": 115.16,
+          "y": 252.0,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 83.16,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 0.0,
           "order": 0.0,
@@ -62,11 +62,11 @@
           "shape": "squareRect",
           "parent_id": "Support",
           "top_lane_id": "Support",
-          "x": 704.923,
-          "y": 218.17,
-          "width": 104.1,
+          "x": 1092.127,
+          "y": 252.0,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 72.1,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 2.0,
           "order": 0.0,
@@ -79,11 +79,11 @@
           "shape": "squareRect",
           "parent_id": "Engineering",
           "top_lane_id": "Engineering",
-          "x": 374.569,
-          "y": 439.21,
-          "width": 126.92,
+          "x": 564.064,
+          "y": 504.0,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 94.92,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 1.0,
           "order": 0.0,
@@ -96,11 +96,11 @@
           "shape": "squareRect",
           "parent_id": "Engineering",
           "top_lane_id": "Engineering",
-          "x": 704.923,
-          "y": 439.21,
-          "width": 97.1,
+          "x": 1092.127,
+          "y": 504.0,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 65.1,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 2.0,
           "order": 0.0,
@@ -113,8 +113,8 @@
           "shape": "labelRect",
           "parent_id": "Support",
           "top_lane_id": "Support",
-          "x": 373.226,
-          "y": 218.17,
+          "x": 564.064,
+          "y": 252.0,
           "width": 70.0,
           "height": 21.0,
           "label_width": 70.0,
@@ -130,8 +130,8 @@
           "shape": "labelRect",
           "parent_id": "Engineering",
           "top_lane_id": "Engineering",
-          "x": 173.555,
-          "y": 439.21,
+          "x": 262.032,
+          "y": 504.0,
           "width": 101.92,
           "height": 21.0,
           "label_width": 101.92,
@@ -146,19 +146,19 @@
           "id": "Engineering",
           "title": "Engineering",
           "parent_id": null,
-          "x": 350.956,
-          "y": 413.2,
-          "width": 843.093,
-          "height": 169.02,
+          "x": 546.064,
+          "y": 470.25,
+          "width": 1264.127,
+          "height": 184.5,
           "padding": 8.0,
           "title_label_width": 64.406,
           "title_label_height": 21.0,
-          "content_top": 416.71,
+          "content_top": 481.5,
           "title_rect": {
-            "left": -70.59,
-            "right": -34.59,
-            "top": 328.69,
-            "bottom": 497.71
+            "left": -86.0,
+            "right": -50.0,
+            "top": 378.0,
+            "bottom": 562.5
           },
           "requested_dir": "LR"
         },
@@ -166,19 +166,19 @@
           "id": "Support",
           "title": "Support",
           "parent_id": null,
-          "x": 350.956,
-          "y": 218.888,
-          "width": 843.093,
-          "height": 219.605,
+          "x": 546.064,
+          "y": 252.0,
+          "width": 1264.127,
+          "height": 252.0,
           "padding": 8.0,
           "title_label_width": 44.516,
           "title_label_height": 21.0,
-          "content_top": 195.67,
+          "content_top": 229.5,
           "title_rect": {
-            "left": -70.59,
-            "right": -34.59,
-            "top": 109.085,
-            "bottom": 328.69
+            "left": -86.0,
+            "right": -50.0,
+            "top": 126.0,
+            "bottom": 378.0
           },
           "requested_dir": "LR"
         },
@@ -186,19 +186,19 @@
           "id": "Customer",
           "title": "Customer",
           "parent_id": null,
-          "x": 350.956,
-          "y": 25.293,
-          "width": 843.093,
-          "height": 167.585,
+          "x": 546.064,
+          "y": 33.75,
+          "width": 1264.127,
+          "height": 184.5,
           "padding": 8.0,
           "title_label_width": 55.438,
           "title_label_height": 21.0,
           "content_top": -22.5,
           "title_rect": {
-            "left": -70.59,
-            "right": -34.59,
+            "left": -86.0,
+            "right": -50.0,
             "top": -58.5,
-            "bottom": 109.085
+            "bottom": 126.0
           },
           "requested_dir": "LR"
         }
@@ -215,7 +215,7 @@
             },
             {
               "x": 36.0,
-              "y": 195.67
+              "y": 229.5
             }
           ],
           "label_node_id": null,
@@ -228,12 +228,12 @@
           "to": "answer",
           "points": [
             {
-              "x": 93.58,
-              "y": 218.17
+              "x": 112.0,
+              "y": 252.0
             },
             {
-              "x": 652.873,
-              "y": 218.17
+              "x": 1016.127,
+              "y": 252.0
             }
           ],
           "label_node_id": "edge-label-triage-answer-L_triage_answer_0",
@@ -247,23 +247,23 @@
           "points": [
             {
               "x": 36.0,
-              "y": 240.67
+              "y": 274.5
             },
             {
               "x": 36.0,
-              "y": 240.67
+              "y": 274.5
             },
             {
               "x": 36.0,
-              "y": 439.21
+              "y": 504.0
             },
             {
-              "x": 311.109,
-              "y": 439.21
+              "x": 488.064,
+              "y": 504.0
             },
             {
-              "x": 311.109,
-              "y": 439.21
+              "x": 488.064,
+              "y": 504.0
             }
           ],
           "label_node_id": "edge-label-triage-investigate-L_triage_investigate_0",
@@ -276,12 +276,12 @@
           "to": "fix",
           "points": [
             {
-              "x": 438.029,
-              "y": 439.21
+              "x": 640.064,
+              "y": 504.0
             },
             {
-              "x": 656.373,
-              "y": 439.21
+              "x": 1016.127,
+              "y": 504.0
             }
           ],
           "label_node_id": null,
@@ -294,12 +294,12 @@
           "to": "answer",
           "points": [
             {
-              "x": 704.923,
-              "y": 416.71
+              "x": 1092.127,
+              "y": 481.5
             },
             {
-              "x": 704.923,
-              "y": 240.67
+              "x": 1092.127,
+              "y": 274.5
             }
           ],
           "label_node_id": null,
@@ -312,11 +312,11 @@
           "to": "receive",
           "points": [
             {
-              "x": 704.923,
-              "y": 195.67
+              "x": 1092.127,
+              "y": 229.5
             },
             {
-              "x": 704.923,
+              "x": 1092.127,
               "y": 22.5
             }
           ],
@@ -326,10 +326,10 @@
         }
       ],
       "bounds": {
-        "min_x": -70.59,
+        "min_x": -86.0,
         "min_y": -58.5,
-        "max_x": 772.503,
-        "max_y": 497.71
+        "max_x": 1178.127,
+        "max_y": 562.5
       }
     }
   }

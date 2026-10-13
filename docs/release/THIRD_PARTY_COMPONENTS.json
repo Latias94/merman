@@ -629,11 +629,11 @@
     {
       "id": "mermaid",
       "name": "Mermaid",
-      "version": "12.1.0",
+      "version": "12.2.0",
       "source": {
         "repository": "https://github.com/mermaid-js/mermaid.git",
-        "ref": "mermaid@12.1.0",
-        "commit": "21f72f07ea22c0af48a3149c550654e80d8e40cb",
+        "ref": "mermaid@12.2.0",
+        "commit": "1fb7869866dd619168d840291c9c54b4f129758b",
         "path": "packages/mermaid"
       },
       "relationships": ["behavior-reference", "copied", "fixtures", "generated", "modified", "translated"],
@@ -648,7 +648,7 @@
         {
           "path": "THIRD_PARTY_LICENSES/mermaid/LICENSE",
           "sha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
-          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/21f72f07ea22c0af48a3149c550654e80d8e40cb/LICENSE",
+          "source_url": "https://raw.githubusercontent.com/mermaid-js/mermaid/1fb7869866dd619168d840291c9c54b4f129758b/LICENSE",
           "source_path": "LICENSE",
           "role": "license"
         }

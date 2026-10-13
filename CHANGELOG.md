@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## Unreleased
+
+- Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`,
+  center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions,
+  including HandDrawn circle paths with resource checks before generation;
+  ELK terminal straightening preserves label clearance. Swimlane nodes retain source order, title
+  bands avoid boundary rails, terminal routes remain separated, and cluster IDs include the diagram ID.
+- Playground comparison keeps fallback fonts consistent across its rendering panes, including C4
+  on Windows.
+- The independent Tree-sitter package retains its selected source baseline; this Mermaid move adds
+  no syntax family, Cargo feature, FFI version, or editor-facts schema version.
+
 ## [0.9.0] - 2026-10-12
 
 For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). Typst users can also read the [0.5.0 package changelog](distribution/typst/merman/CHANGELOG.md); that package has its own release version.

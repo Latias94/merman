@@ -6,6 +6,10 @@
 use crate::svg::parity::roughjs_common::ops_to_svg_path_d;
 use roughr::core::RoughRandomness;
 
+const CIRCLE_CURVE_STEP_COUNT: f32 = 9.0;
+const CIRCLE_CURVE_FITTING: f32 = 0.95;
+const CIRCLE_HACHURE_GAP: f32 = 1.5;
+
 pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::{
     RoughRectSpec, roughjs_circle_path_d, roughjs_paths_for_rect,
 };
@@ -322,17 +326,89 @@ pub(in crate::svg::parity) fn roughjs_paths_for_circle(
     hand_drawn: bool,
     randomness: &RoughRandomness,
 ) -> Option<(String, String)> {
+    roughjs_paths_for_circle_with_roughness(
+        diameter,
+        stroke_width,
+        stroke_dasharray,
+        hand_drawn,
+        if hand_drawn { 0.7 } else { 0.0 },
+        randomness,
+    )
+}
+
+pub(in crate::svg::parity) fn roughjs_circle_with_work<T>(
+    work_meter: &crate::resources::OperationWorkMeter,
+    diameter: f64,
+    roughness: f32,
+    generate: impl FnOnce() -> T,
+) -> crate::Result<T> {
+    work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
+    let units = circle_hachure_work_units(diameter, roughness)
+        .ok_or_else(|| work_meter.arithmetic_overflow())?;
+    work_meter.charge(units)?;
+    work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
+    Ok(generate())
+}
+
+fn circle_hachure_work_units(diameter: f64, roughness: f32) -> Option<usize> {
+    fn count(value: f64) -> Option<usize> {
+        let value = value.ceil();
+        (value.is_finite() && (0.0..usize::MAX as f64).contains(&value)).then_some(value as usize)
+    }
+
+    if !diameter.is_finite() || diameter < 0.0 || !roughness.is_finite() || roughness < 0.0 {
+        return None;
+    }
+    let curve_steps = f64::from(CIRCLE_CURVE_STEP_COUNT);
+    // renderer::generate_ellipse_params samples a circle at ceil(steps/sqrt(200) *
+    // sqrt(TAU * radius)). Include closing/overlap points without squaring the diameter.
+    let steps = count(curve_steps.max(
+        f64::from(CIRCLE_CURVE_STEP_COUNT / 200.0_f32.sqrt())
+            * (std::f64::consts::PI * diameter).sqrt(),
+    ))?;
+    // Zero roughness samples each quarter increment instead of one point per step.
+    let points = steps
+        .checked_mul(if roughness == 0.0 { 4 } else { 1 })?
+        .checked_add(4)?;
+    // The radius may grow by curve-fitting randomness, and each core point has at most
+    // roughness pixels of jitter. SQRT_2 bounds any hachure rotation of that enclosing box.
+    let roughness = f64::from(roughness);
+    let fitting = f64::from(1.0_f32 - CIRCLE_CURVE_FITTING);
+    let extent =
+        std::f64::consts::SQRT_2 * (diameter * (1.0 + fitting * roughness) + 2.0 * roughness);
+    let rows = count(extent / f64::from(CIRCLE_HACHURE_GAP))?.checked_add(2)?;
+    // Bound edge-table/active-edge sorting by points^2, plus four fill ops per intersected
+    // segment. This is an admission estimate of the existing scan, not a coordinate limit.
+    let edge_work = points.checked_mul(points)?;
+    let scan_work = edge_work
+        .checked_add(points.checked_mul(4)?)?
+        .checked_add(1)?;
+    edge_work
+        .checked_add(points.checked_mul(16)?)?
+        .checked_add(rows.checked_mul(scan_work)?)
+}
+
+pub(in crate::svg::parity) fn roughjs_paths_for_circle_with_roughness(
+    diameter: f64,
+    stroke_width: f32,
+    stroke_dasharray: &str,
+    hand_drawn: bool,
+    roughness: f32,
+    randomness: &RoughRandomness,
+) -> Option<(String, String)> {
     let (dash0, dash1) = parse_stroke_dash_pair(stroke_dasharray);
     let mut options = roughr::core::OptionsBuilder::default()
         .randomness(randomness.clone())
-        .roughness(if hand_drawn { 0.7 } else { 0.0 })
+        .roughness(roughness)
+        .curve_step_count(CIRCLE_CURVE_STEP_COUNT)
+        .curve_fitting(CIRCLE_CURVE_FITTING)
         .fill_style(if hand_drawn {
             roughr::core::FillStyle::Hachure
         } else {
             roughr::core::FillStyle::Solid
         })
         .fill_weight(1.5)
-        .hachure_gap(1.5)
+        .hachure_gap(CIRCLE_HACHURE_GAP)
         .stroke_width(stroke_width)
         .stroke_line_dash(vec![dash0, dash1])
         .stroke_line_dash_offset(0.0)
@@ -351,4 +427,86 @@ pub(in crate::svg::parity) fn roughjs_paths_for_circle(
         roughr::renderer::ellipse_with_params(0.0, 0.0, &mut options, &params).opset
     };
     Some((ops_to_svg_path_d(&fill), ops_to_svg_path_d(&stroke.opset)))
+}
+
+#[cfg(test)]
+mod circle_work_tests {
+    use super::*;
+    use crate::resources::{
+        OperationWorkMeter, RenderResourcePolicy, ResourceLimitCause, ResourceLimitId,
+    };
+    use std::cell::Cell;
+
+    #[test]
+    fn circle_hachure_charges_before_generation_at_the_exact_admission_boundary() {
+        let units = circle_hachure_work_units(100.0, 0.7).unwrap();
+        for (limit, admitted) in [(units, true), (units - 1, false)] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap();
+            let meter = OperationWorkMeter::new(policy);
+            let generated = Cell::new(false);
+            let result = roughjs_circle_with_work(&meter, 100.0, 0.7, || {
+                assert_eq!(meter.used(), units, "charge precedes any Rough allocation");
+                generated.set(true);
+            });
+            assert_eq!(result.is_ok(), admitted);
+            assert_eq!(generated.get(), admitted);
+            assert_eq!(meter.used(), if admitted { units } else { 0 });
+            if let Err(crate::Error::ResourceLimitExceeded(error)) = result {
+                assert_eq!(error.cause, ResourceLimitCause::Ceiling);
+                assert_eq!(error.limit, "max_layout_work_units");
+            }
+        }
+    }
+
+    #[test]
+    fn circle_hachure_rejects_huge_or_overflowing_geometry_before_generation() {
+        for (diameter, policy, cause) in [
+            (
+                1e4,
+                RenderResourcePolicy::default(),
+                ResourceLimitCause::Ceiling,
+            ),
+            (
+                f64::MAX,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+                ResourceLimitCause::ArithmeticOverflow,
+            ),
+        ] {
+            let meter = OperationWorkMeter::new(policy);
+            let generated = Cell::new(false);
+            let error = roughjs_circle_with_work(&meter, diameter, 0.7, || {
+                generated.set(true);
+            })
+            .expect_err("reject before sampled points or hachure lines are allocated");
+            let crate::Error::ResourceLimitExceeded(error) = error else {
+                panic!("expected geometry work rejection, got {error}");
+            };
+            assert_eq!(error.cause, cause);
+            assert_eq!(error.limit, "max_layout_work_units");
+            assert!(!generated.get());
+            assert_eq!(meter.used(), 0);
+        }
+    }
+
+    #[test]
+    fn circle_hachure_observes_cancellation_before_each_ring() {
+        let control = merman_core::OperationControl::new();
+        let meter =
+            OperationWorkMeter::new_with_control(RenderResourcePolicy::default(), control.clone());
+        roughjs_circle_with_work(&meter, 100.0, 0.2, || control.cancel()).unwrap();
+        let used_after_outer = meter.used();
+        let generated_inner = Cell::new(false);
+        let error = roughjs_circle_with_work(&meter, 90.0, 0.2, || {
+            generated_inner.set(true);
+        })
+        .expect_err("cancellation after the outer ring prevents the inner ring");
+        assert!(matches!(
+            error,
+            crate::Error::Cancelled(error) if error.phase == merman_core::OperationPhase::Emit
+        ));
+        assert!(!generated_inner.get());
+        assert_eq!(meter.used(), used_after_outer);
+    }
 }

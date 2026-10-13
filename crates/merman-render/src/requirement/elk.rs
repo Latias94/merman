@@ -185,15 +185,20 @@ pub(super) fn render_layout(
         .and_then(Value::as_bool)
         != Some(false)
     {
-        let changes =
-            crate::elk_terminal_jogs::straighten_edge_terminals_with_runs(&mut routes, |units| {
-                work.charge_adapter(units)
-            })?;
-        for change in changes {
-            if let Some(label) = render.edges[change.route_index].label.as_mut() {
-                crate::elk_terminal_jogs::reproject_label(label, &change.runs);
-            }
-        }
+        work.charge_adapter(routes.len())?;
+        let mut labelled_routes: Vec<_> = routes
+            .iter_mut()
+            .zip(render.edges.iter_mut())
+            .map(
+                |(points, edge)| crate::elk_terminal_jogs::LabeledTerminalRoute {
+                    points,
+                    label: edge.label.as_mut(),
+                },
+            )
+            .collect();
+        crate::elk_terminal_jogs::straighten_edge_terminals(&mut labelled_routes, |units| {
+            work.charge_adapter(units)
+        })?;
     }
     for ((edge, raw), points) in render.edges.iter_mut().zip(&layout.edges).zip(routes) {
         if raw.points.is_empty() {

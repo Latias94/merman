@@ -88,9 +88,7 @@ fn native_fonts_reject_unmeasured_node_and_class_text_geometry() {
             RenderTarget::Svg(native_request()),
             OperationControl::new(),
         ));
-        let error = result
-            .err()
-            .expect("unsupported typography must fail admission");
+        let error = result.expect_err("unsupported typography must fail admission");
         assert!(error.to_string().contains("text geometry style"), "{error}");
     }
 }
@@ -116,8 +114,7 @@ fn native_class_rejects_relative_and_unsupported_theme_sizes() {
                     RenderTarget::Svg(native_request()),
                     OperationControl::new(),
                 ))
-                .err()
-                .expect("Class layout/CSS size mismatch must fail native admission");
+                .expect_err("Class layout/CSS size mismatch must fail native admission");
             assert!(
                 error.to_string().contains("native Class"),
                 "{header}, {size}: {error}"
@@ -183,9 +180,7 @@ fn native_fonts_reject_css_injected_by_output_policy() {
         RenderTarget::Svg(request),
         OperationControl::new(),
     ));
-    let error = result
-        .err()
-        .expect("post-layout CSS must fail native admission");
+    let error = result.expect_err("post-layout CSS must fail native admission");
     assert!(error.to_string().contains("scoped CSS"), "{error}");
 }
 
@@ -220,9 +215,7 @@ fn native_fonts_check_other_families_structured_style_slots() {
             RenderTarget::Svg(native_request()),
             OperationControl::new(),
         ));
-        let error = result
-            .err()
-            .expect("unmeasured text geometry must fail admission");
+        let error = result.expect_err("unmeasured text geometry must fail admission");
         assert!(
             error.to_string().contains("text geometry style"),
             "{source}: {error}"

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "mermaidBaseline": "mermaid@12.1.0",
+  "mermaidBaseline": "mermaid@12.2.0",
   "examples": [
     {
       "diagramType": "agentflow",
@@ -685,6 +685,24 @@
         "role": "variant",
         "kind": "syntax",
         "claim": "Fixture demonstrates mindmap shapes and icons."
+      }
+    },
+    {
+      "diagramType": "mindmap",
+      "id": "mindmap-depth-colors",
+      "title": "Mindmap Depth Colors",
+      "category": "Strategy",
+      "order": 152,
+      "aliases": [
+        "hierarchy colors",
+        "colorBy depth",
+        "depth palette"
+      ],
+      "fixture": "fixtures/mindmap/upstream_mermaid_12_2_depth_colors.mmd",
+      "evidence": {
+        "role": "variant",
+        "kind": "behavior",
+        "claim": "Mermaid 12.2 colors mindmap nodes and edges by structural depth."
       }
     },
     {

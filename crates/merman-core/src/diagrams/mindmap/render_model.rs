@@ -194,7 +194,7 @@ fn mindmap_compat_config(meta: &ParseMetadata) -> Value {
 }
 
 fn mindmap_node_to_compat_json(node: &MindmapDiagramRenderNode) -> Value {
-    let mut out = Map::with_capacity(19);
+    let mut out = Map::with_capacity(20);
     out.insert("id".to_string(), Value::String(node.id.clone()));
     out.insert("domId".to_string(), Value::String(node.dom_id.clone()));
     out.insert("label".to_string(), Value::String(node.label.clone()));
@@ -223,6 +223,7 @@ fn mindmap_node_to_compat_json(node: &MindmapDiagramRenderNode) -> Value {
         Value::String(node.css_classes.clone()),
     );
     out.insert("cssStyles".to_string(), json!(&node.css_styles));
+    out.insert("centerLabel".to_string(), Value::Bool(true));
     out.insert("look".to_string(), Value::String(node.look.clone()));
     if let Some(icon) = &node.icon {
         out.insert("icon".to_string(), Value::String(icon.clone()));

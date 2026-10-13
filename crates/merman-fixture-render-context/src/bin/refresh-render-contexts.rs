@@ -13,7 +13,7 @@ fn fixture_paths(root: &Path) -> Result<Vec<PathBuf>, Box<dyn std::error::Error>
                 if !path
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with('_'))
+                    .is_some_and(|name| name.starts_with('_') || name.starts_with('.'))
                 {
                     directories.push(path);
                 }

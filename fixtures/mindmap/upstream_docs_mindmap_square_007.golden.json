@@ -15,6 +15,7 @@
         "padding": 20,
         "cssClasses": "mindmap-node section-root section--1",
         "cssStyles": [],
+        "centerLabel": true,
         "look": "classic",
         "level": 0,
         "nodeId": "id",

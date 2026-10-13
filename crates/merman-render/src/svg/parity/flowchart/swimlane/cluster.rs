@@ -200,11 +200,17 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
             classes.push_str(class);
         }
     }
+    // The default lane is synthesized after Mermaid prefixes existing node DOM IDs.
+    let cluster_dom_id = if subgraph.is_some() {
+        format!("{}-{}", ctx.diagram_id, lane.id)
+    } else {
+        lane.id.clone()
+    };
     let _ = write!(
         out,
         r#"<g class="{}" id="{}" data-id="{}" data-et="cluster""#,
         escape_xml_display(&classes),
-        escape_xml_display(&lane.id),
+        escape_xml_display(&cluster_dom_id),
         escape_xml_display(&lane.id),
     );
     let data_look = flowchart_config_look(ctx.config);

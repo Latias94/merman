@@ -244,14 +244,9 @@ fn mindmap_viewport_bounds_from_layout(
 }
 
 fn mindmap_model_look(model_look: &str, config: &merman_core::MermaidConfig) -> String {
-    let model_look = model_look.trim();
-    if model_look.is_empty() || model_look == "default" {
-        crate::config::mermaid_config_diagram_look(config)
-            .as_str()
-            .to_string()
-    } else {
-        model_look.to_string()
-    }
+    crate::mindmap::mindmap_node_look(model_look, config.as_value())
+        .as_str()
+        .to_string()
 }
 
 fn mindmap_data_look_attr(model_look: &str, config: &merman_core::MermaidConfig) -> String {
@@ -535,8 +530,8 @@ fn mindmap_css(
         );
         let _ = write!(
             &mut out,
-            r#"#{} [data-look="neo"].mindmap-node.section-{} text{{fill:{};}}"#,
-            diagram_id, section, neo_text_label
+            r#"#{} [data-look="neo"].mindmap-node.section-{} text,#{} [data-look="neo"].mindmap-node.section-{} span{{fill:{};color:{};}}"#,
+            diagram_id, section, diagram_id, section, neo_text_label, neo_text_label
         );
     }
 
@@ -599,8 +594,8 @@ fn mindmap_css(
     );
     let _ = write!(
         &mut out,
-        r#"#{} [data-look="neo"].mindmap-node.section-root .text-inner-tspan{{fill:{};}}"#,
-        diagram_id, neo_root_text
+        r#"#{} [data-look="neo"].mindmap-node.section-root .text-inner-tspan,#{} [data-look="neo"].mindmap-node.section-root span{{fill:{};color:{};}}"#,
+        diagram_id, diagram_id, neo_root_text, neo_root_text
     );
     if use_gradient {
         for i in 0..theme_color_limit {
@@ -663,7 +658,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         out: &mut String,
         spec: MindmapLabelSpec<'_>,
         config: &merman_core::MermaidConfig,
-        math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
+        options: &SvgExecution<'_>,
     ) -> Result<()> {
         let MindmapLabelSpec {
             text,
@@ -674,6 +669,48 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             ty,
             max_node_width_px,
         } = spec;
+
+        if !crate::config::config_effective_html_labels(config.as_value()) {
+            let text_style = crate::mindmap::mindmap_text_style(config.as_value());
+            let source = crate::mindmap::mindmap_svg_label_source(text);
+            let _ = write!(
+                out,
+                r#"<g class="label" style="" transform="translate({}, {})"><rect/><g>"#,
+                fmt(tx),
+                fmt(ty)
+            );
+            if label_bkg {
+                let plain = crate::graph_label::flowchart_label_plain_text_for_layout(
+                    source.as_ref(),
+                    "markdown",
+                    false,
+                );
+                let bbox_y = options
+                    .text_measurer()
+                    .measure_svg_create_text_bbox_y_offset_px(&plain, &text_style);
+                let _ = write!(
+                    out,
+                    r#"<rect class="background" style="stroke: none" x="-2" y="{}" width="{}" height="{}"/>"#,
+                    fmt(bbox_y - 2.0),
+                    fmt(width + 4.0),
+                    fmt(height + 4.0)
+                );
+            } else {
+                out.push_str(r#"<rect class="background" style="stroke: none"/>"#);
+            }
+            // Mindmap has no inherited text-anchor rule. Mermaid 12.2's centerLabel offsets
+            // the left-aligned createText result by half its width for every node shape.
+            crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source(
+                out,
+                source.as_ref(),
+                true,
+                options.text_measurer(),
+                &text_style,
+                Some(max_node_width_px),
+            );
+            out.push_str("</g></g>");
+            return Ok(());
+        }
 
         let div_class = if label_bkg {
             r#" class="labelBkg""#
@@ -736,7 +773,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         }
 
         if crate::math::contains_delimited_math(text) {
-            let html = math_renderer
+            let html = options
+                .math_renderer()
                 .and_then(|renderer| renderer.render_html_label(text, config))
                 .ok_or_else(|| Error::MissingCapability {
                     capability: crate::RenderCapability::Math,
@@ -756,7 +794,21 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         Ok(())
     }
 
-    fn mk_edge_label(out: &mut String, edge_id: &str) {
+    fn mk_edge_label(out: &mut String, edge_id: &str, config: &merman_core::MermaidConfig) {
+        if !crate::config::config_effective_html_labels(config.as_value()) {
+            let _ = write!(
+                out,
+                r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
+                escape_xml(edge_id),
+            );
+            crate::svg::parity::label::write_svg_text_centered_from_create_text_source(
+                out, "", false,
+            );
+            // insertEdgeLabel creates the empty createText label under edgeLabels, then moves
+            // only its returned <text> into .label. The background group stays as a sibling.
+            out.push_str(r#"</g></g><g><rect class="background" style="stroke: none"/></g>"#);
+            return;
+        }
         let _ = write!(
             out,
             r#"<g class="edgeLabel"><g class="label" data-id="{id}" transform="translate(0, 0)"><foreignObject width="0" height="0"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="display: table-cell; white-space: nowrap; line-height: 1.5; max-width: 200px; text-align: center;"><span class="edgeLabel"></span></div></foreignObject></g></g>"#,
@@ -767,7 +819,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let _g_build_ctx = timing.section(&mut timings.build_ctx);
 
     let diagram_id = options.diagram_id_or("mindmap");
-    let math_renderer = options.math_renderer();
 
     let mut node_by_id: std::collections::BTreeMap<String, &crate::model::LayoutNode> =
         std::collections::BTreeMap::new();
@@ -1029,7 +1080,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     out.push_str(r#"<g class="edgeLabels">"#);
     for e in &model.edges {
-        mk_edge_label(&mut out, &e.id);
+        mk_edge_label(&mut out, &e.id, config);
     }
     out.push_str("</g>");
 
@@ -1090,8 +1141,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 );
 
                 // Recover label bbox dimensions from the rendered node size + padding rules.
-                let bbox_w = (w - 8.0 * half_padding).max(1.0);
-                let bbox_h = (h - 2.0 * half_padding).max(1.0);
+                let bbox_w = label_w.unwrap_or_else(|| (w - 8.0 * half_padding).max(0.0));
+                let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * half_padding).max(0.0));
                 let _ = write!(
                     &mut out,
                     r#"<path id="{id}" class="node-bkg node-0" style="" d="{d}"/>"#,
@@ -1118,13 +1169,15 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
             "rect" => {
-                // `rect` mindmap nodes use: w = bbox_w + 2*padding, h = bbox_h + padding.
-                let bbox_w = (w - 2.0 * padding).max(1.0);
-                let bbox_h = (h - padding).max(1.0);
+                let (padding_w, padding_h) = crate::mindmap::mindmap_rect_label_padding_px(
+                    crate::mindmap::mindmap_node_look(&n.look, config.as_value()),
+                );
+                let bbox_w = label_w.unwrap_or_else(|| (w - padding_w).max(0.0));
+                let bbox_h = label_h.unwrap_or_else(|| (h - padding_h).max(0.0));
                 let _ = write!(
                     &mut out,
                     r#"<rect class="basic label-container" style="" x="{x}" y="{y}" width="{w}" height="{h}"/>"#,
@@ -1145,7 +1198,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
             "rounded" => {
@@ -1174,7 +1227,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
             "mindmapCircle" => {
@@ -1184,8 +1237,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     r#"<circle class="basic label-container" style="" r="{r}" cx="0" cy="0"/>"#,
                     r = fmt(r),
                 );
-                // Mermaid sizes the circle diameter using `bbox.width`, but label placement still
-                // uses the true label bbox height (not a square).
+                // Shape bounds enclose the label diagonal, while placement uses its true bbox.
                 let bbox_w = label_w.unwrap_or_else(|| (w - 2.0 * padding).max(1.0));
                 let bbox_h = label_h.unwrap_or_else(|| (h - 2.0 * padding).max(1.0));
                 mk_label(
@@ -1200,7 +1252,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
             "cloud" => {
@@ -1230,7 +1282,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
             "hexagon" => {
@@ -1270,7 +1322,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
             "bang" => {
@@ -1307,7 +1359,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
             _ => {
@@ -1331,7 +1383,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
-                    math_renderer,
+                    options,
                 )?;
             }
         }

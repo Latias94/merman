@@ -107,7 +107,8 @@ impl MindmapSemanticSource {
             return Ok(Ok(MindmapDiagramRenderModel::default()));
         };
 
-        db.assign_sections_controlled(root_id, None, control)?;
+        let color_by_depth = meta.effective_config.get_str("mindmap.colorBy") == Some("depth");
+        db.assign_sections_controlled(root_id, None, color_by_depth, control)?;
 
         let nodes =
             db.to_layout_nodes_for_render_controlled(root_id, &meta.effective_config, control)?;

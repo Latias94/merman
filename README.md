@@ -95,7 +95,7 @@ check its guide for available versions and capabilities.
 
 For the 0.8.0 to 0.9.0 API and output changes, use the [upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). CLI text measurement remains deterministic by default; explicit font files or directories opt into actual-font layout.
 
-Merman follows Mermaid `12.1.0`, with source-backed checks for semantic models, layout, and SVG
+Merman follows Mermaid `12.2.0`, with source-backed checks for semantic models, layout, and SVG
 structure. See the [alignment dashboard] for diagram coverage and documented differences.
 
 Text measurement, browser font fallback, HTML labels, `foreignObject`, and hand-drawn paths can

@@ -5,8 +5,9 @@ use crate::flowchart::{
     FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
     NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes,
     flowchart_effective_text_style_for_node_classes, flowchart_label_metrics_for_layout,
-    flowchart_node_svg_width_mode, flowchart_swimlane_label_rect_text_style,
-    measure_flowchart_svg_label_for_layout, node_layout_dimensions,
+    flowchart_node_label_min_width, flowchart_node_svg_width_mode,
+    flowchart_swimlane_label_rect_text_style, measure_flowchart_svg_label_for_layout,
+    node_layout_dimensions,
 };
 use crate::math::MathRenderer;
 use crate::model::SwimlaneDirection;
@@ -86,6 +87,11 @@ fn measure_content_node(
             math_renderer: ctx.math_renderer,
         },
         svg_width_mode,
+    )
+    .with_label_min_width(
+        label,
+        flowchart_node_label_min_width(label, node.layout_shape.as_deref(), ctx.config),
+        None,
     );
 
     let (width, height) = node_layout_dimensions(NodeLayoutDimensionsRequest {

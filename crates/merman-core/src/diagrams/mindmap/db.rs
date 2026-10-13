@@ -296,7 +296,7 @@ impl MindmapDb {
     #[cfg(test)]
     pub(super) fn assign_sections(&mut self, node_id: i32, section: Option<i32>) {
         let control = OperationControl::new();
-        self.assign_sections_controlled(node_id, section, &control)
+        self.assign_sections_controlled(node_id, section, false, &control)
             .expect("a private parse control cannot be cancelled");
     }
 
@@ -304,11 +304,12 @@ impl MindmapDb {
         &mut self,
         node_id: i32,
         section: Option<i32>,
+        color_by_depth: bool,
         control: &OperationControl,
     ) -> OperationControlResult<()> {
-        let mut stack = vec![(node_id, section)];
+        let mut stack = vec![(node_id, section, 0usize)];
         let mut visited = 0usize;
-        while let Some((node_id, section)) = stack.pop() {
+        while let Some((node_id, section, depth)) = stack.pop() {
             if visited.is_multiple_of(128) {
                 control.checkpoint()?;
             }
@@ -322,6 +323,8 @@ impl MindmapDb {
             let node_level = node.level;
             if node_level == 0 {
                 node.section = None;
+            } else if color_by_depth {
+                node.section = Some(((depth - 1) % MINDMAP_SECTION_COUNT) as i32);
             } else {
                 node.section = section;
             }
@@ -337,7 +340,7 @@ impl MindmapDb {
                 } else {
                     section
                 };
-                stack.push((child_id, child_section));
+                stack.push((child_id, child_section, depth + 1));
             }
         }
         control.checkpoint()

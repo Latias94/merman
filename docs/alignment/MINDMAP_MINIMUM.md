@@ -2,6 +2,15 @@
 
 This document defines the initial, test-driven minimum slice for mindmap parsing in `merman`.
 
+## Mermaid 12.2 behavior
+
+`mindmap.colorBy` defaults to `branch`. `depth` selects colors by parent-child distance from the
+root, independently of indentation width, cycling through eleven non-root sections. Each edge uses
+its child's section. All node shapes center SVG text labels; Neo SVG and HTML labels use matching
+palette colors. Circle geometry uses the label diagonal and the selected look's padding. SVG text
+labels use the shared Markdown text path and do not require a math renderer for literal `$$` text.
+See [ADR-0093](../adr/0093-mermaid-12-2-upstream-transition.md) for source and regression ownership.
+
 ## Supported (current)
 
 - Header:

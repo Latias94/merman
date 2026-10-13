@@ -1,0 +1,32 @@
+---
+config:
+  layout: tidy-tree
+  look: neo
+  theme: default
+  htmlLabels: true
+  mindmap:
+    colorBy: depth
+  themeVariables:
+    cScaleLabel0: '#102030'
+    cScaleLabel1: '#304050'
+    cScaleLabel11: '#506070'
+    gitBranchLabel0: '#fedcba'
+---
+%% Mermaid 12.2 mindmapColors.spec.ts and styles.ts: depth cycle with Neo HTML label colors.
+mindmap
+root((Palette root))
+  d01[Depth 1]
+    d02[Depth 2]
+      d03[Depth 3]
+        d04[Depth 4]
+          d05[Depth 5]
+            d06[Depth 6]
+              d07[Depth 7]
+                d08[Depth 8]
+                  d09[Depth 9]
+                    d10[Depth 10]
+                      d11[Depth 11]
+                        d12[Depth 12]
+                          d13[Depth 13]
+  other[Other branch]
+    leaf[Same depth 2]
