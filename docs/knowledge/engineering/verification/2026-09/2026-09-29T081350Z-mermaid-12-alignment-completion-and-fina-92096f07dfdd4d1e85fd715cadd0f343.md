@@ -158,7 +158,7 @@ source/receipt policy, not a claim of universal pixel identity.
 # Citations
 
 - [Alignment plan](../../../../plans/2026-09-20-1250-refactor-mermaid-12-alignment-plan.md)
-- [Final DOM and review evidence](2026-09-29T073648Z-mermaid-12-admitted-dom-matrix-and-agentflow-registration-recovery-8953d0eb1a314fa49862bf4a59c013ec.md)
+- [Final DOM and review evidence](2026-09-29T073648Z-mermaid-12-admitted-dom-matrix-and-agent-8953d0eb1a314fa49862bf4a59c013ec.md)
 - [Integration history and owner reruns](../../progress/2026-09/2026-09-24T035200Z-mermaid-12-integration-closeout.md)
 - [Editor/dispatch checkpoint](../../progress/2026-09/2026-09-20T211650Z-mermaid-12-editor-syntax-and-layout-dispatch-checkpoint.md)
 - [Binding and Playground checkpoint](../../progress/2026-09/2026-09-21T071341Z-mermaid-12-playground-and-binding-verification.md)

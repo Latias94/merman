@@ -353,7 +353,7 @@ Measure affected WASM/package sizes against existing budgets and a small represe
 ## Completion — September 29, 2026
 
 U1–U15 are implemented and R1–R12 acceptance evidence is reconciled in the
-[completion record](../knowledge/engineering/verification/2026-09/2026-09-29T081350Z-mermaid-12-alignment-completion-and-final-artifact-admission-92096f07dfdd4d1e85fd715cadd0f343.md).
+[completion record](../knowledge/engineering/verification/2026-09/2026-09-29T081350Z-mermaid-12-alignment-completion-and-fina-92096f07dfdd4d1e85fd715cadd0f343.md).
 The final 37-family admitted DOM gate, freshly rebuilt Web/Playground consumers, all
 six existing WASM size budgets, and bounded default-ELK runtime controls pass.
 Earlier pending parity/size entries in historical checkpoints are superseded by that

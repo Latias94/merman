@@ -170,6 +170,9 @@ jobs:
       - name: Check Rust formatting
         run: cargo fmt --all --check
 
+      - name: Check Windows checkout path lengths
+        run: python3 scripts/check_path_lengths.py
+
       - name: Verify release version projections
         run: python3 scripts/release-version.py
 

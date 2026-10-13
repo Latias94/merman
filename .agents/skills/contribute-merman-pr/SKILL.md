@@ -40,6 +40,7 @@ check is needed.
 Run:
 
 - `git diff --check` for every PR;
+- `python scripts/check_path_lengths.py` after staging added or renamed paths; keep detailed titles inside documentation;
 - `cargo fmt --all -- --check` when Rust, Cargo manifests, or Rust-generated sources changed;
 - focused `cargo nextest run` for affected crates/tests, using `--locked` when the workflow does;
 - `python3 -m py_compile` for changed Python scripts and the narrowest relevant Python unit tests.

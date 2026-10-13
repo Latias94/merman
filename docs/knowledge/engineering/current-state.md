@@ -50,6 +50,6 @@ status: active
 
 - [Mermaid 12 integration closeout checkpoint](progress/2026-09/2026-09-24T035200Z-mermaid-12-integration-closeout.md)
 
-- [September 29 admitted DOM gate and recovery evidence](verification/2026-09/2026-09-29T073648Z-mermaid-12-admitted-dom-matrix-and-agentflow-registration-recovery-8953d0eb1a314fa49862bf4a59c013ec.md)
+- [September 29 admitted DOM gate and recovery evidence](verification/2026-09/2026-09-29T073648Z-mermaid-12-admitted-dom-matrix-and-agent-8953d0eb1a314fa49862bf4a59c013ec.md)
 
-- [Mermaid 12 completion and final artifacts](verification/2026-09/2026-09-29T081350Z-mermaid-12-alignment-completion-and-final-artifact-admission-92096f07dfdd4d1e85fd715cadd0f343.md)
+- [Mermaid 12 completion and final artifacts](verification/2026-09/2026-09-29T081350Z-mermaid-12-alignment-completion-and-fina-92096f07dfdd4d1e85fd715cadd0f343.md)
