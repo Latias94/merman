@@ -31,20 +31,57 @@ fn render_with_pipeline(name: &str, source: &str, pipeline: Option<SvgPipeline>)
     svg.into_parts().0
 }
 
+fn fallback_content<'a, 'input>(
+    instance: roxmltree::Node<'a, 'input>,
+) -> roxmltree::Node<'a, 'input> {
+    let reference = instance
+        .children()
+        .find(|node| node.has_tag_name("use"))
+        .and_then(|node| node.attribute("href"))
+        .expect("fallback instance references its definition");
+    let id = reference
+        .strip_prefix('#')
+        .expect("same-document fallback reference");
+    let definition = instance
+        .document()
+        .descendants()
+        .find(|node| node.attribute("id") == Some(id))
+        .expect("fallback definition exists");
+    assert!(
+        definition
+            .parent()
+            .is_some_and(|node| node.has_tag_name("defs"))
+    );
+    definition
+}
+
 fn fallback_text_style(svg: &str, label: &str) -> String {
     let document = roxmltree::Document::parse(svg).expect("resvg-safe output should be XML");
-    document
+    for instance in document
         .descendants()
-        .find(|node| {
-            node.has_tag_name("text")
-                && node.ancestors().any(|ancestor| {
-                    ancestor.attribute("data-merman-foreignobject") == Some("fallback")
-                })
-                && node.text().is_some_and(|text| text.trim() == label)
-        })
-        .and_then(|node| node.attribute("style"))
-        .map(str::to_owned)
-        .unwrap_or_else(|| panic!("expected fallback text {label:?}: {svg}"))
+        .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+    {
+        let content = fallback_content(instance);
+        if let Some(text) = content.descendants().find(|node| {
+            node.has_tag_name("text") && node.text().is_some_and(|text| text.trim() == label)
+        }) {
+            assert_eq!(
+                text.attribute("class"),
+                Some("merman-foreignobject-fallback-text")
+            );
+            assert_eq!(
+                text.attribute("data-merman-source-classes"),
+                instance.attribute("data-merman-source-classes"),
+                "definition typography is associated with its original source instance"
+            );
+            assert!(instance.attribute("data-merman-source-classes").is_some());
+            return text
+                .attribute("style")
+                .expect("explicit resolved typography")
+                .to_string();
+        }
+    }
+    panic!("expected fallback text {label:?}: {svg}")
 }
 
 fn assert_usvg_parseable(svg: &str) {

@@ -90,6 +90,30 @@ const FALLBACK_OWNER_REPRESENTATIVES: &[(&str, &str)] = &[
     ),
 ];
 
+fn fallback_content<'a, 'input>(
+    instance: roxmltree::Node<'a, 'input>,
+) -> roxmltree::Node<'a, 'input> {
+    let reference = instance
+        .children()
+        .find(|node| node.has_tag_name("use"))
+        .and_then(|node| node.attribute("href"))
+        .expect("fallback instance references its definition");
+    let id = reference
+        .strip_prefix('#')
+        .expect("same-document fallback reference");
+    let definition = instance
+        .document()
+        .descendants()
+        .find(|node| node.attribute("id") == Some(id))
+        .expect("fallback definition exists");
+    assert!(
+        definition
+            .parent()
+            .is_some_and(|node| node.has_tag_name("defs"))
+    );
+    definition
+}
+
 fn workspace_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("..")
 }
@@ -1211,17 +1235,37 @@ fn block_edge_label_fallback_keeps_the_real_mermaid_background_owner() {
         .find(|node| {
             node.has_tag_name("g")
                 && node.attribute("data-merman-foreignobject") == Some("fallback")
-                && node.descendants().any(|child| {
+                && fallback_content(*node).descendants().any(|child| {
                     child
                         .text()
                         .is_some_and(|text| text.contains("Wide edge label"))
                 })
         })
         .unwrap_or_else(|| panic!("missing Block edge-label fallback group: {svg}"));
-    let fill = fallback
+    assert!(
+        fallback
+            .attribute("data-merman-source-classes")
+            .is_some_and(|classes| classes.split_whitespace().any(|class| class == "edgeLabel"))
+    );
+    let content = fallback_content(fallback);
+    let viewport = content
         .children()
-        .find(|node| node.has_tag_name("rect"))
-        .and_then(|node| node.attribute("fill"))
+        .find(|node| node.has_tag_name("svg"))
+        .expect("label-local viewport");
+    let background = viewport
+        .children()
+        .find(|node| node.has_tag_name("rect") && node.attribute("fill") != Some("none"))
+        .unwrap_or_else(|| panic!("missing Block edge-label background rect: {svg}"));
+    assert_eq!(background.attribute("x"), Some("0"));
+    assert_eq!(background.attribute("y"), Some("0"));
+    for dimension in ["width", "height"] {
+        assert_eq!(
+            background.attribute(dimension),
+            viewport.attribute(dimension)
+        );
+    }
+    let fill = background
+        .attribute("fill")
         .unwrap_or_else(|| panic!("missing Block edge-label background rect: {svg}"));
 
     assert!(

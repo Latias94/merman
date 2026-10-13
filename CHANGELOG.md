@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## Unreleased
+
+- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated
+  Swimlane titles in PNG, JPEG, and PDF exports.
+  [#200](https://github.com/Latias94/merman/issues/200)
+
 ## [0.9.0] - 2026-10-12
 
 For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/release/V080_TO_V090_UPGRADE_GUIDE.md). Typst users can also read the [0.5.0 package changelog](distribution/typst/merman/CHANGELOG.md); that package has its own release version.

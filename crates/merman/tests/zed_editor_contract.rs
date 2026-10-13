@@ -142,6 +142,80 @@ fn render_zed_with_pipeline(name: &str, source: &str, pipeline: &SvgPipeline) ->
     svg.into_parts().0
 }
 
+fn numeric_value_is_finite(value: &str) -> bool {
+    value
+        .split(|character: char| {
+            !character.is_ascii_alphanumeric() && !matches!(character, '.' | '+' | '-')
+        })
+        .filter(|token| !token.is_empty())
+        .all(|token| {
+            let number = [
+                "px", "rem", "em", "pt", "pc", "cm", "mm", "in", "ex", "deg", "rad",
+            ]
+            .into_iter()
+            .find_map(|unit| token.strip_suffix(unit))
+            .unwrap_or(token);
+            number.parse::<f64>().map_or(true, f64::is_finite)
+        })
+}
+
+fn visual_attribute_is_finite(name: &str, value: &str) -> bool {
+    match name {
+        "d" | "transform" => {
+            let lower = value.to_ascii_lowercase();
+            !lower.contains("nan") && !lower.contains("inf")
+        }
+        "fill" | "stroke" => {
+            !value.contains('(')
+                || value.trim_start().starts_with("url(")
+                || numeric_value_is_finite(value)
+        }
+        "style" => value
+            .split(';')
+            .filter_map(|declaration| declaration.split_once(':'))
+            .all(|(property, value)| match property.trim() {
+                "transform" => visual_attribute_is_finite("transform", value),
+                "fill" | "stroke" => visual_attribute_is_finite(property.trim(), value),
+                "font-size" | "line-height" | "font-weight" | "letter-spacing" | "word-spacing"
+                | "opacity" | "fill-opacity" | "stroke-opacity" | "stroke-width"
+                | "stroke-dasharray" | "stroke-dashoffset" | "width" | "height" | "x" | "y" => {
+                    numeric_value_is_finite(value)
+                }
+                _ => true,
+            }),
+        _ => numeric_value_is_finite(value),
+    }
+}
+
+#[test]
+fn zed_numeric_guard_checks_values_without_treating_identifiers_as_numbers() {
+    assert!(visual_attribute_is_finite(
+        "style",
+        "dominant-baseline:central;alignment-baseline:central;font-family:Banana,Infinity;fill:url(#infinity);stroke:banana;font-size:16px"
+    ));
+    assert!(visual_attribute_is_finite("fill", "url(#nan)"));
+    assert!(visual_attribute_is_finite("stroke", "banana"));
+    for (attribute, value) in [
+        ("d", "MNaN 0L1 2"),
+        ("d", "M0 0LInf 2"),
+        ("transform", "matrix(1 0 0 1 Infinity 0)"),
+        ("style", "font-size:NaNpx"),
+        ("style", "line-height:NaNrem"),
+        ("style", "opacity:Infinity"),
+        ("style", "stroke-width:Inf"),
+        ("style", "fill:rgb(0,NaN,0)"),
+        ("width", "Inf"),
+        ("height", "1e999"),
+        ("height", "1e+999"),
+        ("x", "NaN"),
+    ] {
+        assert!(
+            !visual_attribute_is_finite(attribute, value),
+            "{attribute}={value}"
+        );
+    }
+}
+
 fn assert_zed_safe_svg(name: &str, svg: &str) {
     assert!(svg.starts_with("<svg"), "{name}: expected SVG output");
     let document = roxmltree::Document::parse(svg)
@@ -208,9 +282,8 @@ fn assert_zed_safe_svg(name: &str, svg: &str) {
             if !is_visual_attribute {
                 continue;
             }
-            let lower = attribute.value().to_ascii_lowercase();
             assert!(
-                !lower.contains("nan") && !lower.contains("infinity"),
+                visual_attribute_is_finite(attribute.name(), attribute.value()),
                 "{name}: non-finite visual attribute {}={:?}",
                 attribute.name(),
                 attribute.value()
@@ -233,16 +306,40 @@ fn inject_css_after_merman(svg: &str, css: &str) -> String {
     composed
 }
 
+fn fallback_content<'a, 'input>(group: roxmltree::Node<'a, 'input>) -> roxmltree::Node<'a, 'input> {
+    let instance = group
+        .children()
+        .find(|node| node.has_tag_name("use"))
+        .expect("fallback instance must reference its isolated content");
+    let id = instance
+        .attribute("href")
+        .and_then(|href| href.strip_prefix('#'))
+        .expect("fallback use must have a local href");
+    let mut definitions = group
+        .document()
+        .descendants()
+        .filter(|node| node.attribute("id") == Some(id));
+    let content = definitions.next().expect("fallback href must resolve");
+    assert!(
+        definitions.next().is_none(),
+        "fallback content id must be unique"
+    );
+    assert!(
+        content.ancestors().any(|node| node.has_tag_name("defs")
+            && node.parent() == Some(group.document().root_element())),
+        "fallback content must live in root definitions"
+    );
+    content
+}
+
 fn fallback_text_style(svg: &str, label: &str) -> String {
     let document = roxmltree::Document::parse(svg).expect("valid Zed SVG XML");
     document
         .descendants()
+        .filter(|group| group.attribute("data-merman-foreignobject") == Some("fallback"))
+        .flat_map(|group| fallback_content(group).descendants())
         .find(|node| {
-            node.has_tag_name("text")
-                && node.ancestors().any(|ancestor| {
-                    ancestor.attribute("data-merman-foreignobject") == Some("fallback")
-                })
-                && node.text().is_some_and(|text| text.trim() == label)
+            node.has_tag_name("text") && node.text().is_some_and(|text| text.trim() == label)
         })
         .and_then(|node| node.attribute("style"))
         .map(str::to_owned)
@@ -407,13 +504,17 @@ fn zed_like_edge_label_fallback_uses_theme_background() {
     let fallback_group = document.descendants().find(|node| {
         node.has_tag_name("g")
             && node.attribute("data-merman-foreignobject") == Some("fallback")
-            && node.descendants().any(|descendant| {
+            && fallback_content(*node).descendants().any(|descendant| {
                 descendant.has_tag_name("text")
                     && descendant.text().is_some_and(|text| text.trim() == "Yes")
             })
     });
     let rect_fill = fallback_group
-        .and_then(|group| group.children().find(|child| child.has_tag_name("rect")))
+        .and_then(|group| {
+            fallback_content(group)
+                .descendants()
+                .find(|child| child.has_tag_name("rect") && child.attribute("fill") != Some("none"))
+        })
         .and_then(|rect| rect.attribute("fill"));
     assert_eq!(
         rect_fill,
@@ -520,7 +621,7 @@ fn zed_like_pipeline_decodes_double_escaped_entities_in_fallback_text() {
         .descendants()
         .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
         .map(|group| {
-            let rows: Vec<_> = group
+            let rows: Vec<_> = fallback_content(group)
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
                 .map(|node| {
