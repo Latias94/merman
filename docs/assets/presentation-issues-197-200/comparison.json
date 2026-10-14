@@ -1,0 +1,748 @@
+{
+  "generated_at": "2026-10-14T01:15:44.083229+00:00",
+  "before": {
+    "revision": "19091f004d0f234d4fd59a64f0ed7cd04bfa4cdd",
+    "capture_binary_sha256": "d9da51c0411da8403ac15836fd9bca133244898d7f059b45e765273fafc8a8a1",
+    "cli_binary_sha256": "f4f0642396f4bbd8855a208feca32c21a5d838e844d5239fef0fad79ff928870"
+  },
+  "after": {
+    "revision": "b99388ffc63fe5dcf8cb761ad57313a58f66bdb3",
+    "capture_binary_sha256": "67723c6cf1b0d1be19f5eae0aec7988b413e62a92c9d5d85a6373bbcb5aebf6e",
+    "cli_binary_sha256": "5dd1d77ca2f182c58a801e035ac14fbbdc9b3e755e1f0f1ac703b6dba011d3ba"
+  },
+  "host": "Windows-11-10.0.26300-SP0",
+  "rustc": "rustc 1.95.0 (59807616e 2026-04-14)",
+  "cargo_lock_sha256": "0ffb737ac1ad0aa9cff246fefe73e3f22e702606fec46df04b579d2467ce2168",
+  "capture_features": [
+    "all-diagrams",
+    "svg",
+    "png",
+    "layout-cytoscape"
+  ],
+  "cli_features": "--all-features",
+  "measurement": "deterministic on both revisions",
+  "codec_fonts": "Existing resvg system font discovery on this Windows host; Inter is requested by the issue options but is not bundled.",
+  "composition": {
+    "pillow": "11.3.0",
+    "heading_font": "Segoe UI",
+    "heading_font_sha256": "8134dbcd09e7b123c9a7f229d49cffbcb01352cc72ea5e1076b65d0dca9f73cd",
+    "pair_scaling": "Both sides share min(1, panel_width / max_source_width); crops precede scaling; no recoloring or pixel retouching."
+  },
+  "notes": [
+    "Original issue sources and role values are retained. PNG-only raster.scale=2 is applied to both revisions. The SVG capture omits the PNG-only raster group.",
+    "#200 uses the exact original CLI commands, with file paths changed only.",
+    "These are review illustrations, not golden fixtures. Font/HTML bounds residuals remain visible in the complete outputs."
+  ],
+  "cases": [
+    {
+      "issue": 197,
+      "url": "https://github.com/Latias94/merman/issues/197",
+      "family": "C4Context",
+      "variant": "light",
+      "source_file": "issue-197-C4Context.mmd",
+      "source": "C4Context\ntitle System Context diagram\nPerson(customerA, \"Customer\", \"A customer\")\nSystem(sys, \"Banking System\", \"Does banking\")\nRel(customerA, sys, \"Uses\")\n",
+      "options_file": "issue-197-light.json",
+      "original_issue_options": {
+        "presentation": {
+          "theme": {
+            "appearance": "light",
+            "roles": {
+              "canvas": "#ffffff",
+              "surface": "#f4f4f5",
+              "text": "#1f2937",
+              "border": "#64748b",
+              "line": "#334155"
+            },
+            "series_palette": [
+              "#dbeafe",
+              "#fef3c7",
+              "#dcfce7",
+              "#fce7f3"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#ffffff"
+        }
+      },
+      "options": {
+        "presentation": {
+          "theme": {
+            "appearance": "light",
+            "roles": {
+              "canvas": "#ffffff",
+              "surface": "#f4f4f5",
+              "text": "#1f2937",
+              "border": "#64748b",
+              "line": "#334155"
+            },
+            "series_palette": [
+              "#dbeafe",
+              "#fef3c7",
+              "#dcfce7",
+              "#fce7f3"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#ffffff"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-197-C4Context-light",
+      "before": {
+        "png": "before/issue-197-C4Context-light.png",
+        "png_pixels": [
+          1664,
+          1016
+        ],
+        "png_sha256": "2cbc8c879bdce92736d7dad4b0686ec1ce75dcf5706c748cbe405510361ffe9e",
+        "svg": "before/issue-197-C4Context-light.svg",
+        "svg_sha256": "3b73807deec9a47b91183680e4cb4bce30dafbc7383f243d9a17b34cfbcd1b01"
+      },
+      "capture_surface": "merman-bindings-core::render_svg / render_png",
+      "after": {
+        "png": "after/issue-197-C4Context-light.png",
+        "png_pixels": [
+          1664,
+          1016
+        ],
+        "png_sha256": "eb3719e8d4645a392bbbaa935e501c2f4af1c9509e85b44f489db14d6fcf7122",
+        "svg": "after/issue-197-C4Context-light.svg",
+        "svg_sha256": "c9894d0171497f2bb63326723f42ea195156b113fbf6aebf59fb8e253f83c438"
+      }
+    },
+    {
+      "issue": 197,
+      "url": "https://github.com/Latias94/merman/issues/197",
+      "family": "C4Context",
+      "variant": "dark",
+      "source_file": "issue-197-C4Context.mmd",
+      "source": "C4Context\ntitle System Context diagram\nPerson(customerA, \"Customer\", \"A customer\")\nSystem(sys, \"Banking System\", \"Does banking\")\nRel(customerA, sys, \"Uses\")\n",
+      "options_file": "issue-197-dark.json",
+      "original_issue_options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#dbeafe",
+              "#fef3c7",
+              "#dcfce7",
+              "#fce7f3"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        }
+      },
+      "options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#dbeafe",
+              "#fef3c7",
+              "#dcfce7",
+              "#fce7f3"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-197-C4Context-dark",
+      "before": {
+        "png": "before/issue-197-C4Context-dark.png",
+        "png_pixels": [
+          1664,
+          1016
+        ],
+        "png_sha256": "5a3e8456cd0b74e9060eecf339f9d7f0a49cbc6b0b7d7c27b277733e31a2d657",
+        "svg": "before/issue-197-C4Context-dark.svg",
+        "svg_sha256": "c24dd34de00a258f76087254d8bb301d600dc73e44dfaaa9f59d2fb89ef49550"
+      },
+      "capture_surface": "merman-bindings-core::render_svg / render_png",
+      "after": {
+        "png": "after/issue-197-C4Context-dark.png",
+        "png_pixels": [
+          1664,
+          1016
+        ],
+        "png_sha256": "007f17a3f6dd3a37754bbaa458dd487e4757b611c26965747fec7e454d03c464",
+        "svg": "after/issue-197-C4Context-dark.svg",
+        "svg_sha256": "bcdca8f6cd37bc104374a7644e63aa6d49c24331ad876692a646f5ce2b630fed"
+      }
+    },
+    {
+      "issue": 198,
+      "url": "https://github.com/Latias94/merman/issues/198",
+      "family": "zenuml",
+      "variant": "dark",
+      "source_file": "issue-198-zenuml.mmd",
+      "source": "zenuml\n  Alice->Bob: Hello\n  Bob-->Alice: Reply\n",
+      "options_file": "issue-198-dark.json",
+      "original_issue_options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            }
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        }
+      },
+      "options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            }
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-198-zenuml-dark",
+      "before": {
+        "png": "before/issue-198-zenuml-dark.png",
+        "png_pixels": [
+          444,
+          422
+        ],
+        "png_sha256": "4b9beaf35b21ea30bae673e98eaebb47f59ff33c3cf6d89cb98c706c84b4a5a0",
+        "svg": "before/issue-198-zenuml-dark.svg",
+        "svg_sha256": "e157970897d4da8f3b4c54989a40ad04c474691fd0565ddf8eae56bdc772013d"
+      },
+      "capture_surface": "merman-bindings-core::render_svg / render_png",
+      "after": {
+        "png": "after/issue-198-zenuml-dark.png",
+        "png_pixels": [
+          444,
+          422
+        ],
+        "png_sha256": "215c75cc200d4e242189d64e3046d9d9b36b15ae0af7af397f2f86b1f8a11e1e",
+        "svg": "after/issue-198-zenuml-dark.svg",
+        "svg_sha256": "4334080be7d3c7f2d5b75786be9139db6734f8fb0e03f061e90bb789874969b7"
+      }
+    },
+    {
+      "issue": 199,
+      "url": "https://github.com/Latias94/merman/issues/199",
+      "family": "wardley-beta",
+      "variant": "dark",
+      "source_file": "issue-199-wardley.mmd",
+      "source": "wardley-beta\ntitle Tea Shop\nanchor Business [0.95, 0.63]\ncomponent Cup of Tea [0.79, 0.61]\ncomponent Water [0.38, 0.82]\nBusiness -> Cup of Tea\nCup of Tea -> Water\n",
+      "options_file": "issue-199-dark.json",
+      "original_issue_options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        }
+      },
+      "options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-199-wardley-dark",
+      "before": {
+        "png": "before/issue-199-wardley-dark.png",
+        "png_pixels": [
+          1800,
+          1200
+        ],
+        "png_sha256": "6593c4fbf49e4f4c88910922e080461ca4eb38e887d4187e9200779aa521a204",
+        "svg": "before/issue-199-wardley-dark.svg",
+        "svg_sha256": "0102ffed346a770e5d248087c9d8d38b7ae17038d6e7ccc11f95f8b3c5df3f3c"
+      },
+      "capture_surface": "merman-bindings-core::render_svg / render_png",
+      "after": {
+        "png": "after/issue-199-wardley-dark.png",
+        "png_pixels": [
+          1800,
+          1200
+        ],
+        "png_sha256": "a1d0c1681b401ca11e494e9edfe9790672f0a91216f770ba902f18ab652b39d4",
+        "svg": "after/issue-199-wardley-dark.svg",
+        "svg_sha256": "89c80f8cbb3300503fe71e7d0d829f350e3e7d3bb61030abf787191a6ecd75ad"
+      }
+    },
+    {
+      "issue": 199,
+      "url": "https://github.com/Latias94/merman/issues/199",
+      "family": "gantt",
+      "variant": "dark",
+      "source_file": "issue-199-gantt.mmd",
+      "source": "gantt\n  title A Gantt Diagram\n  dateFormat  YYYY-MM-DD\n  section A\n  Task1 :a1, 2024-01-01, 1d\n",
+      "options_file": "issue-199-dark.json",
+      "original_issue_options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        }
+      },
+      "options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-199-gantt-dark",
+      "before": {
+        "png": "before/issue-199-gantt-dark.png",
+        "png_pixels": [
+          1600,
+          248
+        ],
+        "png_sha256": "fc9b3bbf26377869153cf79bce39cc3e595e81a2206f0d9a400efb516a098668",
+        "svg": "before/issue-199-gantt-dark.svg",
+        "svg_sha256": "0e880e9b931a17a79822acf13ea916889dfd01beb95c45d7c71426a8a324ec35"
+      },
+      "capture_surface": "merman-bindings-core::render_svg / render_png",
+      "after": {
+        "png": "after/issue-199-gantt-dark.png",
+        "png_pixels": [
+          1600,
+          248
+        ],
+        "png_sha256": "38554fac11f7775bfd9d6d2a72a3c909d86e19b6f2bd85cc2fa4dfbc7933a90b",
+        "svg": "after/issue-199-gantt-dark.svg",
+        "svg_sha256": "fadc1d53ac7f17375fd471e2b18ae5de542f93ae694c043f0fe1e609607c753c"
+      }
+    },
+    {
+      "issue": 199,
+      "url": "https://github.com/Latias94/merman/issues/199",
+      "family": "xychart",
+      "variant": "dark",
+      "source_file": "issue-199-xychart.mmd",
+      "source": "xychart\n  line [10, 30, 20]\n",
+      "options_file": "issue-199-dark.json",
+      "original_issue_options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        }
+      },
+      "options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-199-xychart-dark",
+      "before": {
+        "png": "before/issue-199-xychart-dark.png",
+        "png_pixels": [
+          1400,
+          1000
+        ],
+        "png_sha256": "fdbfc2ec6b927e1c6d95ed1f0b6814bdbdfd4b7c19e9a89722e5613ad394834f",
+        "svg": "before/issue-199-xychart-dark.svg",
+        "svg_sha256": "e81f38c61b180f55df7d08c9e40ae9a2eb971729581a5f7a1588c839c19695bf"
+      },
+      "capture_surface": "merman-bindings-core::render_svg / render_png",
+      "after": {
+        "png": "after/issue-199-xychart-dark.png",
+        "png_pixels": [
+          1400,
+          1000
+        ],
+        "png_sha256": "5a18789215a3960022ebc90c854d674f4d64dcafa9a34c20cd6ee26fc66ec801",
+        "svg": "after/issue-199-xychart-dark.svg",
+        "svg_sha256": "e827b7162b6596473458868f3a9bc6c4a0935b666b2b3bac1dcd59921870c281"
+      }
+    },
+    {
+      "issue": 199,
+      "url": "https://github.com/Latias94/merman/issues/199",
+      "family": "mindmap",
+      "variant": "dark",
+      "source_file": "issue-199-mindmap.mmd",
+      "source": "mindmap\nroot\n  child[Square]\n    plain\n    with icon\n    ::icon(mdi mdi-fire)\n",
+      "options_file": "issue-199-dark.json",
+      "original_issue_options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        }
+      },
+      "options": {
+        "presentation": {
+          "theme": {
+            "appearance": "dark",
+            "font_family": "Inter, sans-serif",
+            "roles": {
+              "canvas": "#1e1f22",
+              "surface": "#2b2d30",
+              "text": "#dfe1e5",
+              "border": "#6f737a",
+              "line": "#a8adbd"
+            },
+            "series_palette": [
+              "#1e3a5f",
+              "#4a3410",
+              "#183d2a",
+              "#4a1d3a"
+            ]
+          }
+        },
+        "svg": {
+          "pipeline": "resvg-safe",
+          "root_background_color": "#1e1f22"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-199-mindmap-dark",
+      "before": {
+        "png": "before/issue-199-mindmap-dark.png",
+        "png_pixels": [
+          584,
+          450
+        ],
+        "png_sha256": "7a55832e84afdf6f1aed8eab45a108d7b092061c06809639b3fca040272f670b",
+        "svg": "before/issue-199-mindmap-dark.svg",
+        "svg_sha256": "cc1e10cca138b12fb31c054f942a04c84af3ca55ee50447e99a49b58b21cc1de"
+      },
+      "capture_surface": "merman-bindings-core::render_svg / render_png",
+      "after": {
+        "png": "after/issue-199-mindmap-dark.png",
+        "png_pixels": [
+          584,
+          450
+        ],
+        "png_sha256": "8a7d1e82eaf43a2d33063355bf8d9d17f5ddf79a897affe73936c13649f2aede",
+        "svg": "after/issue-199-mindmap-dark.svg",
+        "svg_sha256": "df2e6ffd86b10de33a095816c8b524394d88ff0501bd91a5e2de423a16f38da1"
+      }
+    },
+    {
+      "issue": 200,
+      "url": "https://github.com/Latias94/merman/issues/200",
+      "family": "swimlane-beta",
+      "variant": "default",
+      "source_file": "issue-200-swimlane.mmd",
+      "source": "swimlane-beta LR\n  subgraph Customer\n    request[Request service]\n    receive[Receive update]\n  end\n\n  subgraph Support\n    triage[Triage request]\n    answer[Send answer]\n  end\n\n  subgraph Engineering\n    investigate[Investigate issue]\n    fix[Prepare fix]\n  end\n\n  request --> triage\n  triage -->|Known issue| answer\n  triage -->|Needs code change| investigate\n  investigate --> fix --> answer\n  answer --> receive\n",
+      "options_file": "issue-200-default.json",
+      "original_issue_options": {
+        "svg": {
+          "pipeline": "resvg-safe"
+        }
+      },
+      "options": {
+        "svg": {
+          "pipeline": "resvg-safe"
+        },
+        "raster": {
+          "scale": 2
+        }
+      },
+      "stem": "issue-200-swimlane-default",
+      "before": {
+        "png": "before/issue-200-swimlane-default.png",
+        "png_pixels": [
+          2454,
+          1280
+        ],
+        "png_sha256": "5567fc8c287608f656027fc28615143cdfb7f8194f2f1bfbcb7c17c43f41c3a7",
+        "svg": "before/issue-200-swimlane-default.svg",
+        "svg_sha256": "ccdb28d422cf6c723b98be753d97d6f3b4b5be36a3d3632bd51af1153bb87df4"
+      },
+      "capture_surface": "CLI render",
+      "after": {
+        "png": "after/issue-200-swimlane-default.png",
+        "png_pixels": [
+          2454,
+          1280
+        ],
+        "png_sha256": "b40f1267724e4829b701100e874902503a55fac900345db23a6260b17b20e7f8",
+        "svg": "after/issue-200-swimlane-default.svg",
+        "svg_sha256": "6ea2b305623692bbeb5f66ef01084f16126bbd4afb4a739fb0af472ca708174c"
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "issue": 197,
+      "title": "#197  C4 labels follow the host theme",
+      "rows": [
+        {
+          "stem": "issue-197-C4Context-light",
+          "caption": "Light theme \u2014 person and system labels",
+          "crop": [
+            240,
+            420,
+            1460,
+            870
+          ]
+        },
+        {
+          "stem": "issue-197-C4Context-dark",
+          "caption": "Dark theme \u2014 relationship label and line",
+          "crop": [
+            240,
+            420,
+            1460,
+            870
+          ]
+        }
+      ]
+    },
+    {
+      "issue": 198,
+      "title": "#198  ZenUML applies the dark host theme",
+      "rows": [
+        {
+          "stem": "issue-198-zenuml-dark",
+          "caption": "Complete output \u2014 frame, participants, messages and text"
+        }
+      ]
+    },
+    {
+      "issue": 199,
+      "title": "#199  Host styles reach the remaining diagram families",
+      "rows": [
+        {
+          "stem": "issue-199-wardley-dark",
+          "caption": "Wardley \u2014 Business anchor label and evolution dividers (detail)",
+          "crop": [
+            300,
+            80,
+            1450,
+            580
+          ]
+        },
+        {
+          "stem": "issue-199-gantt-dark",
+          "caption": "Gantt \u2014 axis domain and tick lines"
+        },
+        {
+          "stem": "issue-199-xychart-dark",
+          "caption": "XY Chart \u2014 host font and themed axes",
+          "evidence": "SVG root font-family: \"trebuchet ms\",verdana,arial,sans-serif  ->  Inter,sans-serif"
+        },
+        {
+          "stem": "issue-199-mindmap-dark",
+          "caption": "Mindmap \u2014 the background behind the icon label (detail)",
+          "crop": [
+            340,
+            0,
+            584,
+            112
+          ]
+        }
+      ]
+    },
+    {
+      "issue": 200,
+      "title": "#200  PNG export preserves rotated Swimlane headers",
+      "rows": [
+        {
+          "stem": "issue-200-swimlane-default",
+          "caption": "Complete CLI export \u2014 identical input and deterministic measurement"
+        },
+        {
+          "stem": "issue-200-swimlane-default",
+          "caption": "Support header beside Triage request (detail)",
+          "crop": [
+            0,
+            480,
+            650,
+            800
+          ]
+        }
+      ]
+    }
+  ],
+  "capture_cargo_lock_sha256": "bba3b0331830c47640dffca3db5f61af85014ac3085a1812ea1fb4f4d3373f75"
+}

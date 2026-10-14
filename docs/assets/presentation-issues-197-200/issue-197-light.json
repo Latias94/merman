@@ -1,0 +1,27 @@
+{
+  "presentation": {
+    "theme": {
+      "appearance": "light",
+      "roles": {
+        "canvas": "#ffffff",
+        "surface": "#f4f4f5",
+        "text": "#1f2937",
+        "border": "#64748b",
+        "line": "#334155"
+      },
+      "series_palette": [
+        "#dbeafe",
+        "#fef3c7",
+        "#dcfce7",
+        "#fce7f3"
+      ]
+    }
+  },
+  "svg": {
+    "pipeline": "resvg-safe",
+    "root_background_color": "#ffffff"
+  },
+  "raster": {
+    "scale": 2
+  }
+}
