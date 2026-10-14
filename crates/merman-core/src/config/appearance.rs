@@ -231,6 +231,30 @@ mod tests {
     }
 
     #[test]
+    fn equal_authored_appearance_claims_root_and_scoped_values_without_json_copy() {
+        let source = MermaidConfig::from_value(json!({
+            "flowchart": {"theme": "dark", "look": "classic", "layout": "dagre"},
+        }));
+        let empty = MermaidConfig::empty_object();
+        let defaults = MermaidConfig::from_value(json!({"theme": "default"}));
+        let decision =
+            AppearanceDecision::resolve("flowchart-v2", &source, &empty, None, &defaults);
+        let original = MermaidConfig::from_value(json!({
+            "theme": "dark", "look": "classic", "layout": "dagre",
+            "flowchart": {"theme": "dark", "look": "classic", "layout": "dagre"},
+        }));
+        let mut effective = original.clone();
+        let (_, work) = super::super::measure_config_work(|| decision.apply_to(&mut effective));
+        assert_eq!(effective.as_value(), original.as_value());
+        for key in APPEARANCE_KEYS {
+            assert!(effective.explicit_config_owns_path(key));
+            assert!(effective.explicit_config_owns_path(&format!("flowchart.{key}")));
+            assert!(!original.explicit_config_owns_path(key));
+        }
+        assert_eq!(work.json_cow_copies, 0, "{work:?}");
+    }
+
+    #[test]
     fn materialization_plan_preserves_null_and_scoped_selection_rules() {
         let empty = MermaidConfig::empty_object();
         let defaults = MermaidConfig::from_value(json!({"theme": "dark"}));
