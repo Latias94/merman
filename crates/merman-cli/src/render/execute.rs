@@ -129,13 +129,6 @@ fn execute_graphical_with_pipeline(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
-    #[cfg(not(any(
-        feature = "native-fonts",
-        feature = "png",
-        feature = "jpeg",
-        feature = "pdf"
-    )))]
-    let _ = stderr;
     #[cfg(feature = "native-fonts")]
     let font_context = prepared
         .font_context
