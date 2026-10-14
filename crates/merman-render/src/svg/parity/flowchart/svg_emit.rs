@@ -1132,7 +1132,7 @@ mod integration_tests {
             .to_string()
         };
         let route = |svg: &str| {
-            let doc = roxmltree::Document::parse(svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(svg).unwrap();
             let path = doc
                 .descendants()
                 .find(|n| n.attribute("data-points").is_some())

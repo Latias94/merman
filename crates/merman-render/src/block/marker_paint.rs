@@ -535,7 +535,7 @@ impl BlockMarkerPaintPlan {
         };
         receipt.valid &= !*seen && path.valid_geometry;
         *seen = true;
-        let Ok(document) = roxmltree::Document::parse(fragment) else {
+        let Ok(document) = crate::xml_dom::Document::parse(fragment) else {
             receipt.valid = false;
             return;
         };
@@ -608,7 +608,7 @@ impl BlockMarkerPaintPlan {
 }
 
 fn definition_matches(expected: &BlockMarkerDefinition, diagram_id: &str, fragment: &str) -> bool {
-    let Ok(document) = roxmltree::Document::parse(fragment) else {
+    let Ok(document) = crate::xml_dom::Document::parse(fragment) else {
         return false;
     };
     let marker = document.root_element();
@@ -630,7 +630,7 @@ fn definition_matches(expected: &BlockMarkerDefinition, diagram_id: &str, fragme
     {
         return false;
     }
-    let mut children = marker.children().filter(roxmltree::Node::is_element);
+    let mut children = marker.children().filter(crate::xml_dom::Node::is_element);
     let Some(shape) = children.next() else {
         return false;
     };

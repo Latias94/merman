@@ -149,7 +149,7 @@ impl StateThemeTerminalReceipt {
         if self.invalid || self.expected.is_empty() || self.emissions.is_empty() {
             return Ok(());
         }
-        let Ok(document) = roxmltree::Document::parse(svg) else {
+        let Ok(document) = crate::xml_dom::Document::parse(svg) else {
             self.invalid = true;
             return Ok(());
         };
@@ -486,7 +486,7 @@ struct StateTerminalNodeContext<'a> {
 
 impl<'document> StateTerminalNodeContext<'document> {
     fn for_node<'input>(
-        node: roxmltree::Node<'document, 'input>,
+        node: crate::xml_dom::Node<'document, 'input>,
         parent: Option<&StateTerminalAncestor<'document>>,
     ) -> Self {
         let self_label = node_has_class(node, "label");
@@ -581,7 +581,7 @@ impl StateTerminalSurfaceObservation {
     fn observe_node(
         &mut self,
         occurrence: &StateThemeTerminalOccurrence,
-        node: roxmltree::Node<'_, '_>,
+        node: crate::xml_dom::Node<'_, '_>,
         context: &StateTerminalNodeContext<'_>,
     ) {
         let tag = node.tag_name().name();
@@ -700,7 +700,7 @@ impl StateTerminalSurfaceObservation {
 
     fn observe_html_descendant(
         &mut self,
-        node: roxmltree::Node<'_, '_>,
+        node: crate::xml_dom::Node<'_, '_>,
         context: &StateTerminalNodeContext<'_>,
     ) {
         if !context.in_html_label_content || context.in_prepared_foreign_object {
@@ -955,7 +955,10 @@ fn missing_css_component(expected: &BTreeMap<String, String>) -> String {
         .join(";")
 }
 
-fn record_style(node: roxmltree::Node<'_, '_>, destination: &mut Vec<BTreeMap<String, String>>) {
+fn record_style(
+    node: crate::xml_dom::Node<'_, '_>,
+    destination: &mut Vec<BTreeMap<String, String>>,
+) {
     if let Some(style) = node.attribute("style") {
         let declarations = css_declarations(style);
         if !declarations.is_empty() {
@@ -968,7 +971,7 @@ fn is_shape_terminal_tag(tag: &str) -> bool {
     matches!(tag, "rect" | "circle" | "path")
 }
 
-fn node_has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
+fn node_has_class(node: crate::xml_dom::Node<'_, '_>, class: &str) -> bool {
     node.attribute("class")
         .is_some_and(|classes| classes.split_ascii_whitespace().any(|value| value == class))
 }

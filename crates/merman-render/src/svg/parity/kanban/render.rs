@@ -956,7 +956,7 @@ mod tests {
         });
         let svg = render_test_kanban(&layout, &config, &SvgRenderOptions::default()).unwrap();
 
-        let document = roxmltree::Document::parse(&svg).expect("valid Kanban SVG");
+        let document = crate::xml_dom::Document::parse(&svg).expect("valid Kanban SVG");
         let stylesheet = document
             .root_element()
             .children()

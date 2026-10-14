@@ -33,6 +33,18 @@ Merman independently implements Mermaid-compatible behavior while translating se
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`
 
+## roxmltree private XML DOM
+
+The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT.
+
+- Version: `0.21.1 with upstream iterative element fix`
+- Source: https://github.com/RazrFalcon/roxmltree @ `3f5c78dea57662b43a2f41961397b1f5ffe27166`
+- Relationship: `copied`, `modified`
+- License: `MIT AND ISC`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-MIT`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-ISC`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-APACHE`
+
 ## rough-rs roughr
 
 roughr-merman is a modified in-tree fork of the rough-rs roughr crate.

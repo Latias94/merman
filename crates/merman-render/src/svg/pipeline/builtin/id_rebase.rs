@@ -1200,7 +1200,7 @@ mod tests {
         ] {
             assert!(output.contains(expected), "missing {expected:?}: {output}");
         }
-        roxmltree::Document::parse(&output).expect("rebased SVG XML");
+        crate::xml_dom::Document::parse(&output).expect("rebased SVG XML");
     }
 
     #[test]
@@ -1235,7 +1235,7 @@ mod tests {
     fn preserves_referenced_whitespace_in_attributes_and_style_text() {
         let svg = r##"<svg id="root" data-note="&#13;&#10;&#9;"><style>#root{fill:red}&#13;&#10;&#9;</style></svg>"##;
         let output = rebase(svg);
-        let document = roxmltree::Document::parse(&output).expect("rebased SVG XML");
+        let document = crate::xml_dom::Document::parse(&output).expect("rebased SVG XML");
 
         assert_eq!(
             document.root_element().attribute("data-note"),
@@ -1512,7 +1512,7 @@ mod tests {
             assert!(output.contains(expected), "missing {expected:?}: {output}");
         }
         assert!(!output.contains("#fragment-light-fff}"), "{output}");
-        roxmltree::Document::parse(&output).expect("rebased SVG XML");
+        crate::xml_dom::Document::parse(&output).expect("rebased SVG XML");
     }
 
     #[test]

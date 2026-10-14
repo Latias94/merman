@@ -19,6 +19,7 @@ use super::rough::{
 };
 
 pub(super) struct ClassNoteRenderContext<'a> {
+    pub capture_text_facts: bool,
     pub text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub css_binding: &'a crate::class::ClassCssThemeBinding,
     pub diagram_id: SvgDiagramId<'a>,
@@ -232,14 +233,18 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         let note_html = if let Some(math_html) =
             class_math_html_label(note_src, Some(ctx.mermaid_config), ctx.math_renderer)
         {
-            stats.typography = crate::class::ClassTextTerminalFacts::unverified_text(note_src);
+            if ctx.capture_text_facts {
+                stats.typography = crate::class::ClassTextTerminalFacts::unverified_text(note_src);
+            }
             math_html
         } else {
             let html = crate::class::class_note_html_fragment(note_src, ctx.mermaid_config);
             let note_html = format!("<p>{html}</p>");
-            let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&note_html);
-            stats.typography =
-                crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
+            if ctx.capture_text_facts {
+                let facts = crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&note_html);
+                stats.typography =
+                    crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
+            }
             note_html
         };
         if let Some(s) = sanitize_start {
@@ -267,8 +272,11 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         emitted_style =
             write_class_svg_text_markdown_with_style(out, note_text.as_ref(), &note_label_style);
         out.push_str("</g></g></g>");
-        let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());
-        stats.typography = crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
+        if ctx.capture_text_facts {
+            let facts = crate::class::class_svg_label_visible_style_facts(note_text.as_ref());
+            stats.typography =
+                crate::class::ClassTextTerminalFacts::from_visible_style_facts(&facts);
+        }
     }
 
     if let Some(paint) = ctx.text_paint {

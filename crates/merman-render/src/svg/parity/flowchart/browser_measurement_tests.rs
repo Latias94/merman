@@ -292,8 +292,8 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                 .join(format!("{name}.svg")),
         )
         .unwrap();
-        let actual = roxmltree::Document::parse(&svg).unwrap();
-        let expected = roxmltree::Document::parse(&reference).unwrap();
+        let actual = crate::xml_dom::Document::parse(&svg).unwrap();
+        let expected = crate::xml_dom::Document::parse(&reference).unwrap();
         // The current renderer intentionally namespaces generated DOM ids by diagram and
         // emission order. Those ids differ from historical Mermaid fixtures, while semantic
         // node/edge ids remain stable and are checked below.
@@ -329,7 +329,7 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
         if name.ends_with("newshapesset6_lr_md_html_false_094") {
             // Joining outer lines restores only the whitespace introduced by wrapping.
             // Inner spans retain their literal text, including escaped <strong> markup.
-            let labels = |document: &roxmltree::Document<'_>| {
+            let labels = |document: &crate::xml_dom::Document<'_>| {
                 document
                     .descendants()
                     .filter(|n| n.has_tag_name("text"))
@@ -391,14 +391,14 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                     assert_eq!(observed_value, expected_value, "{name}/{id}: {attribute}");
                 }
             }
-            let commands = |n: roxmltree::Node<'_, '_>| {
+            let commands = |n: crate::xml_dom::Node<'_, '_>| {
                 n.attribute("d")
                     .unwrap()
                     .chars()
                     .filter(char::is_ascii_uppercase)
                     .collect::<String>()
             };
-            let coordinates = |n: roxmltree::Node<'_, '_>| {
+            let coordinates = |n: crate::xml_dom::Node<'_, '_>| {
                 number
                     .find_iter(n.attribute("d").unwrap())
                     .map(|m| m.as_str().parse::<f64>().unwrap())

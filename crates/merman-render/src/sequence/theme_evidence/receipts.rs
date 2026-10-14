@@ -1344,7 +1344,7 @@ impl SequenceTypographyThemeReceipt {
         }
         work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
         work_meter.charge(svg.len().div_ceil(64).max(1))?;
-        let Ok(document) = roxmltree::Document::parse(svg) else {
+        let Ok(document) = crate::xml_dom::Document::parse(svg) else {
             return Ok(());
         };
         let root = document.root_element();
@@ -1632,7 +1632,7 @@ fn visit_valid_style_declarations(
     valid
 }
 
-fn is_base_inherited_text(node: &roxmltree::Node<'_, '_>) -> bool {
+fn is_base_inherited_text(node: &crate::xml_dom::Node<'_, '_>) -> bool {
     node.has_tag_name(("http://www.w3.org/2000/svg", "text"))
         && node
             .attribute("class")
@@ -1648,7 +1648,7 @@ fn is_base_inherited_text(node: &roxmltree::Node<'_, '_>) -> bool {
 }
 
 fn terminal_text_inherits_property(
-    text: roxmltree::Node<'_, '_>,
+    text: crate::xml_dom::Node<'_, '_>,
     property: ThemeTypographyProperty,
 ) -> bool {
     let property_name = match property {
@@ -1893,7 +1893,7 @@ mod tests {
 
     #[test]
     fn inline_font_family_with_quoted_semicolon_is_not_counted_as_inherited() {
-        let document = roxmltree::Document::parse(
+        let document = crate::xml_dom::Document::parse(
             r#"<svg><text style='font-family:"a;b",sans-serif'>Visible</text></svg>"#,
         )
         .expect("valid sequence text fixture");
@@ -1907,7 +1907,7 @@ mod tests {
 
     #[test]
     fn malformed_inline_typography_is_fail_closed_for_inherited_evidence() {
-        let document = roxmltree::Document::parse(
+        let document = crate::xml_dom::Document::parse(
             r#"<svg><text style='font-family:"unterminated'>Visible</text></svg>"#,
         )
         .expect("valid sequence text fixture");

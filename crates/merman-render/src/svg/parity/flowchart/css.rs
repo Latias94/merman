@@ -629,7 +629,7 @@ mod tests {
         )
         .unwrap();
         svg.push_str("</style></svg>");
-        let document = roxmltree::Document::parse(&svg).unwrap();
+        let document = crate::xml_dom::Document::parse(&svg).unwrap();
         let css = document
             .descendants()
             .find(|node| node.has_tag_name("style"))

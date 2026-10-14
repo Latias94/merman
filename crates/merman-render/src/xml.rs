@@ -574,7 +574,7 @@ mod tests {
             ),
         ] {
             assert_eq!(normalize_html_fragment_for_xhtml(input), expected);
-            roxmltree::Document::parse(&format!("<root>{expected}</root>")).unwrap();
+            crate::xml_dom::Document::parse(&format!("<root>{expected}</root>")).unwrap();
             assert!(matches!(
                 normalize_html_fragment_for_xhtml_bounded(input, expected.len() - 1),
                 Err(XmlOutputError::Limit { .. })
@@ -606,8 +606,8 @@ mod tests {
         );
 
         let rooted = format!("<root>{normalized}</root>");
-        let document =
-            roxmltree::Document::parse(&rooted).expect("normalized XHTML must remain valid XML");
+        let document = crate::xml_dom::Document::parse(&rooted)
+            .expect("normalized XHTML must remain valid XML");
         let image = document
             .descendants()
             .find(|node| node.has_tag_name("img"))
@@ -623,8 +623,8 @@ mod tests {
         assert_eq!(normalized, "<input data-rule='score > 10' value='ready' />");
 
         let rooted = format!("<root>{normalized}</root>");
-        let document =
-            roxmltree::Document::parse(&rooted).expect("normalized XHTML must remain valid XML");
+        let document = crate::xml_dom::Document::parse(&rooted)
+            .expect("normalized XHTML must remain valid XML");
         let input = document
             .descendants()
             .find(|node| node.has_tag_name("input"))

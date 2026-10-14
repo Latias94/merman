@@ -676,7 +676,7 @@ mod tests {
                 true,
             );
             let svg = render_measured_shape(shape, true, padding, metrics);
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             let viewbox: Vec<f64> = doc
                 .root_element()
                 .attribute("viewBox")
@@ -772,7 +772,7 @@ mod tests {
                     line_count: 1,
                 },
             );
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             let label = doc
                 .descendants()
                 .find(|node| node.has_tag_name("foreignObject"))
@@ -824,7 +824,7 @@ mod tests {
             line_count: 1,
         };
         let svg = render_measured_shape("manual-input", true, padding, metrics);
-        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let doc = crate::xml_dom::Document::parse(&svg).unwrap();
         let label = doc
             .descendants()
             .find(|node| node.has_tag_name("foreignObject"))
@@ -886,7 +886,7 @@ mod tests {
             ),
         ] {
             let svg = render_measured_shape(shape, true, 15.0, metrics);
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             let polygon = doc
                 .descendants()
                 .find(|node| {
@@ -914,7 +914,7 @@ mod tests {
         }
         for padding in [0.0, 15.0, 31.0] {
             let svg = render_measured_shape("odd", true, padding, metrics);
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             let body = doc
                 .descendants()
                 .find(|node| node.attribute("class") == Some("basic label-container outer-path"))
@@ -955,7 +955,7 @@ mod tests {
             (true, 31.0, 41.0, 53.0),
         ] {
             let svg = render_measured_shape("dbl-circ", neo, padding, metrics);
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             for (class, expected) in [("inner-circle", inner), ("outer-circle", outer)] {
                 let circle = doc
                     .descendants()

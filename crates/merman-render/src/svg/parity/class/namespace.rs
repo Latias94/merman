@@ -31,7 +31,7 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
@@ -56,7 +56,7 @@ fn render_class_namespace_cluster(
     content_bounds: &mut Option<Bounds>,
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
 ) -> Result<crate::class::ClassTextTerminalFacts> {
     render_class_namespace_cluster_at(
         out,
@@ -77,7 +77,7 @@ fn render_class_namespace_cluster_at(
     cluster: &LayoutCluster,
     (left, top): (f64, f64),
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
 ) -> Result<crate::class::ClassTextTerminalFacts> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
@@ -198,7 +198,7 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_ns_id: &str,
     root_dx: f64,
     root_dy: f64,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> crate::Result<()> {
     out.push_str(r#"<g class="clusters">"#);

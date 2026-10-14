@@ -1445,7 +1445,7 @@ mod tests {
                 &execution,
             )
             .expect("raw effective-config Timeline SVG");
-            let document = roxmltree::Document::parse(&svg).expect("valid Timeline SVG");
+            let document = crate::xml_dom::Document::parse(&svg).expect("valid Timeline SVG");
             let stops = document
                 .descendants()
                 .filter(|node| node.has_tag_name("stop"))

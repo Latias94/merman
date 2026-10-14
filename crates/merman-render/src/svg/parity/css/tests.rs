@@ -143,7 +143,7 @@ fn logical_css_fragment_ids_survive_one_terminal_xml_encoding() {
     let mut serialized = String::from("<svg><style>");
     super::super::output::XmlTextOutput::new(&mut serialized).push_str(&css);
     serialized.push_str("</style></svg>");
-    let document = roxmltree::Document::parse(&serialized).unwrap();
+    let document = crate::xml_dom::Document::parse(&serialized).unwrap();
     let decoded = document
         .descendants()
         .find(|node| node.has_tag_name("style"))

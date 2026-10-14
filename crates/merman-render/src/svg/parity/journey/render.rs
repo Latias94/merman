@@ -946,7 +946,7 @@ mod tests {
                 write_task_rect(&mut out, &task, "9", fill, stroke),
                 ("9", "9")
             );
-            let document = roxmltree::Document::parse(&out).unwrap();
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
             let rect = document.root_element();
             assert_eq!(rect.attribute("style"), expected);
             assert_eq!(rect.attribute("fill"), Some("A&B"));

@@ -2,7 +2,7 @@ use super::builtin::{
     attr_sanitize::sanitize_element_attributes_cow_with_checkpoints,
     css_sanitize::apply_sanitize_style_elements,
     foreign_object::{
-        apply_drop_switch_native_fallbacks, apply_foreign_object_fallback,
+        apply_drop_switch_native_fallbacks, apply_foreign_object_fallback_with_outcome,
         apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
     },
     id_suffix::apply_lower_id_suffix_selectors,
@@ -66,7 +66,7 @@ impl BuiltinSvgStage {
         execution: SvgPostprocessExecution<'_>,
         structure: SvgStructureMetrics,
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
-    ) -> Result<Cow<'a, str>> {
+    ) -> Result<(Cow<'a, str>, bool)> {
         let mut checkpoint = || execution.checkpoint();
         match self {
             Self::PreparedMathProjection => {
@@ -74,27 +74,40 @@ impl BuiltinSvgStage {
                     && !svg.contains(BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE)
                     && prepared_math_evidence.is_none_or(PreparedMathEvidenceLease::is_empty)
                 {
-                    return Ok(svg);
+                    return Ok((svg, false));
                 }
-                Ok(Cow::Owned(project_prepared_math(
-                    &svg,
-                    metadata.family_id(),
-                    prepared_math_evidence,
-                )?))
+                Ok((
+                    Cow::Owned(project_prepared_math(
+                        &svg,
+                        metadata.family_id(),
+                        prepared_math_evidence,
+                    )?),
+                    true,
+                ))
             }
             Self::ForeignObjectFallback => {
                 let measurer = execution.controlled_text_measurer(TextMeasurementPhase::Wrap);
-                apply_foreign_object_fallback(svg, &measurer, execution, structure)
+                apply_foreign_object_fallback_with_outcome(svg, &measurer, execution, structure)
             }
-            Self::StripForeignObject => apply_strip_foreign_objects(svg, checkpoint),
-            Self::DropSwitchNativeFallbacks => apply_drop_switch_native_fallbacks(svg, checkpoint),
-            Self::SanitizeCss => apply_sanitize_style_elements(svg, execution),
-            Self::LowerIdSuffixSelectors => apply_lower_id_suffix_selectors(svg, execution),
+            Self::StripForeignObject => {
+                apply_strip_foreign_objects(svg, checkpoint).map(|svg| (svg, true))
+            }
+            Self::DropSwitchNativeFallbacks => {
+                apply_drop_switch_native_fallbacks(svg, checkpoint).map(|svg| (svg, true))
+            }
+            Self::SanitizeCss => {
+                apply_sanitize_style_elements(svg, execution).map(|svg| (svg, true))
+            }
+            Self::LowerIdSuffixSelectors => {
+                apply_lower_id_suffix_selectors(svg, execution).map(|svg| (svg, true))
+            }
             Self::ResolveQuadrantResvgFallbacks => {
                 resolve_quadrant_resvg_fallbacks_with_checkpoints(svg, metadata, &mut checkpoint)
+                    .map(|svg| (svg, true))
             }
             Self::SanitizeAttributes => {
                 sanitize_element_attributes_cow_with_checkpoints(svg, &mut checkpoint)
+                    .map(|svg| (svg, true))
             }
         }
     }
@@ -125,19 +138,23 @@ pub(crate) fn apply_preset_cow<'a>(
     structure: SvgStructureMetrics,
     drop_native_duplicates: bool,
     prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
-) -> Result<Cow<'a, str>> {
+) -> Result<(Cow<'a, str>, bool)> {
+    let mut changed = false;
     for stage in builtin_stages_for_preset(preset) {
         execution.checkpoint()?;
-        current = stage.apply(
+        let (output, stage_changed) = stage.apply(
             current,
             metadata,
             execution,
             structure,
             prepared_math_evidence,
         )?;
+        current = output;
+        changed |= stage_changed;
         execution.checkpoint()?;
         execution.preflight_svg_byte_count(current.len())?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
+            changed = true;
             current = Cow::Owned(drop_native_duplicate_fallbacks_with_checkpoints(
                 &current,
                 &mut || execution.checkpoint(),
@@ -146,7 +163,7 @@ pub(crate) fn apply_preset_cow<'a>(
             execution.preflight_svg_byte_count(current.len())?;
         }
     }
-    Ok(current)
+    Ok((current, changed))
 }
 
 #[cfg(test)]
@@ -187,7 +204,7 @@ mod tests {
         let structure =
             super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
                 .unwrap();
-        let expected = apply_preset_cow(
+        let (expected, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &SvgPostprocessMetadata::from_svg(svg),
@@ -295,7 +312,7 @@ mod tests {
             super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
                 .unwrap();
 
-        let output = apply_preset_cow(
+        let (output, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &metadata,
@@ -322,7 +339,7 @@ mod tests {
             .into_string();
 
         assert!(!out.contains("NaN"), "{out}");
-        let document = roxmltree::Document::parse(&out).expect("valid generic resvg-safe SVG");
+        let document = crate::xml_dom::Document::parse(&out).expect("valid generic resvg-safe SVG");
         let point = document
             .descendants()
             .find(|node| node.has_tag_name("circle"))
@@ -344,7 +361,7 @@ mod tests {
             super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
                 .unwrap();
 
-        let out = apply_preset_cow(
+        let (out, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &metadata,

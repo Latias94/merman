@@ -6,6 +6,7 @@ use rustc_hash::FxHashMap;
 pub(crate) struct ClassNodeVisualPlan {
     expectations: Box<[super::ClassNodeTerminalExpectation]>,
     indices: FxHashMap<String, ClassNodeVisualIndices>,
+    unique_domain: bool,
     nodes: Box<[ClassNodeVisualBinding]>,
     interfaces: Box<[ClassInterfaceVisualBinding]>,
 }
@@ -33,8 +34,10 @@ impl ClassNodeVisualPlan {
                 .chain(model.interfaces.iter().map(|node| node.id.clone())),
         );
         let mut indices: FxHashMap<String, ClassNodeVisualIndices> = FxHashMap::default();
+        let mut unique_domain = true;
         for (index, expectation) in expectations.iter().enumerate() {
             if let Some(indices) = indices.get_mut(expectation.id()) {
+                unique_domain = false;
                 indices.expectation = index;
             } else {
                 indices.insert(
@@ -56,6 +59,7 @@ impl ClassNodeVisualPlan {
             let binding = ClassNodeVisualBinding::lower(
                 node,
                 &expectations[index.expectation],
+                index.expectation,
                 typography,
                 diagram_use_html_labels,
             )?;
@@ -68,8 +72,11 @@ impl ClassNodeVisualPlan {
             let index = indices
                 .get_mut(interface.id.as_str())
                 .expect("prepared Class interface theme owner");
-            let binding =
-                ClassInterfaceVisualBinding::lower(interface, &expectations[index.expectation]);
+            let binding = ClassInterfaceVisualBinding::lower(
+                interface,
+                &expectations[index.expectation],
+                index.expectation,
+            );
             if let Some(slot) = index.interface {
                 interfaces[slot] = binding;
             } else {
@@ -80,6 +87,7 @@ impl ClassNodeVisualPlan {
         Ok(Self {
             expectations: expectations.into_boxed_slice(),
             indices,
+            unique_domain,
             nodes: nodes.into_boxed_slice(),
             interfaces: interfaces.into_boxed_slice(),
         })
@@ -87,6 +95,10 @@ impl ClassNodeVisualPlan {
 
     pub(crate) fn expectations(&self) -> &[super::ClassNodeTerminalExpectation] {
         &self.expectations
+    }
+
+    pub(crate) fn has_unique_domain(&self) -> bool {
+        self.unique_domain
     }
 
     pub(crate) fn node(&self, id: &str) -> &ClassNodeVisualBinding {
@@ -112,23 +124,39 @@ impl ClassNodeVisualPlan {
 pub(crate) struct ClassInterfaceVisualBinding {
     pub(crate) label_style: String,
     pub(crate) label_fill: Option<(usize, String)>,
+    #[cfg(test)]
     pub(crate) source_owned: bool,
+    #[cfg(test)]
     pub(crate) verified: bool,
+    pub(crate) emission: crate::class::ClassNodeTerminalObservation,
 }
 
 impl ClassInterfaceVisualBinding {
     fn lower(
         interface: &ClassInterface,
         expectation: &crate::class::ClassNodeTerminalExpectation,
+        slot: usize,
     ) -> Self {
         let label = crate::entities::decode_entities_minimal_cow(interface.label.trim());
         let source_owned = crate::class::class_text_is_math_only(label.as_ref());
         let label_fill = expectation.typed_label_fill(source_owned);
+        let label_style = class_node_label_style("", label_fill.map(|(_, css)| css));
+        let verified = !crate::math::contains_delimited_math(label.as_ref());
+        let emission = expectation.observe(
+            slot,
+            crate::class::ClassNodePaintTerminal::not_applicable(),
+            crate::class::ClassNodePaintTerminal::not_applicable(),
+            crate::class::ClassNodePaintTerminal::new(source_owned, label_fill, &label_style)
+                .with_terminal_verified(verified),
+        );
         Self {
-            label_style: class_node_label_style("", label_fill.map(|(_, css)| css)),
+            label_style,
             label_fill: label_fill.map(|(rule, css)| (rule, css.to_owned())),
+            #[cfg(test)]
             source_owned,
-            verified: !crate::math::contains_delimited_math(label.as_ref()),
+            #[cfg(test)]
+            verified,
+            emission,
         }
     }
 
@@ -151,7 +179,7 @@ pub(crate) struct ClassNodeVisualBinding {
     pub(crate) html_label_style: String,
     pub(crate) svg_label_style: String,
     pub(crate) label_fill: Option<String>,
-    pub(crate) emission: crate::class::ClassNodeTerminalEmission,
+    pub(crate) emission: crate::class::ClassNodeTerminalObservation,
     pub(crate) typography: crate::class::ClassTextTerminalFacts,
 }
 
@@ -159,13 +187,18 @@ impl ClassNodeVisualBinding {
     fn lower(
         node: &ClassNode,
         expectation: &crate::class::ClassNodeTerminalExpectation,
+        slot: usize,
         typography: &crate::class::ClassTextThemePlan,
         diagram_use_html_labels: bool,
     ) -> crate::Result<Self> {
         let source = class_apply_inline_styles(node);
-        let facts = crate::class::ClassTextTerminalFacts::from_node_style_facts(
-            typography.require_node_style_facts(&node.id)?,
-        );
+        let facts = if typography.requires_node_style_facts() {
+            crate::class::ClassTextTerminalFacts::from_node_style_facts(
+                typography.require_node_style_facts(&node.id)?,
+            )
+        } else {
+            crate::class::ClassTextTerminalFacts::default()
+        };
         let label_truth = class_node_label_terminal_truth(facts);
         let typed_fill = expectation.typed_fill(source.fill.is_some());
         let typed_stroke = expectation.typed_stroke(source.stroke.is_some());
@@ -193,21 +226,17 @@ impl ClassNodeVisualBinding {
         } else {
             &svg_label_style
         };
-        let emission = crate::class::ClassNodeTerminalEmission::new(
-            &node.id,
-            crate::class::ClassNodePaintTerminalEmission::new(
-                source.fill.is_some(),
-                typed_fill,
-                &fill,
-            )
-            .with_source_value(source.fill),
-            crate::class::ClassNodePaintTerminalEmission::new(
+        let emission = expectation.observe(
+            slot,
+            crate::class::ClassNodePaintTerminal::new(source.fill.is_some(), typed_fill, &fill)
+                .with_source_value(source.fill),
+            crate::class::ClassNodePaintTerminal::new(
                 source.stroke.is_some(),
                 typed_stroke,
                 &stroke,
             )
             .with_source_value(source.stroke),
-            crate::class::ClassNodePaintTerminalEmission::new(
+            crate::class::ClassNodePaintTerminal::new(
                 label_truth.source_owns_paint(),
                 typed_label,
                 label_style,
@@ -385,6 +414,29 @@ mod tests {
     }
 
     #[test]
+    fn inactive_consumers_do_not_require_a_synthetic_node_fact_map() {
+        let model = fixture_model();
+        let config = merman_core::MermaidConfig::default();
+        let typography = super::super::ClassTextThemePlan::resolve(None, &config);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let relation =
+            super::super::ClassRelationThemePlan::resolve(None, &config, 0, 3, &meter).unwrap();
+        let visual = ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &meter)
+            .expect("ordinary paint has no style-fact consumer");
+        assert_eq!(
+            visual.node("A").fill,
+            typography.css_binding().node_default_fill
+        );
+        assert_eq!(
+            visual.node("B").stroke,
+            typography.css_binding().node_default_stroke
+        );
+        assert!(visual.interface("interface0").source_owned);
+    }
+
+    #[test]
     fn baseline_visual_plan_is_complete_ordered_and_reusable_before_emission() {
         let model = fixture_model();
         let config = merman_core::MermaidConfig::default();
@@ -434,7 +486,7 @@ mod tests {
                 .is_none()
         );
         let first = visual.node("A");
-        let _event = first.emission.clone();
+        let _event = first.emission;
         assert!(std::ptr::eq(first, visual.node("A")));
         assert_eq!(meter.used(), used);
     }
@@ -443,7 +495,19 @@ mod tests {
     fn visual_preparation_requires_sealed_layout_facts_and_observes_cancellation() {
         let model = fixture_model();
         let config = merman_core::MermaidConfig::default();
-        let typography = super::super::ClassTextThemePlan::resolve(None, &config);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::CLASS);
+        let typography = super::super::ClassTextThemePlan::resolve(Some(&theme), &config);
         let policy = crate::resources::RenderResourcePolicy::unbounded_for_trusted_input();
         let meter = crate::resources::OperationWorkMeter::new(policy);
         let relation =

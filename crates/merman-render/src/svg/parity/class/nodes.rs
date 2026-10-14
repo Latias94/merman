@@ -35,7 +35,7 @@ struct ClassNodeRootOffsets {
 
 #[derive(Default)]
 struct ClassNodeRenderOutcome {
-    theme_emission: Option<crate::class::ClassNodeTerminalEmission>,
+    theme_emission: Option<crate::class::ClassNodeTerminalObservation>,
     typography: crate::class::ClassTextTerminalFacts,
 }
 
@@ -69,7 +69,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
     state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
@@ -288,7 +288,7 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
             receipt.record_node(id, outcome.typography);
         }
         if let Some(emission) = outcome.theme_emission {
-            theme_receipt.record_node(emission);
+            theme_receipt.record_node_observation(emission);
         }
     }
     Ok(())
@@ -298,7 +298,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
     state: ClassNodesRenderState<'_, O>,
     ctx: &ClassNodesRenderContext<'_>,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
 ) -> Result<()> {
     let ClassNodesRenderState {
@@ -413,7 +413,7 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
             receipt.record_node(id, outcome.typography);
         }
         if let Some(emission) = outcome.theme_emission {
-            theme_receipt.record_node(emission);
+            theme_receipt.record_node_observation(emission);
         }
     }
     out.push_str("</g>");
@@ -611,7 +611,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     edge_ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     edges: &[LayoutEdge],
     root_dx: f64,
     root_dy: f64,
@@ -652,6 +652,7 @@ fn render_class_split_edges_for_namespace<O: SvgOutput>(
         edge_paths_class: edge_ctx.edge_paths_class,
         relation_theme: edge_ctx.relation_theme,
         text_paint: edge_ctx.text_paint,
+        capture_text_facts: edge_ctx.capture_text_facts,
         emit: edge_ctx.emit,
     };
     render_class_split_edge_groups(
@@ -716,6 +717,7 @@ fn render_class_node_id<O: SvgOutput>(
             n,
             position,
             &ClassNoteRenderContext {
+                capture_text_facts: ctx.typography_theme.requires_terminal_receipt(),
                 diagram_id: ctx.diagram_id,
                 measurer: ctx.measurer,
                 text_style: settings.text_style(),
@@ -896,7 +898,7 @@ fn render_class_node_id<O: SvgOutput>(
         out.push_str("</a>");
     }
     Ok(ClassNodeRenderOutcome {
-        theme_emission: Some(binding.emission.clone()),
+        theme_emission: Some(binding.emission),
         typography: binding.typography,
     })
 }

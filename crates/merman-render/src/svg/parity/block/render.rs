@@ -1095,7 +1095,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             );
         } else {
             let label_text =
-                crate::flowchart::flowchart_label_plain_text_for_layout(&label, "text", false);
+                crate::graph_label::flowchart_label_plain_text_for_layout(&label, "text", false);
             let _ = write!(
                 &mut out,
                 r#"<g class="label" style="{}" transform="translate({}, {})"><rect/>"#,
@@ -1238,7 +1238,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 escape_xml(&decode_block_label_html(&e.label))
             );
         } else {
-            let label_text = crate::flowchart::flowchart_label_plain_text_for_layout(
+            let label_text = crate::graph_label::flowchart_label_plain_text_for_layout(
                 &decode_block_label_html(&e.label),
                 "text",
                 false,

@@ -1164,7 +1164,7 @@ mod tests {
         ] {
             let html = renderer.render_html_label(label, &config).unwrap();
             let document_source = format!("<div>{html}</div>");
-            let document = roxmltree::Document::parse(&document_source).unwrap();
+            let document = crate::xml_dom::Document::parse(&document_source).unwrap();
             let mut width_em = 0.0_f64;
             let mut height_em = 0.0_f64;
             let mut line_count = 0;

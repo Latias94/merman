@@ -16,7 +16,7 @@ const TARGET: ThemeTarget = ThemeTarget::EdgeLabelBackground;
 
 /// The shared background CSS has its own semantic target, independent of label foreground.
 #[derive(Debug)]
-pub(crate) struct FlowchartLabelBackgroundPlan {
+pub(crate) struct EdgeLabelBackgroundPlan {
     theme: Option<ResolvedDiagramTheme>,
     style: Option<ResolvedThemeStyle>,
     fill: Option<DirectStaticPaint>,
@@ -35,7 +35,7 @@ struct BackgroundReceipt {
     bindings: BTreeSet<String>,
 }
 
-impl FlowchartLabelBackgroundPlan {
+impl EdgeLabelBackgroundPlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         config: &merman_core::MermaidConfig,

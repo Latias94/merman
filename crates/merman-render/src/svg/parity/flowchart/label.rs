@@ -481,7 +481,7 @@ mod tests {
                 (r"\\<span style='font-size:64px'>AVAVAV\\</span>", "AVAVAV"),
             ] {
                 let output = flowchart_label_html_impl(input, "markdown", &config, None);
-                let document = roxmltree::Document::parse(&output).unwrap();
+                let document = crate::xml_dom::Document::parse(&output).unwrap();
                 let span = document
                     .descendants()
                     .find(|node| node.has_tag_name("span"))
@@ -521,7 +521,7 @@ mod tests {
         }));
         let input = "Before <span style='font-size:64px'>AVAVAV</span> after\n\n";
         let output = flowchart_label_html_impl(input, "markdown", &config, None);
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         let span = document
             .descendants()
             .find(|node| node.has_tag_name("span"))

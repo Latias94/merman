@@ -11,10 +11,10 @@ use crate::svg::parity::SvgDiagramId;
 use crate::text::{TextMeasurer, TextStyle};
 use rustc_hash::FxHashMap;
 
-pub(super) struct ClassSplitEdgeGroupsRenderState<'a> {
+pub(super) struct ClassSplitEdgeGroupsRenderState<'a, 'nodes> {
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) detail: &'a mut ClassRenderDetails,
-    pub(super) theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
+    pub(super) theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt<'nodes>,
     pub(super) typography_receipt: &'a mut Option<crate::class::ClassTextThemeReceipt>,
 }
 
@@ -39,6 +39,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
     pub(super) timing: RenderTiming,
     pub(super) uses_elk_adapter_dom: bool,
     pub(super) edge_paths_class: &'static str,
+    pub(super) capture_text_facts: bool,
     pub(super) text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub(super) emit: ClassEmitCheckpoint<'a>,
@@ -46,7 +47,7 @@ pub(super) struct ClassSplitEdgeGroupsRenderContext<'a> {
 
 pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
     out: &mut O,
-    state: ClassSplitEdgeGroupsRenderState<'_>,
+    state: ClassSplitEdgeGroupsRenderState<'_, '_>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
@@ -83,7 +84,7 @@ pub(super) fn render_class_split_edge_paths<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
@@ -100,7 +101,7 @@ pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
@@ -149,6 +150,7 @@ fn local_edge_context<'a>(
         edge_paths_class: ctx.edge_paths_class,
         relation_theme: ctx.relation_theme,
         text_paint: ctx.text_paint,
+        capture_text_facts: ctx.capture_text_facts,
         emit: ctx.emit,
     }
 }

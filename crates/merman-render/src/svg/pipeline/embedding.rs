@@ -16,7 +16,7 @@ pub(super) fn normalize_renderer_ids<'a>(
         return Ok(svg);
     }
     execution.checkpoint()?;
-    let document = roxmltree::Document::parse(&svg)
+    let document = crate::xml_dom::Document::parse(&svg)
         .map_err(|error| Error::svg_postprocess("normalize-embedding-ids", error.to_string()))?;
     let mut removed = Vec::new();
     for (index, node) in document.descendants().enumerate() {
@@ -99,7 +99,7 @@ mod tests {
             let output = pipeline
                 .process_with_metadata(MINDMAP, &metadata, &session)
                 .unwrap();
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let target = document
                 .descendants()
                 .filter(|node| node.attribute("id") == Some("embed-node"))

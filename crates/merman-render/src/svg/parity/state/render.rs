@@ -1425,10 +1425,10 @@ mod tests {
             )
         };
         let baseline = render(serde_json::json!(false));
-        let baseline_doc = roxmltree::Document::parse(&baseline).unwrap();
+        let baseline_doc = crate::xml_dom::Document::parse(&baseline).unwrap();
         for hops in [serde_json::json!(true), serde_json::json!("gap")] {
             let svg = render(hops);
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             for expected in baseline_doc
                 .descendants()
                 .filter(|node| node.attribute("data-edge") == Some("true"))
@@ -1472,7 +1472,7 @@ mod tests {
                     "{style}: length={length}"
                 );
             }
-            let label = |document: &roxmltree::Document<'_>| {
+            let label = |document: &crate::xml_dom::Document<'_>| {
                 let group = document
                     .descendants()
                     .find(|node| node.attribute("class") == Some("edgeLabels"))

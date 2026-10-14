@@ -348,7 +348,7 @@ mod tests {
         assert!(serialized.contains("]]&gt;"));
         assert!(serialized.contains("&amp;amp;"));
         assert!(serialized.contains("\"quotes\" >"));
-        let document = roxmltree::Document::parse(&serialized).unwrap();
+        let document = crate::xml_dom::Document::parse(&serialized).unwrap();
         let css = document
             .descendants()
             .find(|node| node.has_tag_name("style"))
@@ -384,14 +384,15 @@ mod tests {
                 assert_eq!(first.actual, EXPECTED.len());
                 assert_eq!(first.max, max);
                 control.cancel();
-                let mut css_out = XmlTextOutput::new(&mut out);
-                css_out.push_str("&");
-                assert_eq!(resource_limit(css_out.checkpoint().unwrap_err()), first);
-                assert_eq!(
-                    resource_limit(css_out.replace_range(0..0, "").unwrap_err()),
-                    first
-                );
-                drop(css_out);
+                {
+                    let mut css_out = XmlTextOutput::new(&mut out);
+                    css_out.push_str("&");
+                    assert_eq!(resource_limit(css_out.checkpoint().unwrap_err()), first);
+                    assert_eq!(
+                        resource_limit(css_out.replace_range(0..0, "").unwrap_err()),
+                        first
+                    );
+                }
                 assert_eq!(resource_limit(out.finish().unwrap_err()), first);
             }
             assert_eq!(meter.projected_svg_bytes(), 0);
@@ -409,14 +410,15 @@ mod tests {
         );
         let mut out = BoundedSvgOutput::new(&meter);
         control.cancel();
-        let mut css_out = XmlTextOutput::new(&mut out);
-        css_out.push_str("&<]]>");
-        assert!(matches!(
-            css_out.checkpoint(),
-            Err(crate::Error::Cancelled(_))
-        ));
-        assert!(css_out.as_str().is_empty());
-        drop(css_out);
+        {
+            let mut css_out = XmlTextOutput::new(&mut out);
+            css_out.push_str("&<]]>");
+            assert!(matches!(
+                css_out.checkpoint(),
+                Err(crate::Error::Cancelled(_))
+            ));
+            assert!(css_out.as_str().is_empty());
+        }
         assert!(matches!(out.finish(), Err(crate::Error::Cancelled(_))));
     }
 
@@ -432,14 +434,15 @@ mod tests {
         let mut out = BoundedSvgOutput::new(&meter);
         control.cancel_after_checkpoints(2);
         let logical = "ordinary-css-font-name".repeat(16_384);
-        let mut css_out = XmlTextOutput::new(&mut out);
-        assert!(fmt::Write::write_str(&mut css_out, &logical).is_err());
-        assert!(matches!(
-            css_out.checkpoint(),
-            Err(crate::Error::Cancelled(_))
-        ));
-        assert!(css_out.len() < logical.len());
-        drop(css_out);
+        {
+            let mut css_out = XmlTextOutput::new(&mut out);
+            assert!(fmt::Write::write_str(&mut css_out, &logical).is_err());
+            assert!(matches!(
+                css_out.checkpoint(),
+                Err(crate::Error::Cancelled(_))
+            ));
+            assert!(css_out.len() < logical.len());
+        }
         assert!(matches!(out.finish(), Err(crate::Error::Cancelled(_))));
     }
 
@@ -467,14 +470,15 @@ mod tests {
         assert!(out.len() < logical.len());
         assert!(logical.starts_with(out.as_str()));
         let retained = out.as_str().to_owned();
-        let mut css_out = XmlTextOutput::new(&mut out);
-        assert!(fmt::Write::write_str(&mut css_out, "&<]]>").is_err());
-        assert_eq!(css_out.as_str(), retained);
-        assert!(matches!(
-            css_out.checkpoint(),
-            Err(crate::Error::Cancelled(_))
-        ));
-        drop(css_out);
+        {
+            let mut css_out = XmlTextOutput::new(&mut out);
+            assert!(fmt::Write::write_str(&mut css_out, "&<]]>").is_err());
+            assert_eq!(css_out.as_str(), retained);
+            assert!(matches!(
+                css_out.checkpoint(),
+                Err(crate::Error::Cancelled(_))
+            ));
+        }
         assert!(matches!(out.finish(), Err(crate::Error::Cancelled(_))));
     }
 

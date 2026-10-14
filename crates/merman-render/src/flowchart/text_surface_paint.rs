@@ -56,7 +56,7 @@ pub(super) fn cluster_effect<'a>(
 /// A shared CSS color is resolved once; actual label writers own applicability and ordinals.
 #[derive(Debug)]
 pub(crate) struct FlowchartTextSurfacePaintPlan {
-    pub(crate) background: super::FlowchartLabelBackgroundPlan,
+    pub(crate) background: crate::family::EdgeLabelBackgroundPlan,
     pub(crate) generic_text: super::FlowchartTextPaintPlan,
     evidence: FamilyThemeEvidence,
     theme: Option<ResolvedDiagramTheme>,
@@ -77,7 +77,7 @@ impl FlowchartTextSurfacePaintPlan {
         // All collaborating consumers retain the same complete family request set, even when
         // their own target filter is empty.
         let evidence = FamilyThemeEvidence::from_theme(theme);
-        let background = super::FlowchartLabelBackgroundPlan::resolve(theme, config, work)?;
+        let background = crate::family::EdgeLabelBackgroundPlan::resolve(theme, config, work)?;
         let generic_text =
             super::FlowchartTextPaintPlan::resolve(theme, config, node_config_owned, work)?;
         let theme = theme.filter(|theme| {

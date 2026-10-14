@@ -259,6 +259,7 @@ fn prepare_kanban_markdown_label(
     raw: &str,
     style: &TextStyle,
     max_width: f64,
+    capture_style_facts: bool,
 ) -> KanbanPreparedMarkdownLabel {
     let html = markdown.render(raw);
     let raw_metrics = markdown.measure_html(measurer, &html, style, None);
@@ -270,7 +271,11 @@ fn prepare_kanban_markdown_label(
     };
 
     KanbanPreparedMarkdownLabel {
-        visible_style_facts: crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html),
+        visible_style_facts: if capture_style_facts {
+            crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html)
+        } else {
+            crate::text::VisibleTextStyleFacts::not_requested()
+        },
         html,
         geometry: KanbanPreparedLabelGeometry {
             content_height: metrics.height,
@@ -290,8 +295,16 @@ fn prepare_kanban_title_label(
     raw: &str,
     style: &TextStyle,
     max_width: f64,
+    capture_style_facts: bool,
 ) -> KanbanPreparedMarkdownLabel {
-    let mut prepared = prepare_kanban_markdown_label(markdown, measurer, raw, style, max_width);
+    let mut prepared = prepare_kanban_markdown_label(
+        markdown,
+        measurer,
+        raw,
+        style,
+        max_width,
+        capture_style_facts,
+    );
     if raw.is_empty() {
         prepared.geometry.foreign_object_width = 0.0;
     }
@@ -303,6 +316,7 @@ fn prepare_kanban_plain_label(
     text: Option<&str>,
     style: &TextStyle,
     max_width: f64,
+    capture_style_facts: bool,
 ) -> KanbanPreparedPlainLabel {
     let text = text.unwrap_or_default();
     let geometry = if text.is_empty() {
@@ -327,7 +341,11 @@ fn prepare_kanban_plain_label(
     };
     KanbanPreparedPlainLabel {
         geometry,
-        visible_style_facts: crate::text::VisibleTextStyleFacts::plain_text(text),
+        visible_style_facts: if capture_style_facts {
+            crate::text::VisibleTextStyleFacts::plain_text(text)
+        } else {
+            crate::text::VisibleTextStyleFacts::not_requested()
+        },
     }
 }
 
@@ -396,6 +414,26 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         .check_model_complexity(ModelComplexity::from_kanban(model))?;
     work_meter.charge(kanban_layout_work_units(model))?;
     let typography = KanbanTypographyPlan::resolve(theme, effective_config);
+    let capture_style_facts = typography.typography_requested()
+        || theme.is_some_and(|theme| {
+            theme.family_mechanism_routes().iter().any(|route| {
+                matches!(
+                    route.mechanism(),
+                    crate::diagram_theme::FamilyThemeMechanism::RuleFacet {
+                        target: crate::diagram_theme::ThemeTarget::TaskLabel
+                            | crate::diagram_theme::ThemeTarget::Text,
+                        ..
+                    } | crate::diagram_theme::FamilyThemeMechanism::OrdinalPalette {
+                        target: crate::diagram_theme::ThemeTarget::TaskLabel
+                            | crate::diagram_theme::ThemeTarget::Text
+                    } | crate::diagram_theme::FamilyThemeMechanism::EffectBinding {
+                        target: crate::diagram_theme::ThemeTarget::TaskLabel
+                            | crate::diagram_theme::ThemeTarget::Text,
+                        ..
+                    }
+                )
+            })
+        });
     let config_view = KanbanConfigView::new(effective_config.as_value());
     let cfg = config_view.layout_settings_with_resolved_typography(
         typography.font_family_css(),
@@ -449,18 +487,21 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
                 &node.label,
                 &legend_style,
                 item_inner_max_width,
+                capture_style_facts,
             );
             let prepared_ticket = prepare_kanban_plain_label(
                 measurer,
                 node.ticket.as_deref(),
                 &legend_style,
                 item_inner_max_width,
+                capture_style_facts,
             );
             let prepared_assigned = prepare_kanban_plain_label(
                 measurer,
                 node.assigned.as_deref(),
                 &legend_style,
                 item_inner_max_width,
+                capture_style_facts,
             );
             if theme.is_some() {
                 let visible_labels = [
@@ -539,6 +580,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
             &section.label,
             &legend_style,
             section_width,
+            capture_style_facts,
         );
         let label_height = prepared_label
             .geometry
@@ -742,6 +784,7 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
                 &section.label,
                 &settings.text_style,
                 section.width,
+                false,
             )
         })
         .collect();
@@ -755,18 +798,21 @@ pub(crate) fn prepare_kanban_artifact_from_layout_for_test(
                 &item.label,
                 &settings.text_style,
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
+                false,
             ),
             ticket: prepare_kanban_plain_label(
                 measurer,
                 item.ticket.as_deref(),
                 &settings.text_style,
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
+                false,
             ),
             assigned: prepare_kanban_plain_label(
                 measurer,
                 item.assigned.as_deref(),
                 &settings.text_style,
                 (item.width - KANBAN_SECTION_PADDING_PX).max(0.0),
+                false,
             ),
             ticket_link: prepare_kanban_ticket_link(
                 ticket_base_url.as_deref(),
@@ -858,6 +904,31 @@ mod tests {
         assert_eq!(super::KANBAN_SECTION_PADDING_PX, 10.0);
         assert_eq!(super::KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX, 24.0);
         assert_eq!(super::KANBAN_ITEM_LABEL_PADDING_Y_PX, 10.0);
+    }
+
+    #[test]
+    fn no_consumer_kanban_preparation_omits_fact_collection_but_measures_details() {
+        let model = KanbanDiagramRenderModel {
+            nodes: vec![
+                section("todo", "**Todo**"),
+                item_with_details("task", "Task", "todo", Some("MC-2038"), Some("Alice")),
+            ],
+        };
+        let measurer = CountingTextMeasurer::default();
+        let (prepared, collections) = crate::text::VisibleTextStyleFacts::count_collections(|| {
+            prepare_kanban_diagram_typed_with_work_meter(
+                &model,
+                &merman_core::MermaidConfig::default(),
+                None,
+                &measurer,
+                &OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input()),
+            )
+            .unwrap()
+        });
+        assert!(measurer.calls.get() >= 4);
+        assert!(prepared.items[0].ticket.geometry.content_height > 0.0);
+        assert!(prepared.items[0].assigned.geometry.content_height > 0.0);
+        assert_eq!(collections, 0);
     }
 
     #[test]

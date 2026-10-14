@@ -168,7 +168,7 @@ fn block_prepared_class_css_keeps_shape_and_span_declaration_order() {
         render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
             .expect("render prepared Block class CSS");
     let svg = rendered.as_str();
-    let document = roxmltree::Document::parse(svg).expect("Block class stylesheet XML");
+    let document = crate::xml_dom::Document::parse(svg).expect("Block class stylesheet XML");
     let css = document
         .descendants()
         .find(|node| node.has_tag_name("style"))
@@ -461,7 +461,7 @@ fn block_base_marker_definitions_preserve_historical_bytes() {
         render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
             .unwrap();
     let svg: &str = &rendered;
-    let document = roxmltree::Document::parse(svg).unwrap();
+    let document = crate::xml_dom::Document::parse(svg).unwrap();
     let markers = document
         .descendants()
         .filter(|node| node.has_tag_name("marker"))

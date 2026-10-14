@@ -1,10 +1,10 @@
 use super::super::*;
 use crate::c4::{C4_DEFAULT_FONT_FAMILY, C4_ELEMENT_TYPES, C4_FRAMED_FRAME_WIDTH, C4ConfigView};
-use crate::svg::parity::flowchart::{
+use crate::svg::parity::roughjs_common::closed_path_d_from_points;
+use crate::svg::parity::roughjs_common::paths::{
     roughjs_hand_drawn_stroke_path_for_svg_path, roughjs_paths_for_circle,
     roughjs_paths_for_hand_drawn_svg_path,
 };
-use crate::svg::parity::roughjs_common::closed_path_d_from_points;
 use merman_core::diagrams::c4::{C4BoundaryRenderModel, C4DiagramRenderModel, C4ShapeRenderModel};
 type C4SvgModelShape = C4ShapeRenderModel;
 type C4SvgModelBoundary = C4BoundaryRenderModel;
@@ -874,25 +874,27 @@ pub(crate) fn render_c4_diagram_svg_typed(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
-    let css_emission = write_c4_css_with_typography(&mut css_out, diagram_id, typography_theme)?;
-    if let Some(receipt) = typography_receipt.as_mut() {
-        receipt.record_css_emission(
-            &css_emission.font_family,
-            &css_emission.font_size_css,
-            css_emission.base_typography_emitted,
-            css_emission.root_typography_emitted,
-        );
+    {
+        let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+        let css_emission =
+            write_c4_css_with_typography(&mut css_out, diagram_id, typography_theme)?;
+        if let Some(receipt) = typography_receipt.as_mut() {
+            receipt.record_css_emission(
+                &css_emission.font_family,
+                &css_emission.font_size_css,
+                css_emission.base_typography_emitted,
+                css_emission.root_typography_emitted,
+            );
+        }
+        // Preserve the root inheritance used by source-directed colors as well as the title.
+        if let Some(fill) = text_paint.fill_css() {
+            let _ = write!(&mut css_out, "#{}{{fill:{};}}", diagram_id, fill);
+            css_out.checkpoint()?;
+        }
+        if let Some(receipt) = text_paint_receipt.as_mut() {
+            receipt.record_css(text_paint.fill_css());
+        }
     }
-    // Preserve the root inheritance used by source-directed colors as well as the title.
-    if let Some(fill) = text_paint.fill_css() {
-        let _ = write!(&mut css_out, "#{}{{fill:{};}}", diagram_id, fill);
-        css_out.checkpoint()?;
-    }
-    if let Some(receipt) = text_paint_receipt.as_mut() {
-        receipt.record_css(text_paint.fill_css());
-    }
-    drop(css_out);
     out.push_str("</style>");
     out.checkpoint()?;
     out.push_str("<g/>");

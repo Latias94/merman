@@ -664,7 +664,7 @@ mod tests {
 
         let xml = format!("<text>{expected}</text>");
         let document =
-            roxmltree::Document::parse(&xml).expect("escaped XML text must remain parseable");
+            crate::xml_dom::Document::parse(&xml).expect("escaped XML text must remain parseable");
         assert_eq!(document.root_element().text(), Some("A]]>B]]>C"));
     }
 

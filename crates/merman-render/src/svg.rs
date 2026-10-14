@@ -60,7 +60,10 @@ pub(crate) use parity::theme as render_theme;
 ))]
 pub(crate) use parity::{FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes};
 pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
+pub(crate) use pipeline::SvgPipelineBuffer;
 pub(crate) use pipeline::SvgPostprocessExecution;
+#[cfg(feature = "diagram-railroad")]
+pub(crate) use pipeline::decode_xml_style_text_with_checkpoints;
 pub(crate) use pipeline::reject_reserved_prepared_text_tokens;
 
 pub use fallback::foreign_object_label_fallback_svg_text;

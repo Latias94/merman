@@ -1349,7 +1349,7 @@ mod cancellation_tests {
             )
             .unwrap();
             let svg = format!("<svg>{out}</svg>");
-            let document = roxmltree::Document::parse(&svg).unwrap();
+            let document = crate::xml_dom::Document::parse(&svg).unwrap();
             let ys: Vec<_> = document
                 .descendants()
                 .filter(|n| n.has_tag_name("text"))

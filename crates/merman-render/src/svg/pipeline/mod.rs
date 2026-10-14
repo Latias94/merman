@@ -102,6 +102,55 @@ use std::borrow::Cow;
 use std::fmt;
 use std::sync::Arc;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum PipelineTerminalValidation {
+    Immediate,
+    Deferred,
+}
+
+struct PipelineRunOptions {
+    terminal: PipelineTerminalValidation,
+    retain_xml_facts: bool,
+}
+
+struct PipelineRunResult<'a> {
+    svg: Cow<'a, str>,
+    terminal: Option<final_validation::TerminalSvgValidation>,
+    xml_facts: Option<final_validation::ValidatedSvgXmlFacts>,
+}
+
+/// Renderer-private bytes and XML facts sealed for the same immutable generation.
+#[derive(Default)]
+pub(crate) struct SvgPipelineBuffer {
+    svg: String,
+    xml_facts: Option<final_validation::ValidatedSvgXmlFacts>,
+}
+
+impl SvgPipelineBuffer {
+    pub(crate) fn new(svg: String) -> Self {
+        Self {
+            svg,
+            xml_facts: None,
+        }
+    }
+
+    pub(crate) fn into_string(self) -> String {
+        self.svg
+    }
+
+    fn into_parts(self) -> (String, Option<final_validation::ValidatedSvgXmlFacts>) {
+        (self.svg, self.xml_facts)
+    }
+}
+
+impl std::ops::Deref for SvgPipelineBuffer {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        &self.svg
+    }
+}
+
 pub trait SvgPostprocessor: Send + Sync {
     fn name(&self) -> &'static str;
 
@@ -220,7 +269,7 @@ impl SvgFinalizationReport {
 
     fn from_pipeline(
         pipeline: &SvgPipeline,
-        terminal: &final_validation::TerminalSvgValidation,
+        terminal: final_validation::TerminalSvgValidation,
     ) -> Self {
         Self {
             preset: pipeline.preset,
@@ -231,10 +280,10 @@ impl SvgFinalizationReport {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             drop_native_duplicate_fallbacks: pipeline.drop_native_duplicate_fallbacks,
-            reference_plan: terminal.reference_plan.clone(),
-            resource_closure: terminal.resource_closure.clone(),
+            reference_plan: terminal.reference_plan,
+            resource_closure: terminal.resource_closure,
             text_element_count: terminal.text_elements,
-            font_seal: terminal.font_seal.clone(),
+            font_seal: terminal.font_seal,
         }
     }
 }
@@ -287,7 +336,7 @@ impl ResvgCompatibleSvg {
             prepared_math_evidence,
             prepared_math_terminal_receipt,
             prepared_math_evidence_valid,
-            finalization_report: SvgFinalizationReport::from_pipeline(pipeline, &terminal),
+            finalization_report: SvgFinalizationReport::from_pipeline(pipeline, terminal),
             font_catalog,
             font_source_policy,
             resource_fingerprint,
@@ -677,40 +726,28 @@ impl SvgPipeline {
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
     ) -> Result<Cow<'a, str>> {
-        self.process_cow_with_metadata_and_math_evidence(svg, metadata, session, None)
-    }
-
-    fn process_cow_with_metadata_and_math_evidence<'a>(
-        &self,
-        svg: Cow<'a, str>,
-        metadata: &SvgPostprocessMetadata,
-        session: &RenderSession,
-        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
-    ) -> Result<Cow<'a, str>> {
         Ok(self
-            .process_cow_with_reference_plan(
+            .run(
                 svg,
                 metadata,
                 session,
-                prepared_math_evidence,
-                true,
-                true,
+                None,
+                PipelineRunOptions {
+                    terminal: PipelineTerminalValidation::Immediate,
+                    retain_xml_facts: false,
+                },
             )?
-            .0)
+            .svg)
     }
 
-    fn process_cow_with_reference_plan<'a>(
+    fn run<'a>(
         &self,
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
-        validate_resvg_terminal: bool,
-        validate_prepared_math_receipt: bool,
-    ) -> Result<(
-        Cow<'a, str>,
-        Option<final_validation::TerminalSvgValidation>,
-    )> {
+        options: PipelineRunOptions,
+    ) -> Result<PipelineRunResult<'a>> {
         let execution = SvgPostprocessExecution::new(session);
         execution.checkpoint()?;
         execution.preflight_svg_byte_count(svg.len())?;
@@ -719,32 +756,54 @@ impl SvgPipeline {
                 execution.checkpoint()
             })?;
         execution.preflight_svg_byte_count(current.len())?;
-        let mut structure = match final_validation::validate_well_formed_svg_with_execution(
-            current.as_ref(),
-            execution,
-        ) {
-            Ok(structure) => structure,
-            Err(initial_error) if self.preset == SvgPipelinePreset::ResvgSafe => {
-                // Browser-facing SVG may contain HTML named entities in serialized attribute
-                // values (for example `&colon;`). They are not XML entities, so run the same
-                // resource-aware attribute sanitizer once before retrying structural validation.
-                // Text/entity errors remain rejected because this pass never rewrites text nodes.
-                let sanitized =
-                    builtin::attr_sanitize::sanitize_element_attributes_cow_with_checkpoints(
-                        current.clone(),
-                        &mut || execution.checkpoint(),
-                    )?;
-                execution.preflight_svg_byte_count(sanitized.len())?;
-                if sanitized.as_ref() == current.as_ref() {
-                    return Err(initial_error);
+        // Only the renderer's consuming standalone boundary retains draft facts. Opaque passes
+        // invalidate them even when they return borrowed input or equal bytes.
+        let retain_xml_facts = options.retain_xml_facts
+            && self.preset != SvgPipelinePreset::ResvgSafe
+            && self.inline_contract.is_none()
+            && !self.isolate_ids
+            && self
+                .postprocessors
+                .iter()
+                .all(|entry| !entry.applies_to(metadata.family_id()));
+        let mut xml_facts = if retain_xml_facts {
+            Some(final_validation::validate_svg_xml_facts_with_execution(
+                current.as_ref(),
+                execution,
+            )?)
+        } else {
+            None
+        };
+        let mut structure = if let Some(facts) = &xml_facts {
+            facts.structure()
+        } else {
+            match final_validation::validate_well_formed_svg_with_execution(
+                current.as_ref(),
+                execution,
+            ) {
+                Ok(structure) => structure,
+                Err(initial_error) if self.preset == SvgPipelinePreset::ResvgSafe => {
+                    // Browser-facing SVG may contain HTML named entities in serialized attribute
+                    // values (for example `&colon;`). They are not XML entities, so run the same
+                    // resource-aware attribute sanitizer once before retrying structural validation.
+                    // Text/entity errors remain rejected because this pass never rewrites text nodes.
+                    let sanitized =
+                        builtin::attr_sanitize::sanitize_element_attributes_cow_with_checkpoints(
+                            current.clone(),
+                            &mut || execution.checkpoint(),
+                        )?;
+                    execution.preflight_svg_byte_count(sanitized.len())?;
+                    if sanitized.as_ref() == current.as_ref() {
+                        return Err(initial_error);
+                    }
+                    current = sanitized;
+                    final_validation::validate_well_formed_svg_with_execution(
+                        current.as_ref(),
+                        execution,
+                    )?
                 }
-                current = sanitized;
-                final_validation::validate_well_formed_svg_with_execution(
-                    current.as_ref(),
-                    execution,
-                )?
+                Err(error) => return Err(error),
             }
-            Err(error) => return Err(error),
         };
         if self.inline_contract.is_some() {
             // Prepared math is emitted as a renderer-owned `<template>` projection inside a
@@ -754,13 +813,15 @@ impl SvgPipeline {
             // bounded by an opaque renderer evidence fingerprint, so untrusted or forged native
             // geometry still fails closed before the general admission pass.
             execution.checkpoint()?;
-            current = preset::BuiltinSvgStage::PreparedMathProjection.apply(
-                current,
-                metadata,
-                execution,
-                structure,
-                prepared_math_evidence,
-            )?;
+            current = preset::BuiltinSvgStage::PreparedMathProjection
+                .apply(
+                    current,
+                    metadata,
+                    execution,
+                    structure,
+                    prepared_math_evidence,
+                )?
+                .0;
             execution.checkpoint()?;
             execution.preflight_svg_byte_count(current.len())?;
             structure = final_validation::validate_well_formed_svg_with_execution(
@@ -815,7 +876,7 @@ impl SvgPipeline {
         }
 
         execution.checkpoint()?;
-        let finalized = preset::apply_preset_cow(
+        let (finalized, preset_changed) = preset::apply_preset_cow(
             self.preset,
             current,
             metadata,
@@ -824,6 +885,9 @@ impl SvgPipeline {
             self.drop_native_duplicate_fallbacks,
             prepared_math_evidence,
         )?;
+        if preset_changed {
+            xml_facts = None;
+        }
         let finalized =
             crate::xml::strip_forbidden_xml_1_0_chars_cow_with_checkpoints(finalized, || {
                 execution.checkpoint()
@@ -838,11 +902,10 @@ impl SvgPipeline {
             }
             None => {}
         }
-        let terminal = if self.preset == SvgPipelinePreset::ResvgSafe && validate_resvg_terminal {
-            if validate_prepared_math_receipt
-                && let Some(evidence) =
-                    prepared_math_evidence.filter(|evidence| !evidence.is_empty())
-            {
+        let terminal = if self.preset == SvgPipelinePreset::ResvgSafe
+            && options.terminal == PipelineTerminalValidation::Immediate
+        {
+            if let Some(evidence) = prepared_math_evidence.filter(|evidence| !evidence.is_empty()) {
                 PreparedMathTerminalReceipt::from_terminal_svg(finalized.as_ref(), evidence)
                     .map_err(|message| {
                         Error::svg_postprocess("prepared-math-terminal-receipt", message)
@@ -861,7 +924,7 @@ impl SvgPipeline {
                 )?,
             )
         } else {
-            if self.preset != SvgPipelinePreset::ResvgSafe {
+            if self.preset != SvgPipelinePreset::ResvgSafe && xml_facts.is_none() {
                 final_validation::validate_well_formed_svg_with_execution(
                     finalized.as_ref(),
                     execution,
@@ -871,10 +934,16 @@ impl SvgPipeline {
         };
         // The deferred Resvg path transfers both terminal validation and its trailing checkpoint
         // to `seal`, keeping math-receipt failures ahead of terminal validation failures.
-        if self.preset != SvgPipelinePreset::ResvgSafe || validate_resvg_terminal {
+        if self.preset != SvgPipelinePreset::ResvgSafe
+            || options.terminal == PipelineTerminalValidation::Immediate
+        {
             execution.checkpoint()?;
         }
-        Ok((finalized, terminal))
+        Ok(PipelineRunResult {
+            svg: finalized,
+            terminal,
+            xml_facts,
+        })
     }
 
     pub fn process_to_string(&self, svg: &str, session: &RenderSession) -> Result<String> {
@@ -909,21 +978,29 @@ impl SvgPipeline {
             .into_owned())
     }
 
-    pub(crate) fn process_owned_to_string_with_metadata_and_math_evidence(
+    pub(crate) fn process_owned_buffer_with_metadata_and_math_evidence(
         &self,
-        svg: String,
+        svg: SvgPipelineBuffer,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
-    ) -> Result<String> {
-        Ok(self
-            .process_cow_with_metadata_and_math_evidence(
-                Cow::Owned(svg),
-                metadata,
-                session,
-                prepared_math_evidence,
-            )?
-            .into_owned())
+        retain_xml_facts: bool,
+    ) -> Result<SvgPipelineBuffer> {
+        // Consuming the old buffer drops its facts before any new pipeline can mutate the bytes.
+        let result = self.run(
+            Cow::Owned(svg.into_string()),
+            metadata,
+            session,
+            prepared_math_evidence,
+            PipelineRunOptions {
+                terminal: PipelineTerminalValidation::Immediate,
+                retain_xml_facts,
+            },
+        )?;
+        Ok(SvgPipelineBuffer {
+            svg: result.svg.into_owned(),
+            xml_facts: result.xml_facts,
+        })
     }
 
     pub fn process_resvg_compatible(
@@ -943,17 +1020,19 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) = self.process_cow_with_reference_plan(
+        let result = self.run(
             Cow::Borrowed(svg),
             metadata,
             session,
             None,
-            true,
-            false,
+            PipelineRunOptions {
+                terminal: PipelineTerminalValidation::Immediate,
+                retain_xml_facts: false,
+            },
         )?;
         ResvgCompatibleSvg::seal(
-            svg.into_owned(),
-            terminal,
+            result.svg.into_owned(),
+            result.terminal,
             true,
             PreparedMathEvidenceLease::default(),
             true,
@@ -969,17 +1048,19 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) = self.process_cow_with_reference_plan(
+        let result = self.run(
             Cow::Owned(svg),
             metadata,
             session,
             None,
-            true,
-            false,
+            PipelineRunOptions {
+                terminal: PipelineTerminalValidation::Immediate,
+                retain_xml_facts: false,
+            },
         )?;
         ResvgCompatibleSvg::seal(
-            svg.into_owned(),
-            terminal,
+            result.svg.into_owned(),
+            result.terminal,
             true,
             PreparedMathEvidenceLease::default(),
             true,
@@ -998,18 +1079,20 @@ impl SvgPipeline {
         prepared_math_evidence_valid: bool,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) = self.process_cow_with_reference_plan(
+        let result = self.run(
             Cow::Owned(svg),
             metadata,
             session,
             prepared_math_evidence_valid.then_some(&prepared_math_evidence),
             // The seal preserves math-receipt, terminal-resource, then reserved-token ordering.
-            false,
-            false,
+            PipelineRunOptions {
+                terminal: PipelineTerminalValidation::Deferred,
+                retain_xml_facts: false,
+            },
         )?;
         ResvgCompatibleSvg::seal(
-            svg.into_owned(),
-            terminal,
+            result.svg.into_owned(),
+            result.terminal,
             prepared_text_evidence_valid,
             prepared_math_evidence,
             prepared_math_evidence_valid,
@@ -1139,19 +1222,21 @@ mod tests {
             SvgPostprocessMetadata::from_svg(&svg).with_family_id(crate::DiagramFamilyId::STATE);
 
         let (sealed, work) = final_validation::measure_terminal_validation_work(|| {
-            let (svg, terminal) = pipeline
-                .process_cow_with_reference_plan(
+            let result = pipeline
+                .run(
                     Cow::Owned(svg),
                     &metadata,
                     &session,
                     None,
-                    true,
-                    false,
+                    PipelineRunOptions {
+                        terminal: PipelineTerminalValidation::Immediate,
+                        retain_xml_facts: false,
+                    },
                 )
                 .unwrap();
             ResvgCompatibleSvg::seal(
-                svg.into_owned(),
-                terminal,
+                result.svg.into_owned(),
+                result.terminal,
                 true,
                 PreparedMathEvidenceLease::default(),
                 true,
@@ -1171,6 +1256,215 @@ mod tests {
             sealed.finalization_report().resource_closure()
         );
         assert_eq!(work.calls, 1);
+    }
+
+    #[test]
+    fn resvg_seal_moves_owned_terminal_reference_and_resource_inventories() {
+        let session = render_session();
+        let pipeline = SvgPipeline::resvg_safe();
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="paint"><stop stop-color="#123456"/></linearGradient></defs><path fill="url(#paint)" d="M0 0h1"/></svg>"##.to_owned();
+        let terminal = final_validation::validate_resvg_compatible_svg_with_execution(
+            &svg,
+            SvgPostprocessExecution::new(&session),
+        )
+        .unwrap();
+        let reference_allocation = terminal.reference_plan.raw_element_occurrences().as_ptr();
+        let available_allocation = terminal.resource_closure.available_fragment_ids().as_ptr();
+        let referenced_allocation = terminal.resource_closure.referenced_fragment_ids().as_ptr();
+        assert!(!terminal.reference_plan.raw_element_occurrences().is_empty());
+        assert!(
+            !terminal
+                .resource_closure
+                .available_fragment_ids()
+                .is_empty()
+        );
+        assert!(
+            !terminal
+                .resource_closure
+                .referenced_fragment_ids()
+                .is_empty()
+        );
+        let expected_plan = terminal.reference_plan.clone();
+        let expected_closure = terminal.resource_closure.clone();
+        let expected_font_seal = terminal.font_seal.clone();
+        let expected_text_elements = terminal.text_elements;
+
+        let sealed = ResvgCompatibleSvg::seal(
+            svg,
+            Some(terminal),
+            true,
+            PreparedMathEvidenceLease::default(),
+            true,
+            &pipeline,
+            &session,
+        )
+        .unwrap();
+        let report = sealed.finalization_report();
+
+        assert_eq!(report.reference_plan(), &expected_plan);
+        assert_eq!(report.resource_closure(), &expected_closure);
+        assert_eq!(report.font_seal(), &expected_font_seal);
+        assert_eq!(report.text_element_count(), expected_text_elements);
+        assert_eq!(
+            report.reference_plan().raw_element_occurrences().as_ptr(),
+            reference_allocation
+        );
+        assert_eq!(
+            report.resource_closure().available_fragment_ids().as_ptr(),
+            available_allocation
+        );
+        assert_eq!(
+            report.resource_closure().referenced_fragment_ids().as_ptr(),
+            referenced_allocation
+        );
+    }
+
+    #[test]
+    fn standalone_identity_pipelines_consume_exact_generation_xml_facts_once() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="leaf"><path d="M0 0h1"/></g></defs><use href="#leaf"/></svg>"##;
+        for pipeline in [SvgPipeline::parity(), SvgPipeline::readable()] {
+            for portability in [
+                crate::diagram_theme::ThemePortabilityRequirement::BestEffort,
+                crate::diagram_theme::ThemePortabilityRequirement::RequirePortable,
+            ] {
+                let session = crate::environment::RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(portability)
+                    .begin_session()
+                    .unwrap();
+                let metadata = SvgPostprocessMetadata::from_svg(svg);
+                let owned = svg.to_owned();
+                let allocation = owned.as_ptr();
+                let (actual, work) = final_validation::measure_xml_validation_work(|| {
+                    let processed = pipeline
+                        .process_owned_buffer_with_metadata_and_math_evidence(
+                            SvgPipelineBuffer::new(owned),
+                            &metadata,
+                            &session,
+                            None,
+                            true,
+                        )
+                        .unwrap();
+                    assert!(processed.xml_facts.is_some());
+                    assert_eq!(processed.as_ptr(), allocation);
+                    StandaloneSvgArtifact::finalize_exact_buffer(
+                        processed, true, &pipeline, &session,
+                    )
+                    .unwrap()
+                });
+                let (reference, reference_work) =
+                    final_validation::measure_xml_validation_work(|| {
+                        let processed = pipeline
+                            .process_owned_to_string(svg.to_owned(), &session)
+                            .unwrap();
+                        StandaloneSvgArtifact::finalize_exact(processed, true, &pipeline, &session)
+                            .unwrap()
+                    });
+                assert_eq!(actual, reference);
+                assert_eq!(actual.as_str(), svg);
+                assert_eq!(work.calls, 1);
+                assert_eq!(work.svg_bytes, svg.len());
+                assert_eq!(reference_work.calls, 3);
+            }
+        }
+    }
+
+    #[test]
+    fn standalone_opaque_equal_output_and_readable_mutation_discard_xml_facts() {
+        const SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg"><path/></svg>"#;
+        struct BorrowedIdentity;
+        impl SvgPostprocessor for BorrowedIdentity {
+            fn name(&self) -> &'static str {
+                "borrowed-identity"
+            }
+            fn process<'a>(
+                &self,
+                _svg: Cow<'a, str>,
+                _ctx: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                Ok(Cow::Borrowed(SVG))
+            }
+        }
+        for (pipeline, svg, expected_xml_passes) in [
+            (
+                SvgPipeline::parity().with_postprocessor(BorrowedIdentity),
+                SVG,
+                4,
+            ),
+            (
+                SvgPipeline::readable(),
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">label</div></foreignObject></svg>"#,
+                3,
+            ),
+        ] {
+            let session = render_session();
+            let metadata = SvgPostprocessMetadata::from_svg(svg);
+            let (actual, work) = final_validation::measure_xml_validation_work(|| {
+                let processed = pipeline
+                    .process_owned_buffer_with_metadata_and_math_evidence(
+                        SvgPipelineBuffer::new(svg.to_owned()),
+                        &metadata,
+                        &session,
+                        None,
+                        true,
+                    )
+                    .unwrap();
+                assert!(processed.xml_facts.is_none());
+                StandaloneSvgArtifact::finalize_exact_buffer(processed, true, &pipeline, &session)
+                    .unwrap()
+            });
+            let processed = pipeline
+                .process_owned_to_string(svg.to_owned(), &session)
+                .unwrap();
+            let reference =
+                StandaloneSvgArtifact::finalize_exact(processed, true, &pipeline, &session)
+                    .unwrap();
+            assert_eq!(actual, reference);
+            assert_eq!(work.calls, expected_xml_passes);
+            assert_eq!(
+                actual.terminal_status(),
+                StandaloneSvgTerminalStatus::Unverified
+            );
+        }
+    }
+
+    #[test]
+    fn standalone_pipeline_budgets_only_terminal_reference_generation() {
+        struct RemoveDraftExpansion;
+        impl SvgPostprocessor for RemoveDraftExpansion {
+            fn name(&self) -> &'static str {
+                "remove-draft-expansion"
+            }
+            fn process<'a>(
+                &self,
+                _svg: Cow<'a, str>,
+                _ctx: &SvgPostprocessContext<'_>,
+            ) -> Result<Cow<'a, str>> {
+                Ok(Cow::Borrowed("<svg/>"))
+            }
+        }
+        let svg = r##"<svg><defs><g id="leaf"><path/></g><g id="branch"><use href="#leaf"/><use href="#leaf"/></g></defs><use href="#branch"/><use href="#branch"/></svg>"##;
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(crate::resources::ResourceLimitId::MaxSvgElements, 10)
+                    .unwrap(),
+            )
+            .begin_session()
+            .unwrap();
+        let pipeline = SvgPipeline::parity().with_postprocessor(RemoveDraftExpansion);
+        let processed = pipeline
+            .process_owned_buffer_with_metadata_and_math_evidence(
+                SvgPipelineBuffer::new(svg.to_owned()),
+                &SvgPostprocessMetadata::from_svg(svg),
+                &session,
+                None,
+                true,
+            )
+            .expect("raw draft fits; expansion admission belongs to the terminal generation");
+        let artifact =
+            StandaloneSvgArtifact::finalize_exact_buffer(processed, true, &pipeline, &session)
+                .unwrap();
+        assert_eq!(artifact.as_str(), "<svg/>");
     }
 
     #[test]
@@ -1441,13 +1735,18 @@ mod tests {
             SvgPipeline::parity().with_browser_inline_contract("browser-math"),
         ] {
             let output = pipeline
-                .process_cow_with_metadata_and_math_evidence(
+                .run(
                     Cow::Borrowed(&svg),
                     &metadata,
                     &session,
                     Some(&evidence),
+                    PipelineRunOptions {
+                        terminal: PipelineTerminalValidation::Immediate,
+                        retain_xml_facts: false,
+                    },
                 )
                 .unwrap()
+                .svg
                 .into_owned();
 
             assert!(!output.contains("<template"), "{output}");
@@ -1558,13 +1857,18 @@ mod tests {
 
         let error = SvgPipeline::parity()
             .with_static_inline_contract("static-math")
-            .process_cow_with_metadata_and_math_evidence(
+            .run(
                 Cow::Borrowed(svg),
                 &metadata,
                 &session,
                 Some(&evidence),
+                PipelineRunOptions {
+                    terminal: PipelineTerminalValidation::Immediate,
+                    retain_xml_facts: false,
+                },
             )
-            .unwrap_err();
+            .err()
+            .expect("missing prepared-math markers must fail admission");
 
         assert!(matches!(
             error,
@@ -1588,7 +1892,7 @@ mod tests {
                 .process_to_string(svg, &session)
                 .unwrap();
             assert_eq!(out, "<svg><text>ABCD</text></svg>", "{preset:?}");
-            roxmltree::Document::parse(&out).expect("pipeline output must remain XML 1.0");
+            crate::xml_dom::Document::parse(&out).expect("pipeline output must remain XML 1.0");
         }
     }
 
@@ -1745,7 +2049,7 @@ mod tests {
                 assert!(out.contains("media-exact"), "{out}");
                 assert!(!out.contains("media-over"), "{out}");
 
-                let document = roxmltree::Document::parse(&out).expect("valid sanitized SVG");
+                let document = crate::xml_dom::Document::parse(&out).expect("valid sanitized SVG");
                 let inline_exact = document
                     .descendants()
                     .find(|node| node.attribute("id") == Some("inline-exact"))

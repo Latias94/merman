@@ -15,7 +15,7 @@ use super::builtin::css_sanitize::{
 };
 use super::final_validation::{
     ReferenceDependencyGraph, ReferencePlanningError,
-    plan_svg_reference_dependencies_with_checkpoints, validate_well_formed_svg_with_execution,
+    summarize_svg_reference_dependencies_with_checkpoints, validate_well_formed_svg_with_execution,
 };
 use super::{
     SvgPostprocessExecution, checkpoint_loop, is_css_value_attribute, is_svg_idref_attribute,
@@ -80,7 +80,7 @@ fn validate(
     let limits = execution.resource_policy();
     let mut checkpoint = || execution.checkpoint();
     checkpoint()?;
-    let document = roxmltree::Document::parse(svg).map_err(|error| {
+    let document = crate::xml_dom::Document::parse(svg).map_err(|error| {
         static_validation_error(format!("rendered SVG is not valid XML: {error}"))
     })?;
     checkpoint()?;
@@ -96,7 +96,7 @@ fn validate(
     let mut ids = BTreeSet::new();
     for (iteration, node) in document
         .descendants()
-        .filter(roxmltree::Node::is_element)
+        .filter(crate::xml_dom::Node::is_element)
         .enumerate()
     {
         checkpoint_loop(iteration, &mut checkpoint)?;
@@ -115,7 +115,7 @@ fn validate(
     let mut attribute_iteration = 0usize;
     for (node_iteration, node) in document
         .descendants()
-        .filter(roxmltree::Node::is_element)
+        .filter(crate::xml_dom::Node::is_element)
         .enumerate()
     {
         checkpoint_loop(node_iteration, &mut checkpoint)?;
@@ -275,7 +275,7 @@ fn validate(
 }
 
 fn validate_browser_reference_expansion(
-    document: &roxmltree::Document<'_>,
+    document: &crate::xml_dom::Document<'_>,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<()> {
     let mut checkpoint = || execution.checkpoint();
@@ -283,7 +283,7 @@ fn validate_browser_reference_expansion(
     let mut elements = Vec::new();
     for (iteration, node) in document
         .descendants()
-        .filter(roxmltree::Node::is_element)
+        .filter(crate::xml_dom::Node::is_element)
         .enumerate()
     {
         checkpoint_loop(iteration, &mut checkpoint)?;
@@ -328,20 +328,21 @@ fn validate_browser_reference_expansion(
     }
 
     let graph = ReferenceDependencyGraph::new(dependencies, elements.len());
-    let plan = match plan_svg_reference_dependencies_with_checkpoints(&graph, &mut checkpoint) {
-        Ok(plan) => plan,
-        Err(ReferencePlanningError::Invalid(error)) => {
-            return Err(static_validation_error(error));
-        }
-        Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
-    };
+    let summary =
+        match summarize_svg_reference_dependencies_with_checkpoints(&graph, &mut checkpoint) {
+            Ok(plan) => plan,
+            Err(ReferencePlanningError::Invalid(error)) => {
+                return Err(static_validation_error(error));
+            }
+            Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
+        };
     checkpoint()?;
-    execution.preflight_svg_structure(plan.expanded_elements(), plan.max_tree_depth())?;
+    execution.preflight_svg_structure(summary.elements, summary.max_tree_depth)?;
     checkpoint()
 }
 
 fn unnamespaced_attribute<'a, 'input>(
-    node: roxmltree::Node<'a, 'input>,
+    node: crate::xml_dom::Node<'a, 'input>,
     name: &str,
 ) -> Option<&'a str> {
     node.attributes()
@@ -350,7 +351,7 @@ fn unnamespaced_attribute<'a, 'input>(
 }
 
 fn is_inside_svg_foreign_object(
-    node: roxmltree::Node<'_, '_>,
+    node: crate::xml_dom::Node<'_, '_>,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<bool> {
     let mut checkpoint = || execution.checkpoint();

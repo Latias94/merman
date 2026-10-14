@@ -1499,7 +1499,8 @@ mod tests {
                     let artifact = outcome
                         .prepared()
                         .unwrap_or_else(|| panic!("prepare {foreground} {text} {shell:?}"));
-                    let document = roxmltree::Document::parse(artifact.browser_xhtml()).unwrap();
+                    let document =
+                        crate::xml_dom::Document::parse(artifact.browser_xhtml()).unwrap();
                     let wrapper = document.root_element();
                     assert!(
                         wrapper

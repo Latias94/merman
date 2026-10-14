@@ -8,7 +8,7 @@ The wrapper and Merman-authored code remain under the project license; each comp
 
 - ID: `typst-publish`
 - Description: The Typst WASM publish profile, including ELK and wasm-minimal-protocol but excluding RaTeX.
-- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
+- Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`, `eclipse-elk`, `elkjs`, `wasm-minimal-protocol`
 
 ## Components
 
@@ -203,6 +203,20 @@ The roughr fork aligns its randomization and drawing-operation semantics with Ro
 - License: `MIT`
 - Local evidence: `crates/roughr`
 - Legal file: `THIRD_PARTY_LICENSES/roughjs/LICENSE`
+
+### roxmltree private XML DOM
+
+The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT.
+
+- Version: `0.21.1 with upstream iterative element fix`
+- Source: https://github.com/RazrFalcon/roxmltree @ `3f5c78dea57662b43a2f41961397b1f5ffe27166`
+- Source path: `src`
+- Relationship: `copied`, `modified`
+- License: `MIT AND ISC`
+- Local evidence: `crates/merman-render/src/xml_dom`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-MIT`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-ISC`
+- Legal file: `THIRD_PARTY_LICENSES/roxmltree-dom/LICENSE-APACHE`
 
 ### sanitize-url
 

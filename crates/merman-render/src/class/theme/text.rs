@@ -35,6 +35,7 @@ pub(crate) struct ClassTextThemePlan {
     font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
+    node_style_facts_requested: bool,
     node_style_facts: OnceLock<BTreeMap<Box<str>, ClassNodeLabelStyleFacts>>,
     layout_font_size_px: OnceLock<f64>,
     evidence: FamilyThemeEvidence,
@@ -318,6 +319,22 @@ impl ClassTextThemePlan {
             font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
+            node_style_facts_requested: theme.is_some_and(|theme| {
+                theme.family_mechanism_routes().iter().any(|route| {
+                    matches!(
+                        route.mechanism(),
+                        FamilyThemeMechanism::RuleFacet {
+                            target: ThemeTarget::NodeLabel | ThemeTarget::Text,
+                            ..
+                        } | FamilyThemeMechanism::OrdinalPalette {
+                            target: ThemeTarget::NodeLabel | ThemeTarget::Text
+                        } | FamilyThemeMechanism::EffectBinding {
+                            target: ThemeTarget::NodeLabel | ThemeTarget::Text,
+                            ..
+                        }
+                    )
+                })
+            }),
             node_style_facts: OnceLock::new(),
             layout_font_size_px: OnceLock::new(),
             evidence: FamilyThemeEvidence::from_theme(theme),
@@ -395,13 +412,20 @@ impl ClassTextThemePlan {
         self.typed_font_size_active
     }
 
-    fn requires_terminal_receipt(&self) -> bool {
+    pub(crate) fn requires_terminal_receipt(&self) -> bool {
         !self.text_rules.is_empty()
             || self.inherited_font_stack.typed_font_stack_active()
             || self.typed_font_size_active
             || self
                 .inherited_font_stack
                 .has_unsupported_typography_properties()
+    }
+
+    pub(crate) fn requires_node_style_facts(&self) -> bool {
+        self.node_style_facts_requested
+            || self.requires_terminal_receipt()
+            || self.inherited_font_stack.typography_requested()
+            || self.typed_font_size_requested
     }
 
     pub(crate) fn apply_layout_text_styles(

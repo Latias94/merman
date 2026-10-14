@@ -1544,7 +1544,7 @@ mod tests {
                             &crate::svg::SvgDebugOptions::default(),
                         )
                         .unwrap();
-                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let document = crate::xml_dom::Document::parse(rendered.svg()).unwrap();
                 for ordinal in 1..=24 {
                     let id = format!("kanban-contrast-task{ordinal}");
                     let group = document

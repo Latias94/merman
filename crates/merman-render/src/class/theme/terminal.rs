@@ -1,4 +1,5 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::borrow::Cow;
+use std::collections::BTreeSet;
 
 use crate::diagram_theme::{ResolvedStyleProperty, ThemeTarget};
 
@@ -101,6 +102,7 @@ impl ClassNodeTerminalExpectation {
     }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct ClassNodePaintTerminalEmission {
     terminal_applicable: bool,
@@ -111,6 +113,7 @@ pub(crate) struct ClassNodePaintTerminalEmission {
     terminal_value: String,
 }
 
+#[cfg(test)]
 impl ClassNodePaintTerminalEmission {
     pub(crate) fn new(
         source_owned: bool,
@@ -126,29 +129,9 @@ impl ClassNodePaintTerminalEmission {
             terminal_value: terminal_value.to_string(),
         }
     }
-
-    pub(crate) fn not_applicable() -> Self {
-        Self {
-            terminal_applicable: false,
-            terminal_verified: true,
-            source_owned: false,
-            source_value: None,
-            emitted: None,
-            terminal_value: String::new(),
-        }
-    }
-
-    pub(crate) fn with_source_value(mut self, source_value: Option<&str>) -> Self {
-        self.source_value = source_value.map(str::to_string);
-        self
-    }
-
-    pub(crate) const fn with_terminal_verified(mut self, verified: bool) -> Self {
-        self.terminal_verified = verified;
-        self
-    }
 }
 
+#[cfg(test)]
 #[derive(Debug, Clone)]
 pub(crate) struct ClassNodeTerminalEmission {
     id: String,
@@ -157,6 +140,7 @@ pub(crate) struct ClassNodeTerminalEmission {
     label_fill: ClassNodePaintTerminalEmission,
 }
 
+#[cfg(test)]
 impl ClassNodeTerminalEmission {
     pub(crate) fn new(
         id: impl Into<String>,
@@ -169,6 +153,114 @@ impl ClassNodeTerminalEmission {
             fill,
             stroke,
             label_fill,
+        }
+    }
+}
+
+/// Borrowed terminal values are checked before retaining compact ownership flags.
+pub(crate) struct ClassNodePaintTerminal<'a> {
+    terminal_applicable: bool,
+    terminal_verified: bool,
+    source_owned: bool,
+    source_value: Option<&'a str>,
+    emitted: Option<(usize, &'a str)>,
+    terminal_value: &'a str,
+}
+
+impl<'a> ClassNodePaintTerminal<'a> {
+    pub(crate) fn new(
+        source_owned: bool,
+        emitted: Option<(usize, &'a str)>,
+        terminal_value: &'a str,
+    ) -> Self {
+        Self {
+            terminal_applicable: true,
+            terminal_verified: true,
+            source_owned,
+            source_value: None,
+            emitted,
+            terminal_value,
+        }
+    }
+    pub(crate) fn not_applicable() -> Self {
+        Self {
+            terminal_applicable: false,
+            terminal_verified: true,
+            source_owned: false,
+            source_value: None,
+            emitted: None,
+            terminal_value: "",
+        }
+    }
+    pub(crate) fn with_source_value(mut self, source: Option<&'a str>) -> Self {
+        self.source_value = source;
+        self
+    }
+    pub(crate) fn with_terminal_verified(mut self, verified: bool) -> Self {
+        self.terminal_verified = verified;
+        self
+    }
+    fn flags(&self) -> ClassNodePaintFlags {
+        ClassNodePaintFlags {
+            terminal_applicable: self.terminal_applicable,
+            terminal_verified: self.terminal_verified,
+            source_owned: self.source_owned,
+        }
+    }
+}
+
+#[cfg(test)]
+impl ClassNodePaintTerminalEmission {
+    fn terminal(&self) -> ClassNodePaintTerminal<'_> {
+        ClassNodePaintTerminal {
+            terminal_applicable: self.terminal_applicable,
+            terminal_verified: self.terminal_verified,
+            source_owned: self.source_owned,
+            source_value: self.source_value.as_deref(),
+            emitted: self
+                .emitted
+                .as_ref()
+                .map(|(index, css)| (*index, css.as_str())),
+            terminal_value: &self.terminal_value,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ClassNodePaintFlags {
+    terminal_applicable: bool,
+    terminal_verified: bool,
+    source_owned: bool,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ClassNodeTerminalObservation {
+    slot: usize,
+    values_match: bool,
+    paints: [ClassNodePaintFlags; 3],
+}
+
+impl ClassNodeTerminalObservation {
+    pub(crate) fn with_terminal_value_check(mut self, matches: bool) -> Self {
+        self.values_match &= matches;
+        self
+    }
+}
+
+impl ClassNodeTerminalExpectation {
+    pub(crate) fn observe(
+        &self,
+        slot: usize,
+        fill: ClassNodePaintTerminal<'_>,
+        stroke: ClassNodePaintTerminal<'_>,
+        label: ClassNodePaintTerminal<'_>,
+    ) -> ClassNodeTerminalObservation {
+        ClassNodeTerminalObservation {
+            slot,
+            values_match: node_paint_event_matches(self.fill.as_ref(), &fill)
+                && node_paint_event_matches(self.stroke.as_ref(), &stroke)
+                && node_label_paint_event_matches(self.label_fill.as_ref(), &label),
+            paints: [fill.flags(), stroke.flags(), label.flags()],
         }
     }
 }
@@ -209,6 +301,17 @@ impl ClassMarkerTerminalExpectation {
     }
 }
 
+/// Borrowed values from one relation's canonical SVG terminal checkpoint.
+pub(crate) struct ClassRelationTerminalEvent<'a> {
+    pub(crate) relation_index: usize,
+    pub(crate) start_marker: Option<&'static str>,
+    pub(crate) end_marker: Option<&'static str>,
+    pub(crate) emitted_stroke: Option<(usize, &'a str)>,
+    pub(crate) terminal_style: &'a str,
+    pub(crate) hand_drawn_stroke: Option<&'a str>,
+    pub(crate) typed_width_emitted: bool,
+}
+
 /// Cluster expectations are fixed before any terminal checkpoint is recorded.
 #[derive(Debug, Default)]
 pub(super) struct ClassClusterTerminalExpectation {
@@ -218,50 +321,54 @@ pub(super) struct ClassClusterTerminalExpectation {
     pub(super) namespace_title: Option<ExpectedPaint>,
 }
 
-/// Writer-owned proof that every semantic Class node, relation, attached note, and referenced marker reached its
-/// canonical terminal SVG checkpoint with the exact typed terminal value.
+/// Canonical slots retain exactly-once completion after checking terminal values immediately.
 #[derive(Debug, Clone)]
-pub(crate) struct ClassRelationThemeReceipt {
-    expected_clusters: BTreeSet<String>,
-    duplicate_expected_cluster: bool,
+pub(crate) struct ClassRelationThemeReceipt<'nodes> {
+    expected_clusters: Vec<String>,
+    cluster_domain_valid: bool,
     expected_cluster_fill: Option<ExpectedPaint>,
     expected_cluster_stroke: Option<ExpectedPaint>,
     expected_namespace_title: Option<ExpectedPaint>,
-    cluster_events: BTreeMap<String, ClassClusterTerminalEvent>,
-    duplicate_cluster_event: bool,
-    expected_nodes: BTreeMap<String, ClassNodeTerminalExpectation>,
-    duplicate_expected_node: bool,
+    cluster_events: Vec<Option<ClassClusterTerminalEvent>>,
+    clusters_valid: bool,
+    expected_nodes: Cow<'nodes, [ClassNodeTerminalExpectation]>,
+    node_domain_valid: bool,
+    nodes_seen: Vec<bool>,
+    nodes_valid: bool,
+    winner_rules: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
+    effective_rules: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
+    typed_rejections: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
     expected_relations: Vec<ClassRelationTerminalExpectation>,
+    relations_seen: Vec<bool>,
+    relations_valid: bool,
     expected_note_attachments: Vec<usize>,
+    notes_seen: Vec<bool>,
+    notes_valid: bool,
     expected_markers: Vec<ClassMarkerTerminalExpectation>,
+    marker_count: usize,
+    markers_valid: bool,
     expected_stroke: Option<ExpectedStroke>,
+    strokes_valid: bool,
     hand_drawn: bool,
-    node_events: BTreeMap<String, ClassNodeTerminalEmission>,
-    duplicate_node_event: bool,
-    relation_events: BTreeMap<usize, ClassRelationTerminalEvent>,
-    duplicate_relation_event: bool,
-    note_attachment_events: BTreeMap<usize, ClassNoteAttachmentTerminalEvent>,
-    duplicate_note_attachment_event: bool,
-    marker_events: Vec<ClassMarkerTerminalEvent>,
     checkpointed_typed_width_paths: usize,
-    edge_label_background_events: Option<BTreeMap<usize, bool>>,
+    edge_label_background_events: Option<Vec<Option<bool>>>,
     expected_edge_label_background: Option<ExpectedPaint>,
-    edge_label_background_paints: BTreeMap<usize, bool>,
-    duplicate_edge_label_background_event: bool,
+    edge_label_background_paints: Vec<Option<bool>>,
+    edge_label_background_valid: bool,
 }
 
-impl ClassRelationThemeReceipt {
+impl<'nodes> ClassRelationThemeReceipt<'nodes> {
     #[cfg(test)]
     pub(super) fn new(
-        expected_relations: Vec<ClassRelationTerminalExpectation>,
-        expected_markers: Vec<ClassMarkerTerminalExpectation>,
-        expected_stroke: Option<ExpectedStroke>,
+        relations: Vec<ClassRelationTerminalExpectation>,
+        markers: Vec<ClassMarkerTerminalExpectation>,
+        stroke: Option<ExpectedStroke>,
         hand_drawn: bool,
     ) -> Self {
         Self::new_with_clusters(
-            expected_relations,
-            expected_markers,
-            expected_stroke,
+            relations,
+            markers,
+            stroke,
             hand_drawn,
             ClassClusterTerminalExpectation::default(),
         )
@@ -272,42 +379,45 @@ impl ClassRelationThemeReceipt {
         expected_markers: Vec<ClassMarkerTerminalExpectation>,
         expected_stroke: Option<ExpectedStroke>,
         hand_drawn: bool,
-        clusters: ClassClusterTerminalExpectation,
+        mut clusters: ClassClusterTerminalExpectation,
     ) -> Self {
-        let mut expected_clusters = BTreeSet::new();
-        let mut duplicate_expected_cluster = false;
-        for id in clusters.ids {
-            if !expected_clusters.insert(id) {
-                duplicate_expected_cluster = true;
-            }
-        }
+        clusters.ids.sort_unstable();
+        let cluster_domain_valid = clusters.ids.windows(2).all(|pair| pair[0] != pair[1]);
+        let relations_valid = expected_relations
+            .windows(2)
+            .all(|pair| pair[0].relation_index < pair[1].relation_index);
         Self {
-            expected_clusters,
-            duplicate_expected_cluster,
+            cluster_events: vec![None; clusters.ids.len()],
+            expected_clusters: clusters.ids,
+            cluster_domain_valid,
             expected_cluster_fill: clusters.fill,
             expected_cluster_stroke: clusters.stroke,
             expected_namespace_title: clusters.namespace_title,
-            cluster_events: BTreeMap::new(),
-            duplicate_cluster_event: false,
-            expected_nodes: BTreeMap::new(),
-            duplicate_expected_node: false,
+            clusters_valid: true,
+            expected_nodes: Cow::Borrowed(&[]),
+            node_domain_valid: true,
+            nodes_seen: Vec::new(),
+            nodes_valid: true,
+            winner_rules: BTreeSet::new(),
+            effective_rules: BTreeSet::new(),
+            typed_rejections: BTreeSet::new(),
+            relations_seen: vec![false; expected_relations.len()],
             expected_relations,
+            relations_valid,
             expected_note_attachments: Vec::new(),
+            notes_seen: Vec::new(),
+            notes_valid: true,
             expected_markers,
+            marker_count: 0,
+            markers_valid: true,
             expected_stroke,
+            strokes_valid: true,
             hand_drawn,
-            node_events: BTreeMap::new(),
-            duplicate_node_event: false,
-            relation_events: BTreeMap::new(),
-            duplicate_relation_event: false,
-            note_attachment_events: BTreeMap::new(),
-            duplicate_note_attachment_event: false,
-            marker_events: Vec::new(),
             checkpointed_typed_width_paths: 0,
             edge_label_background_events: None,
             expected_edge_label_background: None,
-            edge_label_background_paints: BTreeMap::new(),
-            duplicate_edge_label_background_event: false,
+            edge_label_background_paints: Vec::new(),
+            edge_label_background_valid: true,
         }
     }
 
@@ -320,25 +430,31 @@ impl ClassRelationThemeReceipt {
         id: &str,
         fill_rule: Option<usize>,
         stroke_rule: Option<usize>,
-        terminal_style: &str,
+        style: &str,
     ) {
-        let event = ClassClusterTerminalEvent {
-            paint_matches: cluster_paint_event_matches(
-                self.expected_cluster_fill.as_ref(),
-                fill_rule,
-                terminal_style,
-                "fill",
-            ) && cluster_paint_event_matches(
-                self.expected_cluster_stroke.as_ref(),
-                stroke_rule,
-                terminal_style,
-                "stroke",
-            ),
-            title: None,
+        let Ok(slot) = self
+            .expected_clusters
+            .binary_search_by(|expected| expected.as_str().cmp(id))
+        else {
+            self.clusters_valid = false;
+            return;
         };
-        if self.cluster_events.insert(id.to_string(), event).is_some() {
-            self.duplicate_cluster_event = true;
-        }
+        let valid = cluster_paint_event_matches(
+            self.expected_cluster_fill.as_ref(),
+            fill_rule,
+            style,
+            "fill",
+        ) && cluster_paint_event_matches(
+            self.expected_cluster_stroke.as_ref(),
+            stroke_rule,
+            style,
+            "stroke",
+        );
+        self.clusters_valid &= valid && self.cluster_events[slot].is_none();
+        self.cluster_events[slot] = Some(ClassClusterTerminalEvent {
+            title: None,
+            paint_matches: valid,
+        });
     }
 
     pub(crate) fn record_namespace_title(
@@ -349,22 +465,27 @@ impl ClassRelationThemeReceipt {
         visible: bool,
         inherits_paint: bool,
     ) {
-        let Some(cluster) = self.cluster_events.get_mut(id) else {
-            self.duplicate_cluster_event = true;
+        let cluster = self
+            .expected_clusters
+            .binary_search_by(|expected| expected.as_str().cmp(id))
+            .ok()
+            .and_then(|slot| self.cluster_events[slot].as_mut());
+        let Some(cluster) = cluster else {
+            self.clusters_valid = false;
             return;
         };
-        if cluster.title.is_some() {
-            self.duplicate_cluster_event = true;
-        }
+        self.clusters_valid &= cluster.title.is_none();
+        let paint_matches = self
+            .expected_namespace_title
+            .as_ref()
+            .is_some_and(|expected| {
+                rule == expected.rule_index
+                    && terminal_paint(style, "color") == Some(expected.css.as_str())
+                    && terminal_paint(style, "fill") == Some(expected.css.as_str())
+            });
+        self.clusters_valid &= paint_matches;
         cluster.title = Some(ClassNamespaceTitleTerminalEvent {
-            paint_matches: self
-                .expected_namespace_title
-                .as_ref()
-                .is_some_and(|expected| {
-                    rule == expected.rule_index
-                        && terminal_paint(style, "color") == Some(expected.css.as_str())
-                        && terminal_paint(style, "fill") == Some(expected.css.as_str())
-                }),
+            paint_matches,
             visible,
             inherits_paint,
         });
@@ -377,20 +498,19 @@ impl ClassRelationThemeReceipt {
                 .as_ref()
                 .is_some_and(|paint| paint.rule_index == rule)
             && self.proves_complete_cluster_emission()
-            && self.cluster_events.values().all(|event| {
+            && self.cluster_events.iter().all(|event| {
                 event
-                    .title
                     .as_ref()
+                    .and_then(|event| event.title.as_ref())
                     .is_some_and(|title| title.visible && title.inherits_paint)
             })
     }
 
     fn proves_complete_cluster_emission(&self) -> bool {
-        !self.duplicate_expected_cluster
-            && !self.duplicate_cluster_event
-            && self.expected_clusters.len() == self.cluster_events.len()
-            && self.expected_clusters.iter().all(|id| {
-                self.cluster_events.get(id).is_some_and(|event| {
+        self.cluster_domain_valid
+            && self.clusters_valid
+            && self.cluster_events.iter().all(|event| {
+                event.as_ref().is_some_and(|event| {
                     event.paint_matches
                         && match (&self.expected_namespace_title, &event.title) {
                             (None, None) => true,
@@ -403,82 +523,100 @@ impl ClassRelationThemeReceipt {
 
     pub(super) fn proves_typed_cluster_paint(
         &self,
-        rule_index: usize,
+        rule: usize,
         property: ResolvedStyleProperty,
     ) -> bool {
-        let expected = match property {
+        let paint = match property {
             ResolvedStyleProperty::Fill => self.expected_cluster_fill.as_ref(),
             ResolvedStyleProperty::Stroke => self.expected_cluster_stroke.as_ref(),
             _ => None,
         };
         !self.expected_clusters.is_empty()
-            && expected.is_some_and(|paint| paint.rule_index == rule_index)
+            && paint.is_some_and(|paint| paint.rule_index == rule)
             && self.proves_complete_cluster_emission()
     }
 
     pub(super) fn with_note_attachments(mut self, indices: Vec<usize>) -> Self {
+        self.notes_valid = indices.windows(2).all(|pair| pair[0] < pair[1]);
+        self.notes_seen = vec![false; indices.len()];
         self.expected_note_attachments = indices;
         self
     }
-
     pub(super) fn expected_note_attachment_count(&self) -> usize {
         self.expected_note_attachments.len()
     }
 
     pub(crate) fn record_note_attachment(
         &mut self,
-        note_index: usize,
-        emitted_stroke: Option<(usize, &str)>,
-        terminal_style: &str,
-        hand_drawn_stroke: Option<&str>,
+        index: usize,
+        emitted: Option<(usize, &str)>,
+        style: &str,
+        hand_drawn: Option<&str>,
     ) {
-        let event = ClassNoteAttachmentTerminalEvent {
-            paint_matches: stroke_event_matches(
-                self.expected_stroke.as_ref(),
-                emitted_stroke,
-                terminal_style,
-            ) && hand_drawn_stroke_matches(
+        let Ok(slot) = self.expected_note_attachments.binary_search(&index) else {
+            self.notes_valid = false;
+            return;
+        };
+        self.notes_valid &= !self.notes_seen[slot]
+            && stroke_event_matches(self.expected_stroke.as_ref(), emitted, style)
+            && hand_drawn_stroke_matches(
                 self.expected_stroke.as_ref(),
                 self.hand_drawn,
-                hand_drawn_stroke,
-            ),
-        };
-        if self
-            .note_attachment_events
-            .insert(note_index, event)
-            .is_some()
-        {
-            self.duplicate_note_attachment_event = true;
-        }
+                hand_drawn,
+            );
+        self.notes_seen[slot] = true;
     }
 
     pub(super) fn with_edge_label_backgrounds(mut self, enabled: bool) -> Self {
-        self.edge_label_background_events = enabled.then(BTreeMap::new);
+        self.edge_label_background_events =
+            enabled.then(|| vec![None; self.expected_relations.len()]);
         self
     }
-
-    pub(crate) fn record_edge_label_background(&mut self, relation_index: usize, visible: bool) {
-        if let Some(events) = &mut self.edge_label_background_events
-            && events.insert(relation_index, visible).is_some()
-        {
-            self.duplicate_edge_label_background_event = true;
-        }
+    fn relation_slot(&self, index: usize) -> Option<usize> {
+        self.expected_relations
+            .binary_search_by_key(&index, |expected| expected.relation_index)
+            .ok()
     }
-
+    pub(crate) fn record_edge_label_background(&mut self, index: usize, visible: bool) {
+        if self.edge_label_background_events.is_none() {
+            return;
+        }
+        let Some(slot) = self.relation_slot(index) else {
+            self.edge_label_background_valid = false;
+            return;
+        };
+        let events = self
+            .edge_label_background_events
+            .as_mut()
+            .expect("requested background domain");
+        self.edge_label_background_valid &= events[slot].is_none();
+        events[slot] = Some(visible);
+    }
     pub(super) fn with_edge_label_background_paint(mut self, paint: Option<ExpectedPaint>) -> Self {
+        self.edge_label_background_paints = if paint.is_some() {
+            vec![None; self.expected_relations.len()]
+        } else {
+            Vec::new()
+        };
         self.expected_edge_label_background = paint;
         self
     }
-
     pub(crate) fn record_edge_label_background_paint(
         &mut self,
-        relation_index: usize,
+        index: usize,
         rule: Option<usize>,
         styles: &[(&str, &str)],
     ) {
         if self.expected_edge_label_background.is_none() && rule.is_none() {
             return;
         }
+        let Some(slot) = self
+            .relation_slot(index)
+            .filter(|slot| *slot < self.edge_label_background_paints.len())
+        else {
+            self.edge_label_background_valid = false;
+            return;
+        };
         let valid = !styles.is_empty()
             && styles.iter().all(|(style, property)| {
                 cluster_paint_event_matches(
@@ -488,197 +626,189 @@ impl ClassRelationThemeReceipt {
                     property,
                 )
             });
-        if self
-            .edge_label_background_paints
-            .insert(relation_index, valid)
-            .is_some()
-        {
-            self.duplicate_edge_label_background_event = true;
-        }
+        self.edge_label_background_valid &= self.edge_label_background_paints[slot].is_none();
+        self.edge_label_background_paints[slot] = Some(valid);
     }
-
-    pub(super) fn proves_edge_label_background(&self, rule_index: usize) -> bool {
+    pub(super) fn proves_edge_label_background(&self, rule: usize) -> bool {
         self.expected_edge_label_background
             .as_ref()
-            .is_some_and(|paint| paint.rule_index == rule_index)
-            && self
-                .edge_label_background_count()
-                .is_some_and(|count| count > 0 && self.edge_label_background_paints.len() == count)
+            .is_some_and(|paint| paint.rule_index == rule)
+            && self.edge_label_background_count().is_some_and(|count| {
+                count > 0
+                    && self
+                        .edge_label_background_paints
+                        .iter()
+                        .filter(|paint| paint.is_some())
+                        .count()
+                        == count
+            })
             && self
                 .edge_label_background_events
                 .as_ref()
                 .is_some_and(|events| {
-                    events.iter().all(|(index, visible)| {
-                        !visible || self.edge_label_background_paints.get(index) == Some(&true)
+                    events.iter().enumerate().all(|(slot, visible)| {
+                        *visible != Some(true)
+                            || self.edge_label_background_paints[slot] == Some(true)
                     })
                 })
     }
-
     pub(super) fn edge_label_background_count(&self) -> Option<usize> {
         let events = self.edge_label_background_events.as_ref()?;
         (self.proves_complete()
-            && !self.duplicate_edge_label_background_event
-            && events.len() == self.expected_relations.len()
-            && self
-                .expected_relations
+            && self.edge_label_background_valid
+            && events.iter().all(Option::is_some))
+        .then(|| {
+            events
                 .iter()
-                .all(|expected| events.contains_key(&expected.relation_index)))
-        .then(|| events.values().filter(|visible| **visible).count())
+                .filter(|visible| **visible == Some(true))
+                .count()
+        })
     }
 
-    pub(crate) fn with_nodes(mut self, expected_nodes: Vec<ClassNodeTerminalExpectation>) -> Self {
-        for expectation in expected_nodes {
-            let id = expectation.id.clone();
-            if self.expected_nodes.insert(id, expectation).is_some() {
-                self.duplicate_expected_node = true;
-            }
-        }
+    #[cfg(test)]
+    pub(crate) fn with_nodes(mut self, nodes: Vec<ClassNodeTerminalExpectation>) -> Self {
+        let mut ids = BTreeSet::new();
+        let valid = nodes.iter().all(|node| ids.insert(node.id()));
+        self.bind_nodes(Cow::Owned(nodes), valid);
         self
     }
-
+    pub(crate) fn with_borrowed_nodes(
+        mut self,
+        nodes: &'nodes [ClassNodeTerminalExpectation],
+        valid: bool,
+    ) -> Self {
+        self.bind_nodes(Cow::Borrowed(nodes), valid);
+        self
+    }
+    fn bind_nodes(&mut self, nodes: Cow<'nodes, [ClassNodeTerminalExpectation]>, valid: bool) {
+        self.nodes_seen = vec![false; nodes.len()];
+        self.node_domain_valid = valid;
+        for expected in nodes.iter() {
+            for &(target, property) in &NODE_PAINT_TARGETS {
+                if let Some(rule) = expected.winner_rule(target, property) {
+                    self.winner_rules.insert((rule, target, property));
+                }
+            }
+        }
+        self.expected_nodes = nodes;
+    }
     pub(super) fn expected_relation_count(&self) -> usize {
         self.expected_relations.len()
     }
-
     pub(super) fn expected_node_count(&self) -> usize {
         self.expected_nodes.len()
     }
 
-    pub(crate) fn record_node(&mut self, emission: ClassNodeTerminalEmission) {
-        let id = emission.id.clone();
-        if self.node_events.insert(id, emission).is_some() {
-            self.duplicate_node_event = true;
+    #[cfg(test)]
+    pub(crate) fn record_node(&mut self, event: ClassNodeTerminalEmission) {
+        let Some(slot) = self
+            .expected_nodes
+            .iter()
+            .position(|expected| expected.id() == event.id)
+        else {
+            self.nodes_valid = false;
+            return;
+        };
+        let observation = self.expected_nodes[slot].observe(
+            slot,
+            event.fill.terminal(),
+            event.stroke.terminal(),
+            event.label_fill.terminal(),
+        );
+        self.record_node_observation(observation);
+    }
+    pub(crate) fn record_node_observation(&mut self, event: ClassNodeTerminalObservation) {
+        let Some(expected) = self.expected_nodes.get(event.slot) else {
+            self.nodes_valid = false;
+            return;
+        };
+        self.nodes_valid &= !self.nodes_seen[event.slot] && event.values_match;
+        self.nodes_seen[event.slot] = true;
+        for (&(target, property), paint) in NODE_PAINT_TARGETS.iter().zip(event.paints) {
+            let Some(expected_paint) = expected.expected_paint(target, property) else {
+                continue;
+            };
+            let key = (expected_paint.rule_index, target, property);
+            if paint.terminal_applicable && !paint.source_owned {
+                self.effective_rules.insert(key);
+            }
+            if paint.terminal_applicable && !paint.source_owned && !paint.terminal_verified {
+                self.typed_rejections.insert(key);
+            }
         }
     }
-
-    pub(crate) fn themes_marker(&self, marker_name: &str) -> bool {
+    pub(crate) fn themes_marker(&self, name: &str) -> bool {
         self.expected_stroke.is_some()
             && self
                 .expected_markers
                 .iter()
-                .any(|expected| expected.name == marker_name)
+                .any(|expected| expected.name == name)
     }
-
     pub(crate) fn record_marker(
         &mut self,
         name: &'static str,
-        fill_follows_stroke: bool,
-        emitted_stroke: Option<(usize, &str)>,
-        terminal_style: Option<&str>,
+        fill: bool,
+        emitted: Option<(usize, &str)>,
+        style: Option<&str>,
     ) {
-        let terminal_style = terminal_style.unwrap_or_default();
-        self.marker_events.push(ClassMarkerTerminalEvent {
-            name,
-            fill_follows_stroke,
-            paint_matches: stroke_event_matches(
-                self.expected_stroke.as_ref(),
-                emitted_stroke,
-                terminal_style,
-            ) && (!fill_follows_stroke
-                || self.expected_stroke.as_ref().is_none_or(|stroke| {
-                    terminal_paint(terminal_style, "fill") == Some(stroke.css.as_str())
-                })),
-        });
+        let style = style.unwrap_or_default();
+        self.markers_valid &= self
+            .expected_markers
+            .get(self.marker_count)
+            .is_some_and(|expected| expected.name == name && expected.fill_follows_stroke == fill)
+            && stroke_event_matches(self.expected_stroke.as_ref(), emitted, style)
+            && (!fill
+                || self.expected_stroke.as_ref().is_none_or(|expected| {
+                    terminal_paint(style, "fill") == Some(expected.css.as_str())
+                }));
+        self.marker_count = self.marker_count.saturating_add(1);
     }
-
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn record_relation(
-        &mut self,
-        relation_index: usize,
-        start_marker: Option<&'static str>,
-        end_marker: Option<&'static str>,
-        emitted_stroke: Option<(usize, &str)>,
-        terminal_style: &str,
-        hand_drawn_stroke: Option<&str>,
-        typed_width_emitted: bool,
-    ) {
-        let event = ClassRelationTerminalEvent {
-            start_marker,
-            end_marker,
-            emitted_stroke_rule: emitted_stroke.map(|(rule_index, _)| rule_index),
-            paint_matches: stroke_event_matches(
-                self.expected_stroke.as_ref(),
-                emitted_stroke,
-                terminal_style,
-            ) && hand_drawn_stroke_matches(
+    pub(crate) fn record_relation(&mut self, event: ClassRelationTerminalEvent<'_>) {
+        let ClassRelationTerminalEvent {
+            relation_index: index,
+            start_marker: start,
+            end_marker: end,
+            emitted_stroke: emitted,
+            terminal_style: style,
+            hand_drawn_stroke: hand_drawn,
+            typed_width_emitted: width,
+        } = event;
+        let Some(slot) = self.relation_slot(index) else {
+            self.relations_valid = false;
+            return;
+        };
+        let expected = &self.expected_relations[slot];
+        self.relations_valid &= !self.relations_seen[slot]
+            && start == expected.start_marker
+            && end == expected.end_marker
+            && stroke_event_matches(self.expected_stroke.as_ref(), emitted, style)
+            && hand_drawn_stroke_matches(
                 self.expected_stroke.as_ref(),
                 self.hand_drawn,
-                hand_drawn_stroke,
-            ),
-        };
-        if self.relation_events.insert(relation_index, event).is_some() {
-            self.duplicate_relation_event = true;
-        }
-        if typed_width_emitted {
+                hand_drawn,
+            );
+        self.relations_seen[slot] = true;
+        self.strokes_valid &= self
+            .expected_stroke
+            .as_ref()
+            .is_none_or(|stroke| emitted.map(|(rule, _)| rule) == Some(stroke.rule_index));
+        if width {
             self.checkpointed_typed_width_paths =
                 self.checkpointed_typed_width_paths.saturating_add(1);
         }
     }
-
     fn proves_complete_relation_emission(&self) -> bool {
-        // Extracted namespace roots can emit relations before earlier source declarations.
-        // Bind each checkpoint to its source identity, independently of SVG traversal order.
-        !self.duplicate_relation_event
-            && self
-                .expected_relations
-                .windows(2)
-                .all(|pair| pair[0].relation_index < pair[1].relation_index)
-            && self.relation_events.len() == self.expected_relations.len()
-            && self.expected_relations.iter().all(|expected| {
-                self.relation_events
-                    .get(&expected.relation_index)
-                    .is_some_and(|event| {
-                        event.start_marker == expected.start_marker
-                            && event.end_marker == expected.end_marker
-                            && event.paint_matches
-                    })
-            })
+        self.relations_valid && self.relations_seen.iter().all(|seen| *seen)
     }
-
     fn proves_complete_note_attachment_emission(&self) -> bool {
-        // Namespace groups may emit attachments in a different order from their declarations.
-        !self.duplicate_note_attachment_event
-            && self
-                .expected_note_attachments
-                .windows(2)
-                .all(|pair| pair[0] < pair[1])
-            && self.note_attachment_events.len() == self.expected_note_attachments.len()
-            && self.expected_note_attachments.iter().all(|index| {
-                self.note_attachment_events
-                    .get(index)
-                    .is_some_and(|event| event.paint_matches)
-            })
+        self.notes_valid && self.notes_seen.iter().all(|seen| *seen)
     }
-
     fn proves_complete_marker_emission(&self) -> bool {
-        self.marker_events.len() == self.expected_markers.len()
-            && self
-                .marker_events
-                .iter()
-                .zip(&self.expected_markers)
-                .all(|(event, expected)| {
-                    event.name == expected.name
-                        && event.fill_follows_stroke == expected.fill_follows_stroke
-                        && event.paint_matches
-                })
+        self.markers_valid && self.marker_count == self.expected_markers.len()
     }
-
     fn proves_complete_node_emission(&self) -> bool {
-        !self.duplicate_expected_node
-            && !self.duplicate_node_event
-            && self.node_events.len() == self.expected_nodes.len()
-            && self.expected_nodes.iter().all(|(id, expected)| {
-                self.node_events.get(id).is_some_and(|event| {
-                    node_paint_event_matches(expected.fill.as_ref(), &event.fill)
-                        && node_paint_event_matches(expected.stroke.as_ref(), &event.stroke)
-                        && node_label_paint_event_matches(
-                            expected.label_fill.as_ref(),
-                            &event.label_fill,
-                        )
-                })
-            })
+        self.node_domain_valid && self.nodes_valid && self.nodes_seen.iter().all(|seen| *seen)
     }
-
     pub(super) fn proves_complete(&self) -> bool {
         self.proves_complete_cluster_emission()
             && self.proves_complete_node_emission()
@@ -687,116 +817,124 @@ impl ClassRelationThemeReceipt {
             && self.proves_complete_marker_emission()
     }
 
+    #[cfg(test)]
     pub(super) fn terminal_summary(&self) -> ClassTerminalReceiptSummary {
+        self.clone().into_terminal_summary()
+    }
+
+    pub(super) fn into_terminal_summary(self) -> ClassTerminalReceiptSummary {
+        let complete = self.proves_complete();
         let complete_nodes = self.proves_complete_node_emission();
-        let complete_relations = self.proves_complete_relation_emission();
-        let complete_markers = self.proves_complete_marker_emission();
-        let complete = self.proves_complete_cluster_emission()
-            && complete_nodes
-            && complete_relations
-            && self.proves_complete_note_attachment_emission()
-            && complete_markers;
+        let background_count = self.edge_label_background_count();
+        let background_rule = self
+            .expected_edge_label_background
+            .as_ref()
+            .and_then(|paint| {
+                self.proves_edge_label_background(paint.rule_index)
+                    .then_some(paint.rule_index)
+            });
+        let namespace_title_rule = self.expected_namespace_title.as_ref().and_then(|paint| {
+            self.proves_typed_namespace_title(paint.rule_index)
+                .then_some(paint.rule_index)
+        });
+        let mut cluster_rules = BTreeSet::new();
+        for (property, paint) in [
+            (ResolvedStyleProperty::Fill, &self.expected_cluster_fill),
+            (ResolvedStyleProperty::Stroke, &self.expected_cluster_stroke),
+        ] {
+            if let Some(paint) = paint
+                && self.proves_typed_cluster_paint(paint.rule_index, property)
+            {
+                cluster_rules.insert((paint.rule_index, property));
+            }
+        }
+        let typed_stroke = self.expected_stroke.as_ref().and_then(|stroke| {
+            self.proves_typed_stroke(stroke.rule_index, stroke.property)
+                .then_some((stroke.rule_index, stroke.property))
+        });
+        let typed_width = self.proves_typed_width();
         let visible_marker_occurrence_count = complete.then(|| {
-            self.relation_events
-                .values()
-                .map(|event| {
-                    usize::from(event.start_marker.is_some())
-                        .saturating_add(usize::from(event.end_marker.is_some()))
+            self.expected_relations
+                .iter()
+                .map(|expected| {
+                    usize::from(expected.start_marker.is_some())
+                        .saturating_add(usize::from(expected.end_marker.is_some()))
                 })
                 .sum()
         });
-        let mut winner_rules = BTreeSet::new();
-        let mut effective_rules = BTreeSet::new();
-        let mut typed_rejections = BTreeSet::new();
-        for expected in self.expected_nodes.values() {
-            for &(target, property) in &NODE_PAINT_TARGETS {
-                if let Some(rule_index) = expected.winner_rule(target, property) {
-                    winner_rules.insert((rule_index, target, property));
-                }
-                let Some(expected_paint) = expected.expected_paint(target, property) else {
-                    continue;
-                };
-                let key = (expected_paint.rule_index, target, property);
-                let Some(event) = self.node_events.get(expected.id()) else {
-                    typed_rejections.insert(key);
-                    continue;
-                };
-                let paint = node_paint_emission(event, target, property);
-                if paint.terminal_applicable && !paint.source_owned {
-                    effective_rules.insert(key);
-                }
-                if !(!paint.terminal_applicable || paint.source_owned || paint.terminal_verified) {
-                    typed_rejections.insert(key);
-                }
-            }
-        }
-        let typed_rules = effective_rules
+        let typed_rules = self
+            .effective_rules
             .iter()
             .copied()
-            .filter(|key| complete_nodes && !typed_rejections.contains(key))
+            .filter(|key| complete_nodes && !self.typed_rejections.contains(key))
             .collect();
-
+        let work_units = self
+            .expected_nodes
+            .len()
+            .saturating_add(self.nodes_seen.iter().filter(|seen| **seen).count())
+            .saturating_mul(NODE_PAINT_TARGETS.len())
+            .saturating_add(self.expected_clusters.len().saturating_mul(2))
+            .saturating_add(
+                self.cluster_events
+                    .iter()
+                    .filter(|event| event.is_some())
+                    .count()
+                    .saturating_mul(2),
+            )
+            .saturating_add(if self.expected_namespace_title.is_some() {
+                self.expected_clusters.len().saturating_mul(2)
+            } else {
+                0
+            })
+            .saturating_add(self.expected_relations.len())
+            .saturating_add(self.relations_seen.iter().filter(|seen| **seen).count())
+            .saturating_add(self.expected_note_attachments.len())
+            .saturating_add(self.notes_seen.iter().filter(|seen| **seen).count())
+            .saturating_add(self.expected_markers.len())
+            .saturating_add(self.marker_count)
+            .saturating_add(
+                self.edge_label_background_events
+                    .as_ref()
+                    .map_or(0, |events| {
+                        events.iter().filter(|event| event.is_some()).count()
+                    }),
+            )
+            .saturating_add(
+                self.edge_label_background_paints
+                    .iter()
+                    .filter(|event| event.is_some())
+                    .count(),
+            )
+            .max(1);
         ClassTerminalReceiptSummary {
             complete,
             complete_nodes,
             visible_marker_occurrence_count,
-            winner_rules,
-            effective_rules,
+            node_count: self.expected_nodes.len(),
+            background_count,
+            background_rule,
+            namespace_title_rule,
+            cluster_rules,
+            typed_stroke,
+            typed_width,
+            winner_rules: self.winner_rules,
+            effective_rules: self.effective_rules,
             typed_rules,
-            work_units: self
-                .expected_nodes
-                .len()
-                .saturating_add(self.node_events.len())
-                .saturating_mul(NODE_PAINT_TARGETS.len())
-                .saturating_add(self.expected_clusters.len().saturating_mul(2))
-                .saturating_add(self.cluster_events.len().saturating_mul(2))
-                .saturating_add(if self.expected_namespace_title.is_some() {
-                    self.expected_clusters.len().saturating_mul(2)
-                } else {
-                    0
-                })
-                .saturating_add(self.expected_relations.len())
-                .saturating_add(self.relation_events.len())
-                .saturating_add(self.expected_note_attachments.len())
-                .saturating_add(self.note_attachment_events.len())
-                .saturating_add(self.expected_markers.len())
-                .saturating_add(self.marker_events.len())
-                .saturating_add(
-                    self.edge_label_background_events
-                        .as_ref()
-                        .map_or(0, BTreeMap::len),
-                )
-                .saturating_add(self.edge_label_background_paints.len())
-                .max(1),
+            work_units,
         }
     }
-
     pub(super) fn proves_typed_width(&self) -> bool {
         self.proves_complete_relation_emission()
             && self.checkpointed_typed_width_paths == self.expected_relations.len()
     }
-
-    fn has_effective_stroke_rule(
-        &self,
-        rule_index: usize,
-        property: ResolvedStyleProperty,
-    ) -> bool {
-        self.expected_stroke.as_ref().is_some_and(|expected| {
-            expected.rule_index == rule_index && expected.property == property
-        }) && (!self.expected_relations.is_empty() || !self.expected_note_attachments.is_empty())
-    }
-
-    pub(super) fn proves_typed_stroke(
-        &self,
-        rule_index: usize,
-        property: ResolvedStyleProperty,
-    ) -> bool {
+    pub(super) fn proves_typed_stroke(&self, rule: usize, property: ResolvedStyleProperty) -> bool {
         self.proves_complete()
-            && self.has_effective_stroke_rule(rule_index, property)
+            && self.strokes_valid
             && self
-                .relation_events
-                .values()
-                .all(|event| event.emitted_stroke_rule == Some(rule_index))
+                .expected_stroke
+                .as_ref()
+                .is_some_and(|stroke| stroke.rule_index == rule && stroke.property == property)
+            && (!self.expected_relations.is_empty() || !self.expected_note_attachments.is_empty())
     }
 }
 
@@ -804,6 +942,13 @@ impl ClassRelationThemeReceipt {
 pub(crate) struct ClassTerminalReceiptSummary {
     complete: bool,
     complete_nodes: bool,
+    node_count: usize,
+    background_count: Option<usize>,
+    background_rule: Option<usize>,
+    namespace_title_rule: Option<usize>,
+    cluster_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
+    typed_stroke: Option<(usize, ResolvedStyleProperty)>,
+    typed_width: bool,
     visible_marker_occurrence_count: Option<usize>,
     winner_rules: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
     effective_rules: BTreeSet<(usize, ThemeTarget, ResolvedStyleProperty)>,
@@ -812,6 +957,32 @@ pub(crate) struct ClassTerminalReceiptSummary {
 }
 
 impl ClassTerminalReceiptSummary {
+    pub(super) fn expected_node_count(&self) -> usize {
+        self.node_count
+    }
+    pub(super) fn edge_label_background_count(&self) -> Option<usize> {
+        self.background_count
+    }
+    pub(super) fn proves_edge_label_background(&self, rule: usize) -> bool {
+        self.background_rule == Some(rule)
+    }
+    pub(super) fn proves_typed_namespace_title(&self, rule: usize) -> bool {
+        self.namespace_title_rule == Some(rule)
+    }
+    pub(super) fn proves_typed_cluster_paint(
+        &self,
+        rule: usize,
+        property: ResolvedStyleProperty,
+    ) -> bool {
+        self.cluster_rules.contains(&(rule, property))
+    }
+    pub(super) fn proves_typed_stroke(&self, rule: usize, property: ResolvedStyleProperty) -> bool {
+        self.typed_stroke == Some((rule, property))
+    }
+    pub(super) fn proves_typed_width(&self) -> bool {
+        self.typed_width
+    }
+
     pub(super) fn is_complete(&self) -> bool {
         self.complete
     }
@@ -887,39 +1058,6 @@ fn cluster_paint_event_matches(
     }
 }
 
-#[derive(Debug, Clone)]
-struct ClassRelationTerminalEvent {
-    start_marker: Option<&'static str>,
-    end_marker: Option<&'static str>,
-    emitted_stroke_rule: Option<usize>,
-    paint_matches: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ClassNoteAttachmentTerminalEvent {
-    paint_matches: bool,
-}
-
-#[derive(Debug, Clone)]
-struct ClassMarkerTerminalEvent {
-    name: &'static str,
-    fill_follows_stroke: bool,
-    paint_matches: bool,
-}
-
-fn node_paint_emission(
-    event: &ClassNodeTerminalEmission,
-    target: ThemeTarget,
-    property: ResolvedStyleProperty,
-) -> &ClassNodePaintTerminalEmission {
-    match (target, property) {
-        (ThemeTarget::Node, ResolvedStyleProperty::Fill) => &event.fill,
-        (ThemeTarget::Node, ResolvedStyleProperty::Stroke) => &event.stroke,
-        (ThemeTarget::NodeLabel, ResolvedStyleProperty::Fill) => &event.label_fill,
-        _ => unreachable!("guarded Class node paint terminal"),
-    }
-}
-
 fn typed_paint(expected: &Option<ExpectedPaint>, source_owns: bool) -> Option<(usize, &str)> {
     (!source_owns)
         .then_some(expected.as_ref())
@@ -929,7 +1067,7 @@ fn typed_paint(expected: &Option<ExpectedPaint>, source_owns: bool) -> Option<(u
 
 fn node_paint_event_matches(
     expected: Option<&ExpectedPaint>,
-    event: &ClassNodePaintTerminalEmission,
+    event: &ClassNodePaintTerminal<'_>,
 ) -> bool {
     if !event.terminal_applicable {
         return event.emitted.is_none();
@@ -938,14 +1076,13 @@ fn node_paint_event_matches(
         return event.emitted.is_none()
             && event
                 .source_value
-                .as_deref()
                 .is_none_or(|source| event.terminal_value == source);
     }
-    match (expected, event.emitted.as_ref()) {
+    match (expected, event.emitted) {
         (None, None) => true,
         (Some(expected), Some((rule_index, css))) => {
-            expected.rule_index == *rule_index
-                && expected.css == *css
+            expected.rule_index == rule_index
+                && expected.css == css
                 && event.terminal_value == expected.css
         }
         (Some(_), None) | (None, Some(_)) => false,
@@ -954,24 +1091,24 @@ fn node_paint_event_matches(
 
 fn node_label_paint_event_matches(
     expected: Option<&ExpectedPaint>,
-    event: &ClassNodePaintTerminalEmission,
+    event: &ClassNodePaintTerminal<'_>,
 ) -> bool {
     if !event.terminal_applicable {
         return event.emitted.is_none();
     }
     if event.source_owned {
         return event.emitted.is_none()
-            && event.source_value.as_deref().is_none_or(|source| {
-                terminal_paint(&event.terminal_value, "color") == Some(source)
+            && event.source_value.is_none_or(|source| {
+                terminal_paint(event.terminal_value, "color") == Some(source)
             });
     }
-    match (expected, event.emitted.as_ref()) {
+    match (expected, event.emitted) {
         (None, None) => true,
         (Some(expected), Some((rule_index, css))) => {
-            expected.rule_index == *rule_index
-                && expected.css == *css
-                && terminal_paint(&event.terminal_value, "color") == Some(expected.css.as_str())
-                && terminal_paint(&event.terminal_value, "fill") == Some(expected.css.as_str())
+            expected.rule_index == rule_index
+                && expected.css == css
+                && terminal_paint(event.terminal_value, "color") == Some(expected.css.as_str())
+                && terminal_paint(event.terminal_value, "fill") == Some(expected.css.as_str())
         }
         (Some(_), None) | (None, Some(_)) => false,
     }
@@ -1018,6 +1155,102 @@ pub(super) fn terminal_paint<'a>(style: &'a str, property: &str) -> Option<&'a s
 mod tests {
     use super::*;
 
+    #[test]
+    fn completion_only_requires_exact_canonical_domains_with_balanced_bad_counts() {
+        let emission = |id| {
+            ClassNodeTerminalEmission::new(
+                id,
+                ClassNodePaintTerminalEmission::new(false, None, "#fff"),
+                ClassNodePaintTerminalEmission::new(false, None, "#000"),
+                ClassNodePaintTerminalEmission::new(false, None, ""),
+            )
+        };
+        for observed in [["B", "B"], ["A", "foreign"]] {
+            let mut receipt = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
+                .with_nodes(vec![
+                    ClassNodeTerminalExpectation::new("A"),
+                    ClassNodeTerminalExpectation::new("B"),
+                ]);
+            for id in observed {
+                receipt.record_node(emission(id));
+            }
+            assert!(!receipt.proves_complete(), "{observed:?}");
+        }
+        let mut duplicate_expected =
+            ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false).with_nodes(vec![
+                ClassNodeTerminalExpectation::new("A"),
+                ClassNodeTerminalExpectation::new("A"),
+            ]);
+        duplicate_expected.record_node(emission("A"));
+        assert!(!duplicate_expected.proves_complete());
+        let relations = || {
+            vec![
+                ClassRelationTerminalExpectation::new(2, None, Some("extensionEnd")),
+                ClassRelationTerminalExpectation::new(7, Some("aggregationStart"), None),
+            ]
+        };
+        let mut reordered = ClassRelationThemeReceipt::new(relations(), Vec::new(), None, false);
+        reordered.record_relation(ClassRelationTerminalEvent {
+            relation_index: 7,
+            start_marker: Some("aggregationStart"),
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: "",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
+        reordered.record_relation(ClassRelationTerminalEvent {
+            relation_index: 2,
+            start_marker: None,
+            end_marker: Some("extensionEnd"),
+            emitted_stroke: None,
+            terminal_style: "",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
+        assert!(reordered.proves_complete());
+        let mut foreign = ClassRelationThemeReceipt::new(relations(), Vec::new(), None, false);
+        foreign.record_relation(ClassRelationTerminalEvent {
+            relation_index: 7,
+            start_marker: Some("aggregationStart"),
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: "",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
+        foreign.record_relation(ClassRelationTerminalEvent {
+            relation_index: 99,
+            start_marker: None,
+            end_marker: Some("extensionEnd"),
+            emitted_stroke: None,
+            terminal_style: "",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
+        assert!(!foreign.proves_complete());
+        let mut duplicated = ClassRelationThemeReceipt::new(relations(), Vec::new(), None, false);
+        duplicated.record_relation(ClassRelationTerminalEvent {
+            relation_index: 7,
+            start_marker: Some("aggregationStart"),
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: "",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
+        duplicated.record_relation(ClassRelationTerminalEvent {
+            relation_index: 7,
+            start_marker: Some("aggregationStart"),
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: "",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
+        assert!(!duplicated.proves_complete());
+    }
+
     fn expected_stroke() -> Option<ExpectedStroke> {
         Some(ExpectedStroke {
             rule_index: 3,
@@ -1039,7 +1272,7 @@ mod tests {
         fill: Option<ExpectedPaint>,
         stroke: Option<ExpectedPaint>,
         namespace_title: Option<ExpectedPaint>,
-    ) -> ClassRelationThemeReceipt {
+    ) -> ClassRelationThemeReceipt<'static> {
         ClassRelationThemeReceipt::new_with_clusters(
             Vec::new(),
             Vec::new(),
@@ -1163,7 +1396,15 @@ mod tests {
                     None,
                     hand_drawn,
                 );
-                relation.record_relation(0, None, None, None, "", emitted, false);
+                relation.record_relation(ClassRelationTerminalEvent {
+                    relation_index: 0,
+                    start_marker: None,
+                    end_marker: None,
+                    emitted_stroke: None,
+                    terminal_style: "",
+                    hand_drawn_stroke: emitted,
+                    typed_width_emitted: false,
+                });
                 assert_eq!(relation.proves_complete(), hand_drawn == emitted.is_some());
                 let mut note =
                     ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, hand_drawn)
@@ -1188,15 +1429,15 @@ mod tests {
                 false,
             );
             assert!(!receipt.proves_typed_stroke(3, property));
-            receipt.record_relation(
-                0,
-                None,
-                None,
-                Some((3, "#123456")),
-                "stroke:#123456 !important",
-                None,
-                false,
-            );
+            receipt.record_relation(ClassRelationTerminalEvent {
+                relation_index: 0,
+                start_marker: None,
+                end_marker: None,
+                emitted_stroke: Some((3, "#123456")),
+                terminal_style: "stroke:#123456 !important",
+                hand_drawn_stroke: None,
+                typed_width_emitted: false,
+            });
             assert!(receipt.proves_typed_stroke(3, property));
             let sibling = if property == ResolvedStyleProperty::Fill {
                 ResolvedStyleProperty::Stroke
@@ -1313,15 +1554,15 @@ mod tests {
             false,
         )
         .with_note_attachments(vec![2]);
-        receipt.record_relation(
-            0,
-            None,
-            None,
-            Some((3, "#123456")),
-            "stroke:#123456 !important;stroke-width:6px !important",
-            None,
-            true,
-        );
+        receipt.record_relation(ClassRelationTerminalEvent {
+            relation_index: 0,
+            start_marker: None,
+            end_marker: None,
+            emitted_stroke: Some((3, "#123456")),
+            terminal_style: "stroke:#123456 !important;stroke-width:6px !important",
+            hand_drawn_stroke: None,
+            typed_width_emitted: true,
+        });
         assert!(receipt.proves_typed_width());
         assert!(!receipt.proves_typed_stroke(3, ResolvedStyleProperty::Stroke));
         receipt.record_note_attachment(2, Some((3, "#123456")), "stroke:#123456 !important", None);
@@ -1577,23 +1818,23 @@ mod tests {
                     "foreign" => 2,
                     _ => 0,
                 };
-                receipt.record_relation(
-                    index,
-                    Some(if case == "marker" {
+                receipt.record_relation(ClassRelationTerminalEvent {
+                    relation_index: index,
+                    start_marker: Some(if case == "marker" {
                         "extensionEnd"
                     } else {
                         "compositionStart"
                     }),
-                    None,
-                    Some((if case == "rule" { 4 } else { 3 }, "#123456")),
-                    if case == "paint" {
+                    end_marker: None,
+                    emitted_stroke: Some((if case == "rule" { 4 } else { 3 }, "#123456")),
+                    terminal_style: if case == "paint" {
                         "stroke:#abcdef !important;"
                     } else {
                         "stroke:#123456 !important;"
                     },
-                    None,
-                    false,
-                );
+                    hand_drawn_stroke: None,
+                    typed_width_emitted: false,
+                });
             }
             assert_eq!(receipt.proves_complete(), case == "valid", "{case}");
             assert_eq!(
@@ -1613,15 +1854,15 @@ mod tests {
             Some((3, "#123456")),
             Some("stroke:#123456 !important;fill:#123456 !important"),
         );
-        missing_hand_drawn_stroke.record_relation(
-            0,
-            Some("compositionStart"),
-            None,
-            Some((3, "#123456")),
-            ";;;stroke:#123456 !important;",
-            None,
-            false,
-        );
+        missing_hand_drawn_stroke.record_relation(ClassRelationTerminalEvent {
+            relation_index: 0,
+            start_marker: Some("compositionStart"),
+            end_marker: None,
+            emitted_stroke: Some((3, "#123456")),
+            terminal_style: ";;;stroke:#123456 !important;",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
         assert!(!missing_hand_drawn_stroke.proves_complete());
 
         let mut wrong_marker_fill = single_hand_drawn_receipt();
@@ -1631,15 +1872,15 @@ mod tests {
             Some((3, "#123456")),
             Some("stroke:#123456 !important;fill:#abcdef !important"),
         );
-        wrong_marker_fill.record_relation(
-            0,
-            Some("compositionStart"),
-            None,
-            Some((3, "#123456")),
-            ";;;stroke:#123456 !important;",
-            Some("#123456"),
-            false,
-        );
+        wrong_marker_fill.record_relation(ClassRelationTerminalEvent {
+            relation_index: 0,
+            start_marker: Some("compositionStart"),
+            end_marker: None,
+            emitted_stroke: Some((3, "#123456")),
+            terminal_style: ";;;stroke:#123456 !important;",
+            hand_drawn_stroke: Some("#123456"),
+            typed_width_emitted: false,
+        });
         assert!(!wrong_marker_fill.proves_complete());
     }
 
@@ -1656,7 +1897,15 @@ mod tests {
         )
         .with_edge_label_backgrounds(true);
         for index in 0..2 {
-            receipt.record_relation(index, None, None, None, "", None, false);
+            receipt.record_relation(ClassRelationTerminalEvent {
+                relation_index: index,
+                start_marker: None,
+                end_marker: None,
+                emitted_stroke: None,
+                terminal_style: "",
+                hand_drawn_stroke: None,
+                typed_width_emitted: false,
+            });
         }
         assert_eq!(receipt.edge_label_background_count(), None);
         receipt.record_edge_label_background(1, true);
@@ -1695,7 +1944,15 @@ mod tests {
             rule_index: 7,
             css: "#020617".to_owned(),
         }));
-        baseline.record_relation(0, None, None, None, "", None, false);
+        baseline.record_relation(ClassRelationTerminalEvent {
+            relation_index: 0,
+            start_marker: None,
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: "",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
         baseline.record_edge_label_background(0, true);
         assert!(!baseline.proves_edge_label_background(7));
         let mut extra = baseline.clone();
@@ -1769,7 +2026,7 @@ mod tests {
         );
     }
 
-    fn single_hand_drawn_receipt() -> ClassRelationThemeReceipt {
+    fn single_hand_drawn_receipt() -> ClassRelationThemeReceipt<'static> {
         ClassRelationThemeReceipt::new(
             vec![ClassRelationTerminalExpectation::new(
                 0,
@@ -1806,15 +2063,15 @@ mod tests {
         start_marker: Option<&'static str>,
         end_marker: Option<&'static str>,
     ) {
-        receipt.record_relation(
+        receipt.record_relation(ClassRelationTerminalEvent {
             relation_index,
             start_marker,
             end_marker,
-            Some((3, "#123456")),
-            ";;;stroke:#123456 !important;",
-            None,
-            false,
-        );
+            emitted_stroke: Some((3, "#123456")),
+            terminal_style: ";;;stroke:#123456 !important;",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
     }
     #[test]
     fn namespace_title_receipt_requires_the_complete_visible_color_terminal() {

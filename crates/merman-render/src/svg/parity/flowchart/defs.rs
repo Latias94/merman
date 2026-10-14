@@ -1191,7 +1191,7 @@ mod tests {
         let mut defs = String::new();
         push_base_markers(&mut defs, "diagram", "flowchart-v2");
         let svg = format!("<svg>{defs}</svg>");
-        let doc = roxmltree::Document::parse(&svg).unwrap();
+        let doc = crate::xml_dom::Document::parse(&svg).unwrap();
         for spec in FLOWCHART_MARKER_SHAPE_SPECS {
             let id = format!(
                 "diagram_flowchart-v2-{}{}",
@@ -2169,7 +2169,7 @@ mod paint_security_tests {
             let mut out = String::from("<svg><defs>");
             defs.push_extra_markers(&mut out).unwrap();
             out.push_str("</defs></svg>");
-            let document = roxmltree::Document::parse(&out).unwrap();
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
             let marker = document
                 .descendants()
                 .find(|node| node.has_tag_name("marker"))
