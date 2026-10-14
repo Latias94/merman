@@ -38,6 +38,8 @@ pub struct UsecaseDiagramLayout {
 pub(crate) struct UsecaseLabelPlan {
     pub text: String,
     pub label_type: UsecaseLabelType,
+    /// Text bbox before the SVG edge background or node minimum-width box is applied.
+    pub text_metrics: TextMetrics,
     pub metrics: TextMetrics,
     pub style: TextStyle,
     pub max_width: Option<f64>,
@@ -84,6 +86,7 @@ pub(crate) struct UsecaseNodePlan {
 pub(crate) struct UsecaseEdgePlan {
     pub id: String,
     pub source_style: String,
+    pub animated: bool,
     pub original_id: Option<String>,
     pub self_loop_node: Option<String>,
     pub dagre_recursive: bool,

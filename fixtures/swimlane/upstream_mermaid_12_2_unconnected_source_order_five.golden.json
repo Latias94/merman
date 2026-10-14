@@ -1,0 +1,155 @@
+{
+  "diagramType": "swimlane",
+  "model": {
+    "keyword": "swimlane-beta",
+    "accDescr": null,
+    "accTitle": null,
+    "classDefs": {},
+    "direction": null,
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": []
+    },
+    "vertexCalls": [
+      "Wednesday",
+      "Tuesday",
+      "Friday",
+      "Monday",
+      "Thursday"
+    ],
+    "nodes": [
+      {
+        "id": "Wednesday",
+        "label": "Wednesday",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": null,
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Tuesday",
+        "label": "Tuesday",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": null,
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Friday",
+        "label": "Friday",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": null,
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Monday",
+        "label": "Monday",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": null,
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      },
+      {
+        "id": "Thursday",
+        "label": "Thursday",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "shape": null,
+        "icon": null,
+        "form": null,
+        "pos": null,
+        "img": null,
+        "constraint": null,
+        "assetWidth": null,
+        "assetHeight": null,
+        "classes": [],
+        "styles": [],
+        "link": null,
+        "linkTarget": null,
+        "haveCallback": false
+      }
+    ],
+    "edges": [],
+    "subgraphs": [
+      {
+        "id": "week",
+        "title": "Week",
+        "dir": null,
+        "labelType": "text",
+        "classes": [],
+        "styles": [],
+        "nodes": [
+          "Wednesday",
+          "Tuesday",
+          "Friday",
+          "Monday",
+          "Thursday"
+        ]
+      }
+    ],
+    "tooltips": {},
+    "warningFacts": [
+      {
+        "ruleId": "merman.authoring.flowchart.explicit_direction",
+        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+        "span": {
+          "start": 0,
+          "end": 13
+        },
+        "fixSpan": {
+          "start": 13,
+          "end": 13
+        }
+      }
+    ],
+    "type": "swimlane",
+    "warnings": [
+      "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`"
+    ]
+  }
+}

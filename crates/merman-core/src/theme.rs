@@ -1068,7 +1068,7 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
 fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
     GENERATED_THEME_RUNTIME.get_or_init(|| {
         let storage: GeneratedThemeRuntimeStorage =
-            serde_json::from_str(include_str!("generated/theme_variables_12_1_0.json"))
+            serde_json::from_str(include_str!("generated/theme_variables_12_2_0.json"))
                 .expect("generated Mermaid theme runtime JSON is valid");
         assert_eq!(storage.schema_version, THEME_RUNTIME_SCHEMA_VERSION);
         assert_generated_theme_provenance(&storage.provenance);
@@ -1168,7 +1168,7 @@ fn assert_generated_theme_provenance(provenance: &GeneratedThemeProvenance) {
 fn generated_theme_oracles() -> &'static GeneratedThemeOracles {
     GENERATED_THEME_ORACLES.get_or_init(|| {
         let artifact: GeneratedThemeOracles = serde_json::from_str(include_str!(
-            "../../../fixtures/_verification/theme_variables_oracle_12_1_0.json"
+            "../../../fixtures/_verification/theme_variables_oracle_12_2_0.json"
         ))
         .expect("generated Mermaid theme oracle JSON is valid");
         assert_eq!(artifact.schema_version, THEME_AUDIT_SCHEMA_VERSION);

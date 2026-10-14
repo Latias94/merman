@@ -335,6 +335,7 @@
   "maxEdges": 500,
   "maxTextSize": 50000,
   "mindmap": {
+    "colorBy": "branch",
     "layoutAlgorithm": "cose-bilkent",
     "maxNodeWidth": 200,
     "padding": 10,

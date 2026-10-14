@@ -1,0 +1,6 @@
+railroad-peg-beta
+title Predicates on grouped suffixes
+accTitle: PEG predicate precedence
+accDescr: Predicates wrap suffixed groups while later rules preserve references.
+Token <- &("a" / "b")+ !(End / ".")? ("x" / "y")* . ;
+End <- "!" ;

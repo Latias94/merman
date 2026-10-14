@@ -1,7 +1,7 @@
 {
   "schema_version": 3,
-  "mermaid_version": "12.1.0",
-  "mermaid_source_commit": "21f72f07ea22c0af48a3149c550654e80d8e40cb",
+  "mermaid_version": "12.2.0",
+  "mermaid_source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
   "measurement_provider": "deterministic",
   "comparison_revision": "browser-text-layout-residual-v3",
   "dom_decimals": 3,
@@ -146,8 +146,8 @@
         "parity-root"
       ],
       "input_sha256": "6436bd1c9f897bf4387e3cfa67be332797104ae6fead6faeb271ada6d75af783",
-      "upstream_svg_sha256": "72713cdfe51bea02ebb217d8d2a6861dc12d85d55301e83338bdbde412f7fa97",
-      "local_svg_signature_sha256": "b0789e4f59a2763400924f34897fe985fba5afbc07e9f0541094f52f3eb284d8"
+      "upstream_svg_sha256": "c78a3c2d49a71ece2da20b4f2eb468cbcee1c86c027ccd2e13c00083b97b8d5e",
+      "local_svg_signature_sha256": "dafcb57067205aca8a456e0dadf0467dcc1c289cd520f837948144eb2b775057"
     },
     {
       "diagram": "flowchart",
@@ -179,8 +179,8 @@
         "parity-root"
       ],
       "input_sha256": "3f850d981f3ba3a11218860bd2bf353a270ba8d4a00427b3f6d4b5b79a34a256",
-      "upstream_svg_sha256": "1fd78b45398876b5debb95a522678aaed8ec378a1a502e97f01c442a9bdf7abf",
-      "local_svg_signature_sha256": "e15578d6b6373b81978e298824e5e2d38102ecc14bb792d68f12e29c0c07f0ff"
+      "upstream_svg_sha256": "8a5dda23cd58b4a6b35db2db331350aecfccb86986f5642c95caaaf2cfe105c0",
+      "local_svg_signature_sha256": "11d2b4b19800bb8e5e09b6aaf5e29765fbffec1cf9b12202f801be1df09928ff"
     },
     {
       "diagram": "flowchart",
@@ -204,17 +204,6 @@
       "local_svg_signature_sha256": "ef68e1f5b2ab3957e6e027f7bc4514d0f2e334e876c9f3925d42c239bc2272d7",
       "input_sha256": "4ba55d5793d9470302ffb39389f8d2f66b52cfbfc0bf81182948f4e9ceb4554d",
       "upstream_svg_sha256": "89e95163983c37a41afbe36bb9429b27a78531fa07e93998508b5f79614454e6"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_elk_spec_60_elk_handle_styling_for_all_node_shapes_v2_021",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "local_svg_signature_sha256": "4e3d2c1acdb8782cbe2708b6b467f46dce05d0b0d8492fe5e05b067ee1aad780",
-      "input_sha256": "bbd7a553cffec41409bb08275eac9101abe74024bde703abe08859268ff85963",
-      "upstream_svg_sha256": "ffe55a8a3b3ab2cbbf49e8a847dc9b74428e9b91a314e9dcf66adee1a74865ee"
     },
     {
       "diagram": "flowchart",
@@ -259,28 +248,6 @@
       "input_sha256": "732173c18b52c7d0252b9ecdf925726e3d043008aa00d2c22d2f6532a6197f8c",
       "upstream_svg_sha256": "696f2a58e02b7cab0d6d29de17c9a911451de96bb0f097f101e930c838a18cf4",
       "local_svg_signature_sha256": "b967e96f4f0cecc634520a711d7bc7d671d305698780d40a8fa1d269eb8eefd1"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_020",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "2f54dde38bbcb1c672856d8cee4904b27d714a154de03b268f0b768304138b59",
-      "upstream_svg_sha256": "6c92e60df6de7b01cec5c186a063d57d2fc5a7263a6e7d48d92a6c1aaa4fbc5a",
-      "local_svg_signature_sha256": "578d59c227647079dc7fcef59aa4e00f56b8726e08c10d3deb6c362003789970"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_cypress_flowchart_v2_spec_60_handle_styling_for_all_node_shapes_v2_021",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "913ee975becbdabe00aa3792aa0731167041f36d78dfb57e0f8a78f791870d25",
-      "upstream_svg_sha256": "397a36c1058bc1ea615e41de8c50d17a363e20e1fbc02b4d12c8ec0671e10139",
-      "local_svg_signature_sha256": "0743535cc7ebe3ec4aa5acd3e11e2cd0a943ee6526402d54a81daf9b6f40a0a2"
     },
     {
       "diagram": "flowchart",
@@ -627,8 +594,8 @@
         "parity-root"
       ],
       "input_sha256": "32c614ef11f3a1b623388a0b72fa2f1db8766fbeb0859c10ae7100a42af79282",
-      "upstream_svg_sha256": "82e602b66cbd48be14a75e033ee69dcb594c7e3c557911733b28897bc03c413b",
-      "local_svg_signature_sha256": "5afbac59b494fdbc26d30100b7231ca1381d0abc923c1083cbb9876f9fe31c8c"
+      "upstream_svg_sha256": "578bc0c7a4bf8d10268611aa18c51bf4c9358e40f07518caaeb8bf4bebd62e09",
+      "local_svg_signature_sha256": "208fa20a0d81436b76e5ccb521c56372f1b2e04faccdf7057775ce64fa7b9169"
     },
     {
       "diagram": "flowchart",
@@ -638,9 +605,9 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "63cd6c71130d0290c5993997afd08e8925b73983897efc62ed08a01420498698",
+      "local_svg_signature_sha256": "26ea4c553d5c7f171d9b48dc634af18a5ebf932ba53f55636fd84cceae28db56",
       "input_sha256": "b091727087c0cf1cbf03eb614321a7880a599286399a705be89f65927810fc97",
-      "upstream_svg_sha256": "6a7f535e55c54aa0ca0f69f2808ab9156d427a338da7396051634801955efe8f"
+      "upstream_svg_sha256": "2baf1602979c4d5f2fb71731710fabbabf79f673db848b4487e5b453ca2dd154"
     },
     {
       "diagram": "flowchart",
@@ -650,8 +617,8 @@
         "parity-root"
       ],
       "input_sha256": "d6a8402898113d76e7e9427bd6cef848c14f7fc7bfac059cd930d0ca8c7025d2",
-      "upstream_svg_sha256": "d3cd817612690be36bbf6a1fd0cee5ac86fb2c9b17263bf992d26040a8664f52",
-      "local_svg_signature_sha256": "4e40ab093c1cb344e960e93631c793b30fd366cc5f4e5625825435a034d62636"
+      "upstream_svg_sha256": "6dcc2f63ad0856d5d9afacc4bde1a4b72f396a3a21a61a5a63647a01fd4d64b2",
+      "local_svg_signature_sha256": "2ec73cd1337ddda29d48855f36dece0a8765a822c7b30c622818bf5cb96bf0bf"
     },
     {
       "diagram": "flowchart",
@@ -661,9 +628,9 @@
         "parity",
         "parity-root"
       ],
-      "local_svg_signature_sha256": "f84473c6aab4437cfe311862fc0c270b6c647f6de14974333e30ffcb1ef0a713",
+      "local_svg_signature_sha256": "cd55c94399de165bba0692fe83f5055c92938259579528a0580a002ffcffb6a5",
       "input_sha256": "9ffb06af06068d4203ead08066f4710f1afc11edad697dab3f6e750eb0fee9fa",
-      "upstream_svg_sha256": "cc08700f611374e87e9a1af58081b84e9efd4640a4a09566181a9d14e41d3fda"
+      "upstream_svg_sha256": "a1808fa69ba14abd533f94deb055a48eb892eaa72aec3d96727fcbd1c1566722"
     },
     {
       "diagram": "flowchart",
@@ -702,28 +669,6 @@
     },
     {
       "diagram": "flowchart",
-      "fixture": "upstream_docs_examples_basic_flowchart_007",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "d8c6a25c7cfac0a026c1d7e304a2f7c0b52636878ac64f0de3a797c0cfee5583",
-      "upstream_svg_sha256": "32cf1d63ec42be755f3e88336161c7ee6ae1dd348411e545bf76ea19b7413525",
-      "local_svg_signature_sha256": "85c5183ff7c9042b14c9736e605d8aa823b17e0aaf71460b01c4f856569c536f"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_docs_examples_larger_flowchart_with_some_styling_009",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "22b7b9e26643b7efeba14a4a6ad048fac3a33832d8a2c7b2a965facd788614ca",
-      "upstream_svg_sha256": "164fb73ef1e6ccdd35ecffe46b033e712671cedd6b00b09a7727147f32926e67",
-      "local_svg_signature_sha256": "513919f1cd6924a87af84d05bc7afcc75e3b17640ce495c11aec555a67c128d7"
-    },
-    {
-      "diagram": "flowchart",
       "fixture": "upstream_flow_node_data_shape_aliases_spec",
       "modes": [
         "parity",
@@ -741,30 +686,8 @@
         "parity-root"
       ],
       "input_sha256": "30a7411f99f93570337c6cadc5fdd1ed96d6a1813d244e2fd27000b79c6098d8",
-      "upstream_svg_sha256": "a22ed82de56b126dbf0e1002d79febef3f60acfdfc53373c6af279bf9d92182e",
-      "local_svg_signature_sha256": "9f44f41ab141ed419fc78611abbbbc533f445292f8e2adcf17f6e16c2e78fd32"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_flowchart_v2_shape_styling_matrix_spec",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "f6581a7a3081c7b021fdd22d21d837f9ad3c45b99cbd608088c54d70c513926d",
-      "upstream_svg_sha256": "621098f72008fa7c5f56bdbaf6debfdc91a5ab067382daa61320e2ac00f687e8",
-      "local_svg_signature_sha256": "28bb8009dd640c94fef5488a1e46787bea35f79d1360a9e3ba47b5e644ffdc3d"
-    },
-    {
-      "diagram": "flowchart",
-      "fixture": "upstream_html_demos_dataflowchart_data_flow_diagram_demos_001",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "446cff8f5ea9e8d0512f8f59783d29f8547a9a6514b0826c1442c2e000c1a351",
-      "upstream_svg_sha256": "c46d2425b6d9b51ab0699ba63f6e32b9b8f4be9a8bc5860dd37ab56a48cb5846",
-      "local_svg_signature_sha256": "87cbf1f9bcaab5a957ec731d3d00f41b4b157954f0a2d0dc06650af36491e7a9"
+      "upstream_svg_sha256": "f238658cd56ce87ba26d6a9af06ede12e63582f02bbe1de603ce03d6030e120f",
+      "local_svg_signature_sha256": "920fcb11a880d3fd6545e11e60bfb21539342748dc6792651e13929d3075331b"
     },
     {
       "diagram": "flowchart",
@@ -790,25 +713,14 @@
     },
     {
       "diagram": "flowchart",
-      "fixture": "upstream_html_demos_flowchart_graph_035",
-      "modes": [
-        "parity",
-        "parity-root"
-      ],
-      "input_sha256": "a7182f68913f0b52d998336a98101fdd31095effcac586b11176ec81174ac421",
-      "upstream_svg_sha256": "ab3a1c3156e2d9da53c6ced0aed2738ebe0b3241e18521971087b7a15072615d",
-      "local_svg_signature_sha256": "ee3ed6fbaf7a04a2d2c33623e9adf3513ab93dc3f79dd5d35402ad67d038344b"
-    },
-    {
-      "diagram": "flowchart",
       "fixture": "upstream_html_demos_flowchart_graph_037",
       "modes": [
         "parity",
         "parity-root"
       ],
       "input_sha256": "55ddff2f6a16cf560ae693f87b2a33493622349b40fbf52399ce20276af43edc",
-      "upstream_svg_sha256": "86b9d364a28b487a75bad0a9678f2855bc908e22bdcbfb807591ffaa2dd8d10f",
-      "local_svg_signature_sha256": "6b4fe0d8cb07c399396399467abdcd454475ad3384f2a5d72bdcf97e8c4f7f2a"
+      "upstream_svg_sha256": "a0589ccd2d17e412b024eb66ffb8ea428dd19d8590cb30ec20b70e91e44a0aaf",
+      "local_svg_signature_sha256": "eb8dd9104d8bd54c20e5a175483719a43cef84bd5597486efc449d29877974d4"
     },
     {
       "diagram": "flowchart",
@@ -818,8 +730,8 @@
         "parity-root"
       ],
       "input_sha256": "86d384e1fa8dd4dba3134c72aa93fa2b2165c493b77cbdc7a74b35a2c4f0a82d",
-      "upstream_svg_sha256": "7f2245697a0cfc09048dbe15e8f94687eeaa2bc120a3b3e08a2c17435157c8ef",
-      "local_svg_signature_sha256": "24b1675d1df38697d4c1bb87b71bdf4999bc3f77a7b8fef4eb8b06f2ebdaad51"
+      "upstream_svg_sha256": "48c3dd93449f28a758bf5e5121f09727c19d1f62a69647a88473f7e4c861461d",
+      "local_svg_signature_sha256": "5f262f73e5d83bd1ee6f6d4408ba33ac9d8b30ef6467c509ac9d5e07bdfebb61"
     },
     {
       "diagram": "flowchart",
@@ -1059,6 +971,17 @@
     },
     {
       "diagram": "state",
+      "fixture": "upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_039",
+      "modes": [
+        "parity",
+        "parity-root"
+      ],
+      "input_sha256": "8ebe22d34926c5471a22115602af951fce40ab2483312407d3808c0c15981361",
+      "upstream_svg_sha256": "1d53eabe78761b425792966f56d880b7566e4a117dfa1cce06881963437c948e",
+      "local_svg_signature_sha256": "c1a030e1d2dc464995fd4abf73d1ccd3d6baf949d065dd39c181cefff12e8564"
+    },
+    {
+      "diagram": "state",
       "fixture": "upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_with_multiple_transitions_040",
       "modes": [
         "parity",
@@ -1066,7 +989,7 @@
       ],
       "input_sha256": "e7acd9153b05496cb1a0e25148a196abef40251a551c6870130ba64de1613ad5",
       "upstream_svg_sha256": "77f0824796a0c788dcaa8862daa92689760e037937756bca00bcfef97fa4e309",
-      "local_svg_signature_sha256": "9c4cc8e6b0aea34b5d14c89119aa5b6559de8bbda785d6edf290a9720d690678"
+      "local_svg_signature_sha256": "24c39f7f0cf6046640a63e8162d5ac6c1434381e92052985516b98282f5b44ff"
     },
     {
       "diagram": "state",

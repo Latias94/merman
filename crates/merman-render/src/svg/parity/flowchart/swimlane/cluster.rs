@@ -236,8 +236,20 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         escape_xml_display(&lane.id),
     );
     let data_look = ctx.compatibility.look.as_str();
-    let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id)
-        .or_else(|| (subgraph.is_none() && !ctx.compatibility.palette.is_empty()).then_some(0));
+    let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id).or_else(|| {
+        let palette_len = ctx.compatibility.palette.len();
+        (subgraph.is_none() && palette_len > 0).then(|| {
+            // The synthetic lane follows the highest visible source container color ordinal.
+            ctx.model
+                .subgraphs
+                .iter()
+                .filter(|subgraph| ctx.model.collapsed_replacement(&subgraph.id).is_none())
+                .filter_map(|subgraph| ctx.model.subgraph_color_ordinal(&subgraph.id))
+                .max()
+                .map_or(0, |ordinal| ordinal.saturating_add(1))
+                % palette_len
+        })
+    });
     let _ = write!(out, r#" data-look="{}""#, escape_xml_display(data_look));
     if let Some(color_slot) = color_slot {
         let _ = write!(out, r#" data-color-id="color-{color_slot}""#);

@@ -75,6 +75,40 @@ class NameStatusParserTests(unittest.TestCase):
 
 
 class PlannerTests(unittest.TestCase):
+    def test_cli_distribution_changes_select_cli_without_unrelated_owners(self) -> None:
+        for path in (
+            "distribution/container/Dockerfile",
+            "distribution/github-action/install.mjs",
+            "distribution/github-action/README.md",
+            "scripts/linux_binary_compatibility.py",
+            "scripts/test_linux_binary_compatibility.py",
+        ):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40,
+                    head="b" * 40,
+                )
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(
+                    {name for name, enabled in plan["owners"].items() if enabled},
+                    {"cli", "hygiene"},
+                )
+                self.assertFalse(plan["svg_parity"])
+
+    def test_arch_packaging_has_a_separate_owner_from_cli_builds(self) -> None:
+        for path in ("distribution/arch/PKGBUILD", "distribution/arch/.SRCINFO", "distribution/arch/README.md"):
+            with self.subTest(path=path):
+                plan = plan_changes(
+                    parse_name_status_z(f"M\0{path}\0".encode()),
+                    base="a" * 40, head="b" * 40,
+                )
+                self.assertFalse(plan["fallback"])
+                self.assertEqual(
+                    {name for name, enabled in plan["owners"].items() if enabled},
+                    {"arch", "hygiene"},
+                )
+
     def test_valid_empty_diff_runs_only_the_aggregate(self) -> None:
         plan = plan_changes([], base="a" * 40, head="b" * 40)
 
@@ -711,7 +745,7 @@ class PlannerTests(unittest.TestCase):
             _write_github_outputs(output_path, plan)
             output = output_path.read_text(encoding="utf-8")
 
-        self.assertIn('\nowners={"cli":false,"core":true,', f"\n{output}")
+        self.assertIn('\nowners={"arch":false,"cli":false,"core":true,', f"\n{output}")
         self.assertIn("\nsvg_parity=true\n", output)
         self.assertNotIn("\nplan=", f"\n{output}")
 
@@ -787,6 +821,114 @@ class PlannerTests(unittest.TestCase):
 
 
 class WorkflowFontDependenciesTests(unittest.TestCase):
+    def test_arch_uses_current_packaging_tools_with_the_stable_source_contract(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        arch = (root / ".github/workflows/arch-package.yml").read_text(encoding="utf-8")
+        self.assertIn("python /workspace/scripts/verify_cli_installation.py", arch)
+        self.assertIn("--contract-root src/merman-0.9.0", arch)
+        self.assertNotIn("python src/merman-0.9.0/scripts/verify_cli_installation.py", arch)
+        remove_exclusions = 'sed -i "/^[[:space:]]*NoExtract[[:space:]]*=/d" /etc/pacman.conf'
+        self.assertIn(remove_exclusions, arch)
+        self.assertLess(arch.index(remove_exclusions), arch.index("pacman -U"))
+        self.assertLess(arch.index("pacman -U"), arch.index("pacman -Ql merman-cli"))
+
+    def test_node_builds_and_svg_parity_have_independent_ci_owners(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        core = workflow_job(workflow, "build-test")
+        node = workflow_job(workflow, "node-contracts")
+        svg = workflow_job(workflow, "svg-parity")
+        gate = workflow_job(workflow, "pr-gate")
+        self.assertNotIn("build-candidate.mjs", core)
+        self.assertNotIn("compare-all-svgs", core)
+        self.assertNotIn("oracle:root-viewport", core)
+        self.assertIn("--candidate node-wasm", node)
+        self.assertIn("--candidate napi", node)
+        self.assertNotIn("github.event_name != 'push'", node)
+        self.assertIn("--dom-modes structure,parity,parity-root", svg)
+        self.assertIn("oracle:root-viewport", svg)
+        self.assertIn('PUPPETEER_SKIP_DOWNLOAD: "true"', svg)
+        self.assertLess(svg.index("verify-mermaid-reference"), svg.index("working-directory: tools/mermaid-cli"))
+        self.assertLess(svg.index("working-directory: tools/mermaid-cli"), svg.index("compare-all-svgs"))
+        self.assertIn("needs: ci-plan", svg)
+        self.assertIn('"svg-parity":{"owner":"core"', gate)
+        self.assertIn("needs.ci-plan.outputs.svg_parity == 'true'", gate)
+
+    def test_distribution_checks_do_not_wait_for_unrelated_native_builds(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        root = Path(__file__).resolve().parents[1]
+        ci = (root / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        caller = workflow_job(ci, "cli-distribution")
+        self.assertIn("needs: ci-plan", caller)
+        self.assertNotIn("native-runtime-owner", caller)
+        distribution = (root / ".github/workflows/cli-distribution.yml").read_text(encoding="utf-8")
+        self.assertNotIn("needs:", workflow_job(distribution, "setup-action"))
+        self.assertIn("needs: gnu-archives", workflow_job(distribution, "container"))
+        self.assertNotIn("arch-package", distribution)
+        self.assertIn("needs.ci-plan.outputs.arch == 'true'", workflow_job(ci, "arch-package"))
+        self.assertIn('"arch-package":{"owner":"arch","required":true', workflow_job(ci, "pr-gate"))
+        runtime = (root / ".github/workflows/vscode-extension.yml").read_text(encoding="utf-8")
+        native = workflow_job(runtime, "cli-profiles")
+        self.assertNotIn("unknown-linux-gnu", native)
+        gnu = workflow_job(distribution, "gnu-archives")
+        self.assertIn("os: ubuntu-22.04", gnu)
+        self.assertIn("os: ubuntu-22.04-arm", gnu)
+        self.assertIn("scripts/linux_binary_compatibility.py", gnu)
+        self.assertIn("--execute", gnu)
+
+    def test_native_runtime_routes_preserve_each_selected_owner(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        runtime = workflow_job(ci, "native-runtime-owner")
+        self.assertIn("needs.ci-plan.outputs.cli == 'true' || needs.ci-plan.outputs.vscode == 'true'", runtime)
+        self.assertIn("source_sha: ${{ github.sha }}", runtime)
+        self.assertIn("check_cli_profiles: ${{ needs.ci-plan.outputs.cli == 'true' }}", runtime)
+        self.assertIn("package_vscode: ${{ needs.ci-plan.outputs.vscode == 'true' }}", runtime)
+        self.assertNotIn("  cli-artifact-profiles:", ci)
+        self.assertNotIn("  vscode-owner:", ci)
+        gate = workflow_job(ci, "pr-gate")
+        for owner in ("cli", "vscode"):
+            self.assertIn(
+                f'"native-runtime-{owner}":{{"owner":"{owner}","required":true,"result":"${{{{ needs.native-runtime-owner.result }}}}"}}',
+                gate,
+            )
+
+        for cli, vscode in ((False, False), (True, False), (False, True), (True, True)):
+            owners = {name: False for name in OWNER_NAMES}
+            owners.update(cli=cli, vscode=vscode)
+            selected = cli or vscode
+            jobs = {
+                f"native-runtime-{owner}": {"owner": owner, "required": True, "result": "success" if selected else "skipped"}
+                for owner in ("cli", "vscode")
+            }
+            with self.subTest(cli=cli, vscode=vscode):
+                result = evaluate_gate(owners, jobs)
+                self.assertEqual(result["selected"], [f"native-runtime-{owner}" for owner in ("cli", "vscode") if owners[owner]])
+                if selected:
+                    for failed_result in ("failure", "cancelled", "skipped", ""):
+                        for entry in jobs.values():
+                            entry["result"] = failed_result
+                        with self.assertRaises(GateError):
+                            evaluate_gate(owners, jobs)
+
+    def test_ordinary_host_runs_keep_focused_regressions_and_weekly_full_tests(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        job = workflow_job(ci, "build-test")
+        full = job.split("- name: Test full workspace", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("runner.os == 'Linux'", full)
+        self.assertIn("github.event_name == 'schedule'", full)
+        self.assertIn("github.event_name == 'workflow_dispatch'", full)
+        self.assertNotIn("github.event_name == 'push'", full)
+        self.assertIn("separate_children_layout_is_small_stack_safe_and_deterministic", job)
+        self.assertIn("--test header_smoke --test c_consumer_smoke", job)
+        self.assertIn("Test explicit native fonts on every host", job)
+        self.assertIn("candidate: [node-wasm, napi]", workflow_job(ci, "node-contracts"))
+
     def test_linux_font_query_owners_install_dependencies_before_checks(self) -> None:
         workflow = (
             Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml"

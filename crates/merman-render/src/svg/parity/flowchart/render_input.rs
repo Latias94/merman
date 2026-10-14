@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug)]
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderEdge<'a> {
@@ -70,12 +70,16 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
 ) -> FlowchartRenderInputs<'a> {
     let renderable_edges: FxHashSet<crate::flowchart::FlowchartEdgeKey> =
         layout_edge_owners.iter().collect();
+    let merge_self_loops =
+        crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
     let semantic_edges = model
         .edges
         .iter()
         .enumerate()
         .filter(|(semantic_index, _)| {
-            renderable_edges.contains(&crate::flowchart::FlowchartEdgeKey::new(*semantic_index))
+            (!uses_elk_adapter_dom && !merge_self_loops)
+                || renderable_edges
+                    .contains(&crate::flowchart::FlowchartEdgeKey::new(*semantic_index))
         })
         .filter_map(|(semantic_index, edge)| {
             let projected = crate::flowchart::project_flowchart_edge(edge, render_context)?;
@@ -96,15 +100,46 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         };
     }
 
-    // Mermaid 11.16 keeps the helper nodes used by Dagre, but merges their three layout segments
-    // back into the original logical self-loop before rendering.
-    let mut render_edges: Vec<FlowchartRenderEdge<'a>> = semantic_edges.collect();
+    // Dagre always inserts helper nodes. Agentflow paints the segments instead of merging them.
     let self_loop_label_node_ids = flowchart_helper_node_ids(
         model,
         render_context,
         layout_edge_owners,
         uses_elk_adapter_dom,
     );
+    let mut render_edges: Vec<FlowchartRenderEdge<'a>> = Vec::new();
+    let mut helper_indexes: FxHashMap<String, usize> = FxHashMap::default();
+    for occurrence in semantic_edges {
+        if !merge_self_loops && occurrence.edge.from == occurrence.edge.to {
+            let helpers = crate::flowchart::flowchart_self_loop_helper_edges(&occurrence.edge);
+            // Graphlib replaces parallel helper values without changing their insertion order.
+            for (order, helper) in [helpers.edge1, helpers.edge_mid, helpers.edge2]
+                .into_iter()
+                .enumerate()
+            {
+                let helper_occurrence = FlowchartRenderEdge {
+                    key: crate::flowchart::FlowchartEdgeKey::self_loop_segment(
+                        occurrence.key.semantic_index(),
+                        order as u8,
+                    ),
+                    edge: Cow::Owned(helper),
+                };
+                if let Some(&index) = helper_indexes.get(helper_occurrence.edge.id.as_str()) {
+                    render_edges[index] = helper_occurrence;
+                } else {
+                    helper_indexes.insert(helper_occurrence.edge.id.clone(), render_edges.len());
+                    render_edges.push(helper_occurrence);
+                }
+            }
+        } else {
+            render_edges.push(occurrence);
+        }
+    }
+    if !merge_self_loops {
+        // Overwritten helpers retain their first Graphlib insertion slots, even when that
+        // initial semantic owner no longer survives layout. Filter only after replacement.
+        render_edges.retain(|edge| renderable_edges.contains(&edge.key));
+    }
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
     // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
@@ -141,7 +176,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
 
     // `getEdgesToRender` first emits every regular Graphlib edge, then appends merged self-loop
     // groups in first-seen order. Preserve that 11.16 DOM ordering independently of model order.
-    if render_edges.len() >= 2 {
+    if merge_self_loops && render_edges.len() >= 2 {
         let mut regular = Vec::with_capacity(render_edges.len());
         let mut self_loops = Vec::new();
         for edge in render_edges {

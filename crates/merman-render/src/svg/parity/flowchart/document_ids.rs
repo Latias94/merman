@@ -14,6 +14,7 @@ const DOCUMENT_NAMESPACE: &str = "merman-flowchart-document";
 enum FlowchartDocumentIdLocal {
     Static(&'static str),
     Indexed(&'static str, usize),
+    Segment(&'static str, usize, u8),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +42,9 @@ impl fmt::Display for FlowchartDocumentId<'_> {
             FlowchartDocumentIdLocal::Indexed(prefix, ordinal) => {
                 f.write_str(prefix)?;
                 fmt::Display::fmt(&ordinal, f)
+            }
+            FlowchartDocumentIdLocal::Segment(prefix, ordinal, order) => {
+                write!(f, "{prefix}{ordinal}-segment-{order}")
             }
         }
     }
@@ -173,10 +177,12 @@ impl<'a> FlowchartDocumentIds<'a> {
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> Option<FlowchartDocumentId<'_>> {
         self.edge_ids.contains(&key).then(|| {
-            self.id(FlowchartDocumentIdLocal::Indexed(
-                "edge-",
-                key.semantic_index(),
-            ))
+            self.id(match key.self_loop_order() {
+                Some(order) => {
+                    FlowchartDocumentIdLocal::Segment("edge-", key.semantic_index(), order)
+                }
+                None => FlowchartDocumentIdLocal::Indexed("edge-", key.semantic_index()),
+            })
         })
     }
 
@@ -259,6 +265,30 @@ impl<'a> FlowchartDocumentIds<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn retained_self_loop_segments_do_not_alias_their_semantic_edge_document_id() {
+        let edge = edge("loop".to_owned());
+        let keys = [
+            crate::flowchart::FlowchartEdgeKey::new(0),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 0),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 1),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 2),
+        ];
+        let edge_order = keys.map(|key| FlowchartRenderEdgeRef { key, edge: &edge });
+        let ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
+            diagram_id: "agentflow",
+            edge_order: &edge_order,
+            node_dom_index: &FxHashMap::default(),
+            subgraph_index_by_id: &FxHashMap::default(),
+            layout_nodes: &[],
+            swimlane_nodes: None,
+            swimlane_lanes: None,
+        });
+        let rendered = keys.map(|key| ids.edge(key).unwrap().to_string());
+        assert_eq!(rendered.iter().collect::<FxHashSet<_>>().len(), 4);
+        assert!(rendered.iter().all(|id| id.starts_with("agentflow-")));
+    }
 
     #[test]
     fn collapsed_subgraph_endpoint_does_not_alias_a_parser_owned_node_ordinal() {

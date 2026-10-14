@@ -40,7 +40,7 @@ fn fixture_paths(root: &Path) -> Vec<PathBuf> {
                 if !path
                     .file_name()
                     .and_then(|name| name.to_str())
-                    .is_some_and(|name| name.starts_with('_'))
+                    .is_some_and(|name| name.starts_with('_') || name.starts_with('.'))
                 {
                     directories.push(path);
                 }

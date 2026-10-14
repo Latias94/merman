@@ -1172,3 +1172,148 @@ fn railroad_unsupported_nontext_targets_have_no_terminal_domain() {
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
+
+#[test]
+fn railroad_dialect_combinations_preserve_source_branches_in_actual_reference_svg() {
+    let cases = [
+        (
+            "railroadAbnf",
+            include_str!("../../../fixtures/railroadAbnf/local_numeric_groups_bounds.mmd"),
+            include_str!(
+                "../../../fixtures/upstream-svgs/railroadAbnf/local_numeric_groups_bounds.svg"
+            ),
+            vec![
+                "%x41.42",
+                "%d67-90",
+                "tail",
+                "octets =",
+                "%b01000001",
+                "%X30-39",
+                "tail =",
+            ],
+            vec![
+                ("railroad-optional", 2),
+                ("railroad-choice", 2),
+                ("railroad-repetition", 1),
+            ],
+        ),
+        (
+            "railroadEbnf",
+            include_str!("../../../fixtures/railroadEbnf/local_exception_group_postfix.mmd"),
+            include_str!(
+                "../../../fixtures/upstream-svgs/railroadEbnf/local_exception_group_postfix.svg"
+            ),
+            vec![
+                "letter",
+                "-",
+                "x",
+                "a",
+                "b",
+                "c",
+                "d",
+                "token =",
+                "? alphabetic ?",
+                "z",
+                "letter =",
+            ],
+            vec![
+                ("railroad-sequence", 2),
+                ("railroad-choice", 3),
+                ("railroad-optional", 1),
+                ("railroad-repetition", 1),
+            ],
+        ),
+        (
+            "railroadPeg",
+            include_str!("../../../fixtures/railroadPeg/local_predicate_group_suffix.mmd"),
+            include_str!(
+                "../../../fixtures/upstream-svgs/railroadPeg/local_predicate_group_suffix.svg"
+            ),
+            vec![
+                "? &(...) ?",
+                "? !(...) ?",
+                "x",
+                "y",
+                "? . ?",
+                "Token =",
+                "!",
+                "End =",
+            ],
+            vec![
+                ("railroad-special", 3),
+                ("railroad-choice", 1),
+                ("railroad-repetition", 1),
+            ],
+        ),
+    ];
+    for (diagram_type, source, upstream, labels, groups) in cases {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.metadata().diagram_type, diagram_type);
+        let artifact = family::prepare(
+            parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            RenderEnvironment::deterministic().begin_session().unwrap(),
+        )
+        .unwrap();
+        let projection = artifact.layout_json().unwrap();
+        let first = &projection["semantic"]["rules"][0]["definition"];
+        match diagram_type {
+            "railroadAbnf" => {
+                assert_eq!(first["elements"][0]["min"], 2);
+                assert_eq!(first["elements"][0]["max"], 2);
+                assert_eq!(first["elements"][1]["element"]["type"], "optional");
+            }
+            "railroadEbnf" => {
+                assert_eq!(first["elements"][0]["elements"][1]["value"], "-");
+                assert_eq!(first["elements"][2]["min"], 1);
+                assert!(first["elements"][2]["max"].is_null());
+            }
+            "railroadPeg" => {
+                assert_eq!(first["elements"][0]["text"], "&(...)");
+                assert_eq!(first["elements"][1]["text"], "!(...)");
+                assert_eq!(first["elements"][2]["min"], 0);
+            }
+            _ => unreachable!(),
+        }
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        for svg in [rendered.svg(), upstream] {
+            let document = roxmltree::Document::parse(svg).unwrap();
+            let texts: Vec<_> = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| {
+                    node.descendants()
+                        .filter(roxmltree::Node::is_text)
+                        .filter_map(|node| node.text())
+                        .collect::<String>()
+                })
+                .collect();
+            assert_eq!(texts, labels, "{diagram_type}: complete source text order");
+            for (class, count) in groups.iter().copied().chain([
+                ("railroad-rule", 2),
+                ("railroad-start", 2),
+                ("railroad-end", 2),
+            ]) {
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| node.attribute("class") == Some(class))
+                        .count(),
+                    count,
+                    "{diagram_type}: {class}",
+                );
+            }
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.has_tag_name("title"))
+            );
+            assert!(document.descendants().any(|node| node.has_tag_name("desc")));
+        }
+    }
+}

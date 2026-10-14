@@ -397,9 +397,9 @@ jobs:
       matrix:
         include:
           - target: x86_64-unknown-linux-gnu
-            runner: ubuntu-24.04
+            runner: ubuntu-22.04
           - target: aarch64-unknown-linux-gnu
-            runner: ubuntu-24.04-arm
+            runner: ubuntu-22.04-arm
     env:
       RELEASE_TAG: ${{ needs.validate-inputs.outputs.release_tag }}
       VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -415,6 +415,11 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
           submodules: recursive
+
+      - name: Install Python for GNU baseline checks
+        uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.95.0
@@ -490,6 +495,8 @@ jobs:
             --artifacts=local \
             --target="$TARGET" \
             --output-format=json > target/native-dist-manifest.json
+          python3 scripts/linux_binary_compatibility.py \
+            "target/$TARGET/dist/merman-cli" "target/$TARGET/dist/merman-lsp"
 
       - name: Execute final native archives
         run: |
@@ -1186,7 +1193,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-22.04
             target: linux-x64
           - os: macos-15
             target: darwin-arm64
@@ -1198,6 +1205,16 @@ jobs:
       - uses: actions/checkout@v7.0.1
         with:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
+          persist-credentials: false
+
+      - name: Checkout GNU compatibility tooling
+        if: runner.os == 'Linux'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .workflow-tools
+          sparse-checkout: scripts/linux_binary_compatibility.py
+          sparse-checkout-cone-mode: false
           persist-credentials: false
 
       - name: Setup Python
@@ -1236,6 +1253,10 @@ jobs:
         run: |
           python3 scripts/artifact_profile_recipe.py lsp-stdio-release --build-host --locked
           python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
+
+      - name: Verify GNU runtime compatibility
+        if: runner.os == 'Linux'
+        run: python3 .workflow-tools/scripts/linux_binary_compatibility.py target/dist/merman-cli target/dist/merman-lsp
 
       - name: Typecheck extension
         working-directory: tools/vscode-extension

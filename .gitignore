@@ -50,6 +50,7 @@ target/
 # These are generated via `xtask import-upstream-docs --filter examples --with-baselines` and are
 # part of the tracked fixture corpus.
 /fixtures/upstream-svgs/**/_failures.txt
+/fixtures/upstream-svgs/.xtask-upstream-svg-staging/
 
 __pycache__/
 # Local deferred fixtures (kept for investigation; not part of the committed fixture corpus).

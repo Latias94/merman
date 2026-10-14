@@ -1,0 +1,73 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "direction": "TB",
+      "nodes": [
+        {
+          "id": "Sunday",
+          "label": "Sunday",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "s1",
+          "top_lane_id": "s1",
+          "x": 0.0,
+          "y": 22.5,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "Monday",
+          "label": "Monday",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "s1",
+          "top_lane_id": "s1",
+          "x": 0.0,
+          "y": 117.5,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        }
+      ],
+      "lanes": [
+        {
+          "id": "s1",
+          "title": "s1",
+          "parent_id": null,
+          "x": 0.0,
+          "y": 70.0,
+          "width": 192.0,
+          "height": 212.0,
+          "padding": 8.0,
+          "title_label_width": 13.859,
+          "title_label_height": 21.0,
+          "content_top": 0.0,
+          "title_rect": {
+            "left": -96.0,
+            "right": 96.0,
+            "top": -36.0,
+            "bottom": -15.0
+          },
+          "requested_dir": "TB"
+        }
+      ],
+      "edges": [],
+      "bounds": {
+        "min_x": -96.0,
+        "min_y": -36.0,
+        "max_x": 96.0,
+        "max_y": 176.0
+      }
+    }
+  }
+}

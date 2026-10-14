@@ -923,6 +923,187 @@ root
     }
 }
 
+// Mermaid 12.2 mindmapColors.spec.ts deliberately uses an indented root and irregular columns.
+const MERMAID_12_2_COLOR_DIAGRAM: &str = r#"mindmap
+    root((Root))
+          ownerA{{Owner A}}
+            repoA[Repo A]
+                leafA[Leaf A]
+              leafB[Leaf B]
+          ownerB{{Owner B}}
+              repoB[Repo B]
+                leafC[Leaf C]
+"#;
+
+#[test]
+fn mindmap_mermaid_12_2_colors_by_structural_depth_across_semantic_paths() {
+    let branch_sections = [
+        None,
+        Some(0),
+        Some(0),
+        Some(0),
+        Some(0),
+        Some(1),
+        Some(1),
+        Some(1),
+    ];
+    let depth_sections = [
+        None,
+        Some(0),
+        Some(1),
+        Some(2),
+        Some(2),
+        Some(0),
+        Some(1),
+        Some(2),
+    ];
+    for (mode, expected) in [
+        (None, branch_sections),
+        (Some("branch"), branch_sections),
+        (Some("depth"), depth_sections),
+    ] {
+        let source = match mode {
+            Some(mode) => format!(
+                "%%{{init: {{\"mindmap\": {{\"colorBy\": \"{mode}\"}}}}}}%%\n{MERMAID_12_2_COLOR_DIAGRAM}"
+            ),
+            None => MERMAID_12_2_COLOR_DIAGRAM.to_string(),
+        };
+        let engine = Engine::new();
+        let snapshot = engine
+            .parse_diagram_snapshot_sync(&source)
+            .unwrap()
+            .unwrap();
+        let model = snapshot.outcome().parsed_model().unwrap();
+        let sections: Vec<_> = model["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|node| node["section"].as_i64().map(|section| section as i32))
+            .collect();
+        assert_eq!(sections, expected, "colorBy={mode:?}");
+
+        let typed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Mindmap(typed) = typed.model() else {
+            panic!("typed mindmap");
+        };
+        assert_eq!(
+            typed
+                .nodes
+                .iter()
+                .map(|node| node.section)
+                .collect::<Vec<_>>(),
+            expected
+        );
+        for edge in &typed.edges {
+            let child = typed.nodes.iter().find(|node| node.id == edge.end).unwrap();
+            assert_eq!(edge.section, child.section);
+            assert!(
+                edge.classes
+                    .contains(&format!("section-edge-{}", child.section.unwrap()))
+            );
+        }
+        let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("mindmap editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        let leaf_b = facts
+            .symbols
+            .iter()
+            .find(|symbol| {
+                symbol.name == "leafB" && symbol.detail.as_deref() == Some("mindmap node")
+            })
+            .unwrap();
+        let start = source.find("leafB").unwrap();
+        assert_eq!(
+            leaf_b.selection,
+            SourceSpan::new(start, start + "leafB".len())
+        );
+    }
+}
+
+#[test]
+fn mindmap_mermaid_12_2_depth_colors_survive_branch_insertion_and_cycle() {
+    let prefix = "%%{init: {\"mindmap\": {\"colorBy\": \"depth\"}}}%%\n";
+    let original = parse(&format!("{prefix}{MERMAID_12_2_COLOR_DIAGRAM}"));
+    let edited = parse(&format!(
+        "{prefix}{}",
+        MERMAID_12_2_COLOR_DIAGRAM.replace(
+            "          ownerA",
+            "          added[Added]\n          ownerA"
+        )
+    ));
+    for node in original["nodes"].as_array().unwrap() {
+        let candidate = edited["nodes"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|candidate| candidate["nodeId"] == node["nodeId"])
+            .unwrap();
+        assert_eq!(candidate["section"], node["section"]);
+    }
+
+    let mut deep = format!("{prefix}mindmap\nRoot\n");
+    for depth in 1..=13 {
+        deep.push_str(&format!("{}Node {depth}\n", "  ".repeat(depth)));
+    }
+    let model = parse(&deep);
+    let sections: Vec<_> = model["nodes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .skip(1)
+        .map(|node| node["section"].as_i64().unwrap())
+        .collect();
+    assert_eq!(sections, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 0, 1]);
+    assert!(
+        parse(&format!("{prefix}mindmap\n"))["nodes"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
+    let root_only = parse(&format!("{prefix}mindmap\nRoot\n"));
+    assert!(root_only["nodes"][0].get("section").is_none());
+    assert!(root_only["edges"].as_array().unwrap().is_empty());
+}
+
+#[test]
+fn mindmap_mermaid_12_2_centers_every_shape_and_preserves_decorations() {
+    let model = parse(
+        r#"%%{init: {"mindmap": {"colorBy": "depth"}}}%%
+mindmap
+Root((Root))
+  :::custom-root
+  square[Square]
+    :::custom-child
+    ::icon(mdi:fire)
+  rounded(Rounded)
+  hexagon{{Hexagon}}
+  cloud)Cloud(
+  bang))Bang((
+  Default
+"#,
+    );
+    let nodes = model["nodes"].as_array().unwrap();
+    assert_eq!(nodes.len(), 7);
+    assert!(nodes.iter().all(|node| node["centerLabel"] == true));
+    assert!(
+        nodes[0]["cssClasses"]
+            .as_str()
+            .unwrap()
+            .contains("custom-root")
+    );
+    assert!(
+        nodes[1]["cssClasses"]
+            .as_str()
+            .unwrap()
+            .contains("custom-child")
+    );
+    assert_eq!(nodes[1]["icon"], "mdi:fire");
+}
+
 #[test]
 fn mindmap_deep_chain_semantic_and_render_model_use_heap_traversal() {
     const DEPTH: usize = 1200;

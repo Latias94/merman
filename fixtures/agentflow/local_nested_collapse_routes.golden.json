@@ -1,0 +1,76 @@
+{
+  "diagramType": "agentflow",
+  "model": {
+    "connectors": [
+      {
+        "id": "api",
+        "title": "API"
+      }
+    ],
+    "direction": "LR",
+    "diagnostics": [],
+    "subGraphs": [
+      {
+        "id": "inner",
+        "title": "Inner",
+        "nodes": [
+          "task"
+        ],
+        "type": "flow"
+      },
+      {
+        "id": "outer",
+        "title": "Outer",
+        "nodes": [
+          "start",
+          "inner"
+        ],
+        "type": "flow"
+      }
+    ],
+    "vertices": [
+      {
+        "id": "start",
+        "label": "Start",
+        "shape": "lean-right",
+        "vertexKind": "input"
+      },
+      {
+        "id": "task",
+        "label": "Hidden task",
+        "shape": "subroutine",
+        "vertexKind": "tool"
+      }
+    ],
+    "edges": [
+      {
+        "start": "task",
+        "end": "task",
+        "id": "loop",
+        "edgeSemantic": "sequence",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1
+      },
+      {
+        "start": "start",
+        "end": "task",
+        "id": "enter",
+        "edgeSemantic": "sequence",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1
+      },
+      {
+        "start": "task",
+        "end": "api",
+        "id": "exit",
+        "edgeSemantic": "sequence",
+        "type": "arrow_point",
+        "stroke": "normal",
+        "length": 1
+      }
+    ],
+    "type": "agentflow"
+  }
+}

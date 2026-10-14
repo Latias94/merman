@@ -219,6 +219,8 @@ fn finalize_rendered_edges(
     work_budget: &mut LayoutWorkBudget,
 ) -> Result<()> {
     materialized_geometry::resolve_rendered_orthogonal_crossings(layout, work_budget)?;
+    // Crossing cleanup can move a route onto another edge's terminal face.
+    materialized_geometry::separate_shared_rendered_terminal_lanes(layout, work_budget)?;
     materialized_geometry::reassign_crossing_external_rail_channels(layout, work_budget)?;
     materialized_geometry::shortcut_redundant_orthogonal_jogs(layout, work_budget)?;
     label_anchoring::anchor_labels_to_polyline(layout, work_budget)?;
@@ -373,10 +375,10 @@ mod resource_tests {
             original_edges: edges,
             top_lane_order: Vec::new(),
         };
-        let mut budget = LayoutWorkBudget::new(policy(60), 0).unwrap();
+        let mut budget = LayoutWorkBudget::new(policy(70), 0).unwrap();
 
         finalize_rendered_edges(&mut layout, &mut budget).unwrap();
-        assert_eq!(budget.used(), 60);
+        assert_eq!(budget.used(), 70);
         let before_second = layout
             .original_edges
             .iter()
@@ -391,9 +393,9 @@ mod resource_tests {
         let crate::Error::ResourceLimitExceeded(error) = error else {
             panic!("expected max_layout_work_units resource limit error");
         };
-        assert_eq!(error.actual, 64);
-        assert_eq!(error.max, 60);
-        assert_eq!(budget.used(), 60);
+        assert_eq!(error.actual, 74);
+        assert_eq!(error.max, 70);
+        assert_eq!(budget.used(), 70);
         assert_eq!(
             layout
                 .original_edges

@@ -27,6 +27,7 @@ jobs:
     outputs:
       # Keep cross-job data bounded; the detailed plan contains every changed path.
       owners: ${{ steps.plan.outputs.owners }}
+      arch: ${{ steps.plan.outputs.arch }}
       cli: ${{ steps.plan.outputs.cli }}
       core: ${{ steps.plan.outputs.core }}
       fuzz: ${{ steps.plan.outputs.fuzz }}
@@ -290,48 +291,17 @@ jobs:
       - name: Check immutable Nix lock
         run: git diff --exit-code -- flake.lock
 
-  cli-artifact-profiles:
-    name: cli-artifact-profiles (${{ matrix.target }})
+  cli-distribution:
+    name: cli-distribution
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.cli == 'true' }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
-    env:
-      CARGO_INCREMENTAL: "0"
-      CARGO_PROFILE_RELEASE_DEBUG: "0"
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-24.04
-            target: x86_64-unknown-linux-gnu
-          - os: macos-15
-            target: aarch64-apple-darwin
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-          - os: windows-2025-vs2026
-            target: x86_64-pc-windows-msvc
-    steps:
-      - uses: actions/checkout@v7.0.1
-        with:
-          persist-credentials: false
+    uses: ./.github/workflows/cli-distribution.yml
 
-      - name: Validate PowerShell completion
-        if: runner.os == 'Windows'
-        run: python3 scripts/verify_cli_assets.py --require powershell
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.95.0
-
-      - name: Rust cache
-        uses: Swatinem/rust-cache@v2.9.2
-        with:
-          cache-targets: false
-
-      - name: Build exact CLI artifact profiles
-        run: |
-          python3 scripts/artifact_profile_recipe.py cli-analysis --build-host --locked
-          python3 scripts/artifact_profile_recipe.py cli-release --build-host --locked
+  arch-package:
+    name: arch-package
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.arch == 'true' }}
+    uses: ./.github/workflows/arch-package.yml
 
   build-test:
     name: build-test (${{ matrix.os }})
@@ -448,12 +418,16 @@ jobs:
         if: matrix.parity
         uses: actions/setup-node@v7.1.0
         with:
-          node-version: "24"
+          node-version: "24.21.0"
           cache: npm
           cache-dependency-path: |
             platforms/node/package-lock.json
             playground/tests/package-lock.json
             tools/mermaid-cli/package-lock.json
+
+      - name: Install pinned npm
+        if: matrix.parity
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
 
       - name: Install pinned Mermaid runtime
         if: matrix.parity
@@ -464,7 +438,7 @@ jobs:
 
       - name: Test selected reference runtime builder
         if: matrix.parity
-        run: node --test tools/mermaid-cli/reference-runtime.test.mjs
+        run: node --test tools/mermaid-cli/reference-runtime.test.mjs crates/merman-render/tests/katex_flowchart_probe.test.cjs
 
       - name: Verify pull-request architecture contracts
         if: matrix.parity
@@ -489,11 +463,11 @@ jobs:
           sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes fonts-dejavu-core fonts-noto-cjk
 
       - name: Test full workspace (Linux and safety-net lifecycles)
-        if: runner.os == 'Linux' || github.event_name == 'push' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        if: runner.os == 'Linux' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
         run: cargo nextest run --locked --no-fail-fast --cargo-quiet
 
-      - name: Compile workspace on pull-request host runners
-        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+      - name: Compile workspace on ordinary host runners
+        if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: cargo check --workspace --all-targets --locked
 
       - name: Test theme authoring and font resource boundaries
@@ -535,8 +509,8 @@ jobs:
       - name: Test experimental platform font CLI contracts on every host
         run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,system-fonts,experimental-system-font-query --test native_fonts_contract --cargo-quiet
 
-      - name: Test host-sensitive contracts on pull requests
-        if: runner.os != 'Linux' && (github.event_name == 'pull_request' || github.event_name == 'merge_group')
+      - name: Test host-sensitive contracts on ordinary runs
+        if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         shell: bash
         run: |
           cargo nextest run --locked -p merman-layout-elk --lib --cargo-quiet \
@@ -609,7 +583,7 @@ jobs:
           cargo nextest run --locked -p merman-rustdoc --test regressions \
             -E 'test(rustdoc_math_requires_explicit_feature)' --cargo-quiet
           features="$(python3 scripts/artifact_profile_recipe.py rustdoc-static-svg)"
-          cargo nextest run -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
+          cargo nextest run --locked -p merman-rustdoc --no-default-features --features "$features" --cargo-quiet
 
       - name: Test representative Cargo feature unification contract
         if: matrix.parity
@@ -620,49 +594,6 @@ jobs:
             --features "$ambient_render_features,merman-ffi/all-diagrams,merman-ffi/svg" \
             --lib --cargo-quiet \
             -E '(package(merman-bindings-core) & test(ambient_render_backends_are_really_compiled)) | (package(merman-ffi) & test(ambient_render_dependencies_do_not_widen_the_native_c_owner_contract))'
-
-      - name: Install Node candidate development dependencies
-        if: matrix.parity && github.event_name == 'push'
-        run: npm ci --prefix platforms/node
-
-      - name: Install pinned wasm-pack for Node candidate builds
-        if: matrix.parity && github.event_name == 'push'
-        run: cargo install wasm-pack --version 0.15.0 --locked
-
-      - name: Build and probe the Node-WASM candidate
-        if: matrix.parity && github.event_name == 'push'
-        run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
-
-      - name: Build and probe the Node N-API candidate
-        if: matrix.parity && github.event_name == 'push'
-        run: |
-          set -euo pipefail
-          docker build \
-            --platform linux/amd64 \
-            --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24-bullseye \
-            --build-arg RUST_IMAGE=rust:1.95-bullseye \
-            --tag merman-node-gnu:ci \
-            platforms/node
-          docker run --rm \
-            --platform linux/amd64 \
-            -e CARGO_INCREMENTAL=0 \
-            -v "$GITHUB_WORKSPACE:/work" \
-            -w /work \
-            merman-node-gnu:ci \
-            sh -c '
-              set -eu
-              git config --global --add safe.directory /work
-              npm ci --prefix platforms/node
-              node platforms/node/scripts/build-candidate.mjs --candidate napi --target linux-x64-gnu
-            '
-          # The container runs as root while the workspace belongs to the runner user.
-          # Restore ownership of only the mounted build outputs before host-side checks.
-          for path in "$GITHUB_WORKSPACE/target" "$GITHUB_WORKSPACE/platforms/node/artifacts"; do
-            if [ -e "$path" ]; then
-              sudo chown -R "$(id -u):$(id -g)" "$path"
-            fi
-          done
 
       - name: Verify committed upstream alignment manifests
         if: matrix.parity
@@ -712,28 +643,57 @@ jobs:
             -E 'test(wasm_ascii_operation_preserves_a_typed_exact_resource_boundary)' \
             --cargo-quiet
 
+  svg-parity:
+    name: svg-parity
+    needs: ci-plan
+    if: ${{ needs.ci-plan.outputs.svg_parity == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      CARGO_INCREMENTAL: "0"
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          key: svg-parity
+          cache-targets: false
+      - name: Install Linux font build dependencies
+        run: |
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: "24.21.0"
+          cache: npm
+          cache-dependency-path: |
+            playground/tests/package-lock.json
+            tools/mermaid-cli/package-lock.json
+      - name: Install pinned npm
+        run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.0.2
+      - name: Verify pinned Mermaid reference before runtime install
+        run: cargo run --locked --release -p xtask -- verify-mermaid-reference
+      - name: Install pinned Mermaid runtime for math fixtures
+        working-directory: tools/mermaid-cli
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: "true"
+        run: npm ci
       - name: SVG DOM comparison suite
-        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
-        run: cargo run --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
-
+        run: cargo run --locked --release -p xtask -- compare-all-svgs --check-dom --dom-modes structure,parity,parity-root --dom-decimals 3 --diagnostic-browser-text-layout --report-root
       - name: Install root viewport oracle dependencies
-        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: npm ci --prefix playground/tests
-
       - name: Install Chromium for root viewport oracle
-        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: npm run install:browser:chromium --prefix playground/tests
-
       - name: Audit rendered SVG root viewports in Chromium
-        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true'
         run: |
           npm run oracle:root-viewport --prefix playground/tests -- \
             --local ../../target/compare \
             --upstream ../../fixtures/upstream-svgs \
             --output ../../target/root-viewport-diagnostic.json
-
       - name: Upload SVG parity diagnostic reports
-        if: matrix.parity && needs.ci-plan.outputs.svg_parity == 'true' && always()
+        if: always()
         uses: actions/upload-artifact@v7.0.2
         with:
           name: svg-parity-diagnostics-${{ github.run_attempt }}
@@ -742,12 +702,16 @@ jobs:
             target/compare/*_report*.md
           if-no-files-found: ignore
           retention-days: 7
-
   node-contracts:
-    name: node-contracts
+    name: node-contracts (${{ matrix.candidate }})
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.node == 'true' }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        candidate: [node-wasm, napi]
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -770,27 +734,27 @@ jobs:
         run: npm test --prefix platforms/node
 
       - name: Install Rust toolchain for real Node candidates
-        if: github.event_name != 'push'
+        if: matrix.candidate == 'node-wasm'
         uses: dtolnay/rust-toolchain@1.95.0
         with:
           targets: wasm32-unknown-unknown
 
       - name: Rust cache for real Node candidates
-        if: github.event_name != 'push'
+        if: matrix.candidate == 'node-wasm'
         uses: Swatinem/rust-cache@v2.9.2
         with:
           cache-targets: false
 
       - name: Install pinned wasm-pack for real Node candidates
-        if: github.event_name != 'push'
+        if: matrix.candidate == 'node-wasm'
         run: cargo install wasm-pack --version 0.15.0 --locked
 
-      - name: Build and probe the real Node-WASM candidate on PRs
-        if: github.event_name != 'push'
+      - name: Build and probe the real Node-WASM candidate
+        if: matrix.candidate == 'node-wasm'
         run: node platforms/node/scripts/build-candidate.mjs --candidate node-wasm
 
-      - name: Assemble and install-smoke the Node-WASM npm package on PRs
-        if: github.event_name != 'push'
+      - name: Assemble and install-smoke the Node-WASM npm package
+        if: matrix.candidate == 'node-wasm'
         run: |
           set -euo pipefail
           package_root="$RUNNER_TEMP/node-wasm-package"
@@ -810,14 +774,14 @@ jobs:
             --version "$version" \
             --target node-wasm
 
-      - name: Build and probe the real Node N-API candidate on PRs
-        if: github.event_name != 'push'
+      - name: Build and probe the real Node N-API candidate
+        if: matrix.candidate == 'napi'
         run: |
           set -euo pipefail
           docker build \
             --platform linux/amd64 \
             --file platforms/node/Dockerfile.gnu \
-            --build-arg NODE_IMAGE=node:24-bullseye \
+            --build-arg NODE_IMAGE=node:24.13.1-bullseye \
             --build-arg RUST_IMAGE=rust:1.95-bullseye \
             --tag merman-node-gnu:ci \
             platforms/node
@@ -1096,7 +1060,7 @@ jobs:
           cache-targets: false
 
       - name: Setup JDK
-        uses: actions/setup-java@v6.0.0
+        uses: actions/setup-java@v6.0.1
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
@@ -1316,11 +1280,15 @@ jobs:
     with:
       ci_only: true
 
-  vscode-owner:
-    name: vscode-owner
+  native-runtime-owner:
+    name: native-runtime-owner
     needs: ci-plan
-    if: ${{ needs.ci-plan.outputs.vscode == 'true' }}
+    if: ${{ needs.ci-plan.outputs.cli == 'true' || needs.ci-plan.outputs.vscode == 'true' }}
     uses: ./.github/workflows/vscode-extension.yml
+    with:
+      source_sha: ${{ github.sha }}
+      check_cli_profiles: ${{ needs.ci-plan.outputs.cli == 'true' }}
+      package_vscode: ${{ needs.ci-plan.outputs.vscode == 'true' }}
 
   performance-contracts:
     name: performance-contracts
@@ -1361,8 +1329,10 @@ jobs:
       - hygiene
       - cli-contracts
       - nix-cli-package
-      - cli-artifact-profiles
+      - cli-distribution
+      - arch-package
       - build-test
+      - svg-parity
       - node-contracts
       - typst-package
       - typst-package-compat
@@ -1378,7 +1348,7 @@ jobs:
       - fuzz-owner
       - grammar-owner
       - web-owner
-      - vscode-owner
+      - native-runtime-owner
       - performance-contracts
     runs-on: ubuntu-24.04
     steps:
@@ -1395,8 +1365,11 @@ jobs:
             "hygiene":{"owner":"hygiene","required":true,"result":"${{ needs.hygiene.result }}"},
             "cli-contracts":{"owner":"cli","required":true,"result":"${{ needs.cli-contracts.result }}"},
             "nix-cli-package":{"owner":"cli","required":true,"result":"${{ needs.nix-cli-package.result }}"},
-            "cli-artifact-profiles":{"owner":"cli","required":true,"result":"${{ needs.cli-artifact-profiles.result }}"},
+            "native-runtime-cli":{"owner":"cli","required":true,"result":"${{ needs.native-runtime-owner.result }}"},
+            "cli-distribution":{"owner":"cli","required":true,"result":"${{ needs.cli-distribution.result }}"},
+            "arch-package":{"owner":"arch","required":true,"result":"${{ needs.arch-package.result }}"},
             "build-test":{"owner":"core","required":true,"result":"${{ needs.build-test.result }}"},
+            "svg-parity":{"owner":"core","required":${{ needs.ci-plan.outputs.svg_parity == 'true' }},"result":"${{ needs.svg-parity.result }}"},
             "node-contracts":{"owner":"node","required":true,"result":"${{ needs.node-contracts.result }}"},
             "typst-package":{"owner":"typst","required":${{ github.event_name != 'push' }},"result":"${{ needs.typst-package.result }}"},
             "typst-package-compat":{"owner":"typst","required":${{ github.event_name == 'push' }},"result":"${{ needs.typst-package-compat.result }}"},
@@ -1412,6 +1385,6 @@ jobs:
             "fuzz-owner":{"owner":"fuzz","required":true,"result":"${{ needs.fuzz-owner.result }}"},
             "grammar-owner":{"owner":"grammar","required":true,"result":"${{ needs.grammar-owner.result }}"},
             "web-owner":{"owner":"web","required":true,"result":"${{ needs.web-owner.result }}"},
-            "vscode-owner":{"owner":"vscode","required":true,"result":"${{ needs.vscode-owner.result }}"},
+            "native-runtime-vscode":{"owner":"vscode","required":true,"result":"${{ needs.native-runtime-owner.result }}"},
             "performance-contracts":{"owner":"performance","required":true,"result":"${{ needs.performance-contracts.result }}"}}
         run: python3 scripts/ci_plan.py gate --owners-json "$CI_OWNER_SELECTIONS_JSON" --jobs-json "$CI_JOBS_JSON"

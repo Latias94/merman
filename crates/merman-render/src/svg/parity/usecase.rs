@@ -58,6 +58,7 @@ struct UsecaseLabelRenderContext<'a> {
 
 enum UsecaseLabelKind<'a> {
     Node(&'a str),
+    PositionedNode(&'a str),
     Boundary,
     Edge(&'a str),
 }
@@ -91,8 +92,14 @@ fn write_label(
         .collect();
     let is_edge_label = matches!(kind, UsecaseLabelKind::Edge(_));
     let is_boundary = matches!(kind, UsecaseLabelKind::Boundary);
+    let positioned_node = matches!(kind, UsecaseLabelKind::PositionedNode(_));
+    let svg_bbox_y = if !html && (is_edge_label || positioned_node) {
+        measurer.measure_svg_create_text_bbox_y_offset_px(&plan.text, &plan.style)
+    } else {
+        0.0
+    };
     let class_attr = match kind {
-        UsecaseLabelKind::Node(class) => class,
+        UsecaseLabelKind::Node(class) | UsecaseLabelKind::PositionedNode(class) => class,
         UsecaseLabelKind::Boundary => "cluster-label system-boundary-title",
         UsecaseLabelKind::Edge(_) => "label",
     };
@@ -103,10 +110,11 @@ fn write_label(
             fmt(center_x),
             fmt(center_y),
             escape_attr(data_id),
-            fmt(-plan.metrics.width / 2.0),
-            fmt(-plan.metrics.height / 2.0),
+            fmt(if html { -plan.metrics.width / 2.0 } else { 0.0 }),
+            // insertEdgeLabel centers the SVG text bbox, including its local Y offset.
+            fmt(-svg_bbox_y - plan.text_metrics.height / 2.0),
         );
-    } else {
+    } else if html {
         let _ = write!(
             out,
             r#"<g class="{}" transform="translate({},{})" style="font-family:{};font-size:{}px;font-weight:{}">"#,
@@ -116,6 +124,21 @@ fn write_label(
             escape_attr(font_family),
             fmt(plan.style.font_size),
             escape_attr(font_weight)
+        );
+    } else {
+        // Plain labelHelper centers only Y; custom shapes reposition the whole local bbox.
+        let x = if is_boundary || positioned_node {
+            center_x - plan.metrics.width / 2.0
+        } else {
+            center_x
+        };
+        let _ = write!(
+            out,
+            r#"<g class="{}" transform="translate({},{})" style="{}">"#,
+            escape_attr(class_attr),
+            fmt(x),
+            fmt(center_y - plan.metrics.height / 2.0 - svg_bbox_y),
+            escape_attr(&css),
         );
     }
     if html {
@@ -162,6 +185,22 @@ fn write_label(
             content
         );
     } else {
+        if !is_edge_label && !is_boundary {
+            out.push_str("<rect/>");
+        }
+        out.push_str("<g>");
+        if is_edge_label && !plan.text.is_empty() {
+            let _ = write!(
+                out,
+                r#"<rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                fmt(-plan.text_metrics.width / 2.0 - 2.0),
+                fmt(svg_bbox_y - 2.0),
+                fmt(plan.metrics.width),
+                fmt(plan.metrics.height),
+            );
+        } else {
+            out.push_str(r#"<rect class="background" style="stroke: none"/>"#);
+        }
         // Usecase plain labels are literal text, including strings that resemble HTML.
         match plan.label_type {
             UsecaseLabelType::Text => {
@@ -172,21 +211,26 @@ fn write_label(
                     .replace('&', "&amp;")
                     .replace('<', "&lt;")
                     .replace('>', "&gt;");
-                label::write_svg_text_centered_from_create_text_source_with_style(
-                    out, &source, &css,
+                label::write_svg_text_from_create_text_source_with_style(
+                    out,
+                    &source,
+                    &css,
+                    is_edge_label,
                 )
             }
             UsecaseLabelType::Markdown => {
-                label::write_svg_text_markdown_wrapped_centered_with_style(
+                label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
                     out,
                     &plan.text,
                     &css,
                     measurer,
                     &plan.style,
                     plan.max_width,
+                    is_edge_label,
                 )
             }
         }
+        out.push_str("</g>");
     }
     out.push_str("</g>");
     if is_edge_label {
@@ -602,9 +646,15 @@ pub(crate) fn render_usecase_diagram_svg_model(
             if let Some(marker) = marker {
                 let name = marker.strip_prefix("arrow_").unwrap_or(marker);
                 let suffix = if end == "start" { "Start" } else { "End" };
+                let margin =
+                    if config_string(cfg, &["look"]).as_deref() == Some("neo") && !plan.animated {
+                        "-margin"
+                    } else {
+                        ""
+                    };
                 let _ = write!(
                     out,
-                    r#" marker-{end}="url(#{diagram_id}_usecase-{name}{suffix}-margin)""#
+                    r#" marker-{end}="url(#{diagram_id}_usecase-{name}{suffix}{margin})""#
                 );
             }
         }

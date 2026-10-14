@@ -27,6 +27,18 @@ pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
         .max(1.0)
 }
 
+pub(crate) fn mindmap_node_look<'a>(
+    model_look: &'a str,
+    effective_config: &'a Value,
+) -> crate::config::DiagramLook<'a> {
+    let model_look = model_look.trim();
+    if model_look.is_empty() || model_look == "default" {
+        crate::config::config_diagram_look(effective_config)
+    } else {
+        crate::config::DiagramLook::from_raw(Some(model_look))
+    }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum MindmapLayoutBackend {
     Cose,
@@ -105,13 +117,24 @@ type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge
 
 #[cfg(test)]
 fn mindmap_text_style(effective_config: &Value) -> TextStyle {
-    mindmap_text_style_with_font_family(&crate::config::config_font_family_css(effective_config))
+    mindmap_text_style_with_font_family(
+        effective_config,
+        &crate::config::config_font_family_css(effective_config),
+    )
 }
 
-fn mindmap_text_style_with_font_family(font_family_css: &str) -> TextStyle {
-    // Mermaid mindmap labels use HTML `<foreignObject>` and retain the historical 16px
-    // measurement baseline even when users override `themeVariables.fontSize`.
-    let font_size = 16.0;
+pub(crate) fn mindmap_text_style_with_font_family(
+    effective_config: &Value,
+    font_family_css: &str,
+) -> TextStyle {
+    // Mermaid mindmap uses HTML `<foreignObject>` labels. Mermaid CLI baselines show that the
+    // HTML label contents do not reliably inherit SVG-root `font-size` rules; measurement matches
+    // a 16px default even when users override `themeVariables.fontSize`.
+    let font_size = if crate::config::config_effective_html_labels(effective_config) {
+        16.0
+    } else {
+        crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0).max(1.0)
+    };
     TextStyle {
         font_family: Some(font_family_css.to_owned()),
         font_size,
@@ -138,6 +161,15 @@ pub(crate) fn mindmap_label_text_for_layout(text: &str) -> &str {
     }
 
     normalized.unwrap_or(text)
+}
+
+pub(crate) fn mindmap_svg_label_source(text: &str) -> std::borrow::Cow<'_, str> {
+    let text = mindmap_label_text_for_layout(text);
+    let text = text
+        .strip_prefix('`')
+        .and_then(|text| text.strip_suffix('`'))
+        .unwrap_or(text);
+    merman_core::entities::restore_mermaid_entity_spelling(text)
 }
 
 fn mindmap_label_bbox_px(
@@ -183,6 +215,19 @@ fn mindmap_label_bbox_px_with_math(
     config: &MermaidConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
 ) -> Result<(f64, f64)> {
+    if !crate::config::config_effective_html_labels(config.as_value()) {
+        let source = mindmap_svg_label_source(text);
+        let lines = crate::text::mermaid_markdown_to_wrapped_word_lines(
+            measurer,
+            source.as_ref(),
+            style,
+            Some(max_node_width_px.max(1.0)),
+            WrapMode::SvgLike,
+        );
+        let metrics = crate::text::measure_svg_markdown_word_lines(measurer, &lines, style);
+        return Ok((metrics.width.max(0.0), metrics.height.max(0.0)));
+    }
+
     if !crate::math::contains_delimited_math(text) {
         return Ok(mindmap_label_bbox_px(
             text,
@@ -209,13 +254,24 @@ fn mindmap_label_bbox_px_with_math(
     Ok((metrics.width.max(0.0), metrics.height.max(0.0)))
 }
 
+/// Total label padding after Mindmap's rect preprocessing and shared squareRect/drawRect sizing.
+pub(crate) fn mindmap_rect_label_padding_px(look: crate::config::DiagramLook<'_>) -> (f64, f64) {
+    if look.is_neo() {
+        (32.0, 24.0)
+    } else {
+        // mindmapRenderer.ts fixes node.padding at 10; squareRect applies it twice horizontally.
+        (40.0, 20.0)
+    }
+}
+
 fn mindmap_node_dimensions_from_label_bbox(
     node: &MindmapNodeModel,
     bbox_w: f64,
     bbox_h: f64,
+    look: crate::config::DiagramLook<'_>,
 ) -> (f64, f64, f64, f64) {
-    // Mermaid mindmap applies some shape-specific padding overrides during rendering (after
-    // `mindmapDb.getData()`), notably for rounded nodes.
+    // `mindmapRenderer.ts` overrides padding after `getData()`: rect uses 10, rounded uses 15.
+    // Hexagon only clears its requested dimensions; mindmapCircle retains the configured padding.
     //
     // Our semantic snapshots keep the DB padding (e.g. doubled padding for `(text)`), but layout
     // should follow the render-time effective padding so layout golden snapshots remain stable.
@@ -230,17 +286,18 @@ fn mindmap_node_dimensions_from_label_bbox(
     let (w, h) = match node.shape.as_str() {
         // `defaultMindmapNode.ts`: w = bbox.width + 8 * halfPadding; h = bbox.height + 2 * halfPadding
         "" | "defaultMindmapNode" => (bbox_w + 8.0 * half_padding, bbox_h + 2.0 * half_padding),
-        // Mindmap node shapes use the standard `labelHelper(...)` label bbox, but mindmap DB
-        // adjusts `node.padding` depending on the delimiter type (e.g. `[` / `(` / `{{`).
-        //
-        // Upstream Mermaid@11.12.2 mindmap SVG baselines show:
-        // - rect (`[text]`): w = bbox.width + 2*padding, h = bbox.height + padding
-        // - rounded (`(text)`): w = bbox.width + 2*padding, h = bbox.height + 2*padding
-        "rect" => (bbox_w + 2.0 * padding, bbox_h + padding),
+        // `squareRect.ts` supplies per-side padding to `drawRect.ts`: classic uses 2*padding
+        // horizontally and padding vertically; Neo uses fixed 16px/12px per-side steps.
+        "rect" => {
+            let (padding_w, padding_h) = mindmap_rect_label_padding_px(look);
+            (bbox_w + padding_w, bbox_h + padding_h)
+        }
         "rounded" => (bbox_w + 2.0 * padding, bbox_h + 2.0 * padding),
-        // `mindmapCircle.ts` -> `circle.ts`: radius = bbox.width/2 + padding (mindmap passes full padding)
+        // `mindmapCircle.ts` passes the full node padding to shared `circle.ts`.
+        // Mermaid 12.2 encloses the label diagonal and uses one 16px radius padding for Neo.
         "mindmapCircle" => {
-            let d = bbox_w + 2.0 * padding;
+            let radius_padding = if look.is_neo() { 16.0 } else { padding };
+            let d = bbox_w.hypot(bbox_h) + 2.0 * radius_padding;
             (d, d)
         }
         // `cloud.ts` first draws a path from w = bbox.width + 2*halfPadding and
@@ -284,7 +341,12 @@ fn mindmap_node_dimensions_px(
     max_node_width_px: f64,
 ) -> (f64, f64, f64, f64) {
     let (bbox_w, bbox_h) = mindmap_label_bbox_px(&node.label, measurer, style, max_node_width_px);
-    mindmap_node_dimensions_from_label_bbox(node, bbox_w, bbox_h)
+    mindmap_node_dimensions_from_label_bbox(
+        node,
+        bbox_w,
+        bbox_h,
+        crate::config::DiagramLook::from_raw(Some(&node.look)),
+    )
 }
 
 fn compute_bounds(nodes: &[LayoutNode], edges: &[LayoutEdge]) -> Option<Bounds> {
@@ -391,7 +453,7 @@ fn layout_mindmap_diagram_model(
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<MindmapDiagramLayout> {
     let effective_config = config.as_value();
-    let text_style = mindmap_text_style_with_font_family(font_family_css);
+    let text_style = mindmap_text_style_with_font_family(effective_config, font_family_css);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
@@ -407,8 +469,12 @@ fn layout_mindmap_diagram_model(
             config,
             math_renderer,
         )?;
-        let (width, height, label_width, label_height) =
-            mindmap_node_dimensions_from_label_bbox(n, label_width, label_height);
+        let (width, height, label_width, label_height) = mindmap_node_dimensions_from_label_bbox(
+            n,
+            label_width,
+            label_height,
+            mindmap_node_look(&n.look, effective_config),
+        );
 
         nodes.push(LayoutNode {
             id: n.id.clone(),
@@ -813,6 +879,77 @@ mod tests {
             assert_eq!(width, 73.0);
             assert_eq!(height, 24.0);
         }
+    }
+
+    #[test]
+    fn mindmap_circle_encloses_label_diagonal_with_actual_node_look() {
+        let mut node = super::MindmapNodeModel {
+            id: "0".to_string(),
+            dom_id: "node_0".to_string(),
+            label: "Circle".to_string(),
+            label_type: "markdown".to_string(),
+            is_group: false,
+            shape: "mindmapCircle".to_string(),
+            width: 0.0,
+            height: 0.0,
+            padding: 7.0,
+            css_classes: "mindmap-node section-root section--1".to_string(),
+            css_styles: Vec::new(),
+            look: String::new(),
+            icon: None,
+            x: None,
+            y: None,
+            level: 0,
+            node_id: "0".to_string(),
+            node_type: 3,
+            section: None,
+        };
+        // A 30x40 label has a 50px diagonal. mindmapCircle supplies all 7px padding;
+        // Neo instead uses shared circle.ts's single 16px radius padding step.
+        for (node_look, config_look, expected_diameter) in [
+            ("", "neo", 82.0),
+            ("default", "neo", 82.0),
+            ("classic", "neo", 64.0),
+            ("handDrawn", "neo", 64.0),
+            ("neo", "classic", 82.0),
+            ("classic", "classic", 64.0),
+        ] {
+            node.look = node_look.to_string();
+            let config = serde_json::json!({ "look": config_look, "theme": "redux" });
+            let dimensions = super::mindmap_node_dimensions_from_label_bbox(
+                &node,
+                30.0,
+                40.0,
+                super::mindmap_node_look(&node.look, &config),
+            );
+            assert_eq!(
+                dimensions,
+                (expected_diameter, expected_diameter, 30.0, 40.0),
+                "node look={node_look}, config look={config_look}"
+            );
+        }
+    }
+
+    #[test]
+    fn mindmap_svg_text_style_matches_root_css_font_sources() {
+        let config = serde_json::json!({
+            "htmlLabels": false,
+            "fontFamily": "Root font",
+            "fontSize": 18,
+            "themeVariables": { "fontFamily": "Theme font", "fontSize": "24px" }
+        });
+        let style = super::mindmap_text_style(&config);
+        assert_eq!(style.font_family.as_deref(), Some("Theme font"));
+        assert_eq!(style.font_size, 24.0);
+        assert_eq!(
+            super::mindmap_text_style(&serde_json::json!({ "htmlLabels": false, "fontSize": 18 }))
+                .font_size,
+            18.0
+        );
+        assert_eq!(
+            super::mindmap_text_style(&serde_json::json!({ "htmlLabels": false })).font_size,
+            16.0
+        );
     }
 
     #[test]

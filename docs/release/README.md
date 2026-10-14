@@ -2,6 +2,9 @@
 
 Use this index to choose an upgrade path by the version you have installed. Merman `0.9.0` retains Mermaid `12.1.0` compatibility. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
+Development now targets Mermaid `12.2.0`; see [ADR-0093](../adr/0093-mermaid-12-2-upstream-transition.md)
+for the selected graph and behavior changes. Published release histories retain their original baselines.
+
 ## Merman 0.9.0
 
 Start with the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) and [changelog](../../CHANGELOG.md) for changed APIs, CLI commands, rendered output, and binding callbacks.

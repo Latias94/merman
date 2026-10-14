@@ -1,0 +1,118 @@
+{
+  "diagramType": "usecase",
+  "model": {
+    "type": "usecase",
+    "direction": "LR",
+    "nodes": [
+      {
+        "id": "A",
+        "label": "Draft",
+        "labelType": "text",
+        "kind": "useCaseRect",
+        "actorType": "normal",
+        "icon": null,
+        "parentId": "G",
+        "business": false,
+        "stereotype": null,
+        "classes": [],
+        "styles": []
+      },
+      {
+        "id": "B",
+        "label": "Review",
+        "labelType": "text",
+        "kind": "useCaseRect",
+        "actorType": "normal",
+        "icon": null,
+        "parentId": "G",
+        "business": false,
+        "stereotype": null,
+        "classes": [],
+        "styles": []
+      },
+      {
+        "id": "C",
+        "label": "Published",
+        "labelType": "text",
+        "kind": "useCaseRect",
+        "actorType": "normal",
+        "icon": null,
+        "parentId": null,
+        "business": false,
+        "stereotype": null,
+        "classes": [],
+        "styles": []
+      }
+    ],
+    "boundaries": [
+      {
+        "id": "G",
+        "label": "Group",
+        "labelType": "text",
+        "members": [
+          "A",
+          "B"
+        ],
+        "package": false,
+        "classes": [],
+        "styles": []
+      }
+    ],
+    "relationships": [
+      {
+        "id": "edge-0",
+        "explicitId": false,
+        "source": "A",
+        "target": "B",
+        "relationshipType": "association",
+        "arrowType": 0,
+        "label": null,
+        "labelType": null,
+        "dotted": false,
+        "minlen": 1,
+        "classes": [],
+        "styles": [],
+        "animate": false,
+        "animation": null
+      },
+      {
+        "id": "edge-1",
+        "explicitId": false,
+        "source": "B",
+        "target": "C",
+        "relationshipType": "association",
+        "arrowType": 0,
+        "label": "approved",
+        "labelType": "text",
+        "dotted": false,
+        "minlen": 1,
+        "classes": [],
+        "styles": [],
+        "animate": false,
+        "animation": null
+      },
+      {
+        "id": "edge-2",
+        "explicitId": false,
+        "source": "B",
+        "target": "A",
+        "relationshipType": "association",
+        "arrowType": 0,
+        "label": "changes",
+        "labelType": "text",
+        "dotted": false,
+        "minlen": 1,
+        "classes": [],
+        "styles": [],
+        "animate": false,
+        "animation": null
+      }
+    ],
+    "notes": [],
+    "jsonNodes": [],
+    "classDefs": [],
+    "title": null,
+    "accTitle": null,
+    "accDescr": null
+  }
+}

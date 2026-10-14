@@ -136,7 +136,11 @@ fn parsed_render_requires_math(parsed: &ParsedDiagramRender) -> bool {
             },
         ),
         #[cfg(feature = "diagram-mindmap")]
-        RenderSemanticModel::Mindmap(model) => mindmap_requires_math(model),
+        RenderSemanticModel::Mindmap(model) => {
+            crate::config::config_effective_html_labels(
+                parsed.metadata().effective_config.as_value(),
+            ) && mindmap_requires_math(model)
+        }
         #[cfg(feature = "diagram-sequence")]
         RenderSemanticModel::Sequence(model) => sequence_requires_math(model),
         _ => false,

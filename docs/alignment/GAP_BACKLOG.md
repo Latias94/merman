@@ -1,6 +1,6 @@
 # Gap Backlog
 
-The selected reference and refreshed upstream SVG manifests use Mermaid `@12.1.0` at `21f72f07ea22c0af48a3149c550654e80d8e40cb`. Do not transfer parity results from a prior source commit to the final release commit; verify the strict gates on that exact revision.
+The selected reference and refreshed upstream SVG manifests use Mermaid `@12.2.0` at `1fb7869866dd619168d840291c9c54b4f129758b`. Do not transfer parity results from a prior source commit to the final release commit; verify the strict gates on that exact revision.
 
 This document tracks **known gaps vs “perfect” Mermaid parity** and a plan to systematically
 eliminate them without regressing the global parity gates.

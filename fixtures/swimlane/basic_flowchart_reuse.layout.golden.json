@@ -13,9 +13,9 @@
           "top_lane_id": "__swimlane_default__",
           "x": 36.0,
           "y": 0.0,
-          "width": 64.48,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 32.48,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 0.0,
           "order": 0.0,
@@ -28,11 +28,11 @@
           "shape": "squareRect",
           "parent_id": "__swimlane_default__",
           "top_lane_id": "__swimlane_default__",
-          "x": 165.77,
+          "x": 549.422,
           "y": 0.0,
-          "width": 58.46,
+          "width": 152.0,
           "height": 45.0,
-          "label_width": 26.46,
+          "label_width": 120.0,
           "label_height": 21.0,
           "layer": 1.0,
           "order": 0.0,
@@ -44,17 +44,17 @@
           "id": "__swimlane_default__",
           "title": "",
           "parent_id": null,
-          "x": 81.38,
+          "x": 274.711,
           "y": 0.0,
-          "width": 267.24,
+          "width": 741.422,
           "height": 117.0,
           "padding": 20.0,
           "title_label_width": 0.0,
           "title_label_height": 0.0,
           "content_top": -22.5,
           "title_rect": {
-            "left": -52.24,
-            "right": -16.24,
+            "left": -96.0,
+            "right": -60.0,
             "top": -58.5,
             "bottom": 58.5
           },
@@ -68,11 +68,11 @@
           "to": "B",
           "points": [
             {
-              "x": 68.24,
+              "x": 112.0,
               "y": 0.0
             },
             {
-              "x": 136.54,
+              "x": 473.422,
               "y": 0.0
             }
           ],
@@ -82,9 +82,9 @@
         }
       ],
       "bounds": {
-        "min_x": -52.24,
+        "min_x": -96.0,
         "min_y": -58.5,
-        "max_x": 215.0,
+        "max_x": 645.422,
         "max_y": 58.5
       }
     }

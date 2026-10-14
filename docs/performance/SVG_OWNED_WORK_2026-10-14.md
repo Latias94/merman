@@ -3,7 +3,7 @@
 This checkpoint implements private theme ownership and SVG terminal-fact repairs on frozen theme PR #178 (`f47abded02b540d7fe563af7bc75f2fa1bb90c51`).
 It is not a main-versus-release comparison.
 All retained changes preserve the selected baseline's public interfaces, output policy, capability set and digest contracts.
-The candidate is local and uncommitted; native timing numbers remain diagnostic until clean-revision confirmation is authorized and completed.
+Timing was collected from an uncommitted local candidate. These numbers remain diagnostic; later commits do not substitute for calibrated clean-revision confirmation.
 
 ## Structural changes
 
@@ -159,4 +159,53 @@ executable paths, sizes and digests remain in their experiment receipts.
 
 The bounded implementation follows `docs/plans/2026-10-13-2320-refactor-svg-owned-work-plan.md`.
 Finite theme caches, persistent CLI protocols and file-sync stage changes remain follow-up work.
-No commit, push, merge, release publication or ordinary CI timing gate is introduced by this checkpoint.
+The experiment introduces no release publication or ordinary CI timing gate.
+
+## Authorized shipping and main integration
+
+After the local checkpoint, the maintainer authorized committing the changes, merging remote main
+and opening a PR. The three implementation/evidence commits are `1977d4cfd`, `481087d5c` and
+`7149629bb`. Integration selects the existing admitted Mermaid 12.2 main at
+`768370e0842dbd8df24d477fdbbf3449eb61de3d`; it is separate from the frozen 12.1 timing evidence
+above. The PR targets #178's `refactor/theme-ownership-performance` branch, as selected by the
+maintainer, because that typed-theme prerequisite is still open.
+
+The original evidence archive remains immutable. Current integration validation is retained under
+ignored `target/bench/experiments/svg-owned-integration-2026-10-14`; main merge conflicts and
+generated-output refresh are verified before publication. No timing result above is reassigned
+to the merged 12.2 revision.
+
+
+Merged-source local checks completed:
+
+- Core all-diagram library: 1,899 passed.
+- Render all-diagram library: 2,802 passed; 2 pre-existing manual workload benchmarks skipped.
+- Agentflow/Circle/Mindmap/Swimlane/Railroad/Usecase/State ELK regressions: 94 passed.
+- Public prepared-render/runtime determinism: 12 passed.
+- All-targets/all-features core/render Clippy with `-D warnings`: passed.
+- Theme runtime/oracle generation: passed; values and prepared constructors unchanged,
+  only selected 12.2 provenance changed.
+- Full CLI Rustdoc build/check: passed; generated fragment bytes unchanged.
+- Full `structure,parity,parity-root` SVG comparison: passed across 37 family reports,
+  with 3,756 selected / 3,729 rendered / 27 owner-documented skips.
+- Workflow contracts: 97 run, 3 Linux-shell execution cases deferred on Windows.
+  CI-pinned actionlint 1.7.12 and zizmor 1.30.1 passed for resolved workflows.
+- Release legal projections (394 files) and third-party license contract: passed.
+  Rust dependency license generation freshness also passed: 13 reports. The initial local
+  cargo-about 0.9.1 could not run the owner; an isolated official 0.9.2 prebuilt was SHA-verified
+  and used for the successful check, leaving the system installation unchanged.
+
+The residual catalog retains main's exact 132 browser and 10 parser identities, modes and
+source/upstream digests. Eleven browser signatures changed only after independent comparison
+with real merged SVGs and pinned Circle/ELK behavior. Ten parser outputs were proven byte-identical
+to the accepted pre-merge outputs after one exact 12.1-to-12.2 version-footer substitution.
+No new residual scope or comparator normalization was added.
+
+The complete materialized-reference check was attempted but lacks the local Playground and
+selected source checkouts. The standing committed reference graph verifier passed. Browser
+painted-content checks and Linux workflow execution remain their existing CI owners.
+
+The merged-source compiled native resource probe passed both 1x/100x operation/zero pairs
+and its zero-work boundary verifier. This is protocol/resource completion evidence, not an A/B
+memory improvement. Affected-crate formatting, staged diff hygiene and indexed path-length checks also passed.
+No native timing claim is transferred to the integrated 12.2 source.

@@ -1,0 +1,15 @@
+---
+config:
+  layout: elk
+  look: handDrawn
+  handDrawnSeed: 1
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    minNodeWidth: 180
+    wrappingWidth: 56
+    padding: 16
+---
+%% Mermaid 12.2 circle.ts/doubleCircle.ts: measure SVG labels without the diagram width floor.
+flowchart LR
+  A((Small<br>circle)) --> B(((Small<br>double<br>circle))) --> R[Small<br>rectangle]

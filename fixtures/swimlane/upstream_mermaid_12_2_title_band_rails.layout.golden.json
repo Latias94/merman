@@ -1,0 +1,400 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "direction": "LR",
+      "nodes": [
+        {
+          "id": "TL_CA",
+          "label": "Tech review",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "TechLead",
+          "top_lane_id": "TechLead",
+          "x": 477.176,
+          "y": 0.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "TL_Ans",
+          "label": "Answer",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "TechLead",
+          "top_lane_id": "TechLead",
+          "x": 918.353,
+          "y": 0.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "A",
+          "label": "Incoming query",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "StatusSeeker",
+          "top_lane_id": "StatusSeeker",
+          "x": 36.0,
+          "y": 230.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "B",
+          "label": "Route query",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "StatusSeeker",
+          "top_lane_id": "StatusSeeker",
+          "x": 477.176,
+          "y": 230.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "HE_CA",
+          "label": "Engineering review",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "HoE",
+          "top_lane_id": "HoE",
+          "x": 477.176,
+          "y": 460.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "HE_Ans",
+          "label": "Answer",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "HoE",
+          "top_lane_id": "HoE",
+          "x": 918.353,
+          "y": 460.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "HE_Inv",
+          "label": "Investigate",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "HoE",
+          "top_lane_id": "HoE",
+          "x": 1359.529,
+          "y": 460.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 3.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "HE_Ans2",
+          "label": "Answer",
+          "label_type": "text",
+          "shape": "roundedRect",
+          "parent_id": "HoE",
+          "top_lane_id": "HoE",
+          "x": 1800.706,
+          "y": 460.0,
+          "width": 150.0,
+          "height": 51.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 4.0,
+          "order": 0.0,
+          "is_edge_label": false
+        }
+      ],
+      "lanes": [
+        {
+          "id": "HoE",
+          "title": "Head of Engineering",
+          "parent_id": null,
+          "x": 893.353,
+          "y": 433.25,
+          "width": 1984.706,
+          "height": 176.5,
+          "padding": 8.0,
+          "title_label_width": 112.141,
+          "title_label_height": 21.0,
+          "content_top": 434.5,
+          "title_rect": {
+            "left": -99.0,
+            "right": -63.0,
+            "top": 345.0,
+            "bottom": 521.5
+          },
+          "requested_dir": "LR"
+        },
+        {
+          "id": "StatusSeeker",
+          "title": "StatusSeeker",
+          "parent_id": null,
+          "x": 893.353,
+          "y": 230.0,
+          "width": 1984.706,
+          "height": 230.0,
+          "padding": 8.0,
+          "title_label_width": 78.688,
+          "title_label_height": 21.0,
+          "content_top": 204.5,
+          "title_rect": {
+            "left": -99.0,
+            "right": -63.0,
+            "top": 115.0,
+            "bottom": 345.0
+          },
+          "requested_dir": "LR"
+        },
+        {
+          "id": "TechLead",
+          "title": "Tech Lead",
+          "parent_id": null,
+          "x": 893.353,
+          "y": 26.75,
+          "width": 1984.706,
+          "height": 176.5,
+          "padding": 8.0,
+          "title_label_width": 57.547,
+          "title_label_height": 21.0,
+          "content_top": -25.5,
+          "title_rect": {
+            "left": -99.0,
+            "right": -63.0,
+            "top": -61.5,
+            "bottom": 115.0
+          },
+          "requested_dir": "LR"
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_TL_CA_TL_Ans_0",
+          "from": "TL_CA",
+          "to": "TL_Ans",
+          "points": [
+            {
+              "x": 552.176,
+              "y": 0.0
+            },
+            {
+              "x": 843.353,
+              "y": 0.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "points": [
+            {
+              "x": 111.0,
+              "y": 230.0
+            },
+            {
+              "x": 402.176,
+              "y": 230.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_HE_CA_HE_Inv_0",
+          "from": "HE_CA",
+          "to": "HE_Inv",
+          "points": [
+            {
+              "x": 552.176,
+              "y": 460.0
+            },
+            {
+              "x": 552.176,
+              "y": 460.0
+            },
+            {
+              "x": 611.0,
+              "y": 460.0
+            },
+            {
+              "x": 611.0,
+              "y": 558.0
+            },
+            {
+              "x": 1225.706,
+              "y": 558.0
+            },
+            {
+              "x": 1225.706,
+              "y": 460.0
+            },
+            {
+              "x": 1284.529,
+              "y": 460.0
+            },
+            {
+              "x": 1284.529,
+              "y": 460.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_HE_Inv_HE_Ans2_0",
+          "from": "HE_Inv",
+          "to": "HE_Ans2",
+          "points": [
+            {
+              "x": 1434.529,
+              "y": 460.0
+            },
+            {
+              "x": 1725.706,
+              "y": 460.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_HE_CA_HE_Ans_0",
+          "from": "HE_CA",
+          "to": "HE_Ans",
+          "points": [
+            {
+              "x": 552.176,
+              "y": 456.0
+            },
+            {
+              "x": 843.353,
+              "y": 456.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_B_TL_CA_0",
+          "from": "B",
+          "to": "TL_CA",
+          "points": [
+            {
+              "x": 477.176,
+              "y": 204.5
+            },
+            {
+              "x": 477.176,
+              "y": 25.5
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_B_HE_CA_0",
+          "from": "B",
+          "to": "HE_CA",
+          "points": [
+            {
+              "x": 477.176,
+              "y": 255.5
+            },
+            {
+              "x": 477.176,
+              "y": 434.5
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_TL_CA_HE_CA_0",
+          "from": "TL_CA",
+          "to": "HE_CA",
+          "points": [
+            {
+              "x": 402.176,
+              "y": 0.0
+            },
+            {
+              "x": 402.176,
+              "y": 0.0
+            },
+            {
+              "x": -59.0,
+              "y": 0.0
+            },
+            {
+              "x": -59.0,
+              "y": 460.0
+            },
+            {
+              "x": 402.176,
+              "y": 460.0
+            },
+            {
+              "x": 402.176,
+              "y": 460.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        }
+      ],
+      "bounds": {
+        "min_x": -99.0,
+        "min_y": -61.5,
+        "max_x": 1885.706,
+        "max_y": 558.0
+      }
+    }
+  }
+}

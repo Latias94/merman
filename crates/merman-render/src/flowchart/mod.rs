@@ -194,7 +194,9 @@ pub(crate) use node::{
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
-pub(crate) use self_loop::flowchart_self_loop_helper_edges;
+pub(crate) use self_loop::{
+    flowchart_dagre_merges_self_loop_segments, flowchart_self_loop_helper_edges,
+};
 pub(crate) use shapes::{
     FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
     is_flowchart_process_shape, validate_flowchart_model_shapes,

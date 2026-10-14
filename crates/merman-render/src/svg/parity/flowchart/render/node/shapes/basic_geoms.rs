@@ -4,7 +4,10 @@ use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::geom::path_from_points;
-use super::super::roughjs::roughjs_hachure_paths_for_svg_path;
+use super::super::roughjs::{
+    roughjs_hachure_paths_for_svg_path, roughjs_paths_for_circle,
+    roughjs_paths_for_circle_with_roughness,
+};
 
 const FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS: f32 = 0.7;
 const FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
@@ -84,11 +87,37 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
     out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
-) {
+    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+) -> crate::Result<()> {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     let r = (w.min(h) / 2.0).max(0.5);
+    if common.look_is_hand_drawn() {
+        let paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_circle(
+                r * 2.0,
+                common.stroke_width,
+                common.stroke_dasharray,
+                true,
+                ctx.work_meter,
+                common.hand_drawn_seed,
+            )
+        });
+        ctx.work_meter
+            .checkpoint(merman_core::OperationPhase::Emit)?;
+        if let Some(paths) = paths {
+            let _ = write!(
+                out,
+                r#"<g class="basic label-container" style="{}">"#,
+                escape_attr(&hand_drawn_circle_style(common.node_styles)),
+            );
+            write_rough_circle_paths(out, common, &paths, common.stroke_width);
+            out.push_str("</g>");
+            return Ok(());
+        }
+    }
     let _ = write!(
         out,
         r#"<circle class="basic label-container"{} style="{}" r="{}" cx="0" cy="0"/>"#,
@@ -96,16 +125,65 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
         escape_attr(common.style),
         fmt(r),
     );
+    Ok(())
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
     out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
-) {
+    details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
+) -> crate::Result<()> {
     let geometry = crate::flowchart::DoubleCircleGeometry::from_outer_diameter(
         common.layout_node.width.min(common.layout_node.height),
         common.look_is_neo(),
     );
+    if common.look_is_hand_drawn() {
+        // Mermaid doubleCircle.ts overrides even user stroke widths for each ring.
+        let outer = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_circle_with_roughness(
+                geometry.outer_radius * 2.0,
+                2.5,
+                common.stroke_dasharray,
+                true,
+                0.2,
+                ctx.work_meter,
+                common.hand_drawn_seed,
+            )
+        });
+        ctx.work_meter
+            .checkpoint(merman_core::OperationPhase::Emit)?;
+        let inner = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_circle_with_roughness(
+                geometry.inner_radius * 2.0,
+                1.5,
+                common.stroke_dasharray,
+                true,
+                0.2,
+                ctx.work_meter,
+                common.hand_drawn_seed,
+            )
+        });
+        ctx.work_meter
+            .checkpoint(merman_core::OperationPhase::Emit)?;
+        if let (Some(outer), Some(inner)) = (outer, inner) {
+            let classes = std::iter::once("default")
+                .chain(common.node_classes.iter().map(String::as_str))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let _ = write!(
+                out,
+                r#"<g class="{}" style="{}"><g>"#,
+                escape_attr(&classes),
+                escape_attr(&hand_drawn_circle_style(common.node_styles)),
+            );
+            write_rough_circle_paths(out, common, &outer, 2.5);
+            out.push_str("</g><g>");
+            write_rough_circle_paths(out, common, &inner, 1.5);
+            out.push_str("</g></g>");
+            return Ok(());
+        }
+    }
     let _ = write!(
         out,
         r#"<g class="basic label-container"{} style="{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"/></g>"#,
@@ -116,4 +194,45 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
         fmt(geometry.inner_radius),
         escape_attr(common.style),
     );
+    Ok(())
+}
+
+fn hand_drawn_circle_style(styles: &[String]) -> String {
+    // circle.ts and doubleCircle.ts use cssStyles, rather than the compiled nodeStyles.
+    // Preserve that distinction while applying the renderer's usual safe-declaration filter.
+    styles
+        .iter()
+        .flat_map(|raw| crate::flowchart::flowchart_split_mermaid_style_decls(raw))
+        .filter_map(|decl| {
+            crate::mermaid_style::parse_safe_style_decl(decl)
+                .map(|(key, value)| format!("{key}:{value}"))
+        })
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn write_rough_circle_paths(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    common: &super::super::FlowchartNodeRenderCommon<'_>,
+    paths: &(String, String),
+    stroke_width: f32,
+) {
+    let _ = write!(
+        out,
+        r#"<path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/>"#,
+        escape_attr(&paths.0),
+        escape_attr(common.fill_color),
+    );
+    // RoughGenerator.ellipse still generates the outline before the fill for PRNG ordering,
+    // but excludes that opset from the drawable when the requested stroke is "none".
+    if common.stroke_color != "none" {
+        let _ = write!(
+            out,
+            r#"<path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}"/>"#,
+            escape_attr(&paths.1),
+            escape_attr(common.stroke_color),
+            fmt_display(stroke_width as f64),
+            escape_attr(common.stroke_dasharray),
+        );
+    }
 }

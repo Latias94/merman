@@ -10887,6 +10887,33 @@ mindmap
     ));
 }
 
+#[cfg(feature = "diagram-mindmap")]
+#[test]
+fn mindmap_svg_text_does_not_require_a_math_renderer() {
+    let source = "---\nconfig:\n  layout: tidy-tree\n  htmlLabels: false\n---\nmindmap\nRoot\n  formula[\"$$x^2$$\"]\n";
+    let parsed = Engine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = crate::environment::RenderEnvironment::deterministic()
+        .without_math_renderer()
+        .begin_session()
+        .unwrap();
+    let plan = plan_render(&parsed, &session).unwrap();
+    assert!(plan.is_ready());
+    assert!(
+        !plan
+            .required_capabilities()
+            .contains(&RenderCapability::Math)
+    );
+    let artifact = prepare(parsed, &LayoutOptions::default(), session).unwrap();
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap();
+    assert!(svg.svg().contains("$$x^2$$"));
+    assert!(!svg.svg().contains("foreignObject"));
+}
+
 #[derive(Debug)]
 struct MindmapMathRenderer;
 

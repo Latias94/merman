@@ -21,7 +21,8 @@ const EXECUTION_STYLE = [
 
 export function buildOpaqueRealmDocument(
   boot: RealmBootIdentity,
-  artifact: OpaqueRealmScriptArtifact
+  artifact: OpaqueRealmScriptArtifact,
+  hostLanguage = "",
 ): string {
   validateRealmHello(
     { type: "realm-hello", protocol: REALM_PROTOCOL_VERSION, ...boot },
@@ -54,7 +55,7 @@ export function buildOpaqueRealmDocument(
     "worker-src 'none'",
   ].join("; ");
   return [
-    "<!doctype html><html><head><meta charset=\"utf-8\">",
+    `<!doctype html><html lang="${escapeHtmlAttribute(hostLanguage)}"><head><meta charset="utf-8">`,
     `<meta http-equiv="Content-Security-Policy" content="${csp}">`,
     bootMeta("merman-realm-kind", boot.kind),
     bootMeta("merman-realm-id", boot.realmId),
@@ -65,6 +66,14 @@ export function buildOpaqueRealmDocument(
     `<script>${artifact.script}</script>`,
     "</body></html>",
   ].join("");
+}
+
+function escapeHtmlAttribute(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
 }
 
 function bootMeta(name: string, value: string): string {

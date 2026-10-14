@@ -314,8 +314,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_viewbox_bounds<'data>
                     (
                         edge.edge.from.as_str(),
                         edge.edge.to.as_str(),
-                        ctx.model
-                            .edge_label_for_render(edge.key.semantic_index(), edge.edge)
+                        edge.key
+                            .label_for_render(ctx.model, edge.edge)
                             .is_some_and(|label| !label.is_empty()),
                     )
                 }),

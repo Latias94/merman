@@ -1735,6 +1735,19 @@ where
                     descendant_comparisons.push((comparison_key, error.clone()));
                     error
                 };
+                if comparison_error.is_some()
+                    && browser_text_layout_residual.is_none()
+                    && upstream_dom_drift_policy
+                        == UpstreamDomDriftPolicy::ExactBrowserTextLayoutReceipts
+                    && super::diagram_has_browser_text_layout_residuals(diagram)
+                {
+                    let signature = svgdom::canonical_local_svg_signature(local_svg, dom_decimals)
+                        .map_err(XtaskError::SvgCompareFailed)?;
+                    notes.push(format!(
+                        "unadmitted browser text layout signature [{mode_label}] for {diagram}/{stem}: sha256:{}; source and geometry review required",
+                        crate::util::sha256_hex(signature.as_bytes())
+                    ));
+                }
                 match super::accepts_parser_diagnostic_residual(
                     diagram,
                     stem,

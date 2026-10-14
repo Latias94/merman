@@ -213,9 +213,9 @@ fn edge_label_is_empty(
     ctx: &FlowchartRenderCtx<'_>,
     edge: super::super::render_input::FlowchartRenderEdgeRef<'_>,
 ) -> bool {
-    let label_text = ctx
-        .model
-        .edge_label_for_render(edge.key.semantic_index(), edge.edge)
+    let label_text = edge
+        .key
+        .label_for_render(ctx.model, edge.edge)
         .unwrap_or_default();
     crate::flowchart::flowchart_label_is_empty_for_render(label_text)
 }
@@ -478,7 +478,36 @@ fn initialize_flowchart_root_frame<'data, 'plan>(
         out.push_str(r#"<g class="edgeLabels"/>"#);
     } else {
         out.push_str(r#"<g class="edgeLabels">"#);
-        if !ctx.edge_html_labels {
+        if !ctx.edge_html_labels
+            && !crate::flowchart::flowchart_dagre_merges_self_loop_segments(&ctx.model.keyword)
+        {
+            // Unmerged Agentflow helper edges use insertEdgeLabel for every Graphlib edge.
+            // Its SVG empty-label background remains immediately after that edge's wrapper.
+            for &e in edges {
+                ctx.checkpoint_emit()?;
+                let position = render_flowchart_edge_label(
+                    out,
+                    ctx,
+                    e,
+                    origin_x,
+                    frame.content_origin_y,
+                    &*session.edge_cache,
+                )?;
+                if edge_label_is_empty(ctx, e) {
+                    out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+                    out.checkpoint()?;
+                }
+                record_edge_label_position(
+                    &mut session.edge_label_positions,
+                    ctx,
+                    e.key,
+                    position,
+                    origin_x,
+                    frame.content_origin_y,
+                );
+                out.checkpoint()?;
+            }
+        } else if !ctx.edge_html_labels {
             // Mermaid's `createText(..., useHtmlLabels=false)` always creates a background `<rect>`,
             // but for empty labels it returns the `<text>` element instead of the wrapper `<g>`.
             // The unused wrapper `<g>` (with the `background` rect) remains as a direct child

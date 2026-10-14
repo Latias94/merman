@@ -55,7 +55,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     let local_points = scratch.local_points.as_slice();
 
     let is_elk_layout = ctx.uses_elk_adapter_dom;
-    if is_elk_layout {
+    let is_swimlane_layout = ctx.swimlane_direction.is_some();
+    if is_elk_layout || is_swimlane_layout {
+        // Swimlane endpoint duplicates pin ports and must survive until clipping.
         scratch.tmp_points_a.clear();
         scratch.tmp_points_a.extend_from_slice(local_points);
     } else {
@@ -68,7 +70,46 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
     let points_after_intersect: &mut Vec<crate::model::LayoutPoint> = &mut scratch.tmp_points_b;
 
     let mut elk_endpoint_adapters = super::ElkEndpointAdapterCorners::default();
-    if is_elk_layout {
+    if is_swimlane_layout {
+        let layout_from = le.from.as_str();
+        let layout_to = le.to.as_str();
+        let layout_shape = |id: &str| {
+            if ctx.is_subgraph_collapsed(id) {
+                Some("collapsedGroup")
+            } else {
+                ctx.nodes_by_id
+                    .get(id)
+                    .and_then(|node| node.layout_shape.as_deref())
+            }
+        };
+        if let (Some(tail), Some(head)) = (
+            boundary_for_node(ctx, layout_from, origin_x, origin_y),
+            boundary_for_node(ctx, layout_to, origin_x, origin_y),
+        ) {
+            super::swimlane_points::clip_swimlane_endpoints(
+                base_points,
+                |point| {
+                    intersect_for_layout_shape(
+                        ctx,
+                        layout_from,
+                        &tail,
+                        layout_shape(layout_from),
+                        point,
+                    )
+                },
+                |point| {
+                    intersect_for_layout_shape(
+                        ctx,
+                        layout_to,
+                        &head,
+                        layout_shape(layout_to),
+                        point,
+                    )
+                },
+                points_after_intersect,
+            );
+        }
+    } else if is_elk_layout {
         elk_endpoint_adapters = apply_flowchart_elk_endpoint_cutter(
             ctx,
             edge,
@@ -267,9 +308,8 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     let is_cluster_edge = !is_elk_layout && (le.to_cluster.is_some() || le.from_cluster.is_some());
     // `positionEdgeLabel` consumes the polyline held by `points`; `fixCorners`, marker offsets,
     // and the D3 curve generator operate on the separate `lineData` copy below.
-    let label_path_points = if ctx
-        .model
-        .edge_label_for_render(key.semantic_index(), edge)
+    let label_path_points = if key
+        .label_for_render(ctx.model, edge)
         .is_some_and(|label| !label.is_empty())
     {
         points_for_render.clone()

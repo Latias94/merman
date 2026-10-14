@@ -53,6 +53,11 @@ pub(super) fn expand_self_loops(
                         math_html: None,
                         text: String::new(),
                         label_type: UsecaseLabelType::Text,
+                        text_metrics: TextMetrics {
+                            width: 0.0,
+                            height: 0.0,
+                            line_count: 1,
+                        },
                         metrics: TextMetrics {
                             width: 0.0,
                             height: 0.0,

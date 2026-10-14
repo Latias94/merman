@@ -370,6 +370,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_with_sty
         measurer,
         text_style,
         max_width_px,
+        false,
     );
 }
 
