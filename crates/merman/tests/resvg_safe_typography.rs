@@ -31,20 +31,57 @@ fn render_with_pipeline(name: &str, source: &str, pipeline: Option<SvgPipeline>)
     svg.into_parts().0
 }
 
+fn fallback_content<'a, 'input>(
+    instance: roxmltree::Node<'a, 'input>,
+) -> roxmltree::Node<'a, 'input> {
+    let reference = instance
+        .children()
+        .find(|node| node.has_tag_name("use"))
+        .and_then(|node| node.attribute("href"))
+        .expect("fallback instance references its definition");
+    let id = reference
+        .strip_prefix('#')
+        .expect("same-document fallback reference");
+    let definition = instance
+        .document()
+        .descendants()
+        .find(|node| node.attribute("id") == Some(id))
+        .expect("fallback definition exists");
+    assert!(
+        definition
+            .parent()
+            .is_some_and(|node| node.has_tag_name("defs"))
+    );
+    definition
+}
+
 fn fallback_text_style(svg: &str, label: &str) -> String {
     let document = roxmltree::Document::parse(svg).expect("resvg-safe output should be XML");
-    document
+    for instance in document
         .descendants()
-        .find(|node| {
-            node.has_tag_name("text")
-                && node.ancestors().any(|ancestor| {
-                    ancestor.attribute("data-merman-foreignobject") == Some("fallback")
-                })
-                && node.text().is_some_and(|text| text.trim() == label)
-        })
-        .and_then(|node| node.attribute("style"))
-        .map(str::to_owned)
-        .unwrap_or_else(|| panic!("expected fallback text {label:?}: {svg}"))
+        .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+    {
+        let content = fallback_content(instance);
+        if let Some(text) = content.descendants().find(|node| {
+            node.has_tag_name("text") && node.text().is_some_and(|text| text.trim() == label)
+        }) {
+            assert_eq!(
+                text.attribute("class"),
+                Some("merman-foreignobject-fallback-text")
+            );
+            assert_eq!(
+                text.attribute("data-merman-source-classes"),
+                instance.attribute("data-merman-source-classes"),
+                "definition typography is associated with its original source instance"
+            );
+            assert!(instance.attribute("data-merman-source-classes").is_some());
+            return text
+                .attribute("style")
+                .expect("explicit resolved typography")
+                .to_string();
+        }
+    }
+    panic!("expected fallback text {label:?}: {svg}")
 }
 
 fn assert_usvg_parseable(svg: &str) {
@@ -355,13 +392,30 @@ fn filtered_html_fallback_does_not_assume_unknown_css_is_absent() {
         let out =
             foreign_object_label_fallback_svg_text(&source, &DeterministicTextMeasurer::default());
         let xml = roxmltree::Document::parse(&out).unwrap();
-        let text = xml
+        let instance = xml
+            .descendants()
+            .find(|node| {
+                node.attribute("data-merman-foreignobject") == Some("fallback")
+                    && node.children().any(|child| child.has_tag_name("use"))
+            })
+            .unwrap();
+        let text = fallback_content(instance)
             .descendants()
             .find(|node| node.has_tag_name("text"))
             .unwrap();
-        let fallback = text.parent_element().unwrap();
-        assert_eq!(fallback.parent_element().unwrap(), xml.root_element());
-        assert_eq!(fallback.attribute("transform"), Some("translate(100,200)"));
+        let style = text.attribute("style").unwrap();
+        assert!(style.contains("opacity: 1"), "{style}");
+        assert!(style.contains("visibility: inherit"), "{style}");
+        assert!(style.contains("filter: none"), "{style}");
+        let source_owner = instance
+            .ancestors()
+            .find(|node| node.attribute("class") == Some("classGroup"))
+            .unwrap();
+        assert_eq!(
+            source_owner.attribute("transform"),
+            Some("translate(100,200)"),
+            "the use instance remains under its source coordinate system"
+        );
     }
 }
 
@@ -449,34 +503,65 @@ fn class_native_label_paint_reaches_usvg_and_png() {
 #[cfg(feature = "png")]
 fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
     let source = r##"<svg id="diagram" xmlns="http://www.w3.org/2000/svg" width="300" height="140" viewBox="0 0 300 140"><style>@keyframes dash {to {stroke-dashoffset:0}} #diagram :root {--mermaid-font-family:sans-serif} #diagram .label text {fill:#222;color:#222}</style><defs><filter id="label-theme-effect-glow" color-interpolation-filters="linearRGB" filterUnits="userSpaceOnUse" x="-20" y="-20" width="170" height="100"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="4" flood-color="#ff0080"/></filter></defs><g class="label" transform="translate(60,40)"><g filter="url(#label-theme-effect-glow)"><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:sans-serif;font-size:20px;color:#222">Alpha</div></foreignObject></g></g></svg>"##;
-    let session = merman_render::environment::RenderEnvironment::deterministic()
-        .begin_session()
-        .unwrap();
-    let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
-    let (bytes, report) =
-        merman::svg::export::svg_to_png_with_report(&sealed, &Default::default()).unwrap();
-    let receipt = report
-        .native_filter_receipt()
-        .expect("actual filtered glyphs must reach the exporter");
-    assert_eq!(receipt.filter_count(), 1);
-    assert_eq!(receipt.reference_count(), 1);
-    let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
-        .read_info()
-        .unwrap();
-    let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
-    let info = reader.next_frame(&mut pixels).unwrap();
-    assert_eq!(info.color_type, png::ColorType::Rgba);
-    assert!(
-        pixels[..info.buffer_size()]
-            .chunks_exact(4)
-            .any(|pixel| pixel[3] > 0 && pixel[0] > pixel[1] && pixel[2] > pixel[1]),
-        "pink glow must reach native pixels"
-    );
-    #[cfg(feature = "pdf")]
-    {
-        let (_, report) =
-            merman::svg::export::svg_to_pdf_with_report(&sealed, &Default::default()).unwrap();
-        assert_eq!(report.native_filter_receipt(), Some(receipt));
+    for (overflow, source, expected_receipt) in [
+        ("hidden", source.to_string(), false),
+        (
+            "visible",
+            source.replace(
+                r#"<foreignObject width="120""#,
+                r#"<foreignObject style="overflow:visible" width="120""#,
+            ),
+            true,
+        ),
+    ] {
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let sealed = merman_render::svg::finalize_resvg_svg(&source, &session).unwrap();
+        let document = roxmltree::Document::parse(sealed.as_str()).unwrap();
+        let instance = document
+            .descendants()
+            .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+            .unwrap();
+        let viewport = fallback_content(instance)
+            .children()
+            .find(|node| node.has_tag_name("svg"))
+            .unwrap();
+        assert!(
+            viewport
+                .attribute("style")
+                .unwrap()
+                .contains(&format!("overflow:{overflow}")),
+            "{overflow}: source viewport clipping must survive finalization"
+        );
+        let (bytes, report) =
+            merman::svg::export::svg_to_png_with_report(&sealed, &Default::default()).unwrap();
+        let receipt = report.native_filter_receipt();
+        // A clipped source viewport cannot prove the exporter's unclipped-glyph receipt.
+        // Explicit visible overflow keeps the original glow and its stronger evidence.
+        assert_eq!(receipt.is_some(), expected_receipt, "overflow={overflow}");
+        if let Some(receipt) = receipt {
+            assert_eq!(receipt.filter_count(), 1);
+            assert_eq!(receipt.reference_count(), 1);
+        }
+        let mut reader = png::Decoder::new(std::io::Cursor::new(bytes))
+            .read_info()
+            .unwrap();
+        let mut pixels = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut pixels).unwrap();
+        assert_eq!(info.color_type, png::ColorType::Rgba);
+        assert!(
+            pixels[..info.buffer_size()]
+                .chunks_exact(4)
+                .any(|pixel| pixel[3] > 0 && pixel[0] > pixel[1] && pixel[2] > pixel[1]),
+            "overflow={overflow}: pink glow must reach native pixels"
+        );
+        #[cfg(feature = "pdf")]
+        if expected_receipt {
+            let (_, pdf_report) =
+                merman::svg::export::svg_to_pdf_with_report(&sealed, &Default::default()).unwrap();
+            assert_eq!(pdf_report.native_filter_receipt(), receipt);
+        }
     }
 }
 

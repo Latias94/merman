@@ -660,12 +660,13 @@ pub(crate) fn layout_wardley_diagram_typed(
     effective_config: &Value,
     measurer: &dyn TextMeasurer,
 ) -> Result<WardleyDiagramLayout> {
-    let font_family_css = crate::config::config_font_family_css(effective_config);
-    layout_wardley_diagram_with_font_family(
+    let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+    let typography_theme = WardleyTypographyThemePlan::resolve(None, &config);
+    layout_wardley_diagram_typed_with_theme(
         model,
         diagram_title,
         effective_config,
-        &font_family_css,
+        &typography_theme,
         measurer,
     )
 }

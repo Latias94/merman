@@ -97,6 +97,9 @@ environment, and SVG postprocessing choices retain their independent owners. The
 Theme compilation reports requirements; it does not by itself prove the unfinished cross-family,
 cross-output portability matrix.
 
+Hosts can enable `drop_native_duplicate_fallbacks` for generated labels tied to native SVG switch
+fallbacks. Independent labels with equal text are preserved.
+
 Hosts that inline SVG in a browser and want fallback text while retaining the original `<foreignObject>` nodes can use `"readable"` instead. PNG, JPEG, and PDF are available through the same generic binding operation route when their output capability is compiled; their format-specific resource limits remain part of the selected resource policy.
 
 ## Capability Metadata

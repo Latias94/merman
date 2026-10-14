@@ -15,7 +15,8 @@ pub(crate) use builtin::util::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
     extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
-    find_with_checkpoints, rfind_with_checkpoints, start_tag_name, trim_with_checkpoints,
+    find_with_checkpoints, next_svg_quoted_attr_with_checkpoints, rfind_with_checkpoints,
+    start_tag_name, trim_with_checkpoints,
 };
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,

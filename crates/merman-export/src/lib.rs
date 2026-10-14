@@ -4533,6 +4533,61 @@ mod tests {
     }
 
     #[test]
+    fn rotated_foreign_object_text_and_background_export_at_the_transformed_position() {
+        // This is the same translate/rotate/translate shape used by LR Swimlane titles.
+        // A long colored label background provides font-independent pixel evidence.
+        let source = r##"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><g transform="translate(60 100) rotate(-90) translate(-40 -10)"><foreignObject width="80" height="20"><div xmlns="http://www.w3.org/1999/xhtml" style="background-color:#ff0000;color:#ffffff"><p>Support</p></div></foreignObject></g></svg>"##;
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let compatible = merman_render::svg::SvgPipeline::resvg_safe()
+            .process_resvg_compatible(source, &session)
+            .unwrap();
+        let bytes = super::svg_to_png(&compatible, &RasterOptions::default()).unwrap();
+        assert_eq!(png_size(&bytes), (200, 200));
+        for (x, y) in [(51, 70), (51, 100), (51, 130)] {
+            assert_eq!(
+                rgba_pixel(&bytes, x, y),
+                [255, 0, 0, 255],
+                "rotated label strip at ({x},{y})"
+            );
+        }
+        assert_eq!(
+            rgba_pixel(&bytes, 100, 100)[3],
+            0,
+            "label must not extend horizontally into nodes"
+        );
+        assert_eq!(
+            rgba_pixel(&bytes, 51, 50)[3],
+            0,
+            "label stays inside its transformed header strip"
+        );
+    }
+
+    #[test]
+    fn foreign_object_export_preserves_ancestor_clip_opacity_and_local_background() {
+        let source = r##"<svg xmlns="http://www.w3.org/2000/svg" id="diagram" width="100" height="100" viewBox="0 0 100 100"><style>#diagram .node rect { fill:blue!important;stroke:green!important;stroke-width:10!important; }</style><defs><clipPath id="clip"><rect width="25" height="100"/></clipPath></defs><g class="node" opacity=".5" clip-path="url(#clip)"><foreignObject x="10" y="10" width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml" style="background-color:red;color:white"><p>A</p></div></foreignObject></g></svg>"##;
+        let session = merman_render::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let compatible = merman_render::svg::SvgPipeline::resvg_safe()
+            .process_resvg_compatible(source, &session)
+            .unwrap();
+        let bytes = super::svg_to_png(&compatible, &RasterOptions::default()).unwrap();
+        assert_eq!(rgba_pixel(&bytes, 12, 12), [255, 0, 0, 128]);
+        assert_eq!(
+            rgba_pixel(&bytes, 35, 12)[3],
+            0,
+            "ancestor clipping must apply to the generated label"
+        );
+        assert_eq!(
+            rgba_pixel(&bytes, 8, 12)[3],
+            0,
+            "node shape CSS must not add a label border"
+        );
+    }
+
+    #[test]
     fn root_viewport_dimensions_drive_raster_planning_and_pixels() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let options = RasterOptions::default();

@@ -13,10 +13,80 @@ use crate::family::{
 };
 use crate::resources::OperationWorkMeter;
 
+/// Prepared source compatibility values shared by ZenUML measurement and paint.
+#[derive(Debug)]
+pub(crate) struct ZenumlSourceStyle {
+    pub(crate) typography: super::ZenumlTypography,
+    colors: std::collections::BTreeMap<&'static str, String>,
+}
+
+impl ZenumlSourceStyle {
+    pub(crate) fn new(config: &serde_json::Value) -> Self {
+        let configured =
+            |key| crate::config::config_string(config, &["themeVariables", "zenuml", key]);
+        let colors = [
+            "backgroundColor",
+            "borderColor",
+            "textColor",
+            "lineColor",
+            "surfaceColor",
+            "actorBackgroundColor",
+            "actorBorderColor",
+            "actorTextColor",
+            "noteBackgroundColor",
+            "noteBorderColor",
+            "noteTextColor",
+            "groupBackgroundColor",
+            "groupBorderColor",
+            "groupTextColor",
+            "activationBackgroundColor",
+            "activationBorderColor",
+            "mutedSurfaceColor",
+            "fragmentTextColor",
+            "subtleTextColor",
+        ]
+        .into_iter()
+        .filter_map(|key| {
+            let color = configured(key).or_else(|| {
+                let inherited: &[&str] = match key {
+                    "actorBackgroundColor"
+                    | "noteBackgroundColor"
+                    | "groupBackgroundColor"
+                    | "mutedSurfaceColor" => &["surfaceColor"],
+                    "actorTextColor" | "noteTextColor" | "groupTextColor" | "subtleTextColor"
+                    | "fragmentTextColor" => &["textColor"],
+                    "actorBorderColor"
+                    | "noteBorderColor"
+                    | "groupBorderColor"
+                    | "activationBorderColor" => &["borderColor"],
+                    "activationBackgroundColor" => &["mutedSurfaceColor", "surfaceColor"],
+                    _ => &[],
+                };
+                inherited.iter().find_map(|key| configured(key))
+            });
+            color.map(|value| (key, value))
+        })
+        .collect();
+        Self {
+            typography: super::ZenumlTypography::new(config),
+            colors,
+        }
+    }
+
+    pub(crate) fn color<'a>(&'a self, key: &str, fallback: &'a str) -> &'a str {
+        self.configured_color(key).unwrap_or(fallback)
+    }
+
+    pub(crate) fn configured_color(&self, key: &str) -> Option<&str> {
+        self.colors.get(key).map(String::as_str)
+    }
+}
+
 /// Final ZenUML frame-title fill shared by stylesheet emission and terminal evidence.
 #[derive(Debug)]
 pub(crate) struct ZenumlTitleThemePlan {
     fill: SingleTitleFillPlan,
+    source_style: ZenumlSourceStyle,
 }
 
 impl ZenumlTitleThemePlan {
@@ -26,6 +96,7 @@ impl ZenumlTitleThemePlan {
         layout: &ZenumlDiagramLayout,
         diagram_title: Option<&str>,
         work_meter: &OperationWorkMeter,
+        source_style: ZenumlSourceStyle,
     ) -> crate::Result<Self> {
         let title_present = resolve_zenuml_title(model, diagram_title).is_some();
         let non_title_text_present = has_visible_non_title_text(layout);
@@ -88,7 +159,11 @@ impl ZenumlTitleThemePlan {
             }
         }
         let fill = SingleTitleFillPlan::resolve(theme, title_present, false, evidence, work_meter)?;
-        Ok(Self { fill })
+        Ok(Self { fill, source_style })
+    }
+
+    pub(crate) fn source_style(&self) -> &ZenumlSourceStyle {
+        &self.source_style
     }
 
     pub(crate) fn fill_css(&self) -> Option<&str> {
@@ -213,6 +288,64 @@ impl ZenumlTitleThemeReceipt {
 #[cfg(test)]
 mod tests {
     use super::ZenumlTitleThemeReceipt;
+
+    #[test]
+    fn source_colors_inherit_within_zenuml_and_keep_explicit_terminal_overrides() {
+        let source = super::ZenumlSourceStyle::new(&serde_json::json!({
+            "themeVariables": {"zenuml": {
+                "textColor": "#123456", "surfaceColor": "#abcdef", "borderColor": "#765432"
+            }}
+        }));
+        for key in [
+            "actorTextColor",
+            "noteTextColor",
+            "groupTextColor",
+            "fragmentTextColor",
+            "subtleTextColor",
+        ] {
+            assert_eq!(source.configured_color(key), Some("#123456"), "{key}");
+        }
+        for key in [
+            "actorBackgroundColor",
+            "noteBackgroundColor",
+            "groupBackgroundColor",
+            "mutedSurfaceColor",
+            "activationBackgroundColor",
+        ] {
+            assert_eq!(source.configured_color(key), Some("#abcdef"), "{key}");
+        }
+        for key in [
+            "actorBorderColor",
+            "noteBorderColor",
+            "groupBorderColor",
+            "activationBorderColor",
+        ] {
+            assert_eq!(source.configured_color(key), Some("#765432"), "{key}");
+        }
+        let overridden = super::ZenumlSourceStyle::new(&serde_json::json!({
+            "themeVariables": {"zenuml": {
+                "textColor": "#123456", "surfaceColor": "#abcdef", "borderColor": "#765432",
+                "actorTextColor": "#111111", "noteTextColor": "#222222", "groupTextColor": "#333333",
+                "actorBackgroundColor": "#444444", "actorBorderColor": "#555555", "mutedSurfaceColor": "#666666"
+            }}
+        }));
+        for (key, color) in [
+            ("actorTextColor", "#111111"),
+            ("noteTextColor", "#222222"),
+            ("groupTextColor", "#333333"),
+            ("actorBackgroundColor", "#444444"),
+            ("actorBorderColor", "#555555"),
+            ("activationBackgroundColor", "#666666"),
+        ] {
+            assert_eq!(overridden.configured_color(key), Some(color), "{key}");
+        }
+        let unrelated = super::ZenumlSourceStyle::new(&serde_json::json!({
+            "themeVariables": {"textColor": "#999999", "surfaceColor": "#999999", "borderColor": "#999999"}
+        }));
+        assert_eq!(unrelated.configured_color("actorTextColor"), None);
+        assert_eq!(unrelated.configured_color("actorBackgroundColor"), None);
+        assert_eq!(unrelated.configured_color("actorBorderColor"), None);
+    }
 
     #[test]
     fn title_receipt_requires_matching_css_and_one_text_frame_title_writer_event() {

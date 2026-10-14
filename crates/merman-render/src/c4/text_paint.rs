@@ -43,6 +43,7 @@ pub(crate) struct C4ElementTerminalPaint {
 pub(crate) struct C4RelationTerminalPaint {
     pub(crate) text: String,
     pub(crate) line: String,
+    pub(crate) themed_markers: bool,
 }
 
 #[derive(Debug)]
@@ -234,7 +235,11 @@ impl C4TextPaintPlan {
                         .as_deref()
                         .unwrap_or(&defaults.border)
                         .to_owned(),
-                    text: source.font_color.as_deref().unwrap_or("#FFFFFF").to_owned(),
+                    text: source
+                        .font_color
+                        .as_deref()
+                        .unwrap_or(&defaults.text)
+                        .to_owned(),
                 },
             );
         }
@@ -259,12 +264,13 @@ impl C4TextPaintPlan {
                 .or_insert_with(|| C4RelationTerminalPaint {
                     text: source
                         .and_then(|source| source.text_color.as_deref())
-                        .unwrap_or("#444444")
+                        .unwrap_or(typography.relationship_text_color())
                         .to_owned(),
                     line: source
                         .and_then(|source| source.line_color.as_deref())
-                        .unwrap_or("#444444")
+                        .unwrap_or(typography.relationship_line_color())
                         .to_owned(),
+                    themed_markers: typography.themed_relationship_markers(),
                 });
         }
         self.source_paint

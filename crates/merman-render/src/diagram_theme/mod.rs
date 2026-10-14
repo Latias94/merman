@@ -432,6 +432,81 @@ mod tests {
     }
 
     #[test]
+    fn background_and_text_rules_keep_their_independent_family_owners() {
+        let rule = |target, color| {
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+            )
+            .for_family(DiagramFamilyId::C4)
+        };
+        let rules = ThemeRuleSet::default()
+            .with_rule(rule(ThemeTarget::Cluster, "#111111"))
+            .with_rule(rule(ThemeTarget::Text, "#000000"));
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(
+                        CanvasSpec::default().with_base(CanvasPaint::solid("#ffffff").unwrap()),
+                    )
+                    .with_styles(rules),
+            )
+            .unwrap();
+        let c4 = theme.resolve(DiagramFamilyId::C4);
+        for (target, expected) in [
+            (ThemeTarget::Cluster, "#111111"),
+            (ThemeTarget::Text, "#000000"),
+        ] {
+            assert_eq!(
+                c4.style(target, ThemeVariant::Default, None)
+                    .fill()
+                    .and_then(solid_color),
+                Some(expected.to_owned())
+            );
+        }
+        let wardley = theme.resolve(DiagramFamilyId::WARDLEY);
+        assert_eq!(
+            wardley
+                .style(ThemeTarget::Text, ThemeVariant::Default, None)
+                .fill(),
+            None,
+            "a C4 text rule cannot recolor Wardley's canvas labels"
+        );
+    }
+
+    #[test]
+    fn background_only_rules_do_not_infer_canvas_label_paint() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Cluster,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#111111").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::C4),
+                    ),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(DiagramFamilyId::C4);
+        assert!(
+            resolved
+                .style(ThemeTarget::Cluster, ThemeVariant::Default, None)
+                .fill()
+                .is_some()
+        );
+        assert_eq!(
+            resolved
+                .style(ThemeTarget::Text, ThemeVariant::Default, None)
+                .fill(),
+            None,
+            "labels on an unchanged canvas retain their own Mermaid source paint"
+        );
+    }
+
+    #[test]
     fn invalid_family_target_and_unknown_effect_binding_fail_compilation() {
         let invalid_target = DiagramThemeSpec::new().with_styles(
             ThemeRuleSet::default().with_rule(

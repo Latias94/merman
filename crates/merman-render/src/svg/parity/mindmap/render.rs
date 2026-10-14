@@ -567,6 +567,17 @@ fn mindmap_css(
         }
     }
 
+    if let Some(background) = binding.label_background.as_deref() {
+        let _ = write!(
+            out,
+            "#{diagram_id} .labelBkg{{background-color:{background};}}"
+        );
+    }
+    if let Some(text) = binding.label_text.as_deref() {
+        let _ = write!(out, "#{diagram_id} .labelBkg span{{color:{text};}}");
+    }
+    out.checkpoint()?;
+
     binding
         .common
         .write_root_with_font_emission(out, diagram_id, fragment_id)?;

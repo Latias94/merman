@@ -1,0 +1,22 @@
+{
+  "presentation": {
+    "theme": {
+      "appearance": "dark",
+      "font_family": "Inter, sans-serif",
+      "roles": {
+        "canvas": "#1e1f22",
+        "surface": "#2b2d30",
+        "text": "#dfe1e5",
+        "border": "#6f737a",
+        "line": "#a8adbd"
+      }
+    }
+  },
+  "svg": {
+    "pipeline": "resvg-safe",
+    "root_background_color": "#1e1f22"
+  },
+  "raster": {
+    "scale": 2
+  }
+}

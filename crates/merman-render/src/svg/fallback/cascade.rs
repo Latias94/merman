@@ -11,7 +11,7 @@ use crate::svg::pipeline::{
 use crate::text::{HtmlWhiteSpace, TextStyle};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
-    QualifiedRuleParser, StyleSheetParser, Token,
+    QualifiedRuleParser, StyleSheetParser, Token, parse_important,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -83,6 +83,7 @@ pub(super) struct ResolvedStyle {
     color: Option<String>,
     pub(super) background_color: Option<String>,
     background_color_specified: bool,
+    paint: Vec<(String, String)>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -117,6 +118,7 @@ pub(super) struct ResolvedFallbackTypography {
 pub(super) struct ResolvedForeignObject {
     pub(super) typography: ResolvedFallbackTypography,
     pub(super) fragments: Vec<HtmlTextFragment>,
+    pub(super) paint: Vec<(String, String)>,
 }
 
 impl ResolvedFallbackTypography {
@@ -604,6 +606,15 @@ impl CascadeIndex {
             "fill",
             "color",
             "background-color",
+            "opacity",
+            "display",
+            "visibility",
+            "clip-path",
+            "mask",
+            "filter",
+            "overflow",
+            "transform",
+            "transform-origin",
         ] {
             if let Some(value) = attribute_value(&attributes, property) {
                 presentation.push(Declaration {
@@ -1031,6 +1042,14 @@ impl CascadeIndex {
             color,
             background_color,
             background_color_specified,
+            paint: PAINT_PROPERTIES
+                .iter()
+                .filter_map(|property| {
+                    specified
+                        .get(*property)
+                        .map(|value| ((*property).to_string(), value.value.clone()))
+                })
+                .collect(),
         })
     }
 
@@ -1084,6 +1103,7 @@ impl CascadeIndex {
             .last()
             .cloned()
             .unwrap_or_else(default_style);
+        let paint = base_style.paint.clone();
         let mut observed = TextTypographyObserver::default();
         let mut fragments = Vec::new();
         let mut cursor = 0usize;
@@ -1225,6 +1245,7 @@ impl CascadeIndex {
             return Ok(ResolvedForeignObject {
                 typography: default_fallback_typography(),
                 fragments,
+                paint,
             });
         }
         let style = if observed.differing_styles {
@@ -1271,6 +1292,7 @@ impl CascadeIndex {
         Ok(ResolvedForeignObject {
             typography: fallback_typography(style, label_background),
             fragments,
+            paint,
         })
     }
 }
@@ -1578,6 +1600,7 @@ fn default_style() -> ResolvedStyle {
         color: None,
         background_color: None,
         background_color_specified: false,
+        paint: Vec::new(),
     }
 }
 
@@ -1602,6 +1625,18 @@ fn fallback_typography(
     }
 }
 
+pub(super) const PAINT_PROPERTIES: [&str; 9] = [
+    "opacity",
+    "display",
+    "visibility",
+    "clip-path",
+    "mask",
+    "filter",
+    "overflow",
+    "transform",
+    "transform-origin",
+];
+
 fn is_supported_property(property: &str) -> bool {
     matches!(
         property,
@@ -1614,6 +1649,15 @@ fn is_supported_property(property: &str) -> bool {
             | "fill"
             | "color"
             | "background-color"
+            | "opacity"
+            | "display"
+            | "visibility"
+            | "clip-path"
+            | "mask"
+            | "filter"
+            | "overflow"
+            | "transform"
+            | "transform-origin"
     )
 }
 
@@ -1664,6 +1708,27 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
                     .iter()
                     .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
         }
+        "opacity" => lower
+            .strip_suffix('%')
+            .unwrap_or(&lower)
+            .parse::<f64>()
+            .ok()
+            .is_some_and(f64::is_finite),
+        "display" => matches!(
+            lower.as_str(),
+            "none" | "inline" | "block" | "contents" | "inline-block"
+        ),
+        "visibility" => matches!(lower.as_str(), "visible" | "hidden" | "collapse"),
+        "overflow" => matches!(
+            lower.as_str(),
+            "visible" | "hidden" | "clip" | "scroll" | "auto"
+        ),
+        "clip-path" | "mask" | "filter" => {
+            lower == "none" || svgtypes::FuncIRI::from_str(value).is_ok()
+        }
+        "transform" | "transform-origin" => !value
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '{' | '}' | ';')),
         "font-weight" => is_supported_css_font_weight_value(&lower),
         "font-style" => is_supported_css_font_style_value(&lower),
         "fill" => is_admitted_paint(&lower),
@@ -2910,6 +2975,33 @@ fn parse_declarations<E>(
     Ok(parse_declarations_with_limit(style, usize::MAX, checkpoint)?.declarations)
 }
 
+// The source-style parser intentionally rejects URLs. Fallback projection must additionally
+// preserve already-rendered SVG references, restricted to these same-document paint properties.
+fn parse_fragment_paint_declaration(raw: &str, order: usize) -> Option<Declaration> {
+    let raw = raw.trim().strip_suffix(';').unwrap_or(raw.trim()).trim();
+    let mut parser = Parser::new(raw);
+    let property = parser.expect_ident_cloned().ok()?.to_ascii_lowercase();
+    if !matches!(property.as_str(), "clip-path" | "mask" | "filter") {
+        return None;
+    }
+    parser.expect_colon().ok()?;
+    let value_start = parser.position();
+    let target = parser.expect_url().ok()?;
+    if !target.starts_with('#') || target.len() == 1 {
+        return None;
+    }
+    let value = parser.slice(value_start..parser.position()).trim();
+    svgtypes::FuncIRI::from_str(value).ok()?;
+    let important = parser.try_parse(parse_important).is_ok();
+    parser.expect_exhausted().ok()?;
+    Some(Declaration {
+        property,
+        value: value.to_string(),
+        important,
+        order,
+    })
+}
+
 fn parse_declarations_with_limit<E>(
     style: &str,
     maximum: usize,
@@ -2922,23 +3014,25 @@ fn parse_declarations_with_limit<E>(
     visit_style_declaration_boundaries_with_checkpoints(style, checkpoint, |boundary| {
         let current_order = order;
         order = order.saturating_add(1);
-        let Some(parsed) = parse_style_declaration(boundary.raw()) else {
+        let declaration = if let Some(parsed) = parse_style_declaration(boundary.raw()) {
+            Declaration {
+                property: parsed.property().to_owned(),
+                value: parsed.value().to_owned(),
+                important: parsed.important(),
+                order: current_order,
+            }
+        } else if let Some(parsed) = parse_fragment_paint_declaration(boundary.raw(), current_order)
+        {
+            parsed
+        } else {
             unparsed |= !boundary.raw().trim().is_empty();
             return Ok(true);
         };
-        if parsed.property().is_empty() || parsed.value().is_empty() {
-            return Ok(true);
-        }
         if declarations.len() >= maximum {
             limit_exceeded = Some((maximum.saturating_add(1), maximum));
             return Ok(false);
         }
-        declarations.push(Declaration {
-            property: parsed.property().to_owned(),
-            value: parsed.value().to_owned(),
-            important: parsed.important(),
-            order: current_order,
-        });
+        declarations.push(declaration);
         Ok(true)
     })?;
     Ok(ParsedDeclarations {
@@ -3109,6 +3203,42 @@ fn bounded_positive(value: f64) -> Option<f64> {
 mod tests {
     use super::*;
     use std::convert::Infallible;
+
+    #[test]
+    fn fallback_paint_fragments_preserve_importance_and_reject_external_urls() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let local = parse_declarations_with_limit(
+            "clip-path:url(#clip)!important;mask:url('#mask');filter:url(#shadow);fill:blue",
+            MAX_SELECTOR_DECLARATIONS_PER_RULE,
+            &mut checkpoint,
+        )
+        .unwrap();
+        assert!(!local.unparsed);
+        assert_eq!(local.declarations.len(), 4);
+        assert_eq!(local.declarations[0].property, "clip-path");
+        assert_eq!(local.declarations[0].value, "url(#clip)");
+        assert!(local.declarations[0].important);
+        assert_eq!(local.declarations[1].value, "url('#mask')");
+        assert!(!local.declarations[1].important);
+        assert_eq!(local.declarations[2].value, "url(#shadow)");
+        for external in [
+            "clip-path:url(https://example.test/paint.svg#clip)",
+            "mask:url('../paint.svg#mask')!important",
+            "filter:url(data:image/svg+xml;base64,AAAA)",
+            "filter:url(#)",
+            "filter:url(#shadow) trailing",
+            "fill:url(#paint)",
+        ] {
+            let rejected = parse_declarations_with_limit(
+                external,
+                MAX_SELECTOR_DECLARATIONS_PER_RULE,
+                &mut checkpoint,
+            )
+            .unwrap();
+            assert!(rejected.unparsed, "{external}");
+            assert!(rejected.declarations.is_empty(), "{external}");
+        }
+    }
 
     #[test]
     fn duplicate_id_selector_with_parsed_typography_blocks_local_projection() {

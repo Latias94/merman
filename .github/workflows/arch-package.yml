@@ -32,7 +32,8 @@ jobs:
               sed -i "/^[[:space:]]*NoExtract[[:space:]]*=/d" /etc/pacman.conf
               pacman -U --noconfirm ./*.pkg.tar.zst
               pacman -Ql merman-cli
-              python /workspace/scripts/verify_cli_installation.py \
+              # Use the installation contract shipped with this immutable release.
+              python src/merman-0.9.0/scripts/verify_cli_installation.py \
                 --package-version 0.9.0 --prefix /usr --completion-layout nix \
                 --contract-root src/merman-0.9.0
               cmp src/merman-0.9.0/crates/merman-cli/README.md /usr/share/doc/merman-cli/README.md

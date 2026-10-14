@@ -609,6 +609,7 @@ fn prepare_c4_family(
     let cluster_theme = crate::c4::C4ClusterThemePlan::resolve(
         execution.resolved_theme(),
         &model.boundaries,
+        &meta.effective_config,
         execution.work_meter_ref(),
     )?;
     let layout = crate::c4::layout_c4_diagram_typed(
@@ -1297,13 +1298,19 @@ fn prepare_zenuml_family(
     meta: &ParseMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact> {
-    let layout = crate::zenuml::layout_zenuml_diagram_typed(&model, execution.text_measurer())?;
+    let source_style = crate::zenuml::ZenumlSourceStyle::new(meta.effective_config.as_value());
+    let layout = crate::zenuml::layout_zenuml_diagram_typed(
+        &model,
+        &source_style.typography,
+        execution.text_measurer(),
+    )?;
     let title_theme = crate::zenuml::ZenumlTitleThemePlan::resolve(
         execution.resolved_theme(),
         &model,
         &layout,
         meta.title.as_deref(),
         execution.work_meter_ref(),
+        source_style,
     )?;
     Ok(BuiltinFamilyArtifact::Zenuml(Box::new(
         ZenumlFamilyArtifact {

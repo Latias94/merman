@@ -774,19 +774,13 @@ pub(crate) fn render_xychart_diagram_svg(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let mut css = String::new();
-    push_xychart_css(
-        &mut css,
-        diagram_id.semantic_str(),
-        typography_theme.font_family_css(),
-    );
-    out.push_str(&css);
-    drop(css);
+    let css_emission =
+        write_prepared_info_css(&mut out, diagram_id, typography_theme.common_css())?;
     out.checkpoint()?;
     out.push_str("</style>");
     out.checkpoint()?;
     if let Some(receipt) = typography_receipt.as_mut() {
-        receipt.record_css(typography_theme.font_family_css());
+        receipt.record_css(css_emission.root_font_family_css());
     }
 
     // Mermaid always includes an empty `<g/>` placeholder after `<style>`.

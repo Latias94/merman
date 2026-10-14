@@ -1,6 +1,6 @@
 use crate::config::{
     DiagramLook, config_bool, config_css_number_or_string, config_diagram_look, config_f64,
-    config_string,
+    config_f64_css_px, config_string,
 };
 use crate::text::TextStyle;
 use serde_json::Value;
@@ -156,7 +156,7 @@ impl<'a> C4ConfigView<'a> {
     }
 
     pub(crate) fn font_size(&self, key: &str, fallback: f64) -> f64 {
-        self.c4_f64(key).unwrap_or(fallback)
+        config_f64_css_px(self.c4_config, &[key]).unwrap_or(fallback)
     }
 
     pub(crate) fn font_weight(&self, key: &str) -> Option<String> {

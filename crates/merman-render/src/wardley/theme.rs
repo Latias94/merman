@@ -25,6 +25,16 @@ pub(crate) struct WardleyPaintBinding {
     pub(crate) component_label_color: String,
     pub(crate) link_stroke: String,
     pub(crate) evolution_stroke: String,
+    pub(crate) anchor_label_color: String,
+    pub(crate) stage_divider_color: String,
+    pub(crate) build_fill: String,
+    pub(crate) build_stroke: String,
+    pub(crate) buy_fill: String,
+    pub(crate) outsource_fill: String,
+    pub(crate) market_fill: String,
+    pub(crate) annotation_fill: String,
+    pub(crate) annotation_text: String,
+    pub(crate) arrow_fill: String,
 }
 
 impl WardleyPaintBinding {
@@ -53,6 +63,20 @@ impl WardleyPaintBinding {
             ),
             link_stroke: nested("linkStroke", "#000"),
             evolution_stroke: nested("evolutionStroke", "#dc3545"),
+            anchor_label_color: nested("anchorLabelColor", "#000"),
+            stage_divider_color: nested("stageDividerColor", "#000"),
+            build_fill: nested("buildFill", "#eee"),
+            build_stroke: nested("buildStroke", "#000"),
+            buy_fill: nested("buyFill", "#ccc"),
+            outsource_fill: nested("outsourceFill", "#666"),
+            market_fill: nested("marketFill", "white"),
+            annotation_fill: nested("annotationBackgroundColor", "white"),
+            annotation_text: config_string(
+                config,
+                &["themeVariables", "wardley", "annotationLabelColor"],
+            )
+            .unwrap_or_else(|| nested_or_root("axisTextColor", "primaryTextColor", "#222")),
+            arrow_fill: nested("arrowFill", "white"),
         }
     }
 }
@@ -186,6 +210,7 @@ impl WardleySurfaceReceipt {
 #[derive(Debug)]
 pub(crate) struct WardleyTypographyThemePlan {
     paint_binding: WardleyPaintBinding,
+    source_font_family_css: Option<Box<str>>,
     inherited_font_stack: InheritedFontStackPlan,
     evidence: FamilyThemeEvidence,
     unsupported_routes: Box<[WardleyUnsupportedRoute]>,
@@ -205,6 +230,13 @@ impl WardleyTypographyThemePlan {
     ) -> Self {
         Self {
             paint_binding: WardleyPaintBinding::from_config(effective_config.as_value()),
+            source_font_family_css: config_string(
+                effective_config.as_value(),
+                &["themeVariables", "wardley", "fontFamily"],
+            )
+            .map(|font| crate::config::normalize_css_font_family(&font))
+            .filter(|font| !font.is_empty())
+            .map(String::into_boxed_str),
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
                 theme,
                 effective_config,
@@ -235,11 +267,14 @@ impl WardleyTypographyThemePlan {
     }
 
     pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
+        self.source_font_family_css
+            .as_deref()
+            .unwrap_or_else(|| self.inherited_font_stack.font_family_css())
     }
 
     pub(crate) const fn should_write_inherited_font(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_requested()
+        self.source_font_family_css.is_some()
+            || self.inherited_font_stack.typed_font_stack_requested()
     }
 
     pub(crate) fn begin_terminal_receipt(
@@ -321,6 +356,16 @@ impl WardleyTypographyThemePlan {
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if !receipt.has_visible_text() {
             evidence.mark_not_applicable(key);
+            return evidence;
+        }
+        if self.source_font_family_css.is_some()
+            && self.inherited_font_stack.typed_font_stack_requested()
+        {
+            if receipt.proves_font_stack() {
+                evidence.mark_not_applicable(key);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
             return evidence;
         }
         if self.inherited_font_stack.typed_font_stack_active() {
