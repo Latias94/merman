@@ -226,6 +226,105 @@
       "finding": "Block round rectangles incorrectly route edges through the visual rounded arc instead of the upstream rectangular boundary",
       "unit": "U3",
       "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/block-variants-output/routing-receipt.json"
+    },
+    {
+      "id": "N26",
+      "priority": "P2",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Terminal XML text encoding scans an unbounded plain CSS fragment before observing operation cancellation or sink refusal",
+      "unit": "U2",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U2-U3-maintainability-review.json"
+    },
+    {
+      "id": "N27",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Terminal XML validation accepts forbidden literal XML 1.0 scalars although numeric character references are rejected",
+      "unit": "U2A",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U2-U3-render-green-rerun.log"
+    },
+    {
+      "id": "N28",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Legacy theme calculation ignores surviving pre-freeze Tracking compatibility owners and loses derived conceptual-input ownership through the public Engine",
+      "unit": "U5A",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-tracking-owner-red.log"
+    },
+    {
+      "id": "N29",
+      "priority": "P2",
+      "kind": "test-gap",
+      "confidence": "high",
+      "finding": "An ELK-specific upstream viewport test runs without the layout-elk feature and compares Dagre fallback against an ELK golden",
+      "unit": "U3A",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/circle-viewbox-investigation.md"
+    },
+    {
+      "id": "N30",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Font-family normalization treats XML metacharacters inside a legal quoted CSS string as forbidden CSS syntax and discards host font values",
+      "unit": "U2B",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U2-source-font-green.log"
+    },
+    {
+      "id": "N31",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "An accepted deep XHTML label overflows the roxmltree 0.21.1 recursive element parser before visible-style ownership classification",
+      "unit": "U6A",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/deep-class-label-stage-diagnostic.log"
+    },
+    {
+      "id": "N32",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Public SVG and document outputs can be returned after cancellation during exact artifact identity sealing",
+      "unit": "U8A",
+      "evidence": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/N32-result.json"
+    },
+    {
+      "id": "N33",
+      "priority": "P1",
+      "kind": "correctness",
+      "confidence": "high",
+      "finding": "Strict Railroad terminal theme evidence rejects an XML-safe encoded legal ampersand font despite successful best-effort rendering",
+      "unit": "U2C",
+      "evidence": "target/bench/experiments/native-theme-repair-20261014/recovered-workspace-full.log"
+    },
+    {
+      "id": "N34",
+      "priority": "P1",
+      "kind": "feature-boundary",
+      "confidence": "high",
+      "finding": "Block-only renderer cannot compile because shared label projection and background receipt are reached through the disabled Flowchart module",
+      "unit": "U9A",
+      "evidence": "target/bench/experiments/native-theme-repair-20261014/strict-owner-verification.log"
+    },
+    {
+      "id": "N35",
+      "priority": "P1",
+      "kind": "feature-boundary",
+      "confidence": "high",
+      "finding": "C4-only renderer cannot compile because shared hand-drawn path helpers are imported through the disabled Flowchart renderer module",
+      "unit": "U9B",
+      "evidence": "target/bench/experiments/native-theme-repair-20261014/strict-post-n34-verification.log"
+    },
+    {
+      "id": "N36",
+      "priority": "P2",
+      "kind": "verification-contract",
+      "confidence": "high",
+      "finding": "Strict feature matrix invents undeclared diagram singleton features for the private partial theme acceptance harness",
+      "unit": "U9C",
+      "evidence": "target/bench/experiments/native-theme-repair-20261014/strict-post-n35-verification.log"
     }
   ]
 }

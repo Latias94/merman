@@ -115,3 +115,65 @@ The Class finalizer has 719 inclusive CPU samples, with a budget-check subtree o
 
 Primary repair inventory: [issues.json](../workstreams/native-theme-regression-20261014/issues.json).
 Implementation plan: [2026-10-14-0053-refactor-native-theme-regressions-plan.md](../plans/2026-10-14-0053-refactor-native-theme-regressions-plan.md).
+
+## Implementation discoveries
+
+Correctness work exposed seven additional owner-local issues; they are added to the inventory rather than omitted from the repair.
+
+| ID | Finding | Evidence and disposition |
+| --- | --- | --- |
+| N26 | The new XML-text adapter scanned an arbitrarily long plain CSS fragment before observing cancellation or a refused append | Two actual cancellation counterexamples failed; direct UTF-8-safe fragment flushes now use the original bounded sink without temporary strings or new budgets |
+| N27 | Final XML validation accepted forbidden literal XML 1.0 characters, including normalized attribute character references | Five owner-local counterexamples failed while three legal/name/declaration controls passed; the existing streaming visitor now checks text, CDATA, comments and normalized attributes |
+| N28 | Legacy theme calculation lost derived compatibility ownership while the physical source was still Tracking | Owner-local and public Engine counterexamples failed after freezing; `b994d79d7` reads surviving calculation inputs without changing the renderer's frozen-admission predicate; 198 core controls pass |
+| N29 | An existing viewport test compared Dagre fallback against an ELK golden when the ELK feature was absent | Eight backend controls prove main, audited head, current code and pinned Mermaid agree on each backend's vertical bounds; a test feature guard fixes the recipe, with the actual ELK and two Dagre fallback tests passing |
+| N30 | Font normalization rejects angle brackets inside legal quoted CSS font strings | The public host-font case retains its effective configuration but loses the CSS font; focused normalization tests fail; fix the font boundary while preserving generic source-style security and existing host dynamic CSS capabilities |
+| N31 | Accepted deeply nested XHTML exhausts the recursive XML parser stack before style classification | The admitted-input subprocess aborts at XML parsing; a package-contained private import of the existing parser with its official iterative element fix passes strict/loose depth 4,096 on a 2 MiB thread and the upstream depth 200,000 regression |
+| N32 | Public SVG/document identity sealing can return an artifact after cancellation | Deterministic public-entry counterexamples fail before `d5ae01105`; existing operation control is observed before and after identity work, and both publication controls pass again |
+
+Raw logs and source/browser witnesses are under `analysis/implementation/` in the existing ignored experiment. N26–N29 have targeted green evidence; N30 and all remaining performance units are still in progress at this checkpoint. Counts from a broader command with an independent failed case are retained as partial results, not described as a complete passing suite.
+
+The recovered implementation continuation verifies N30 and the U5–U8 structural candidates with
+3,232 renderer library tests and 93 facade tests, including all 152 font/pipeline scenarios.
+Final workspace, independent review, feature/package, parity and renewed timing gates remain
+separate evidence; these focused results do not establish a latency improvement or a completed PR.
+The current [workstream](../workstreams/native-theme-regression-20261014/WORKSTREAM.json) records
+their actual dispositions without replacing the original main comparison.
+
+
+## Final implementation checkpoint
+
+The continuation committed consumer-bound facts, reference summaries, consuming finalization and
+stack-safe XML analysis as `2ab878e70`, strict lint boundaries as `984b37e96`, and the private
+feature-matrix recipe as `512589484`. Integration discovered four further high-confidence issues:
+
+| ID | Finding | Verified disposition |
+| --- | --- | --- |
+| N33 | Railroad strict font receipts compare XML-encoded stylesheet values with logical font values | Decode once at the existing terminal evidence boundary; 46 focused tests pass |
+| N34 | Block-only builds reach label/background helpers hidden under the Flowchart feature | Shared family owner and direct label projection; independent Block build passes |
+| N35 | C4-only builds import RoughJS helpers through disabled Flowchart | Shared parity owner; independent C4 build passes; moved algorithms remain identical |
+| N36 | Strict matrix requests undeclared singleton features from a private partial harness | Derive private cases from declared features while keeping production canonical selector validation mandatory; 23 contract tests and 660 actual build cases pass |
+
+The final workspace has 12,827 passing tests and 11 existing skips. All workspace doctests,
+strict Clippy, materialized upstream references, generated/legal projections and full SVG
+structure/parity/parity-root comparisons pass. The CI-equivalent release comparison also passes
+with root reports. Independent review covers all current changed code paths with zero findings.
+The strict aggregate stops later in Web construction at Binaryen133's `approximateOr` assertion;
+both local and official same-version binaries reproduce it. The temporary-tool investigation,
+remaining browser checks and native latency confirmation are still pending. This checkpoint
+establishes implementation and structural evidence, not a completed U9 or latency improvement.
+
+
+The platform continuation resolves that tool failure as external to the renderer: the official
+Binaryen133 executable aborts on the exact saved Web optimizer input, while version133 plus
+upstream fix `ca1cf60a6b41fbb20c4d0c1bfb98523b9cabe8ee` retains assertions and completes the
+same raw input and the actual five-package build. All 149 Web tests, package/DOM-safety smoke,
+eight Playground scripts (79 non-Chromium and 170 Chromium tests) and 255 extension tests pass
+with those built artifacts. Original Binaryen133 remains a failed tool gate; the temporary fix
+is recorded separately and does not change the repository's tool policy.
+
+Seven focused root contracts and 3,073 private theme acceptance tests pass. The Chromium root
+oracle examines 3,712 SVGs with zero blocking findings, retaining 54 browser diagnostics,
+2,344 upstream-inherited cases and one exact residual. Native resource smoke verifies compiled
+1x/100x operation and zero-work boundaries only; it does not establish allocation improvement.
+The full-capability Criterion list verifies 459 benchmarks and 459 preflight receipts across
+seven lane groups. Fresh native latency discovery and confirmation remain pending.
