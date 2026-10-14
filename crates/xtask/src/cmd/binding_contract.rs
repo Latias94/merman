@@ -2177,7 +2177,7 @@ mod tests {
             "MERMAN_DETERMINISTIC_TEXT_MEASUREMENT_PROVIDER_ID: String = \"deterministic\""
         ));
         assert!(kotlin.contains(
-            "MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf(\"deterministic\", \"host-callback\")"
+            "MERMAN_TEXT_MEASUREMENT_PROVIDER_IDS: Set<String> = setOf(\"deterministic\", \"host-callback\", \"native-fonts\")"
         ));
         assert!(kotlin.contains("val textMeasurementProviderIds: List<String>"));
         assert!(

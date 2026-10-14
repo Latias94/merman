@@ -160,7 +160,7 @@ test("Node CI uses the release toolchain required by npm pack contracts", async 
   const repositoryRoot = path.resolve(nodeRoot, "..", "..");
   const ci = await readFile(path.join(repositoryRoot, ".github/workflows/ci.yml"), "utf8");
   const release = await readFile(path.join(repositoryRoot, ".github/workflows/release-node.yml"), "utf8");
-  const nodeJob = ci.split("\n  node-contracts:\n")[1]?.split(/\n  [a-z][a-z0-9-]*:\n/)[0];
+  const nodeJob = ci.split(/\r?\n  node-contracts:\r?\n/)[1]?.split(/\r?\n  [a-z][a-z0-9-]*:\r?\n/)[0];
   assert.ok(nodeJob, "Node contract owner must exist in ordinary CI");
   const packageManager = JSON.parse(
     await readFile(path.join(repositoryRoot, "playground/package.json"), "utf8"),

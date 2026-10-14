@@ -194,8 +194,36 @@ background shape, Usecase animation precedence and Swimlane layout snapshots.
   Those three cases remain Linux CI-owned; production workflow code was not weakened.
 - Five affected crates pass all-targets/all-features Clippy with `-D warnings`.
 - The final merged head has a fresh 37-family three-mode SVG gate: 3,756 selected, 3,729 rendered,
-  27 documented skips, and owner exit code 0. The per-family parity-root report hashes are recorded
-  in the ignored gate log under `target/issue199-export-audit/merge52-svg-gate.log`.
+  27 documented skips, and owner exit code 0. The ignored gate log is
+  `target/issue199-export-audit/merge52-svg-gate.log`; per-family reports are under `target/compare`.
 - Final-tree focused export checks pass: 43 native PNG/PDF, font-family and font-context tests;
   the Flowchart text-only glow PNG/PDF test and State per-occurrence fallback test pass; the CLI
   native-font contract suite adds 22 passing tests.
+
+## CI repairs after the latest integration
+
+[CI run 38585024959](https://github.com/Latias94/merman/actions/runs/38585024959) belongs to
+`aa3a06fd41721f7e61447bd4ce4886c3f3f21dc5`. Its Linux workspace suite reported 12,989 passed,
+two failed and eleven skipped; that run is not a passing full-workspace receipt. The red jobs
+exposed four independent integration gaps:
+
+- SVG-only CLI builds read `quiet` after it had been removed by a codec/native-font feature gate.
+  The invocation and prepared render owners now retain it for every SVG build, including mmdc
+  and Rustdoc; ASCII-only normalization retains its existing runtime policy.
+- The independent Node and fuzz workspaces retained the old renderer dependency edge. Their
+  lockfiles now replace that edge with `memchr`; Node removes the no-longer-reachable roxmltree
+  package. No dependency version is upgraded. Both locked metadata recipes succeed.
+- Two incoming Swimlane goldens described the other branch's plain-Markdown measurement path.
+  Regeneration through the existing layout snapshot owner preserves the merged Markdown `1/64px`
+  measurement rule. Only three title widths change: `140.563`, `85.125` and `89.047`. Node,
+  edge and lane geometry is unchanged; the snapshot comparator retains its existing precision.
+- The Kotlin generator test still expected two known measurement providers. It now expects the
+  current three-provider vocabulary while retaining Android's two-provider artifact assertion.
+
+Focused Windows verification passes the exact SVG-only process contract, sixteen Rustdoc CLI
+cases, all three layout snapshot tests, all 113 Node contracts using the pinned npm 12.0.2,
+and all-target/all-feature CLI Clippy with warnings denied. The Node workflow contract accepts
+both LF and CRLF checkouts without relaxing toolchain assertions. Release legal projections
+(424 files) and third-party metadata remain fresh; root license-generator inputs are unchanged.
+All seven binding-contract projection tests pass, including the originally failing Kotlin/Dart case. The new-head full Linux,
+nightly libFuzzer and platform owner jobs remain CI-owned.
