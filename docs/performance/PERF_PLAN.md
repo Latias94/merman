@@ -17,15 +17,28 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 14 native repair closeout](native_theme_repair_2026-10-14.md) closes N01–N36
+as correctness or owner-local structural repairs. The fourteen-row frozen confirmation cohort
+passes non-regression against clean corrected control `d5ae01105`; no row clears the registered
+improvement gate. Final code `ac4a40437` preserves all 38 corrected outputs. Against original
+main, nineteen fixtures remain byte-identical and the thirteen-row confirmation intersection
+retains ten material regressions and three inconclusive outcomes. Class remains about 85.7%
+(554.3 us) slower than main. Keep the main gap in the active attribution queue; the final cost
+has not been separated into required validation and avoidable work. Preserve operation,
+resource, source-ownership and exact-artifact contracts while profiling the remaining owners.
+The repaired-control non-regression result does not close the historical release-range queue
+or establish a whole-corpus latency or allocation improvement.
+
 The [October 14 root-cause checkpoint](native_theme_root_cause_2026-10-14.md)
-classifies all nineteen changed-output fixtures and records 25 high-confidence repair
-items beyond the default timing cases. Public probes reproduce a shared stylesheet/XML
+classifies the original nineteen changed-output fixtures and records the initial 25 high-confidence
+repair items, expanded to 36 during implementation. Public probes reproduce a shared stylesheet/XML
 boundary failure in 28 of 38 legal-font variants, incorrect scoped-theme derivation,
 Neo non-palette Swimlane border override and four Block geometry/configuration gaps.
 The [repair plan](../plans/2026-10-14-0053-refactor-native-theme-regressions-plan.md)
 fixes correctness first, then removes demonstrated configuration, family-evidence and
-reference-summary waste. No optimization or performance recovery is admitted by this
-investigation alone; retain the original timing receipts and qualify each repair separately.
+reference-summary waste. The root-cause investigation alone did not admit performance recovery;
+the closeout above records the subsequent implementation and confirmation separately. Retain
+the original timing receipts.
 
 The [October 13 native main-versus-theme checkpoint](native_main_theme_2026-10-13.md)
 compares clean main `3a4b8c393` with theme branch `f47abded0` on macOS ARM64. Nine

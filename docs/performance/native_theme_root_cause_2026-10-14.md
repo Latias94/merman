@@ -177,3 +177,14 @@ oracle examines 3,712 SVGs with zero blocking findings, retaining 54 browser dia
 1x/100x operation and zero-work boundaries only; it does not establish allocation improvement.
 The full-capability Criterion list verifies 459 benchmarks and 459 preflight receipts across
 seven lane groups. Fresh native latency discovery and confirmation remain pending.
+
+
+The [native repair closeout](native_theme_repair_2026-10-14.md) records the completed renewal.
+Final code `ac4a40437` matches all 38 corrected-control outputs. Fourteen frozen confirmation
+cases establish non-regression against `d5ae01105`, with no registered confirmed improvement.
+Against main, nineteen fixtures match exact output and the thirteen-case confirmation
+intersection retains ten material regressions and three inconclusive outcomes. Mindmap restores
+main's stylesheet bytes; Usecase now differs only by the 222 quote entities removed by U2,
+with its complete decoded DOM and CSS unchanged. The original output-disposition table above
+remains the historical investigation. Remaining main latency is active attribution work;
+structural closure does not imply full performance recovery.

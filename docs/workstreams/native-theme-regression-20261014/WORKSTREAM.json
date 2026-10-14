@@ -3,11 +3,11 @@
   "branch": "refactor/theme-ownership-performance",
   "plan": "docs/plans/2026-10-14-0053-refactor-native-theme-regressions-plan.md",
   "audit_revision": "f47abded02b540d7fe563af7bc75f2fa1bb90c51",
-  "phase": "final-verification",
+  "phase": "closed",
   "findings": {
     "N01": {
       "unit": "U1",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U1-core-red: 6/6 expected failures",
         "U1-facade-red: 1/1 expected failure",
@@ -19,7 +19,7 @@
     },
     "N02": {
       "unit": "U2",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2 renderer regression observed red",
         "U2-font-matrix-final-green: 4/4 tests, including 152 cross-family variants",
@@ -29,7 +29,7 @@
     },
     "N03": {
       "unit": "U3",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2-U3-N27-render-green: all corresponding selected controls pass; one independent source-font case led to N30"
       ],
@@ -37,7 +37,7 @@
     },
     "N04": {
       "unit": "U3",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2-U3-N27-render-green: all corresponding selected controls pass; one independent source-font case led to N30"
       ],
@@ -45,7 +45,7 @@
     },
     "N05": {
       "unit": "U3",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2-U3-N27-render-green: all corresponding selected controls pass; one independent source-font case led to N30"
       ],
@@ -53,7 +53,7 @@
     },
     "N06": {
       "unit": "U3",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2-U3-N27-render-green: all corresponding selected controls pass; one independent source-font case led to N30"
       ],
@@ -61,7 +61,7 @@
     },
     "N07": {
       "unit": "U4",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U4-render-red-runnable: 3/3 expected failures",
         "U4-family-green: targeted retirement controls and adjacent family tests pass; preexisting backend mismatch separately resolved as N29",
@@ -71,7 +71,7 @@
     },
     "N08": {
       "unit": "U4",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U4-render-red-runnable: 3/3 expected failures",
         "U4-family-green: targeted retirement controls and adjacent family tests pass; preexisting backend mismatch separately resolved as N29",
@@ -81,179 +81,195 @@
     },
     "N09": {
       "unit": "U5",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "recovered-u5-core: 145/145 pass",
         "recovered-u5-engine: 303/303 pass; all-diagrams"
       ],
       "commit": "260be8cc0037765168724e743a6856cbfdb815ea",
-      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json"
+      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N10": {
       "unit": "U5",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "recovered-u5-core: 145/145 pass",
         "recovered-u5-engine: 303/303 pass; all-diagrams"
       ],
       "commit": "260be8cc0037765168724e743a6856cbfdb815ea",
-      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json"
+      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N11": {
       "unit": "U5",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "recovered-u5-core: 145/145 pass",
         "recovered-u5-engine: 303/303 pass; all-diagrams"
       ],
       "commit": "260be8cc0037765168724e743a6856cbfdb815ea",
-      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json"
+      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N12": {
       "unit": "U5",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "recovered-u5-core: 145/145 pass",
         "recovered-u5-engine: 303/303 pass; all-diagrams"
       ],
       "commit": "260be8cc0037765168724e743a6856cbfdb815ea",
-      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json"
+      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U5-result.json",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N13": {
       "unit": "U6",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U6-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N14": {
       "unit": "U6",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U6-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N15": {
       "unit": "U6",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U6-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N16": {
       "unit": "U6",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U6-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N17": {
       "unit": "U6",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U6-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N18": {
       "unit": "U6",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U6-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N19": {
       "unit": "U8",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U8-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N20": {
       "unit": "U7",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U7-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N21": {
       "unit": "U7",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U7-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N22": {
       "unit": "U8",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U8-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N23": {
       "unit": "U8",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U8-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N24": {
       "unit": "U8",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-render-full: 3232/3232 pass; all diagrams/ELK/Cytoscape/math",
         "recovered-facade-export: 93/93 pass; public operation/font pipeline controls",
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/U8-result.json",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N25": {
       "unit": "U3",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2-U3-N27-render-green: all corresponding selected controls pass; one independent source-font case led to N30"
       ],
@@ -261,7 +277,7 @@
     },
     "N26": {
       "unit": "U2",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2-U3-N27-render-green: all corresponding selected controls pass; one independent source-font case led to N30"
       ],
@@ -270,7 +286,7 @@
     },
     "N27": {
       "unit": "U2A",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U2-U3-N27-render-green: all corresponding selected controls pass; one independent source-font case led to N30"
       ],
@@ -279,7 +295,7 @@
     },
     "N28": {
       "unit": "U5A",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U5-tracking-owner-red: 2/2 expected failures",
         "N28-core-green-correct-filter: 198/198 pass"
@@ -289,7 +305,7 @@
     },
     "N29": {
       "unit": "U3A",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "Eight main/audit/current/upstream backend controls; same-backend layout unchanged",
         "N29-elk-geometry-green: 1/1 pass",
@@ -300,7 +316,7 @@
     },
     "N30": {
       "unit": "U2B",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "N30-font-normalization-red: legal quoted-font owner cases fail",
         "N30-font-normalization-green: 144/145 pass; final dynamic comma bug corrected",
@@ -312,7 +328,7 @@
     },
     "N31": {
       "unit": "U6A",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "recovered-n31-u7-green:274/274 pass",
         "admitted strict/loose depth4096 in2MiB thread pass",
@@ -320,22 +336,24 @@
         "Final workspace: 12,827 tests pass; all workspace doctests and full SVG structure/parity/parity-root pass"
       ],
       "repair": "Private package-contained upstream XML parser with exact iterative element patch; all renderer DOM consumers must use the owner",
-      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b"
+      "commit": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N32": {
       "unit": "U8A",
-      "state": "fixed-verified",
+      "state": "closed-verified",
       "verification": [
         "U8-late-cancellation-red: deterministic public SVG/document identity cancellation fails before repair",
-        "N32-late-cancellation-green and operation controls recorded; recovered rerun pending",
+        "N32 late-cancellation controls pass; final workspace operation controls passed",
         "recovered-facade-export:both public identity cancellation controls pass"
       ],
       "commit": "d5ae011052a1b9bed75b706b96455991a294f84e",
-      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/N32-result.json"
+      "receipt": "target/bench/experiments/native-main-comparison-20261013/analysis/implementation/N32-result.json",
+      "performance_disposition": "Accepted correctness/structural repair. Frozen fourteen-row corrected-control confirmation passes non-regression; no registered latency-improvement claim."
     },
     "N33": {
       "unit": "U2C",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "n33-railroad-final: 46/46 pass; original strict A&B and actual writer literal-entity test included",
         "N33-delta independent review complete; no findings",
@@ -347,7 +365,7 @@
     },
     "N34": {
       "unit": "U9A",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "Strict feature matrix stopped at renderer diagram-block E0433; 443 preceding build cases passed",
         "n34-block-only-check: exact no-default diagram-block build passed; no Flowchart feature enabled",
@@ -359,7 +377,7 @@
     },
     "N35": {
       "unit": "U9B",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "Strict post-N34 matrix passed renderer Block case445, stopped at C4-only case446 E0432",
         "n35-c4-only-check exact no-default diagram-c4 compile passed; all35 singletons audited, onlyC4failed beforerepair",
@@ -371,7 +389,7 @@
     },
     "N36": {
       "unit": "U9C",
-      "state": "fixed-verified-reviewed",
+      "state": "closed-verified",
       "verification": [
         "Post-N35 strict matrix passed526buildcases including all renderer singletons; case527 asks privateharness undeclared diagram-agentflow",
         "n36 feature-matrix contracts23/23 pass, including production missing-selector rejection",
@@ -387,7 +405,7 @@
   "planning_commit": "bf2af00a0b23d34a801ebe022b603f290b34eeef",
   "active_workers": {},
   "correctness_checkpoint": "369c4bd3b",
-  "performance_production": "U5-U8 and all N01-N36 implementation findings committed and reviewed; U9 acceptance evidence pending",
+  "performance_production": "U1-U8 and all N01-N36 implementation findings closed with reviewed source and verification; U9 evidence completed with retained main regressions and external tool disposition.",
   "corrected_control": {
     "revision": "d5ae011052a1b9bed75b706b96455991a294f84e",
     "receipt": "target/bench/experiments/native-theme-repair-20261014/corrected-control-build.json",
@@ -407,24 +425,28 @@
     "legal": "13reports+424projections refreshed;38tests pass",
     "workspace": "12,827/12,827 pass; 11 existing skipped",
     "format": "cargo fmt --all -- --check passed",
-    "independent_review": "Full review and N33-N36/late-lint/current-test delta supplements complete, zero findings",
-    "performance": "fresh native confirmation scope preregistered; no timingclaim",
+    "independent_review": "All current production/test paths and final calibrated statistics independently reviewed, zero findings.",
+    "performance": "Fresh completed calibrated confirmation: corrected14non-regression, main10regressions/3inconclusive; original receipts retained.",
     "strict": "Rust/generated/legal/reference/feature/DOM prefix passed. Original133fails Web optimizer; upstream-fixed temporary tool proves all Web/Playground/VSCode tail scripts pass; external tool deviation remains explicit.",
     "clippy": "workspace/all-targets/all-features Clippy -D warnings passed"
   },
   "independent_review": {
     "status": "complete",
     "implementation": "All current changed code paths reviewed, zero findings",
-    "verdict": "Not ready for final U9 closeout: platform and latency evidence pending",
+    "verdict": "Completed implementation and final statistics readback, zero findings. Original pinned-tool failure and retained main regressions explicitly documented; no all-green CI or overall speedup claim.",
     "run_id": "20261014-021516-6cf8ffac",
     "artifact_path": "/tmp/compound-engineering-501/ce-code-review/20261014-021516-6cf8ffac",
-    "new_delta": "N33-N36, late lint and five final test-only mechanical deltas reviewed"
+    "new_delta": "N33-N36, late lint and five final test-only mechanical deltas reviewed",
+    "final_statistics": {
+      "path": "target/bench/experiments/native-theme-repair-20261014/final-native-statistics-review.json",
+      "sha256": "8d87e4d9073ae92234fb0f0ae24a056338e2ca62941df62c13fb87177b77b52e"
+    }
   },
   "integration_status": {
     "code_review": "complete, no retained findings; N33 and late lint supplemental reviews complete",
     "workspace": "strict-installed-verification.log:12827/12827 pass,11existing skipped",
-    "strict": "All Rust/doctest/feature/generated/legal/DOM stages passed; exact aggregate ended at wasm-opt133 assertion in Web build",
-    "latency": "Not started; original corpus/thresholds/cohort rule and controls retained",
+    "strict": "Completed passing Rust/reference/generated/legal/feature/doctest/DOM prefix and separately passing Web/Playground/VSCode tail with the upstream-fixed optimizer. Original unmodified Binaryen133 external assertion remains a failed aggregate gate.",
+    "latency": "Completed: corrected14/14 confirmed non-regression; main13comparable10 confirmed regression3inconclusive. All calibrations stable8AA/exec and8freshAB; no runner/input/output contract errors. Two confidence families remain separate.",
     "lint": "cargo fmt and workspace/all-targets/all-features Clippy -D warnings passed in strict-owner-verification.log",
     "dependency_policy": "cargo deny advisories/bans/licenses/sources passed",
     "feature_matrix": "strict660buildcases and exactartifactprofiles passed in strict-post-n36-verification.log",
@@ -439,7 +461,8 @@
     "playground": "All8strictscripts passed;79nonChromium and170Chromium tests pass",
     "vscode": "255/255 pass",
     "native_memory": "Compiled protocolsmoke 1x/100x and zero-work verification passed; non-admission/no allocation improvement claim",
-    "pipeline_discovery": "Complete capability recipe passed: compiled list and exact preflight receipts, see full-capability-benchmark-discovery.json"
+    "pipeline_discovery": "Complete capability recipe passed: compiled list and exact preflight receipts, see full-capability-benchmark-discovery.json",
+    "native_consumer": "Exact c-abi-native no-default-features CI recipe: currentCconsumer,alpha5consumerandheader3/3pass. NativeABI/bindingprojectionsverified by strictverify-generated."
   },
   "implementation_commits": {
     "renderer_xml_evidence": "2ab878e70cc51d2c31255ff50096e9b96fa3f13b",
@@ -447,5 +470,31 @@
     "verification_recipe": "512589484bec1ee797e56942ac8353f5f395380e"
   },
   "latest_root_evidence": "target/bench/experiments/native-theme-repair-20261014/final-review-readiness-before-u9.json",
-  "updated_at": "2026-10-14T06:23:02.655578+00:00"
+  "updated_at": "2026-10-14T09:51:51.998411+00:00",
+  "completion": {
+    "candidate_revision": "ac4a40437a36e301f6ccf0f0f689230c658d567b",
+    "candidate_tree": "56c083860416371d5efa17b4e6049ded21c68f09",
+    "corrected_control": "d5ae011052a1b9bed75b706b96455991a294f84e",
+    "main_control": "3a4b8c393939b69372a8f05a2b971f7cdf6ae529",
+    "confirmation_cohort": 14,
+    "same_output_discovery": {
+      "main": 19,
+      "corrected": 38
+    },
+    "latency_claim": "Corrected-control non-regression for14registeredrows; no admittedspeedup or blanket38row claim; maincost remains activebacklog.",
+    "report": "docs/performance/native_theme_repair_2026-10-14.md",
+    "raw_reports": {
+      "main": {
+        "path": "target/bench/experiments/native-theme-repair-20261014/main-final-end-to-end-confirmation.json",
+        "sha256": "2cd862170099078edc25d78cb641626f737f0e70d91ba92994ce1f4a594716ce"
+      },
+      "corrected": {
+        "path": "target/bench/experiments/native-theme-repair-20261014/corrected-final-end-to-end-confirmation.json",
+        "sha256": "121536d325121dc43165ac256d9eb335e563186cd3ecd7b2c23179daa6005551"
+      }
+    },
+    "pr": "https://github.com/Latias94/merman/pull/178",
+    "external_blocker": "Official and HomebrewBinaryen133 abort;temporary133plusupstream9258assertionsONpasses allplatformtail gates. Repositorytoolpolicyunchanged.",
+    "native_c_consumer": "ExactCIartifact-profileC/alpha5/header3/3pass"
+  }
 }
