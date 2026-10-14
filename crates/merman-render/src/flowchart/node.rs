@@ -695,12 +695,11 @@ fn node_render_dimensions(
 
         // Circle. Mermaid sizes the radius from the label bbox diagonal, then adds
         // the look-specific padding (circle.ts: labelRadius + labelPadding/halfPadding).
-        // Using the width alone under-sizes empty and wrapped labels, and in neo mode
-        // turns a 64px empty circle into a padding-sized dot.
+        // Neo adds one 16px radius padding step, matching a double circle's inner ring.
         "circle" | "circ" => {
             let label_diameter = text_w.hypot(text_h);
             let diameter = if look_is_neo {
-                label_diameter + 64.0
+                label_diameter + 32.0
             } else {
                 label_diameter + p
             };
@@ -2165,11 +2164,11 @@ mod render_dimension_tests {
         };
         assert_eq!(
             node_render_dimensions(Some("circle"), empty, 15.0, true),
-            (64.0, 64.0)
+            (32.0, 32.0)
         );
 
         let value = node_render_dimensions(Some("circle"), metrics(), 15.0, true);
-        let expected = 100.0_f64.hypot(20.0) + 64.0;
+        let expected = 100.0_f64.hypot(20.0) + 32.0;
         assert!((value.0 - expected).abs() < 1e-9);
         assert_eq!(value.0, value.1);
 

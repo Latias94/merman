@@ -9,6 +9,15 @@ This document tracks which upstream Mermaid mindmap parser tests are covered in 
 
 Scope: Mermaid tag `@11.16.1`.
 
+## Mermaid 12.2 additions
+
+The historical inventory below retains its original source version. The current transition adds
+`mindmapColors.spec.ts` depth/branch/irregular-indentation/palette-cycle regressions and
+`mindmapDb.getData.test.ts` all-shape SVG centering. Local coverage is in the core Mindmap tests,
+`mindmap_mermaid12_2_test`, and `upstream_mermaid_12_2_depth_colors` /
+`upstream_mermaid_12_2_svg_label_centering`. The source-backed Circle sizing, Neo span palette and
+SVG Markdown/entity regressions use the selected 12.2 rendering implementation.
+
 ## `mindmap.spec.ts`
 
 Source: `repo-ref/mermaid/packages/mermaid/src/diagrams/mindmap/mindmap.spec.ts`

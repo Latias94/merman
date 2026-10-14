@@ -503,16 +503,25 @@ pub(super) fn prepare_edge_paths(
             .and_then(Value::as_bool)
             != Some(false)
     {
-        let changes =
-            crate::elk_terminal_jogs::straighten_edge_terminals_with_runs(&mut routes, |units| {
-                work.charge_adapter(units)
-            })?;
-        for change in changes {
-            let index = route_layout_indexes[change.route_index];
-            if let Some(label) = layout.edges[index].label.as_mut() {
-                crate::elk_terminal_jogs::reproject_label(label, &change.runs);
-            }
-        }
+        work.charge_adapter(work.checked_add(layout.edges.len(), routes.len())?)?;
+        let mut labels: Vec<_> = layout
+            .edges
+            .iter_mut()
+            .map(|edge| edge.label.as_mut())
+            .collect();
+        let mut labelled_routes: Vec<_> = routes
+            .iter_mut()
+            .zip(&route_layout_indexes)
+            .map(
+                |(points, &index)| crate::elk_terminal_jogs::LabeledTerminalRoute {
+                    points,
+                    label: labels[index].take(),
+                },
+            )
+            .collect();
+        crate::elk_terminal_jogs::straighten_edge_terminals(&mut labelled_routes, |units| {
+            work.charge_adapter(units)
+        })?;
     }
     let paths: HashMap<_, _> = edge_plans
         .iter()

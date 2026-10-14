@@ -1,0 +1,76 @@
+# Maintainer: Mingzhen Zhuang <superfrankie621@gmail.com>
+
+pkgname=merman-cli
+pkgver=0.9.0
+pkgrel=1
+pkgdesc='Headless Mermaid diagram renderer with SVG, PNG, JPEG, PDF, and terminal output'
+arch=('x86_64' 'aarch64')
+url='https://github.com/Latias94/merman'
+license=('MIT OR Apache-2.0' 'EPL-2.0')
+depends=('gcc-libs' 'glibc')
+makedepends=('cmake' 'ninja' 'python>=3.11' 'rust>=1.95')
+# GCC LTO objects cannot be consumed by Rust's LLD; Cargo retains its own ThinLTO.
+options=('!lto')
+optdepends=(
+  'fontconfig: system font discovery configuration'
+  'ttf-dejavu: fallback fonts for native text measurement and raster/PDF output'
+)
+source=("merman-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=('b185e0c25e3ac24c6ef0d26846a838a72e1612d3a375aa117c0ab1fdf28182fd')
+
+prepare() {
+  cd "merman-${pkgver}"
+  CARGO_HOME="${srcdir}/cargo-home" cargo fetch --locked
+}
+
+build() {
+  cd "merman-${pkgver}"
+  # --locked with net.offline is Cargo's --frozen policy. Keep the upstream recipe.
+  # CMake applies jitterentropy's required -O0 after makepkg's CFLAGS.
+  CARGO_HOME="${srcdir}/cargo-home" CARGO_TARGET_DIR="${PWD}/target" \
+    CARGO_NET_OFFLINE=true AWS_LC_SYS_USE_SYSTEM=0 AWS_LC_SYS_CMAKE_BUILDER=1 \
+    python3 scripts/artifact_profile_recipe.py \
+      cli-release --build-host --locked
+}
+
+check() {
+  cd "merman-${pkgver}"
+  local features cargo_profile
+  features="$(python3 scripts/artifact_profile_recipe.py cli-release --field features)"
+  cargo_profile="$(python3 scripts/artifact_profile_recipe.py cli-release --field profile)"
+  CARGO_HOME="${srcdir}/cargo-home" CARGO_TARGET_DIR="${PWD}/target" \
+    AWS_LC_SYS_USE_SYSTEM=0 AWS_LC_SYS_CMAKE_BUILDER=1 \
+    cargo test --frozen --package merman-cli --profile "${cargo_profile}" \
+      --no-default-features --features "${features}" --test distribution_assets
+}
+
+package() {
+  cd "merman-${pkgver}"
+  local cargo_profile
+  cargo_profile="$(python3 scripts/artifact_profile_recipe.py cli-release --field profile)"
+  install -Dm0755 "target/${cargo_profile}/merman-cli" "${pkgdir}/usr/bin/merman-cli"
+
+  local completions=crates/merman-cli/assets/completions
+  install -Dm0644 "${completions}/merman-cli.bash" \
+    "${pkgdir}/usr/share/bash-completion/completions/merman-cli"
+  install -Dm0644 "${completions}/_merman-cli" \
+    "${pkgdir}/usr/share/zsh/site-functions/_merman-cli"
+  install -Dm0644 "${completions}/merman-cli.fish" \
+    "${pkgdir}/usr/share/fish/vendor_completions.d/merman-cli.fish"
+  install -Dm0644 "${completions}/merman-cli.ps1" \
+    "${pkgdir}/usr/share/pwsh/completions/_merman-cli.ps1"
+  install -Dm0644 "${completions}/merman-cli.elv" \
+    "${pkgdir}/usr/share/elvish/lib/merman-cli.elv"
+
+  local manpage
+  for manpage in crates/merman-cli/assets/man/*.1; do
+    install -Dm0644 "${manpage}" "${pkgdir}/usr/share/man/man1/${manpage##*/}"
+  done
+
+  local docdir="${pkgdir}/usr/share/doc/${pkgname}"
+  install -Dm0644 crates/merman-cli/README.md "${docdir}/README.md"
+  install -m0644 LICENSE-APACHE LICENSE-MIT THIRD_PARTY_NOTICES.md "${docdir}/"
+  cp -r THIRD_PARTY_LICENSES "${docdir}/"
+  install -Dm0644 LICENSE-MIT "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE-MIT"
+  install -Dm0644 LICENSE-APACHE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE-APACHE"
+}

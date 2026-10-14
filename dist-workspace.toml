@@ -47,16 +47,16 @@ include = [
     "THIRD_PARTY_LICENSES/",
 ]
 
-# Keep release jobs on current GitHub-hosted runner images.
+# GNU binaries target Ubuntu 22.04's glibc 2.35; global jobs can use newer images.
 [dist.github-custom-runners]
 global = "ubuntu-24.04"
 aarch64-apple-darwin = "macos-15"
 x86_64-apple-darwin = "macos-15-intel"
-x86_64-unknown-linux-gnu = "ubuntu-24.04"
+x86_64-unknown-linux-gnu = "ubuntu-22.04"
 x86_64-pc-windows-msvc = "windows-2025"
 
 # Declare the ARM64 Linux runner host explicitly so dist builds natively instead of inferring
 # a cross-compilation host from the runner label. Sub-tables must follow the plain entries.
 [dist.github-custom-runners.aarch64-unknown-linux-gnu]
-runner = "ubuntu-24.04-arm"
+runner = "ubuntu-22.04-arm"
 host = "aarch64-unknown-linux-gnu"

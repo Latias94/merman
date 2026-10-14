@@ -27,8 +27,8 @@ The Venn layout kernel translates the fmin Nelder-Mead and conjugate-gradient op
 
 Merman independently implements Mermaid-compatible behavior while translating selected algorithms, generating defaults, copying architecture icon data, and retaining upstream fixtures and snapshots.
 
-- Version: `12.1.0`
-- Source: https://github.com/mermaid-js/mermaid.git @ `21f72f07ea22c0af48a3149c550654e80d8e40cb`
+- Version: `12.2.0`
+- Source: https://github.com/mermaid-js/mermaid.git @ `1fb7869866dd619168d840291c9c54b4f129758b`
 - Relationship: `behavior-reference`, `copied`, `fixtures`, `generated`, `modified`, `translated`
 - License: `MIT`
 - Legal file: `THIRD_PARTY_LICENSES/mermaid/LICENSE`

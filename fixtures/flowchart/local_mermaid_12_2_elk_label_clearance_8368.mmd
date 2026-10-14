@@ -1,0 +1,20 @@
+---
+config:
+  layout: elk
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    minNodeWidth: 0
+    padding: 20
+  elk:
+    mergeEdges: false
+    straightenEdges: true
+    lineHops: true
+    orientFeedbackEdges: true
+---
+%% Mermaid 12.2 render.spec.ts #8368: preserve the label lane between opposite edges.
+flowchart LR
+  A[Draft] --> B{Review}
+  B -->|approved| C[Published]
+  B -->|changes| A

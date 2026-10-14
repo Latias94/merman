@@ -1,6 +1,6 @@
 use super::common::*;
 use crate::Result;
-use crate::model::SwimlaneTitleRect;
+use crate::model::{SwimlaneDirection, SwimlaneTitleRect};
 use crate::swimlane::direction::LayoutWorkBudget;
 
 const CLEARANCE: f64 = 4.0;
@@ -23,16 +23,21 @@ fn valid_title_rect(node: &WorkingNode) -> Option<RectBounds> {
         })
 }
 
-fn top_lane_title_for(node: &WorkingNode) -> Option<LaneTitle> {
+fn top_lane_title_for(
+    node: &WorkingNode,
+    layout_direction: SwimlaneDirection,
+) -> Option<LaneTitle> {
     if node.kind != WorkingNodeKind::Group || node.parent_id.is_some() {
         return None;
     }
     let direction = node
         .requested_dir
         .as_deref()
-        .unwrap_or_default()
-        .to_uppercase();
-    if matches!(direction.as_str(), "LR" | "RL" | "BT") {
+        .unwrap_or(layout_direction.as_str());
+    if ["LR", "RL", "BT"]
+        .iter()
+        .any(|excluded| direction.eq_ignore_ascii_case(excluded))
+    {
         return None;
     }
     let rect = valid_title_rect(node)?;
@@ -47,10 +52,17 @@ fn top_lane_title_for(node: &WorkingNode) -> Option<LaneTitle> {
     })
 }
 
-fn left_lane_title_for(node: &WorkingNode) -> Option<LaneTitle> {
+fn left_lane_title_for(
+    node: &WorkingNode,
+    layout_direction: SwimlaneDirection,
+) -> Option<LaneTitle> {
     if node.kind != WorkingNodeKind::Group
         || node.parent_id.is_some()
-        || node.requested_dir.as_deref() != Some("LR")
+        || !node
+            .requested_dir
+            .as_deref()
+            .unwrap_or(layout_direction.as_str())
+            .eq_ignore_ascii_case("LR")
     {
         return None;
     }
@@ -68,15 +80,15 @@ fn left_lane_title_for(node: &WorkingNode) -> Option<LaneTitle> {
 
 fn horizontal_segment_intersects_title(segment: &OrthogonalSegment, rect: RectBounds) -> bool {
     segment.horizontal
-        && segment.a.y > rect.top + EPSILON
-        && segment.a.y < rect.bottom - EPSILON
+        && segment.a.y >= rect.top - EPSILON
+        && segment.a.y <= rect.bottom + EPSILON
         && overlap_length(segment.a.x, segment.b.x, rect.left, rect.right) >= MINIMUM_SHARED_LENGTH
 }
 
 fn vertical_segment_intersects_title(segment: &OrthogonalSegment, rect: RectBounds) -> bool {
     segment.vertical
-        && segment.a.x > rect.left + EPSILON
-        && segment.a.x < rect.right - EPSILON
+        && segment.a.x >= rect.left - EPSILON
+        && segment.a.x <= rect.right + EPSILON
         && overlap_length(segment.a.y, segment.b.y, rect.top, rect.bottom) >= MINIMUM_SHARED_LENGTH
 }
 
@@ -87,7 +99,7 @@ pub(in crate::swimlane::direction) fn lift_top_lane_title_bands_above_rails(
     let lanes: Vec<_> = layout
         .nodes
         .values()
-        .filter_map(top_lane_title_for)
+        .filter_map(|node| top_lane_title_for(node, layout.direction))
         .collect();
     if lanes.is_empty() {
         return Ok(());
@@ -135,7 +147,7 @@ pub(in crate::swimlane::direction) fn shift_left_lane_title_bands_left_of_rails(
     let lanes: Vec<_> = layout
         .nodes
         .values()
-        .filter_map(left_lane_title_for)
+        .filter_map(|node| left_lane_title_for(node, layout.direction))
         .collect();
     if lanes.is_empty() {
         return Ok(());

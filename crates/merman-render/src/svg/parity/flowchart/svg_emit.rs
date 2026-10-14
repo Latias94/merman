@@ -176,7 +176,21 @@ pub(super) fn render_flowchart_svg_model(
     > = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
     for e in &render_edges {
         let edge = e.as_ref();
-        edges_by_key.insert(edge.key, edge);
+        if edges_by_key.insert(edge.key, edge).is_some() {
+            return Err(crate::Error::InvalidModel {
+                message: format!("duplicate Flowchart render edge occurrence {:?}", edge.key),
+            });
+        }
+    }
+    if edges_by_key.len() != layout.edge_owners.len()
+        || layout
+            .edge_owners
+            .iter()
+            .any(|key| !edges_by_key.contains_key(&key))
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Flowchart render occurrences do not match the prepared layout".to_string(),
+        });
     }
 
     let swimlane_direction = swimlane_layout.map(|layout| layout.direction);
@@ -256,10 +270,7 @@ pub(super) fn render_flowchart_svg_model(
     for (key, edge) in layout.edge_owners.iter().zip(&layout.edges) {
         if layout_edges_by_key.insert(key, edge).is_some() {
             return Err(crate::Error::InvalidModel {
-                message: format!(
-                    "Flowchart layout contains multiple edges for semantic owner {}",
-                    key.semantic_index()
-                ),
+                message: format!("Flowchart layout contains duplicate edge occurrence {key:?}"),
             });
         }
     }
@@ -828,6 +839,53 @@ mod integration_tests {
     use crate::resources::{RenderResourcePolicy, ResourceLimitId};
     use crate::svg::{SvgDebugOptions, SvgRenderOptions};
     use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+    #[test]
+    fn unmerged_self_loop_occurrences_keep_source_owner_label_and_first_slot() {
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA -->|first| A\nA -->|regular| B\nA -->|last| A\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let render_context = parsed.flowchart_render_context().unwrap().clone();
+        let (_, semantic) = parsed.into_parts();
+        let RenderSemanticModel::Flowchart(mut model) = semantic else {
+            panic!("expected Flowchart model");
+        };
+        model.keyword = "agentflow-beta".to_owned();
+        // Authored ids may overlap generated helper spellings without sharing an owner.
+        model.edges[1].id = "A-cyclic-special-1".to_owned();
+        let owners = crate::flowchart::FlowchartEdgeOwners::new(vec![
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(2, 0),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(2, 1),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(2, 2),
+            crate::flowchart::FlowchartEdgeKey::new(1),
+        ]);
+        let inputs = prepare_flowchart_render_inputs(&model, &render_context, &owners, false);
+        let render_model = crate::flowchart::FlowchartRenderModelRef::new(&model, &render_context);
+        assert_eq!(
+            inputs
+                .render_edges
+                .iter()
+                .map(|edge| edge.key)
+                .collect::<Vec<_>>(),
+            owners.iter().collect::<Vec<_>>()
+        );
+        assert_eq!(inputs.extra_nodes.len(), 2);
+        let labels = inputs
+            .render_edges
+            .iter()
+            .map(|edge| render_model.edge_label_for_occurrence(edge.key, &edge.edge))
+            .collect::<Vec<_>>();
+        assert_eq!(labels, [None, Some("last"), None, Some("regular")]);
+        assert_eq!(
+            inputs.render_edges[0].edge.id,
+            inputs.render_edges[3].edge.id
+        );
+        assert_ne!(inputs.render_edges[0].key, inputs.render_edges[3].key);
+    }
 
     #[test]
     fn diagram_id_terminal_precedes_later_flowchart_node_emission_error() {

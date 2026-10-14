@@ -1,0 +1,63 @@
+{
+  "diagramType": "railroadAbnf",
+  "model": {
+    "type": "railroadAbnf",
+    "title": "Numeric groups and bounds",
+    "accTitle": "ABNF numeric alternatives",
+    "accDescr": "Fixed and optional repetition around numeric values and named rules.",
+    "rules": [
+      {
+        "name": "octets",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "repetition",
+              "element": {
+                "type": "choice",
+                "alternatives": [
+                  {
+                    "type": "terminal",
+                    "value": "%x41.42"
+                  },
+                  {
+                    "type": "terminal",
+                    "value": "%d67-90"
+                  }
+                ]
+              },
+              "min": 2,
+              "max": 2
+            },
+            {
+              "type": "optional",
+              "element": {
+                "type": "optional",
+                "element": {
+                  "type": "nonterminal",
+                  "name": "tail"
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "tail",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "terminal",
+              "value": "%b01000001"
+            },
+            {
+              "type": "terminal",
+              "value": "%X30-39"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

@@ -1,0 +1,15 @@
+name: Setup Merman CLI
+description: Install an exact Merman CLI release and add it to PATH.
+author: Latias94
+inputs:
+  version:
+    description: Exact release version without the v prefix (for example, 0.9.0).
+    required: true
+outputs:
+  version:
+    description: Installed release version.
+  path:
+    description: Absolute path to the installed merman-cli executable.
+runs:
+  using: node24
+  main: main.mjs

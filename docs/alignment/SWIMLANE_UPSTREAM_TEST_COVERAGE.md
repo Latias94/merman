@@ -3,6 +3,16 @@
 Scope: Mermaid tag `@11.16.1`, commit
 `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
 
+## Mermaid 12.2 additions
+
+The historical inventory below retains its original source version. New source-order, lane-title
+and same-rank-detour tests mirror `layout-algorithms/swimlanes/__tests__/sourceOrder.spec.ts`,
+`laneTitleBands.spec.ts` and `sameRankDetour.spec.ts` at 12.2.0. Four copied regression inputs live
+under `fixtures/swimlane/upstream_mermaid_12_2_*`; their source paths are recorded in ADR-0093.
+`swimlane_svg_test` covers diagram-scoped explicit lanes and the synthetic-lane fallback. The
+shared edge clipping tests reproduce `rendering-elements/edges.spec.js` using the actual renderer
+instead of the configured default engine.
+
 ## Upstream Sources
 
 - Detector and diagram adapter:

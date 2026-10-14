@@ -3,7 +3,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 
-use rustc_hash::FxHashSet;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Debug)]
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderEdge<'a> {
@@ -68,17 +68,34 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
-    let renderable_edges: FxHashSet<crate::flowchart::FlowchartEdgeKey> =
-        layout_edge_owners.iter().collect();
+    let merge_self_loops = uses_elk_adapter_dom
+        || crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
+    let renderable_edges: FxHashSet<usize> = layout_edge_owners
+        .iter()
+        .map(crate::flowchart::FlowchartEdgeKey::semantic_index)
+        .collect();
+    let renderable_self_loop_nodes: FxHashSet<&str> = layout_edge_owners
+        .iter()
+        .filter_map(|owner| model.edges.get(owner.semantic_index()))
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge_endpoints(edge, render_context))
+        .filter(|(from, to)| from == to)
+        .map(|(from, _)| from)
+        .collect();
     let semantic_edges = model
         .edges
         .iter()
         .enumerate()
-        .filter(|(semantic_index, _)| {
-            renderable_edges.contains(&crate::flowchart::FlowchartEdgeKey::new(*semantic_index))
-        })
         .filter_map(|(semantic_index, edge)| {
             let projected = crate::flowchart::project_flowchart_edge(edge, render_context)?;
+            // Earlier overwritten helper triples still establish Graphlib's insertion slot.
+            // Their later surviving owner replaces the complete value at that same slot.
+            if !renderable_edges.contains(&semantic_index)
+                && (merge_self_loops
+                    || projected.from != projected.to
+                    || !renderable_self_loop_nodes.contains(projected.from.as_str()))
+            {
+                return None;
+            }
             let edge = if projected.from == edge.from && projected.to == edge.to {
                 Cow::Borrowed(edge)
             } else {
@@ -96,15 +113,49 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         };
     }
 
-    // Mermaid 11.16 keeps the helper nodes used by Dagre, but merges their three layout segments
-    // back into the original logical self-loop before rendering.
-    let mut render_edges: Vec<FlowchartRenderEdge<'a>> = semantic_edges.collect();
+    // Dagre always inserts helper nodes. Only the source's selected diagram types merge their
+    // three segments back into a logical self-loop; Agentflow paints the helper edges directly.
     let self_loop_label_node_ids = flowchart_helper_node_ids(
         model,
         render_context,
         layout_edge_owners,
         uses_elk_adapter_dom,
     );
+    let mut render_edges: Vec<FlowchartRenderEdge<'a>> = Vec::new();
+    let mut helper_indexes: FxHashMap<String, usize> = FxHashMap::default();
+    for edge in semantic_edges {
+        if !merge_self_loops && edge.edge.from == edge.edge.to {
+            let mut helpers = crate::flowchart::flowchart_self_loop_helper_edges(&edge.edge);
+            helpers.edge_mid.label = render_context
+                .edge_label_for_render(edge.key.semantic_index(), &edge.edge)
+                .map(str::to_owned);
+            // Graphlib overwrites an existing helper triple for parallel self-loops while
+            // retaining its first insertion position. Keep each segment's semantic owner too.
+            for (order, helper) in [helpers.edge1, helpers.edge_mid, helpers.edge2]
+                .into_iter()
+                .enumerate()
+            {
+                let key = crate::flowchart::FlowchartEdgeKey::self_loop_segment(
+                    edge.key.semantic_index(),
+                    order as u8,
+                );
+                if let Some(&index) = helper_indexes.get(helper.id.as_str()) {
+                    render_edges[index] = FlowchartRenderEdge {
+                        key,
+                        edge: Cow::Owned(helper),
+                    };
+                } else {
+                    helper_indexes.insert(helper.id.clone(), render_edges.len());
+                    render_edges.push(FlowchartRenderEdge {
+                        key,
+                        edge: Cow::Owned(helper),
+                    });
+                }
+            }
+        } else {
+            render_edges.push(edge);
+        }
+    }
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster
     // nodes by removing and re-adding them (after swapping endpoints to anchor nodes). This has a
@@ -141,7 +192,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
 
     // `getEdgesToRender` first emits every regular Graphlib edge, then appends merged self-loop
     // groups in first-seen order. Preserve that 11.16 DOM ordering independently of model order.
-    if render_edges.len() >= 2 {
+    if merge_self_loops && render_edges.len() >= 2 {
         let mut regular = Vec::with_capacity(render_edges.len());
         let mut self_loops = Vec::new();
         for edge in render_edges {

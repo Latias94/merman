@@ -1,0 +1,22 @@
+pkgbase = merman-cli
+	pkgdesc = Headless Mermaid diagram renderer with SVG, PNG, JPEG, PDF, and terminal output
+	pkgver = 0.9.0
+	pkgrel = 1
+	url = https://github.com/Latias94/merman
+	arch = x86_64
+	arch = aarch64
+	license = MIT OR Apache-2.0
+	license = EPL-2.0
+	makedepends = cmake
+	makedepends = ninja
+	makedepends = python>=3.11
+	makedepends = rust>=1.95
+	depends = gcc-libs
+	depends = glibc
+	optdepends = fontconfig: system font discovery configuration
+	optdepends = ttf-dejavu: fallback fonts for native text measurement and raster/PDF output
+	options = !lto
+	source = merman-0.9.0.tar.gz::https://github.com/Latias94/merman/archive/refs/tags/v0.9.0.tar.gz
+	sha256sums = b185e0c25e3ac24c6ef0d26846a838a72e1612d3a375aa117c0ab1fdf28182fd
+
+pkgname = merman-cli

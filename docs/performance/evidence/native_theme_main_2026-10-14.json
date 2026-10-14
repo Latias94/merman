@@ -1,0 +1,498 @@
+{
+  "schema_version": 1,
+  "captured_at_utc": "2026-10-14T12:47:37.055300+00:00",
+  "status": "local_merge_integration_verified_before_commit",
+  "parents": {
+    "repaired_branch": "95d0e452021edb3b6a7e1be25e5d5eddca382831",
+    "main": "768370e0842dbd8df24d477fdbbf3449eb61de3d"
+  },
+  "mermaid": {
+    "version": "12.2.0",
+    "source_commit": "1fb7869866dd619168d840291c9c54b4f129758b",
+    "selection_decision_sha256": "016fa3c402fb7b69823d17115a1e1808060f537f33dc98e19c417c6d7e49efa6"
+  },
+  "scope": "Maintainer-authorized main merge; original Mermaid12.1 benchmark receipts frozen and not relabeled.",
+  "passed_commands": [
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-theme-generation-a2.json",
+      "receipt_sha256": "0d8f1c30d132951cedfe41f5a7be9bbdddfdb0104b15852a30123706901b48a6",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "xtask",
+        "--",
+        "gen-theme-snapshot"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T10:36:38.857274+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-theme-generation-a2.log",
+      "log_sha256": "548ef5207380ada3b5670182b15569443cb97554798272090e3a2370b7586b7b"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-theme-verification.json",
+      "receipt_sha256": "c62f7413d4cf1c8ce8792194549380c74cdbece0fb71914c53af63affb1b6b47",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "xtask",
+        "--",
+        "verify-theme-snapshot"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T10:40:21.239374+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-theme-verification.log",
+      "log_sha256": "d6acec7058c1c27b7804a4a3d6f530f00ba9743bb8288d851b5a95ad1a227785"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-materialized-reference.json",
+      "receipt_sha256": "012f2c2b5568c708d58983c47c7134d159d737574ad6a06a8c0b615353486d47",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "xtask",
+        "--",
+        "verify-mermaid-reference",
+        "--materialized"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T10:40:25.087710+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-materialized-reference.log",
+      "log_sha256": "f0032bd9e4f2ad8754638d589dbee740908fbb5536999d542051290e72601e81"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-base-reference.json",
+      "receipt_sha256": "1493bcc9456b95b278d015b6e21997daeeed136ff2cbc04a53c105f8a2cec797",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "xtask",
+        "--",
+        "verify-mermaid-reference",
+        "--base",
+        "768370e0842dbd8df24d477fdbbf3449eb61de3d"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T10:40:27.069701+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-base-reference.log",
+      "log_sha256": "1b62164c4394d984c2b13f48a8ed079c3c8bc47a89000c4becab3188e12ddf0b"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-rustdoc-generation.json",
+      "receipt_sha256": "15860aa82c5d8d763f7a9c5a0a1b490e62497b4dbb69c6749c75ea1d803a7f91",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "merman-cli",
+        "--",
+        "rustdoc",
+        "build",
+        "--config",
+        "crates/merman/merman-rustdoc.toml",
+        "--quiet"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T10:42:04.189459+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-rustdoc-generation.log",
+      "log_sha256": "b4668d335f7ddecf307eb7571863ee24fa9b3a24192cf5c37062cfff977482f3"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-rustdoc-check.json",
+      "receipt_sha256": "efd6219f7de5ac22e8ac4f32661f23b39f3e22dcda8fe91eade215716312ca84",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "merman-cli",
+        "--",
+        "rustdoc",
+        "check",
+        "--config",
+        "crates/merman/merman-rustdoc.toml",
+        "--quiet"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T10:42:06.169834+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-rustdoc-check.log",
+      "log_sha256": "257df5e684ff112dea307ca359a07952e0ff4d90280d2f82386b97f0df10ff8b"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-c4-boundary-a2.json",
+      "receipt_sha256": "57f9ba4980bb8d672a44c48fb7ce176ccf9f816a99d4e5282fb4fcfa1d127a6e",
+      "command": [
+        "cargo",
+        "check",
+        "--locked",
+        "-p",
+        "merman-render",
+        "--no-default-features",
+        "--features",
+        "diagram-c4"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T11:59:48.726877+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-c4-boundary-a2.log",
+      "log_sha256": "be90a9a157b9b0343fd744b34e40ca0626b5b9c8826a1dffc1061b7ba57ab289"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-block-boundary-a2.json",
+      "receipt_sha256": "ab09405b9be47fd616971dfe090d3019e9d7555faef28114089755b345f75c6b",
+      "command": [
+        "cargo",
+        "check",
+        "--locked",
+        "-p",
+        "merman-render",
+        "--no-default-features",
+        "--features",
+        "diagram-block"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T11:59:52.768034+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-block-boundary-a2.log",
+      "log_sha256": "0b4fdde8c0592a772aa23664030efade5e1724e348bc5e32279d505b10c850d9"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-agentflow-boundary-a2.json",
+      "receipt_sha256": "b5f92d110e450baef8344e7215b8a3dc56447ba2a9a3600d7b4b2e43bd6f5a42",
+      "command": [
+        "cargo",
+        "check",
+        "--locked",
+        "-p",
+        "merman-render",
+        "--no-default-features",
+        "--features",
+        "diagram-agentflow"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T11:59:57.968969+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-agentflow-boundary-a2.log",
+      "log_sha256": "ebbe775b4665f3f642f11a033ed6b50eac14acace0a370512b8fcf5c4c5daa9f"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-focused-failure-retests-a2.json",
+      "receipt_sha256": "8aeb3ff1c853020008ad8983442df7ff0a34812647b40fb881b0ec6cd8298579",
+      "command": [
+        "cargo",
+        "nextest",
+        "run",
+        "--locked",
+        "--workspace",
+        "--all-features",
+        "-E",
+        "binary(flowchart_circle_mermaid_12_2_test) | binary(layout_snapshots_test) | test(parser_diagnostic_harness_) | test(root_contract)",
+        "--no-fail-fast",
+        "--cargo-quiet"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:15:52.339570+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-focused-failure-retests-a2.log",
+      "log_sha256": "24aa57ca1c12343a23095b07aa6f02ff7c571ff1befcbadb25a6da9247f5b1ab"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-strict-clippy.json",
+      "receipt_sha256": "ec7e2513c94e40e795284ade6232d727f4337798dde5fe2d8cca48ecb55fcbe7",
+      "command": [
+        "cargo",
+        "clippy",
+        "--locked",
+        "--workspace",
+        "--all-targets",
+        "--all-features",
+        "--",
+        "-D",
+        "warnings"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:21:22.940507+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-strict-clippy.log",
+      "log_sha256": "63e9d45223afaf00c71ba68794700808fa87daab7774f1920f8f15718c429709"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-final-format.json",
+      "receipt_sha256": "14e0dad71577a62a8db67d276a95af6e4ca9854fb50628424823d8589322c5e2",
+      "command": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:21:28.942317+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-final-format.log",
+      "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-final-release-svg-a3.json",
+      "receipt_sha256": "85fe8b7ae7716457ce137e33c8d73a806ab416918f0aefe796639f1163b6942f",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "--release",
+        "-p",
+        "xtask",
+        "--",
+        "compare-all-svgs",
+        "--check-dom",
+        "--dom-modes",
+        "structure,parity,parity-root",
+        "--dom-decimals",
+        "3",
+        "--diagnostic-browser-text-layout",
+        "--report-root"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:36:09.959192+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-final-release-svg-a3.log",
+      "log_sha256": "7a5eae86b92a36eca7af85231d7a11bd9305f18b1caff80cee85868c4c9bbd13"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-generated-closure.json",
+      "receipt_sha256": "c32219873ed03c086f2ae6985972ac538074a62e0dff103dbaaddb5d01b00dd9",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "xtask",
+        "--",
+        "verify-generated"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:36:32.463630+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-generated-closure.log",
+      "log_sha256": "9270b0ee0d4ce8e12227803c6adfdd8f8978aee41522561180ae742e29d62565"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-alignment-closure.json",
+      "receipt_sha256": "51363a1bed1dcd029e7ab639cc3fef8309738c87b8f98a4c595c58706f838318",
+      "command": [
+        "cargo",
+        "run",
+        "--locked",
+        "-p",
+        "xtask",
+        "--",
+        "check-alignment"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:36:42.934892+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-alignment-closure.log",
+      "log_sha256": "dc2634282cfb5d40d22c69e4def8d376f00f0ec47f3d0182bd72eddce6e062d9"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-private-acceptance.json",
+      "receipt_sha256": "ab9bc7bd6ba887cc612c07bdf3b4d08985ddbacb943a7e7e6d0a3cea1bfbc540",
+      "command": [
+        "python3",
+        "scripts/run_theme_acceptance.py",
+        "nextest",
+        "run",
+        "--locked",
+        "-p",
+        "merman-theme-acceptance",
+        "-p",
+        "merman-render",
+        "-p",
+        "merman-export",
+        "-p",
+        "merman",
+        "--lib",
+        "--cargo-quiet"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:39:49.653521+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-private-acceptance.log",
+      "log_sha256": "cf6c347f83e97fde2c6e019dc27ebfe0a5e70559c433d37ccad2ae3b8aa3cfd8"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-license-source.json",
+      "receipt_sha256": "78902d056ac85f2bb941611d3b2715b225bd7b573355e75361a1b84e442b2bf1",
+      "command": [
+        "python3",
+        "scripts/generate-rust-license-report.py",
+        "--check"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:45:52.916939+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-license-source.log",
+      "log_sha256": "52a237d9b525fd3ba35c37716ee6485a19b6f190fb4241e83d131bb8f2533a48"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-legal-projections.json",
+      "receipt_sha256": "1cc0866e0403ed3be996c36fda9e7ed8809f033c6de4a79180f34182f5f6cf1a",
+      "command": [
+        "python3",
+        "scripts/sync-release-legal-materials.py",
+        "--check"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:45:53.122254+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-legal-projections.log",
+      "log_sha256": "8b071a8ff252cc99d81050928019d8cc0031c0c07b50d46f1baca89d0a5af456"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-third-party-contract.json",
+      "receipt_sha256": "299f01644c4561a2e04916f429ca53b03421962028d8f6a038465f87678bf473",
+      "command": [
+        "python3",
+        "scripts/verify-third-party-licenses.py"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:45:53.201351+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-third-party-contract.log",
+      "log_sha256": "aa83e1794b9904eaf8764be6d0215a65a03f0eecd0294a3fb90d03d9f614e01b"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-legal-contract-tests.json",
+      "receipt_sha256": "c79bea7de33f8d973a1ff8e5ecf337652b1a13bd70b121224acad6d891d48cd0",
+      "command": [
+        "python3",
+        "-m",
+        "unittest",
+        "scripts.test_generate_rust_license_report",
+        "scripts.test_sync_release_legal_materials"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:45:54.175215+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-legal-contract-tests.log",
+      "log_sha256": "8b5496d99ad3d3b4cc03d45b6c78791b0a5b3f00af3cee426cbf8ff24b795789"
+    },
+    {
+      "receipt": "target/bench/experiments/native-theme-repair-20261014/main-merge-katex-resolution-test.json",
+      "receipt_sha256": "fe1e9a1d40351ada292bbb9b0d6591c1b9445b2b08367f2bbb8a893e46210292",
+      "command": [
+        "node",
+        "--test",
+        "crates/merman-render/tests/katex_flowchart_probe.test.cjs"
+      ],
+      "exit_code": 0,
+      "completed_at": "2026-10-14T12:18:19.927396+00:00",
+      "log": "target/bench/experiments/native-theme-repair-20261014/main-merge-katex-resolution-test.log",
+      "log_sha256": "a246c59c190a6a1a38e44df1a65509f38c00ea936151a8199ec2e54991eddeb4"
+    }
+  ],
+  "independent_review_receipts": [
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-source-review.json",
+      "sha256": "3175685f621201439185180a9faf5d384a284e5f260b8fe0b045d03e86c6aa02"
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-test-adaptation-review.json",
+      "sha256": "dc922813eac852f8d6cfeb9c06e1a3ceaf2fe602783dbe3621defa0e059dbd8f"
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-circle-and-golden-review.json",
+      "sha256": "90dc188ab2dd8c09831c7a988577d5bb94a5e2ab0829ba36f89eb31ee28f4613"
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-residual-and-state-review.json",
+      "sha256": "c881864e0d60012d86ba19d99723abb19290604584eec9a6100c11af961bd5b9"
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-flowchart-residual-review.json",
+      "sha256": "369cbe12c3b82109b206bbb0d0e8266bad4f3b58069187fb7cc240b9aa89313c"
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-document-evidence-boundary-review.json",
+      "sha256": "10f69bd7af1facf52ce68fd69d3911aa6847ba6af51277526b84416ef5414ac0"
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-final-review-byte-receipt.json",
+      "sha256": "52b72dfba378fa68a14e435e85d185117fdba654bbf582e373553025b66bd9d2"
+    }
+  ],
+  "retained_failed_attempts": [
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-workspace-nextest.json",
+      "sha256": "5ed29f9c5f02cb88186979141790b86e4abe48c8d55c35106d4f80f21e7c82b8",
+      "exit_code": 101,
+      "retained": true
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-workspace-nextest-a2.json",
+      "sha256": "5de385f212f286188fcb2181a30cce83749ecb194ba1a474192182d0bef88537",
+      "exit_code": 100,
+      "retained": true
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-release-full-svg.json",
+      "sha256": "404ae5fb8fcff81ca5f8f68119b3439cd762d36d5210d110fc2b5082eed44118",
+      "exit_code": 1,
+      "retained": true
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-final-release-svg.json",
+      "sha256": "7750eb18b396eb9d3c6c13f8a91da245ae43f1f24299da0c1210b78902294acb",
+      "exit_code": 101,
+      "retained": true
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-final-release-svg-a2.json",
+      "sha256": "b66708cde743b4b2ce246d06f79350ed86ade6aed7c886e41f0840771de51b24",
+      "exit_code": 101,
+      "retained": true
+    },
+    {
+      "path": "target/bench/experiments/native-theme-repair-20261014/main-merge-focused-failure-retests.json",
+      "sha256": "925e23b357065da80a3ef231d203673432d17a0bb7ac8f2a6a84b92810ef6e58",
+      "exit_code": 94,
+      "retained": true
+    }
+  ],
+  "workspace_evidence": {
+    "initial_run": {
+      "passed": 13182,
+      "failed": 8,
+      "existing_skips": 17
+    },
+    "all_failed_cases_focused_rerun": {
+      "passed": 18,
+      "exit_code": 0
+    },
+    "second_full_green_run_claim": false
+  },
+  "private_acceptance": {
+    "passed": 3105,
+    "existing_skips": 2
+  },
+  "legal": {
+    "source_reports": 13,
+    "projections": 424,
+    "contract_tests": 18
+  },
+  "exact_residuals": {
+    "browser_members": 132,
+    "parser_members": 10,
+    "old_branch_exact_signatures": 77,
+    "reviewed_composite_signatures": 11,
+    "parser_footer_only_actual_updates": 10,
+    "changes_to_precision_membership_modes_input_or_upstream_hash": 0,
+    "parser_diagnostics_are_dom_parity": false,
+    "fresh_composite_render_bytes_identical_to_reviewed": 11
+  },
+  "reviewed_current_source_test_golden_files": 70,
+  "ci_owned_not_replayed_locally": [
+    "Full feature matrix beyond representative C4/Block/Agentflow boundaries",
+    "Linux root-painted-content and platform-specific runners",
+    "Fresh Web/Playground and installed Node/Apple artifact lanes"
+  ],
+  "new_performance_measurement": false,
+  "historical_limits": [
+    "Ten confirmed regressions among thirteen comparable old-main cases; remaining costs not fully attributed.",
+    "Original Binaryen133 assertion remains failed; temporary upstream-fixed tool result is separately identified."
+  ]
+}

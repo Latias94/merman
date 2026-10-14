@@ -1,0 +1,16 @@
+---
+config:
+  securityLevel: strict
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+---
+swimlane-beta LR
+subgraph Outer["Outer &amp; &lt; lane"]
+  subgraph Inner["Inner &amp; &lt; group"]
+    A["A &amp; &lt; node"] --> B["B &amp; &lt; node"]
+  end
+end
+C["Loose &amp; &lt; node"]
+B --> C
+click A href "javascript:alert(1)" "Tip &amp; &lt; text" _blank

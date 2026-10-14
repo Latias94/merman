@@ -344,6 +344,183 @@ fn state_elk_subpixel_label_width_changes_route_topology() {
 
 #[cfg(feature = "layout-elk")]
 #[test]
+fn state_elk_terminal_guard_preserves_browser_reserved_label_lane() {
+    use base64::Engine as _;
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    };
+    use std::sync::Arc;
+
+    struct FixtureMeasurements;
+    impl TextMeasurer for FixtureMeasurements {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            // These are the pinned 039 foreignObject bounds, before ELK reserves label lanes.
+            let width = if text.starts_with("State") && text.ends_with("_____________") {
+                154.984375
+            } else if text.starts_with("Transition") {
+                120.515625
+            } else if matches!(text, "c0" | "c1" | "c2" | "c3" | "c4" | "c5" | "c6" | "c7") {
+                120.0
+            } else if text == "On The Way To Something Something DarkSide" || text.is_empty() {
+                return DeterministicTextMeasurer::default().measure(text, style);
+            } else {
+                panic!("unexpected controlled 039 measurement: {text:?}");
+            };
+            TextMetrics {
+                width,
+                height: 24.0,
+                line_count: 1,
+            }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            _max_width: Option<f64>,
+            _wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            self.measure(text, style)
+        }
+    }
+
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.state-039-browser-bounds").unwrap(),
+            "fixture",
+        )
+        .unwrap(),
+        Arc::new(FixtureMeasurements),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let render_with_straightening = |straighten: bool| {
+        let parsed = Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "layout": "elk", "htmlLabels": true, "elk": { "straightenEdges": straighten },
+            })))
+            .parse_diagram_for_render_model_sync(
+                include_str!("../../../fixtures/state/upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_039.mmd"),
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        family::prepare(
+            parsed,
+            &LayoutOptions::headless_svg_defaults(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned()
+    };
+    let guarded_svg = render_with_straightening(true);
+    let original_svg = render_with_straightening(false);
+    let guarded = roxmltree::Document::parse(&guarded_svg).unwrap();
+    let original = roxmltree::Document::parse(&original_svg).unwrap();
+    let upstream = roxmltree::Document::parse(include_str!(
+        "../../../fixtures/upstream-svgs/state/upstream_cypress_statediagram_v2_spec_should_render_edge_labels_correctly_039.svg"
+    ))
+    .unwrap();
+    let painted_path = |document: &roxmltree::Document<'_>, id: &str| {
+        document
+            .descendants()
+            .find(|node| node.has_tag_name("path") && node.attribute("data-id") == Some(id))
+            .unwrap()
+            .attribute("d")
+            .unwrap()
+            .to_owned()
+    };
+    for edge in upstream
+        .descendants()
+        .filter(|node| node.attribute("data-edge") == Some("true"))
+    {
+        let id = edge.attribute("data-id").unwrap();
+        let commands = |path: &str| {
+            path.chars()
+                .filter(char::is_ascii_uppercase)
+                .collect::<String>()
+        };
+        assert_eq!(
+            commands(&painted_path(&guarded, id)),
+            commands(edge.attribute("d").unwrap()),
+            "{id}: controlled browser path topology"
+        );
+    }
+    assert_eq!(
+        painted_path(&guarded, "edge4"),
+        painted_path(&original, "edge4"),
+        "the label-over-edge guard must retain the provider's original terminal jog"
+    );
+    let points = guarded
+        .descendants()
+        .find(|node| {
+            node.attribute("data-edge") == Some("true")
+                && node.attribute("data-id") == Some("edge4")
+        })
+        .unwrap()
+        .attribute("data-points")
+        .unwrap();
+    let points: Vec<Value> = serde_json::from_slice(
+        &base64::engine::general_purpose::STANDARD
+            .decode(points)
+            .unwrap(),
+    )
+    .unwrap();
+    let label = guarded
+        .descendants()
+        .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some("edge3"))
+        .unwrap();
+    let translation = label
+        .parent_element()
+        .unwrap()
+        .attribute("transform")
+        .unwrap()
+        .strip_prefix("translate(")
+        .unwrap()
+        .strip_suffix(')')
+        .unwrap();
+    let (x, y) = translation.split_once(',').unwrap();
+    let center = (
+        x.trim().parse::<f64>().unwrap(),
+        y.trim().parse::<f64>().unwrap(),
+    );
+    let bounds = label
+        .descendants()
+        .find(|node| node.has_tag_name("foreignObject"))
+        .unwrap();
+    let half_width = bounds.attribute("width").unwrap().parse::<f64>().unwrap() / 2.0;
+    let half_height = bounds.attribute("height").unwrap().parse::<f64>().unwrap() / 2.0;
+    assert_eq!(half_width * 2.0, 120.515625);
+    assert_eq!(points.len(), 7, "the two terminal-jog points remain");
+    let candidate_x = points[0]["x"].as_f64().unwrap();
+    assert!(
+        (candidate_x - center.0).abs() < half_width,
+        "removing the jog would put its vertical channel beneath edge3's label"
+    );
+    // The retained provider route stays outside this box; all segments are orthogonal.
+    for segment in points.windows(2) {
+        let (a, b) = (&segment[0], &segment[1]);
+        let (ax, ay) = (a["x"].as_f64().unwrap(), a["y"].as_f64().unwrap());
+        let (bx, by) = (b["x"].as_f64().unwrap(), b["y"].as_f64().unwrap());
+        assert!(
+            ax.max(bx) < center.0 - half_width
+                || ax.min(bx) > center.0 + half_width
+                || ay.max(by) < center.1 - half_height
+                || ay.min(by) > center.1 + half_height,
+            "retained edge4 segment overlaps edge3 label: {a:?} -> {b:?}"
+        );
+    }
+}
+
+#[cfg(feature = "layout-elk")]
+#[test]
 fn state_elk_compound_routes_with_controlled_browser_measurements() {
     use merman_render::environment::{
         MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,

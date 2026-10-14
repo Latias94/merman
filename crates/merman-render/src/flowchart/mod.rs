@@ -57,6 +57,17 @@ impl<'a> FlowchartRenderModelRef<'a> {
             .edge_label_for_render(semantic_index, edge)
     }
 
+    pub(crate) fn edge_label_for_occurrence<'b>(
+        &'b self,
+        key: FlowchartEdgeKey,
+        edge: &'b FlowEdge,
+    ) -> Option<&'b str> {
+        match key.self_loop_segment_order() {
+            None | Some(1) => self.edge_label_for_render(key.semantic_index(), edge),
+            Some(_) => None,
+        }
+    }
+
     pub(crate) fn subgraph_title_for_render<'b>(
         &'b self,
         declaration_ordinal: usize,
@@ -194,7 +205,9 @@ pub(crate) use node::{
 };
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use node::{NodeLayoutDimensionsRequest, node_layout_dimensions};
-pub(crate) use self_loop::flowchart_self_loop_helper_edges;
+pub(crate) use self_loop::{
+    flowchart_dagre_merges_self_loop_segments, flowchart_self_loop_helper_edges,
+};
 pub(crate) use shapes::{
     FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
     is_flowchart_process_shape, validate_flowchart_model_shapes,

@@ -2,7 +2,7 @@
 
 use super::ClippedEdgeRoute;
 use crate::elk_terminal_jogs::TerminalRoute;
-use crate::model::LayoutPoint;
+use crate::model::{LayoutLabel, LayoutPoint};
 use crate::resources::OperationWorkMeter;
 
 impl TerminalRoute for ClippedEdgeRoute {
@@ -12,6 +12,10 @@ impl TerminalRoute for ClippedEdgeRoute {
 
     fn origin(&self) -> (f64, f64) {
         (self.origin_x, self.origin_y)
+    }
+
+    fn main_label(&self) -> Option<&LayoutLabel> {
+        self.label.as_ref()
     }
 
     fn reproject_main_label(&mut self, runs: &[crate::elk_terminal_jogs::StraightenedRun]) {
@@ -163,6 +167,41 @@ mod tests {
         assert_eq!(coords(&routes[0].points), original);
         let label = routes[0].label.as_ref().unwrap();
         assert_eq!((label.x, label.y), (60.0, 10.0));
+    }
+
+    #[test]
+    fn label_overlap_rejection_compares_different_route_origins_in_both_directions() {
+        let original = [
+            (0.0, 0.0),
+            (20.0, 0.0),
+            (20.0, 10.0),
+            (100.0, 10.0),
+            (100.0, 100.0),
+        ];
+        for moved_label in [false, true] {
+            let mut jog = route(&original, (60.0, 10.0), (700.0, 300.0));
+            let mut other = if moved_label {
+                // In absolute coordinates this route occupies the candidate label's y=300 lane.
+                route(&[(-20.0, 10.0), (40.0, 10.0)], (0.0, 0.0), (750.0, 290.0))
+            } else {
+                // This route is clear, but its label occupies the candidate route's y=300 lane.
+                route(&[(-60.0, 60.0), (0.0, 60.0)], (-40.0, 10.0), (800.0, 290.0))
+            };
+            if moved_label {
+                other.label = None;
+            } else {
+                jog.label = None;
+            }
+            let mut routes = [jog, other];
+            let work = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+            straighten_edge_terminals(&mut routes, &work).unwrap();
+            assert_eq!(coords(&routes[0].points), original);
+            assert_eq!(routes[0].origin(), (700.0, 300.0));
+            assert!(routes[0].elk_endpoint_adapters.source);
+            if let Some(label) = routes[0].label.as_ref() {
+                assert_eq!((label.x, label.y), (60.0, 10.0));
+            }
+        }
     }
 
     #[test]

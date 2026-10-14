@@ -246,6 +246,65 @@ fn node_by_id<'a>(
 }
 
 #[test]
+fn disconnected_nodes_keep_source_order_in_tb_and_lr() {
+    // Mermaid 12.2 sourceOrder.spec.ts exercises the same non-alphabetical order.
+    let expected = ["Wednesday", "Tuesday", "Friday", "Monday", "Thursday"];
+    for direction in ["TB", "LR"] {
+        let source = format!(
+            "swimlane-beta {direction}\nsubgraph s1\n{}\nend\n",
+            expected.join("\n")
+        );
+        let layout = layout_swimlane(&source);
+        let mut nodes = layout.nodes.iter().collect::<Vec<_>>();
+        nodes.sort_by(|left, right| {
+            if direction == "LR" {
+                left.x.total_cmp(&right.x)
+            } else {
+                left.y.total_cmp(&right.y)
+            }
+        });
+        assert_eq!(
+            nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            expected,
+            "{direction}"
+        );
+    }
+}
+
+#[test]
+fn disconnected_nodes_in_separate_lanes_keep_each_lanes_source_order() {
+    let layout = layout_swimlane(
+        "swimlane-beta\nsubgraph s1\nSunday\nMonday\nend\nsubgraph s2\nZeta\nAlpha\nend\n",
+    );
+    assert!(node_by_id(&layout, "Sunday").y < node_by_id(&layout, "Monday").y);
+    assert!(node_by_id(&layout, "Zeta").y < node_by_id(&layout, "Alpha").y);
+}
+
+#[test]
+fn swimlane_content_nodes_apply_the_flowchart_minimum_with_circle_opt_out() {
+    for html_labels in [false, true] {
+        let source = format!(
+            "---\nconfig:\n  look: neo\n  flowchart:\n    htmlLabels: {html_labels}\n    minNodeWidth: 120\n---\nswimlane-beta TB\nR(X)\nD{{X}}\nC((X))\nB(((X)))\n"
+        );
+        let layout = layout_swimlane(&source);
+        let rectangle = node_by_id(&layout, "R");
+        let diamond = node_by_id(&layout, "D");
+        assert_eq!(rectangle.label_width, 120.0);
+        assert_eq!(rectangle.width, 150.0);
+        assert_eq!(diamond.label_width, 120.0);
+        assert_eq!(diamond.width, 170.0);
+        for id in ["C", "B"] {
+            let circle = node_by_id(&layout, id);
+            assert_eq!(circle.label_width, 8.0, "{id}: {circle:?}");
+            assert!(circle.width < 120.0, "{id}: {circle:?}");
+        }
+    }
+}
+
+#[test]
 fn basic_lr_uses_lane_owned_sugiyama_and_orthogonal_routes() {
     let layout = layout_swimlane(
         r#"swimlane-beta LR

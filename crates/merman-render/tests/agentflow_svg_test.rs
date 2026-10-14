@@ -135,12 +135,33 @@ fn agentflow_connectors_and_collapsed_flows_keep_visible_routes() {
         let edges = projection["layout"]["AgentflowDiagram"]["edges"]
             .as_array()
             .unwrap();
-        assert!(
-            edges
-                .iter()
-                .any(|edge| edge["from"] == "worker" && edge["to"] == "worker"),
-            "{backend}: authored self-loop must survive collapse: {edges:?}"
-        );
+        if backend == "elk" && cfg!(feature = "layout-elk") {
+            assert!(
+                edges
+                    .iter()
+                    .any(|edge| edge["from"] == "worker" && edge["to"] == "worker"),
+                "{backend}: authored self-loop must survive collapse: {edges:?}"
+            );
+        } else {
+            // Mermaid 12.2 Dagre merges self-loops only for its fixed diagram-type allowlist.
+            // Agentflow retains all three helper segments after collapsed-node projection.
+            for (id, from, to) in [
+                ("worker-cyclic-special-1", "worker", "worker---worker---1"),
+                (
+                    "worker-cyclic-special-mid",
+                    "worker---worker---1",
+                    "worker---worker---2",
+                ),
+                ("worker-cyclic-special-2", "worker---worker---2", "worker"),
+            ] {
+                assert!(
+                    edges
+                        .iter()
+                        .any(|edge| edge["id"] == id && edge["from"] == from && edge["to"] == to),
+                    "{backend}: missing Dagre helper segment {id}: {edges:?}"
+                );
+            }
+        }
         assert!(
             edges
                 .iter()
@@ -153,6 +174,254 @@ fn agentflow_connectors_and_collapsed_flows_keep_visible_routes() {
         assert!(svg.svg().contains("af-kind-connector"));
         assert!(svg.svg().contains(r#"data-color-id="color-7""#));
     }
+}
+
+#[test]
+fn agentflow_nested_collapse_keeps_pinned_dagre_segments_and_label_dom_order() {
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct EdgeSignature {
+        id: String,
+        start_marker: bool,
+        end_marker: bool,
+        commands: String,
+    }
+    fn signature(svg: &str, canonical_ids: bool) -> (Vec<EdgeSignature>, Vec<String>) {
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let paths = document
+            .descendants()
+            .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+            .map(|node| EdgeSignature {
+                id: node.attribute("data-id").unwrap().to_owned(),
+                start_marker: node.attribute("marker-start").is_some(),
+                end_marker: node.attribute("marker-end").is_some(),
+                commands: node
+                    .attribute("d")
+                    .unwrap()
+                    .chars()
+                    .filter(|ch| ch.is_ascii_alphabetic())
+                    .collect(),
+            })
+            .collect();
+        let label_group = document
+            .descendants()
+            .find(|node| node.has_tag_name("g") && node.attribute("class") == Some("edgeLabels"))
+            .unwrap();
+        let labels = label_group
+            .children()
+            .filter(roxmltree::Node::is_element)
+            .map(|node| {
+                if node.attribute("class") == Some("edgeLabel") {
+                    node.children()
+                        .find(|node| node.attribute("data-id").is_some())
+                        .unwrap()
+                        .attribute("data-id")
+                        .unwrap()
+                        .to_owned()
+                } else {
+                    let background = node.children().find(roxmltree::Node::is_element).unwrap();
+                    assert!(background.has_tag_name("rect"));
+                    assert_eq!(background.attribute("class"), Some("background"));
+                    "background".to_owned()
+                }
+            })
+            .collect();
+        let mut helper_dom_ids = std::collections::HashSet::new();
+        for helper_id in ["inner---inner---1", "inner---inner---2"] {
+            let mut matches = document.descendants().filter(|node| {
+                if canonical_ids {
+                    node.attribute("data-id") == Some(helper_id)
+                        && node.attribute("data-et") == Some("edge-label")
+                } else {
+                    node.attribute("id") == Some(helper_id)
+                }
+            });
+            let helper = matches.next().expect("self-loop helper occurrence");
+            assert!(
+                matches.next().is_none(),
+                "duplicate self-loop helper occurrence"
+            );
+            let dom_id = helper.attribute("id").unwrap();
+            assert!(helper_dom_ids.insert(dom_id));
+            if canonical_ids {
+                let prefix = format!(
+                    "{}-merman-flowchart-document-synthetic-label-",
+                    document.root_element().attribute("id").unwrap(),
+                );
+                let ordinal = dom_id
+                    .strip_prefix(&prefix)
+                    .expect("helper DOM identity belongs to its canonical document owner");
+                assert!(!ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit()));
+            }
+            assert_eq!(helper.attribute("class"), Some("label edgeLabel"));
+            let rect = helper.children().find(roxmltree::Node::is_element).unwrap();
+            assert!(rect.has_tag_name("rect"));
+            assert_eq!(rect.attribute("width"), Some("0.1"));
+            assert_eq!(rect.attribute("height"), Some("0.1"));
+        }
+        if canonical_ids {
+            let ids = document
+                .descendants()
+                .filter_map(|node| node.attribute("id"))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                ids.len(),
+                ids.iter()
+                    .copied()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
+                "duplicate document DOM IDs"
+            );
+        }
+        (paths, labels)
+    }
+    let input = include_str!("../../../fixtures/agentflow/local_nested_collapse_routes.mmd");
+    let upstream =
+        include_str!("../../../fixtures/upstream-svgs/agentflow/local_nested_collapse_routes.svg");
+    let (layout, svg) = render_agentflow_config_probe(input, json!({}), false);
+    let (paths, labels) = signature(&svg, true);
+    assert_eq!((paths.clone(), labels.clone()), signature(upstream, false));
+    assert_eq!(
+        paths
+            .iter()
+            .map(|path| path.id.as_str())
+            .collect::<Vec<_>>(),
+        [
+            "inner-cyclic-special-1",
+            "inner-cyclic-special-mid",
+            "inner-cyclic-special-2",
+            "enter",
+            "exit",
+        ]
+    );
+    assert!(paths.iter().all(|path| !path.start_marker));
+    assert_eq!(
+        paths.iter().map(|path| path.end_marker).collect::<Vec<_>>(),
+        [false, false, true, true, true]
+    );
+    assert_eq!(
+        labels.len(),
+        10,
+        "each unmerged empty edge inserts one wrapper and background"
+    );
+    let graph = &layout["AgentflowDiagram"];
+    assert_eq!(graph["edges"].as_array().unwrap().len(), 5);
+    let nodes = graph["nodes"].as_array().unwrap();
+    assert!(!nodes.iter().any(|node| node["id"] == "task"));
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["id"] == "inner" && node["is_cluster"] == false)
+    );
+    assert!(
+        nodes
+            .iter()
+            .any(|node| node["id"] == "outer" && node["is_cluster"] == true)
+    );
+}
+
+#[test]
+fn agentflow_parallel_dagre_loops_replace_metadata_without_moving_the_first_slots() {
+    let source = "agentflow-beta LR\nA[Task]\nB[Next]\nA first@-->|first loop| A\nA ordinary@--> B\nA second@--x|second loop| A\n";
+    let (layout, svg) = render_agentflow_config_probe(
+        source,
+        json!({"layout": "dagre", "htmlLabels": false}),
+        false,
+    );
+    let edges = layout["AgentflowDiagram"]["edges"].as_array().unwrap();
+    let expected = [
+        "A-cyclic-special-1",
+        "A-cyclic-special-mid",
+        "A-cyclic-special-2",
+        "ordinary",
+    ];
+    assert_eq!(
+        edges
+            .iter()
+            .map(|edge| edge["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert_eq!(edges[0]["from"], "A");
+    assert_eq!(edges[0]["to"], "A---A---1");
+    assert_eq!(edges[1]["from"], "A---A---1");
+    assert_eq!(edges[1]["to"], "A---A---2");
+    assert_eq!(edges[2]["from"], "A---A---2");
+    assert_eq!(edges[2]["to"], "A");
+    assert!(edges[1]["label"]["width"].as_f64().unwrap() > 0.0);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let paths: Vec<_> = document
+        .descendants()
+        .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
+        .collect();
+    assert_eq!(
+        paths
+            .iter()
+            .map(|path| path.attribute("data-id").unwrap())
+            .collect::<Vec<_>>(),
+        expected
+    );
+    assert!(
+        paths[..3]
+            .iter()
+            .all(|path| path.attribute("marker-start").is_none())
+    );
+    assert!(
+        paths[..2]
+            .iter()
+            .all(|path| path.attribute("marker-end").is_none())
+    );
+    assert!(
+        paths[2]
+            .attribute("marker-end")
+            .unwrap()
+            .contains("crossEnd")
+    );
+    assert!(
+        paths[3]
+            .attribute("marker-end")
+            .unwrap()
+            .contains("pointEnd")
+    );
+    let labels = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("edgeLabels"))
+        .unwrap();
+    assert_eq!(
+        labels
+            .descendants()
+            .filter_map(|node| node.attribute("data-id"))
+            .collect::<Vec<_>>(),
+        expected
+    );
+    let middle = labels
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("A-cyclic-special-mid"))
+        .unwrap();
+    let visible: String = middle
+        .descendants()
+        .filter(roxmltree::Node::is_text)
+        .filter_map(|node| node.text())
+        .collect();
+    assert_eq!(
+        visible, "second loop",
+        "last loop metadata owns the existing helper slots"
+    );
+    for id in ["A-cyclic-special-1", "A-cyclic-special-2"] {
+        let helper_label = labels
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some(id))
+            .unwrap();
+        let visible: String = helper_label
+            .descendants()
+            .filter(roxmltree::Node::is_text)
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(
+            visible.is_empty(),
+            "only the middle self-loop segment owns its label"
+        );
+    }
+    assert!(!svg.contains("first loop"));
 }
 
 #[test]

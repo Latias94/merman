@@ -1,25 +1,50 @@
 use super::FlowEdge;
 use std::collections::{HashMap, HashSet};
 
-/// Operation-local identity for one semantic Flowchart edge occurrence.
+/// Operation-local identity for one rendered Flowchart edge occurrence.
 ///
-/// Mermaid permits distinct semantic edges to share the same public `edge.id`. Internal layout,
-/// style, and SVG caches must therefore use the stable semantic model index instead of the raw
-/// DOM id.
+/// Mermaid permits distinct semantic edges to share the same public `edge.id`. Internal layout
+/// and SVG caches must therefore use the semantic owner plus any generated self-loop segment.
+/// Source styles and labels continue to use the stable semantic model index instead of raw DOM ids.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub(crate) struct FlowchartEdgeKey(usize);
+pub(crate) struct FlowchartEdgeKey {
+    semantic_index: usize,
+    self_loop_segment: Option<u8>,
+}
 
 impl FlowchartEdgeKey {
     pub(crate) const fn new(semantic_index: usize) -> Self {
-        Self(semantic_index)
+        Self {
+            semantic_index,
+            self_loop_segment: None,
+        }
+    }
+
+    pub(crate) const fn self_loop_segment(semantic_index: usize, order: u8) -> Self {
+        Self {
+            semantic_index,
+            self_loop_segment: Some(order),
+        }
     }
 
     pub(crate) const fn semantic_index(self) -> usize {
-        self.0
+        self.semantic_index
+    }
+
+    pub(crate) const fn self_loop_segment_order(self) -> Option<u8> {
+        self.self_loop_segment
     }
 
     fn adapter_id(self) -> String {
-        format!("__merman_flowchart_edge_{:020}", self.0)
+        match self.self_loop_segment {
+            None => format!("__merman_flowchart_edge_{:020}", self.semantic_index),
+            Some(order) => {
+                format!(
+                    "__merman_flowchart_edge_{:020}_segment_{order}",
+                    self.semantic_index
+                )
+            }
+        }
     }
 }
 
@@ -94,6 +119,7 @@ impl FlowchartEdgeOwners {
         Self(keys)
     }
 
+    #[cfg(test)]
     pub(crate) fn from_semantic_indices(indices: impl IntoIterator<Item = usize>) -> Self {
         Self(indices.into_iter().map(FlowchartEdgeKey::new).collect())
     }
@@ -121,16 +147,8 @@ impl FlowchartEdgeOwners {
             });
         }
 
-        let mut seen = std::collections::HashSet::with_capacity(self.len());
+        let mut owner_occurrences = HashMap::<usize, u8>::with_capacity(self.len());
         for (layout_edge, key) in layout_edges.iter().zip(self.iter()) {
-            if !seen.insert(key) {
-                return Err(crate::Error::InvalidModel {
-                    message: format!(
-                        "Flowchart layout contains multiple edges for semantic owner {}",
-                        key.semantic_index()
-                    ),
-                });
-            }
             let Some(semantic_edge) = semantic_edges.get(key.semantic_index()) else {
                 return Err(crate::Error::InvalidModel {
                     message: format!(
@@ -140,13 +158,56 @@ impl FlowchartEdgeOwners {
                     ),
                 });
             };
-            if layout_edge.id != semantic_edge.id {
+            let (expected_id, occurrence_bit) = match key.self_loop_segment_order() {
+                None => (
+                    std::borrow::Cow::Borrowed(semantic_edge.id.as_str()),
+                    1_u8 << 3,
+                ),
+                Some(order @ 0..=2) if semantic_edge.from == semantic_edge.to => {
+                    let suffix = match order {
+                        0 => "1",
+                        1 => "mid",
+                        _ => "2",
+                    };
+                    (
+                        std::borrow::Cow::Owned(format!(
+                            "{}-cyclic-special-{suffix}",
+                            semantic_edge.from
+                        )),
+                        1_u8 << order,
+                    )
+                }
+                Some(_) => {
+                    return Err(crate::Error::InvalidModel {
+                        message: format!(
+                            "Flowchart layout has an invalid self-loop segment occurrence {key:?}"
+                        ),
+                    });
+                }
+            };
+            if layout_edge.id != expected_id.as_ref() {
                 return Err(crate::Error::InvalidModel {
                     message: format!(
                         "Flowchart layout edge `{}` is not bound to semantic owner {} (`{}`)",
                         layout_edge.id,
                         key.semantic_index(),
-                        semantic_edge.id
+                        expected_id
+                    ),
+                });
+            }
+            let occurrences = owner_occurrences.entry(key.semantic_index()).or_default();
+            if *occurrences & occurrence_bit != 0 {
+                return Err(crate::Error::InvalidModel {
+                    message: format!("Flowchart layout contains duplicate edge occurrence {key:?}"),
+                });
+            }
+            *occurrences |= occurrence_bit;
+        }
+        for (semantic_index, occurrences) in owner_occurrences {
+            if !matches!(occurrences, 0b0111 | 0b1000) {
+                return Err(crate::Error::InvalidModel {
+                    message: format!(
+                        "Flowchart semantic owner {semantic_index} has incomplete or mixed render occurrences"
                     ),
                 });
             }
@@ -218,6 +279,13 @@ mod tests {
         let duplicate =
             FlowchartEdgeOwners::new(vec![FlowchartEdgeKey::new(0), FlowchartEdgeKey::new(0)]);
         assert!(duplicate.validate(&layout, &semantic).is_err());
+
+        let wrong_binding = FlowchartEdgeOwners::from_semantic_indices([0]);
+        assert!(
+            wrong_binding
+                .validate(&[layout_edge("other")], &semantic)
+                .is_err()
+        );
     }
 
     #[test]
@@ -228,6 +296,100 @@ mod tests {
             FlowchartEdgeOwners::new(vec![FlowchartEdgeKey::new(0), FlowchartEdgeKey::new(1)]);
 
         owners.validate(&layout, &semantic).unwrap();
+    }
+
+    fn self_loop_layout() -> (FlowEdge, Vec<LayoutEdge>) {
+        let mut semantic = semantic_edge("loop");
+        semantic.from = "A".to_owned();
+        semantic.to = "A".to_owned();
+        let helpers = super::super::flowchart_self_loop_helper_edges(&semantic);
+        let layout = [helpers.edge1, helpers.edge_mid, helpers.edge2]
+            .into_iter()
+            .map(|helper| {
+                let mut layout = layout_edge(&helper.id);
+                layout.from = helper.from;
+                layout.to = helper.to;
+                layout
+            })
+            .collect();
+        (semantic, layout)
+    }
+
+    #[test]
+    fn self_loop_segments_have_distinct_occurrences_and_one_semantic_owner() {
+        let (semantic, layout) = self_loop_layout();
+        let keys = (0..3)
+            .map(|order| FlowchartEdgeKey::self_loop_segment(0, order))
+            .collect::<Vec<_>>();
+        assert_eq!(keys.iter().copied().collect::<HashSet<_>>().len(), 3);
+        assert!(keys.iter().all(|key| key.semantic_index() == 0));
+        assert!(!keys.contains(&FlowchartEdgeKey::new(0)));
+        FlowchartEdgeOwners::new(keys)
+            .validate(&layout, &[semantic])
+            .unwrap();
+    }
+
+    #[test]
+    fn self_loop_owner_ledger_rejects_partial_mixed_duplicate_and_wrong_segments() {
+        let (semantic, layout) = self_loop_layout();
+        let keys = (0..3)
+            .map(|order| FlowchartEdgeKey::self_loop_segment(0, order))
+            .collect::<Vec<_>>();
+        let semantic_edges = [semantic];
+        for partial_count in [1, 2] {
+            assert!(
+                FlowchartEdgeOwners::new(keys[..partial_count].to_vec())
+                    .validate(&layout[..partial_count], &semantic_edges)
+                    .is_err()
+            );
+        }
+
+        let mut mixed_layout = layout.clone();
+        mixed_layout.push(layout_edge("loop"));
+        let mut mixed_keys = keys.clone();
+        mixed_keys.push(FlowchartEdgeKey::new(0));
+        assert!(
+            FlowchartEdgeOwners::new(mixed_keys)
+                .validate(&mixed_layout, &semantic_edges)
+                .is_err()
+        );
+
+        let mut duplicate_layout = layout.clone();
+        duplicate_layout.push(layout[0].clone());
+        let mut duplicate_keys = keys.clone();
+        duplicate_keys.push(keys[0]);
+        assert!(
+            FlowchartEdgeOwners::new(duplicate_keys)
+                .validate(&duplicate_layout, &semantic_edges)
+                .is_err()
+        );
+
+        let mut invalid_keys = keys.clone();
+        invalid_keys[0] = FlowchartEdgeKey::self_loop_segment(0, 3);
+        assert!(
+            FlowchartEdgeOwners::new(invalid_keys)
+                .validate(&layout, &semantic_edges)
+                .is_err()
+        );
+
+        let mut swapped_layout = layout.clone();
+        swapped_layout.swap(0, 1);
+        assert!(
+            FlowchartEdgeOwners::new(keys)
+                .validate(&swapped_layout, &semantic_edges)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn authored_edges_cannot_claim_generated_self_loop_segment_identity() {
+        let semantic = semantic_edge("A-cyclic-special-1");
+        let layout = [layout_edge(&semantic.id)];
+        assert!(
+            FlowchartEdgeOwners::new(vec![FlowchartEdgeKey::self_loop_segment(0, 0)])
+                .validate(&layout, &[semantic])
+                .is_err()
+        );
     }
 
     #[test]

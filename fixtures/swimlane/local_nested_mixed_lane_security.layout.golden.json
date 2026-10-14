@@ -1,0 +1,162 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "direction": "LR",
+      "nodes": [
+        {
+          "id": "A",
+          "label": "A & &lt; node",
+          "label_type": "string",
+          "shape": "squareRect",
+          "parent_id": "Inner",
+          "top_lane_id": "Outer",
+          "x": 36.0,
+          "y": 252.0,
+          "width": 152.0,
+          "height": 39.4,
+          "label_width": 120.0,
+          "label_height": 15.4,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "B",
+          "label": "B & &lt; node",
+          "label_type": "string",
+          "shape": "squareRect",
+          "parent_id": "Inner",
+          "top_lane_id": "Outer",
+          "x": 622.396,
+          "y": 252.0,
+          "width": 152.0,
+          "height": 39.4,
+          "label_width": 120.0,
+          "label_height": 15.4,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "C",
+          "label": "Loose & &lt; node",
+          "label_type": "string",
+          "shape": "squareRect",
+          "parent_id": "__swimlane_default__",
+          "top_lane_id": "__swimlane_default__",
+          "x": 622.396,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 39.4,
+          "label_width": 120.0,
+          "label_height": 15.4,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        }
+      ],
+      "lanes": [
+        {
+          "id": "Outer",
+          "title": "Outer & < lane",
+          "parent_id": null,
+          "x": 311.198,
+          "y": 216.85,
+          "width": 814.396,
+          "height": 181.7,
+          "padding": 8.0,
+          "title_label_width": 85.12,
+          "title_label_height": 15.4,
+          "content_top": 232.3,
+          "title_rect": {
+            "left": -96.0,
+            "right": -60.0,
+            "top": 126.0,
+            "bottom": 307.7
+          },
+          "requested_dir": "LR"
+        },
+        {
+          "id": "Inner",
+          "title": "Inner & < group",
+          "parent_id": "Outer",
+          "x": 329.198,
+          "y": 252.0,
+          "width": 746.396,
+          "height": 47.4,
+          "padding": 8.0,
+          "title_label_width": 89.04,
+          "title_label_height": 15.4,
+          "content_top": null,
+          "title_rect": null,
+          "requested_dir": null
+        },
+        {
+          "id": "__swimlane_default__",
+          "title": "",
+          "parent_id": null,
+          "x": 311.198,
+          "y": 35.15,
+          "width": 814.396,
+          "height": 181.7,
+          "padding": 20.0,
+          "title_label_width": 0.0,
+          "title_label_height": 0.0,
+          "content_top": -19.7,
+          "title_rect": {
+            "left": -96.0,
+            "right": -60.0,
+            "top": -55.7,
+            "bottom": 126.0
+          },
+          "requested_dir": "LR"
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_A_B_0",
+          "from": "A",
+          "to": "B",
+          "points": [
+            {
+              "x": 112.0,
+              "y": 252.0
+            },
+            {
+              "x": 546.396,
+              "y": 252.0
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_B_C_0",
+          "from": "B",
+          "to": "C",
+          "points": [
+            {
+              "x": 622.396,
+              "y": 232.3
+            },
+            {
+              "x": 622.396,
+              "y": 19.7
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        }
+      ],
+      "bounds": {
+        "min_x": -96.0,
+        "min_y": -55.7,
+        "max_x": 718.396,
+        "max_y": 307.7
+      }
+    }
+  }
+}

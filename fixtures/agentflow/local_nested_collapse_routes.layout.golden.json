@@ -1,0 +1,241 @@
+{
+  "diagramType": "agentflow",
+  "layout": {
+    "AgentflowDiagram": {
+      "nodes": [
+        {
+          "id": "start",
+          "x": 123.2,
+          "y": 78.1,
+          "width": 180.4,
+          "height": 30.4,
+          "is_cluster": false
+        },
+        {
+          "id": "api",
+          "x": 468.4,
+          "y": 200.5,
+          "width": 150.0,
+          "height": 45.4,
+          "is_cluster": false
+        },
+        {
+          "id": "inner",
+          "x": 303.4,
+          "y": 78.1,
+          "width": 80.0,
+          "height": 59.4,
+          "is_cluster": false
+        },
+        {
+          "id": "inner---inner---1",
+          "x": 468.4,
+          "y": 43.05,
+          "width": 0.1,
+          "height": 0.1,
+          "is_cluster": false
+        },
+        {
+          "id": "inner---inner---2",
+          "x": 593.45,
+          "y": 65.4,
+          "width": 0.1,
+          "height": 0.1,
+          "is_cluster": false
+        },
+        {
+          "id": "outer",
+          "x": 313.25,
+          "y": 75.4,
+          "width": 610.5,
+          "height": 134.8,
+          "is_cluster": true
+        }
+      ],
+      "edges": [
+        {
+          "id": "inner-cyclic-special-1",
+          "from": "inner",
+          "to": "inner---inner---1",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 343.4,
+              "y": 56.531
+            },
+            {
+              "x": 368.4,
+              "y": 43.05
+            },
+            {
+              "x": 468.35,
+              "y": 43.05
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "inner-cyclic-special-mid",
+          "from": "inner---inner---1",
+          "to": "inner---inner---2",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 468.45,
+              "y": 43.05
+            },
+            {
+              "x": 568.4,
+              "y": 43.05
+            },
+            {
+              "x": 593.4,
+              "y": 65.355
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "inner-cyclic-special-2",
+          "from": "inner---inner---2",
+          "to": "inner",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 593.4,
+              "y": 65.425
+            },
+            {
+              "x": 568.4,
+              "y": 78.1
+            },
+            {
+              "x": 468.4,
+              "y": 78.1
+            },
+            {
+              "x": 368.4,
+              "y": 78.1
+            },
+            {
+              "x": 343.4,
+              "y": 78.1
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "enter",
+          "from": "start",
+          "to": "inner",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 213.4,
+              "y": 78.1
+            },
+            {
+              "x": 238.4,
+              "y": 78.1
+            },
+            {
+              "x": 263.4,
+              "y": 78.1
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        },
+        {
+          "id": "exit",
+          "from": "inner",
+          "to": "api",
+          "from_cluster": null,
+          "to_cluster": null,
+          "points": [
+            {
+              "x": 343.4,
+              "y": 98.008
+            },
+            {
+              "x": 368.4,
+              "y": 110.45
+            },
+            {
+              "x": 443.192,
+              "y": 177.8
+            }
+          ],
+          "label": null,
+          "start_label_left": null,
+          "start_label_right": null,
+          "end_label_left": null,
+          "end_label_right": null,
+          "start_marker": null,
+          "end_marker": null,
+          "stroke_dasharray": null
+        }
+      ],
+      "clusters": [
+        {
+          "id": "outer",
+          "x": 313.25,
+          "y": 75.4,
+          "width": 610.5,
+          "height": 134.8,
+          "diff": -4.0,
+          "offset_y": 11.4,
+          "title": "Outer",
+          "title_label": {
+            "x": 313.25,
+            "y": 15.7,
+            "width": 32.48,
+            "height": 15.4
+          },
+          "requested_dir": null,
+          "effective_dir": "TB",
+          "padding": 8.0,
+          "title_margin_top": 0.0,
+          "title_margin_bottom": 0.0
+        }
+      ],
+      "bounds": {
+        "min_x": 8.0,
+        "min_y": 8.0,
+        "max_x": 618.5,
+        "max_y": 223.2
+      }
+    }
+  }
+}

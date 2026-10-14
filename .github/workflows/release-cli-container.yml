@@ -1,0 +1,161 @@
+name: CLI Container Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing stable workspace release tag, for example v0.9.0"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  attestations: read
+
+concurrency:
+  group: cli-container-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      source_sha: ${{ steps.release.outputs.source_sha }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Resolve the stable release source
+        id: release
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo 'Expected a stable vX.Y.Z tag.' >&2; exit 1; }
+          version="$(python3 scripts/release-version.py canonical --version "${RELEASE_TAG#v}")"
+          test "$RELEASE_TAG" = "v$version"
+          gh release view "$RELEASE_TAG" --json isDraft,isPrerelease --jq '.isDraft == false and .isPrerelease == false' | grep -qx true
+          source_sha="$(git rev-parse "refs/tags/$RELEASE_TAG^{commit}")"
+          printf 'version=%s\nsource_sha=%s\n' "$version" "$source_sha" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            architecture: amd64
+            runner: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            architecture: arm64
+            runner: ubuntu-24.04-arm
+    env:
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+      TARGET: ${{ matrix.target }}
+      IMAGE: ghcr.io/latias94/merman-cli
+      ARCHITECTURE: ${{ matrix.architecture }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          persist-credentials: false
+      - name: Check out the immutable artifact source
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.source_sha }}
+          path: release-source
+          persist-credentials: false
+      - name: Download and verify the published archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "$RELEASE_TAG" --dir release-assets \
+            --pattern "merman-cli-$TARGET.tar.xz" --pattern "merman-cli-$TARGET.tar.xz.sha256" \
+            --pattern release-verification.json
+          gh attestation verify release-assets/release-verification.json \
+            --repo "$GH_REPO" --signer-workflow "$GH_REPO/.github/workflows/release.yml" \
+            --source-ref "refs/tags/$RELEASE_TAG"
+          python3 scripts/cli_container_release.py \
+            --assets release-assets --target "$TARGET" --version "$VERSION" --source-sha "$SOURCE_SHA"
+          python3 scripts/verify_cli_release_archive.py \
+            "release-assets/merman-cli-$TARGET.tar.xz" --target "$TARGET" \
+            --version "$VERSION" --repo-root release-source
+          mkdir -p container-context
+          tar -xJf "release-assets/merman-cli-$TARGET.tar.xz" -C container-context --strip-components=1
+      - name: Build and test the native image
+        run: |
+          docker build --file distribution/container/Dockerfile \
+            --label "org.opencontainers.image.source=https://github.com/$GH_REPO" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            --label "org.opencontainers.image.revision=$SOURCE_SHA" \
+            --tag "$IMAGE:$VERSION-$ARCHITECTURE" container-context
+          python3 scripts/cli_container_smoke.py "$IMAGE:$VERSION-$ARCHITECTURE" --version "$VERSION"
+      - name: Login to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Recheck the tag and push the tested native image
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$SOURCE_SHA"
+          docker push "$IMAGE:$VERSION-$ARCHITECTURE"
+          docker inspect --format '{{index .RepoDigests 0}}' "$IMAGE:$VERSION-$ARCHITECTURE" > image-digest.txt
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: cli-container-digest-${{ matrix.architecture }}
+          overwrite: true
+          path: image-digest.txt
+          if-no-files-found: error
+
+  publish-index:
+    needs: [prepare, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+      SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+      VERSION: ${{ needs.prepare.outputs.version }}
+      IMAGE: ghcr.io/latias94/merman-cli
+    steps:
+      - uses: actions/download-artifact@v8.0.2
+        with:
+          pattern: cli-container-digest-*
+          path: image-digests
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Publish the multi-architecture index from tested digests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          test "$(gh api "repos/$GH_REPO/commits/$RELEASE_TAG" --jq .sha)" = "$SOURCE_SHA"
+          amd64="$(cat image-digests/cli-container-digest-amd64/image-digest.txt)"
+          arm64="$(cat image-digests/cli-container-digest-arm64/image-digest.txt)"
+          [[ "$amd64" =~ ^ghcr.io/latias94/merman-cli@sha256:[0-9a-f]{64}$ ]]
+          [[ "$arm64" =~ ^ghcr.io/latias94/merman-cli@sha256:[0-9a-f]{64}$ ]]
+          docker buildx imagetools create --tag "$IMAGE:$VERSION" "$amd64" "$arm64"
+          docker buildx imagetools inspect "$IMAGE:$VERSION"

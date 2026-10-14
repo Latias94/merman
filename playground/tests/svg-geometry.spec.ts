@@ -22,6 +22,8 @@ if (!EVENT_MODEL_EXAMPLE) {
 test.beforeAll(async () => {
   sourceServer = await createServer({
     root: path.resolve(import.meta.dirname, ".."),
+    // The syntax worker is discovered after page load; optimize it before geometry evaluations.
+    optimizeDeps: { include: ["web-tree-sitter"] },
     server: { host: "127.0.0.1", port: 0 },
     // Prebundle the lazy editor dependency before it can reload the test page.
     optimizeDeps: { include: ["web-tree-sitter"] },

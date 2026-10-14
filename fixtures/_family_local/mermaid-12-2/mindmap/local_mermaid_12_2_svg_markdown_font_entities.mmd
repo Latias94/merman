@@ -1,0 +1,21 @@
+---
+config:
+  layout: tidy-tree
+  htmlLabels: false
+  fontFamily: serif
+  fontSize: 10
+  themeVariables:
+    fontFamily: Arial
+    fontSize: '24px'
+  mindmap:
+    maxNodeWidth: 90
+    padding: 7
+---
+%% Mermaid 12.2 createText.ts, handle-markdown-text.ts and circle.ts: SVG text has no HTML image box.
+mindmap
+root(("`A **wrapped** circle label with *emphasis*`"))
+  imageOnly["`![ignored](#unused)`"]
+  mixed["`Before ![ignored](#unused) **after** *tail*`"]
+  entities["#9829; &#9829; #nbsp; &nbsp; &amp; #lt;"]
+  multiline["`**First line**
+second line`"]

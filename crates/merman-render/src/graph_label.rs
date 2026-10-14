@@ -28,7 +28,8 @@ pub(crate) struct FlowchartLabelMetricsRequest<'a> {
 }
 
 /// The FlowDB minimum only reaches ordinary nodes that use `labelHelper`.
-/// Asset shapes set `node.width` before calling it, and fixed-size symbols bypass it.
+/// Asset shapes set `node.width` before calling it; fixed-size symbols and label-derived
+/// circles opt out of it.
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -46,8 +47,10 @@ pub(crate) fn flowchart_node_label_min_width(
         || matches!(
             shape,
             Ok(FlowchartShape::Anchor
+                | FlowchartShape::Circle
                 | FlowchartShape::Choice
                 | FlowchartShape::CrossedCircle
+                | FlowchartShape::DoubleCircle
                 | FlowchartShape::FilledCircle
                 | FlowchartShape::ForkJoin
                 | FlowchartShape::FramedCircle
@@ -1380,7 +1383,7 @@ mod tests {
         feature = "diagram-agentflow"
     ))]
     #[test]
-    fn node_minimum_excludes_fixed_symbols_assets_and_empty_labels() {
+    fn node_minimum_excludes_circles_fixed_symbols_assets_and_empty_labels() {
         let config = MermaidConfig::from_value(serde_json::json!({
             "flowchart": { "minNodeWidth": 120.0 }
         }));
@@ -1393,6 +1396,11 @@ mod tests {
             0.0
         );
         for shape in [
+            "circle",
+            "circ",
+            "doublecircle",
+            "dbl-circ",
+            "double-circle",
             "icon",
             "iconCircle",
             "iconRounded",

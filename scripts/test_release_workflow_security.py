@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import tempfile
 import textwrap
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -19,6 +20,8 @@ WORKFLOW_ROOT = ROOT / ".github" / "workflows"
 CI_WORKFLOW = WORKFLOW_ROOT / "ci.yml"
 PR_REACHABLE_WORKFLOWS = [
     CI_WORKFLOW,
+    WORKFLOW_ROOT / "cli-distribution.yml",
+    WORKFLOW_ROOT / "arch-package.yml",
     WORKFLOW_ROOT / "fuzz.yml",
     WORKFLOW_ROOT / "npm-audit.yml",
     WORKFLOW_ROOT / "pages.yml",
@@ -87,6 +90,74 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
                     text.count("persist-credentials: false"),
                     text.count("uses: actions/checkout@"),
                 )
+
+    def test_vscode_gnu_baseline_and_independent_contract_gate(self) -> None:
+        package = workflow_job(read(WORKFLOW_ROOT / "vscode-extension.yml"), "package")
+        self.assertIn("needs: validate-inputs", package)
+        self.assertNotIn("needs: [validate-inputs, editor-language-contract]", package)
+        self.assertIn("verify-editor-language-contract", workflow_job(read(WORKFLOW_ROOT / "vscode-extension.yml"), "editor-language-contract"))
+        for job in (package, workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "vscode-extension-dry-run")):
+            self.assertIn("os: ubuntu-22.04\n            target: linux-x64", job)
+            self.assertIn('python-version: "3.12"', job)
+            self.assertIn("ref: ${{ github.workflow_sha }}", job)
+            self.assertIn("sparse-checkout: scripts/linux_binary_compatibility.py", job)
+            check = "python3 .workflow-tools/scripts/linux_binary_compatibility.py target/dist/merman-cli target/dist/merman-lsp"
+            self.assertIn(check, job)
+            self.assertLess(job.index("Build release runtime binaries"), job.index(check))
+            self.assertLess(job.index(check), job.index("Stage runtime binaries"))
+
+    def test_native_runtime_builds_exact_profiles_once_before_staging(self) -> None:
+        text = read(WORKFLOW_ROOT / "vscode-extension.yml")
+        package = workflow_job(text, "package")
+        cli = workflow_job(text, "cli-profiles")
+        self.assertIn("inputs.check_cli_profiles && !inputs.package_vscode", cli)
+        self.assertIn("inputs.package_vscode || inputs.source_sha == ''", package)
+        self.assertIn("!cancelled()", package)
+        for job in (cli, package):
+            self.assertEqual(job.count("artifact_profile_recipe.py cli-analysis --build-host --locked"), 1)
+            self.assertEqual(job.count("artifact_profile_recipe.py cli-release --build-host --locked"), 1)
+            self.assertIn("scripts/verify_cli_assets.py --require powershell", job)
+        self.assertNotIn("os: ubuntu", cli)
+        self.assertIn("inputs.check_cli_profiles && runner.os != 'Linux'", package)
+        self.assertLess(package.index("artifact_profile_recipe.py cli-analysis"), package.index("artifact_profile_recipe.py lsp-stdio-release"))
+        self.assertLess(package.index("artifact_profile_recipe.py lsp-stdio-release"), package.index("artifact_profile_recipe.py cli-release"))
+        self.assertLess(package.index("artifact_profile_recipe.py cli-release"), package.index("npm run prepare:binaries"))
+        for command in ("npm run check", "npm test", "npm run test:extension-host", "npm run verify:vsix", "npm run smoke:vsix"):
+            self.assertIn(command, package)
+
+    def test_standalone_vscode_pins_validated_source_without_blocking_ci(self) -> None:
+        text = read(WORKFLOW_ROOT / "vscode-extension.yml")
+        validate = workflow_job(text, "validate-inputs")
+        self.assertIn("if: ${{ inputs.source_sha == '' }}", validate)
+        self.assertIn("source_ref must be a single line", validate)
+        self.assertIn("source_ref must be main, refs/heads/main, a version tag", validate)
+        self.assertIn("ref: ${{ steps.source.outputs.source_ref }}", validate)
+        self.assertIn('source_sha="$(git rev-parse HEAD)"', validate)
+        self.assertIn("source_sha: ${{ steps.pin-source.outputs.source_sha }}", validate)
+        for name in ("package", "editor-language-contract"):
+            job = workflow_job(text, name)
+            self.assertIn("!cancelled()", job)
+            self.assertIn("inputs.source_sha != '' || needs.validate-inputs.result == 'success'", job)
+            self.assertIn("ref: ${{ inputs.source_sha || needs.validate-inputs.outputs.source_sha }}", job)
+
+    def test_cli_container_publication_uses_attested_archives_and_native_smokes(self) -> None:
+        text = read(WORKFLOW_ROOT / "release-cli-container.yml")
+        self.assertIn("  workflow_dispatch:", text)
+        self.assertNotIn("  pull_request:", text)
+        self.assertIn("attestations: read", text)
+        build = workflow_job(text, "build")
+        self.assertIn("ref: ${{ github.workflow_sha }}", build)
+        self.assertIn("ref: ${{ needs.prepare.outputs.source_sha }}", build)
+        self.assertIn("gh attestation verify release-assets/release-verification.json", build)
+        self.assertIn('--source-ref "refs/tags/$RELEASE_TAG"', build)
+        for command in ("scripts/cli_container_release.py", "scripts/verify_cli_release_archive.py", "scripts/cli_container_smoke.py"):
+            self.assertLess(build.index(command), build.index("docker push"))
+        publish = workflow_job(text, "publish-index")
+        self.assertIn("needs: [prepare, build]", publish)
+        self.assertIn('"$amd64" "$arm64"', publish)
+        self.assertNotIn(":latest", text)
+        self.assertIn("overwrite: true", build)
+        self.assertIn("overwrite: true", workflow_job(read(WORKFLOW_ROOT / "cli-distribution.yml"), "gnu-archives"))
 
     def test_ci_is_the_only_pull_request_entrypoint_for_reusable_owners(self) -> None:
         ci = read(CI_WORKFLOW)
@@ -625,8 +696,8 @@ jobs:
         self.assertNotIn("continue-on-error:", native)
         self.assertIn("ref: ${{ needs.validate-inputs.outputs.source_sha }}", native)
         for target, runner in (
-            ("x86_64-unknown-linux-gnu", "ubuntu-24.04"),
-            ("aarch64-unknown-linux-gnu", "ubuntu-24.04-arm"),
+            ("x86_64-unknown-linux-gnu", "ubuntu-22.04"),
+            ("aarch64-unknown-linux-gnu", "ubuntu-22.04-arm"),
         ):
             self.assertIn(f"- target: {target}\n            runner: {runner}", native)
         self.assertIn("runs-on: ${{ matrix.runner }}", native)
@@ -704,6 +775,32 @@ jobs:
                     if not failure.startswith(("--preset-qualification-", "--resource-")):
                         expected.append(expected_call("lsp", []))
                     self.assertEqual(calls, expected)
+
+    def test_linux_release_builds_and_executes_on_glibc_235_baseline(self) -> None:
+        dist = tomllib.loads(read(ROOT / "dist-workspace.toml"))["dist"]
+        runners = dist["github-custom-runners"]
+        self.assertEqual(runners["x86_64-unknown-linux-gnu"], "ubuntu-22.04")
+        self.assertEqual(
+            runners["aarch64-unknown-linux-gnu"],
+            {"runner": "ubuntu-22.04-arm", "host": "aarch64-unknown-linux-gnu"},
+        )
+        release = read(WORKFLOW_ROOT / "release.yml")
+        native = workflow_job(release, "verify-release-archives-native")
+        for target, runner in (
+            ("x86_64-unknown-linux-gnu", "ubuntu-22.04"),
+            ("aarch64-unknown-linux-gnu", "ubuntu-22.04-arm"),
+        ):
+            self.assertEqual(native.count(f"target: {target}\n            runner: {runner}"), 2)
+        local = workflow_job(release, "build-local-artifacts")
+        preflight = workflow_job(
+            read(WORKFLOW_ROOT / "release-preflight.yml"), "cli-and-lsp-archives"
+        )
+        for job in (local, native, preflight):
+            self.assertIn("uses: actions/setup-python@v7.0.0", job)
+            self.assertIn("python-version: '3.12'", job)
+        for job in (local, preflight):
+            self.assertIn("scripts/linux_binary_compatibility.py", job)
+            self.assertLess(job.index("dist build"), job.index("linux_binary_compatibility.py"))
 
     def test_cli_registry_validation_does_not_gate_binary_publication(self) -> None:
         release = read(WORKFLOW_ROOT / "release.yml")

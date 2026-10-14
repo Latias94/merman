@@ -541,11 +541,20 @@ pub(in crate::svg::parity) fn write_svg_text_centered_from_create_text_source_wi
     text: &str,
     css: &str,
 ) {
+    write_svg_text_from_create_text_source_with_style(out, text, css, true);
+}
+
+pub(in crate::svg::parity) fn write_svg_text_from_create_text_source_with_style(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    text: &str,
+    css: &str,
+    centered: bool,
+) {
     write_svg_text_impl(
         out,
         text,
         Some(css),
-        true,
+        centered,
         true,
         SvgTextEntityMode::CreateTextSource,
     );
@@ -559,6 +568,18 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_styl
     style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
 ) {
+    write_svg_text_markdown_wrapped_impl(out, markdown, css, measurer, style, max_width_px, true);
+}
+
+fn write_svg_text_markdown_wrapped_impl(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    markdown: &str,
+    css: &str,
+    measurer: &dyn crate::text::TextMeasurer,
+    style: &crate::text::TextStyle,
+    max_width_px: Option<f64>,
+    centered: bool,
+) {
     let lines = markdown_to_wrapped_svg_word_lines(
         measurer,
         normalized_markdown_label(markdown),
@@ -569,7 +590,7 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_styl
         out,
         &lines,
         Some(css),
-        true,
+        centered,
         true,
         SvgTextEntityMode::CreateTextSource,
     );
@@ -583,20 +604,14 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_s
     text_style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
 ) {
-    let lines = markdown_to_wrapped_svg_word_lines(
+    write_svg_text_markdown_wrapped_impl(
+        out,
+        markdown,
+        style,
         measurer,
-        normalized_markdown_label(markdown),
         text_style,
         max_width_px,
-    );
-    write_svg_text_markdown_lines_with_style(
-        out,
-        &lines,
-        Some(style),
         false,
-        true,
-        SvgTextEntityMode::CreateTextSource,
-        None,
     );
 }
 

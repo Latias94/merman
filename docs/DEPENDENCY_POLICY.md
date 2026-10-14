@@ -28,7 +28,7 @@ Wasmi 2 tooling explicitly enables `validate`, `stable`, `simd`, and `auto-dispa
 
 ## Reference tools and JavaScript compatibility
 
-Mermaid 12.1.0 remains both the selected compatibility baseline and the latest version observed by the preparation audit. Its reference host graph is frozen and independently admitted: updating a reference dependency changes the oracle and requires the Mermaid alignment workflow. ZenUML 4.6.0 falls outside the selected plugin's `^3.47.9` contract and is not substituted without coordinated admission.
+The 0.9.0 preparation audit selected Mermaid 12.1.0. Development now selects 12.2.0 through [ADR-0093](adr/0093-mermaid-12-2-upstream-transition.md); published releases retain their original baseline. Its reference host graph is frozen and independently admitted: updating a reference dependency changes the oracle and requires the Mermaid alignment workflow. ZenUML 4.6.0 falls outside the selected plugin's `^3.47.9` contract and is not substituted without coordinated admission.
 
 Application TypeScript remains on the compatible 6.0.3 line. TypeScript 7 does not provide the old compiler API and peer contract required by the selected TypeScript/ESLint stack. Retain this as a documented compatibility exception; do not treat a tool's major version as an unconditional application upgrade.
 

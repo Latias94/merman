@@ -4,6 +4,34 @@ Merman separates pull-request feedback, scheduled maintenance, and release evide
 in the earliest layer that can justify its cost, but it should not be repeated in every later job
 unless that job produces an independently releasable artifact.
 
+## Runtime and job dependencies
+
+The October 2026 [runtime audit](../research/2026-10-13-ci-runtime-audit.md) found three main
+Linux jobs taking 64–67 minutes. Native Node builds and SVG/browser parity were sequential
+inside the workspace test job. These now have separate same-run results in `pr-gate`:
+
+- `build-test` retains the Linux workspace suite and the three-host font/platform contracts;
+- `svg-parity` owns the complete DOM comparison and Chromium containment oracle;
+- `node-contracts` runs Node-WASM and N-API as parallel matrix members on PRs and main;
+- Pages builds its Web package once while compiling the optimized budget tool independently;
+  budget and Playground consumers use that same uploaded Web package and run in parallel;
+- A shared native runtime workflow builds each non-Linux complete CLI once when both CLI
+  and VS Code are selected. The same platform job checks the analysis profile, builds LSP and
+  the complete CLI, then packages and tests VSIX. CLI-only runs retain their three-host profile
+  checks; VS Code-only runs retain all four packages without the additional analysis build;
+- GNU archives, containers and setup Action checks retain their independent paths. Arch has
+  its own source-build owner. VS Code package builds run alongside the editor contract;
+- Central CI passes its immutable source SHA directly into the runtime workflow. Standalone
+  dispatch still validates its protected branch or release tag and resolves it to a SHA before
+  consumers build it. Both selected owners require the shared workflow's successful result.
+
+Ordinary macOS/Windows runs compile the workspace and execute the existing host-sensitive
+regression inventory. Weekly and manual core safety nets additionally run full workspace tests
+on those hosts. Linux still runs the full suite on every selected event. The refactor preserves
+blocking assertions; it changes their placement and dependencies. Runner queue time and cold
+builds remain part of elapsed feedback time, so measured PR results are required before claiming
+a runtime target has been met.
+
 ## Windows Checkout Paths
 
 Repository-relative tracked paths are limited to 160 UTF-16 code units by
@@ -62,7 +90,7 @@ separate comment-writing job.
 Reusable owner workflows do not start independent pull-request runs. The central orchestrator calls
 them after classification, so one owner executes once and its result is available directly to
 `pr-gate`. Main pushes still select every owner. A weekly and manually dispatchable core safety-net
-run executes the full workspace on Linux, macOS, and Windows; routine pull requests keep the full
+run executes the full workspace on Linux, macOS, and Windows; routine pull requests and main pushes keep the full
 Linux suite while host runners compile the workspace and run focused filesystem, process, FFI, and
 ELK stack-safety contracts. The historical KTD23 retirement authorization and its dedicated
 commands were removed with their witness; current theme authoring, font boundaries, preset

@@ -353,7 +353,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     let edge = edge_ref.edge;
     let label_text = ctx
         .model
-        .edge_label_for_render(key.semantic_index(), edge)
+        .edge_label_for_occurrence(key, edge)
         .unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let compiled_label_styles = ctx.edge_style_plan.edge_for(key)?;
@@ -966,7 +966,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
     let edge = edge_ref.edge;
     let label_text = ctx
         .model
-        .edge_label_for_render(key.semantic_index(), edge)
+        .edge_label_for_occurrence(key, edge)
         .unwrap_or_default();
     // Mermaid's Swimlane adapter creates a fresh `labelRect` without copying `edge.labelType`.
     // The node renderer therefore follows ordinary non-Markdown createText semantics.
@@ -1068,8 +1068,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         return Ok(None);
     };
 
-    // Swimlane's private `positionEdgeLabel` recomputes whenever `insertEdge` returns a paths
-    // object, independent of the ordinary updated-path heuristic.
+    // Mermaid 12.2's common renderer uses resolveEdgeLabelPosition: preserve the
+    // layout anchor unless insertEdge marks the returned path as updated.
     let position = resolve_flowchart_edge_label_position(
         ctx,
         key,
@@ -1078,7 +1078,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         origin_x,
         origin_y,
         edge_cache,
-        true,
+        false,
     );
     let x = position.x;
     let y = position.y;
@@ -1376,15 +1376,41 @@ mod tests {
     }
 
     #[test]
-    fn swimlane_recomputes_from_returned_waypoints_by_delta() {
+    fn swimlane_updated_waypoints_still_apply_the_midpoint_delta() {
         let mut geometry = geom(
             "M0,0L10,0L20,0",
             vec![point(0.0, 0.0), point(10.0, 0.0), point(20.0, 0.0)],
         );
         geometry.original_label_path_points =
             vec![point(-20.0, 0.0), point(0.0, 0.0), point(20.0, 0.0)];
-        let positioned = position_flowchart_edge_label(point(4.0, 5.0), &geometry, true);
+        geometry.label_path_was_explicitly_updated = true;
+        let positioned = position_flowchart_edge_label(point(4.0, 5.0), &geometry, false);
         assert_eq!((positioned.x, positioned.y), (14.0, 5.0));
+    }
+
+    #[test]
+    fn swimlane_unchanged_clipped_pins_preserve_the_layout_label_anchor() {
+        let mut geometry = geom(
+            "M403,212.5L667.929,212.5Q675,212.5 675,219.571L675,561.429Q675,568.5 667.929,568.5L407,568.5",
+            vec![
+                point(403.0, 212.5),
+                point(675.0, 212.5),
+                point(675.0, 568.5),
+                point(403.0, 568.5),
+            ],
+        );
+        geometry.original_label_path_points = vec![
+            point(403.0, 212.5),
+            point(403.0, 212.5),
+            point(675.0, 212.5),
+            point(675.0, 568.5),
+            point(403.0, 568.5),
+            point(403.0, 568.5),
+        ];
+        // upstream_7_car_sales_constr: clipping removes the duplicate terminal
+        // pins, but insertEdge returns no updatedPath for this rounded route.
+        let positioned = position_flowchart_edge_label(point(539.0, 212.5), &geometry, false);
+        assert_eq!((positioned.x, positioned.y), (539.0, 212.5));
     }
 
     #[test]

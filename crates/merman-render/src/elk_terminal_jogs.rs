@@ -1,9 +1,9 @@
 //! Mermaid 12 ELK terminal-channel straightening after endpoint clipping.
 //!
 //! Source: packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts,
-//! straightenTerminalJogs, moved-run label projection and pair separation (mermaid@12.1.0).
+//! straightenTerminalJogs, label-aware moved-run projection and pair separation (mermaid@12.2.0).
 
-use crate::model::LayoutPoint;
+use crate::model::{LayoutLabel, LayoutPoint};
 
 /// Paint routes may retain coordinates relative to separate parent groups.
 pub(crate) trait TerminalRoute {
@@ -13,8 +13,11 @@ pub(crate) trait TerminalRoute {
         (0.0, 0.0)
     }
 
-    /// Main labels share the route's coordinate system. Route-only adapters consume the
-    /// returned change records instead, preserving ownership of their separate label caches.
+    fn main_label(&self) -> Option<&LayoutLabel> {
+        None
+    }
+
+    /// Main labels share the route's coordinate system and move with an accepted candidate.
     fn reproject_main_label(&mut self, _runs: &[StraightenedRun]) {}
 
     fn replace_terminal_points(
@@ -40,6 +43,10 @@ impl TerminalRoute for crate::model::LayoutEdge {
         &self.points
     }
 
+    fn main_label(&self) -> Option<&LayoutLabel> {
+        self.label.as_ref()
+    }
+
     fn reproject_main_label(&mut self, runs: &[StraightenedRun]) {
         if let Some(label) = self.label.as_mut() {
             reproject_label(label, runs);
@@ -48,6 +55,32 @@ impl TerminalRoute for crate::model::LayoutEdge {
 
     fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>, _: bool, _: bool) {
         self.points = points;
+    }
+}
+
+/// Borrow separate paint-route and main-label caches for the shared graph pass.
+pub(crate) struct LabeledTerminalRoute<'a> {
+    pub(crate) points: &'a mut Vec<LayoutPoint>,
+    pub(crate) label: Option<&'a mut LayoutLabel>,
+}
+
+impl TerminalRoute for LabeledTerminalRoute<'_> {
+    fn points(&self) -> &[LayoutPoint] {
+        self.points
+    }
+
+    fn main_label(&self) -> Option<&LayoutLabel> {
+        self.label.as_deref()
+    }
+
+    fn reproject_main_label(&mut self, runs: &[StraightenedRun]) {
+        if let Some(label) = self.label.as_deref_mut() {
+            reproject_label(label, runs);
+        }
+    }
+
+    fn replace_terminal_points(&mut self, points: Vec<LayoutPoint>, _: bool, _: bool) {
+        *self.points = points;
     }
 }
 
@@ -62,12 +95,6 @@ pub(crate) struct StraightenedRun {
 pub(crate) struct StraightenedSegment {
     pub(crate) a: LayoutPoint,
     pub(crate) b: LayoutPoint,
-}
-
-#[derive(Debug)]
-pub(crate) struct StraightenedRoute {
-    pub(crate) route_index: usize,
-    pub(crate) runs: Vec<StraightenedRun>,
 }
 
 struct StraightenedCandidate {
@@ -305,22 +332,72 @@ fn crossing_count(
     count
 }
 
+struct BoxBounds {
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
+}
+
+/// Source's Liang-Barsky clip: a corner or endpoint-only contact does not cover a box.
+fn segment_hits_box(a: &LayoutPoint, b: &LayoutPoint, bounds: &BoxBounds) -> bool {
+    let mut t0 = 0.0_f64;
+    let mut t1 = 1.0_f64;
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    for (p, q) in [
+        (-dx, a.x - bounds.x1),
+        (dx, bounds.x2 - a.x),
+        (-dy, a.y - bounds.y1),
+        (dy, bounds.y2 - a.y),
+    ] {
+        if p == 0.0 {
+            if q < 0.0 {
+                return false;
+            }
+        } else if p < 0.0 {
+            t0 = t0.max(q / p);
+        } else {
+            t1 = t1.min(q / p);
+        }
+    }
+    t0 < t1
+}
+
+fn nonempty_label(route: &impl TerminalRoute) -> Option<&LayoutLabel> {
+    route
+        .main_label()
+        .filter(|label| label.width != 0.0 && label.height != 0.0)
+}
+
+fn covers_label(
+    points: &[LayoutPoint],
+    point_origin: (f64, f64),
+    label: Option<&LayoutLabel>,
+    label_origin: (f64, f64),
+) -> bool {
+    let Some(label) = label else {
+        return false;
+    };
+    let x = label.x + (label_origin.0 - point_origin.0);
+    let y = label.y + (label_origin.1 - point_origin.1);
+    let bounds = BoxBounds {
+        x1: x - label.width / 2.0,
+        y1: y - label.height / 2.0,
+        x2: x + label.width / 2.0,
+        y2: y + label.height / 2.0,
+    };
+    points
+        .windows(2)
+        .any(|segment| segment_hits_box(&segment[0], &segment[1], &bounds))
+}
+
 /// Accept each candidate against the current routes, in source edge order. Ports never move.
 /// Origin offsets put routes in the same coordinate frame without rewriting their stored points.
 pub(crate) fn straighten_edge_terminals<R: TerminalRoute>(
     routes: &mut [R],
-    charge: impl FnMut(usize) -> crate::Result<()>,
-) -> crate::Result<()> {
-    straighten_edge_terminals_with_runs(routes, charge).map(|_| ())
-}
-
-/// Return accepted moved runs for adapters whose labels live outside the route objects.
-/// The indices follow input order and run coordinates retain each route's original origin.
-pub(crate) fn straighten_edge_terminals_with_runs<R: TerminalRoute>(
-    routes: &mut [R],
     mut charge: impl FnMut(usize) -> crate::Result<()>,
-) -> crate::Result<Vec<StraightenedRoute>> {
-    let mut changed = Vec::new();
+) -> crate::Result<()> {
     for index in 0..routes.len() {
         // Two run records at most, plus the candidate's point clone and traversal.
         charge(routes[index].points().len().saturating_add(3))?;
@@ -334,9 +411,16 @@ pub(crate) fn straighten_edge_terminals_with_runs<R: TerminalRoute>(
             continue;
         };
         let original = &routes[index];
-        let (origin_x, origin_y) = original.origin();
+        let origin = original.origin();
+        let label = nonempty_label(original);
+        let mut candidate_label = label.cloned();
+        if let Some(label) = candidate_label.as_mut() {
+            reproject_label(label, &runs);
+        }
         let mut before = 0usize;
         let mut after = 0usize;
+        let mut covered_before = 0usize;
+        let mut covered_after = 0usize;
         // Visiting short or empty routes still costs work even though they have no crossings.
         charge(routes.len())?;
         for (other_index, other) in routes.iter().enumerate() {
@@ -352,20 +436,47 @@ pub(crate) fn straighten_edge_terminals_with_runs<R: TerminalRoute>(
                     .saturating_mul(other.points().len() - 1),
             )?;
             before =
-                before.saturating_add(crossing_count(original.points(), other, origin_x, origin_y));
-            after = after.saturating_add(crossing_count(&candidate, other, origin_x, origin_y));
+                before.saturating_add(crossing_count(original.points(), other, origin.0, origin.1));
+            after = after.saturating_add(crossing_count(&candidate, other, origin.0, origin.1));
+            let other_label = nonempty_label(other);
+            let other_origin = other.origin();
+            let label_checks = other
+                .points()
+                .len()
+                .saturating_sub(1)
+                .saturating_mul(2 * usize::from(label.is_some()));
+            let other_label_checks = original
+                .points()
+                .len()
+                .saturating_sub(1)
+                .saturating_add(candidate.len().saturating_sub(1))
+                .saturating_mul(usize::from(other_label.is_some()));
+            charge(label_checks.saturating_add(other_label_checks))?;
+            covered_before = covered_before.saturating_add(
+                usize::from(covers_label(other.points(), other_origin, label, origin))
+                    + usize::from(covers_label(
+                        original.points(),
+                        origin,
+                        other_label,
+                        other_origin,
+                    )),
+            );
+            covered_after = covered_after.saturating_add(
+                usize::from(covers_label(
+                    other.points(),
+                    other_origin,
+                    candidate_label.as_ref(),
+                    origin,
+                )) + usize::from(covers_label(&candidate, origin, other_label, other_origin)),
+            );
         }
-        if after <= before {
+        if after <= before && covered_after <= covered_before {
             charge(runs.len().saturating_add(1))?;
             routes[index].replace_terminal_points(candidate, source_changed, target_changed);
             routes[index].reproject_main_label(&runs);
-            changed.push(StraightenedRoute {
-                route_index: index,
-                runs,
-            });
         }
     }
-    Ok(changed)
+    Ok(())
 }
 
 #[cfg(test)]
@@ -625,8 +736,181 @@ mod tests {
         ])
     }
 
+    fn review_edges(reverse: bool) -> Vec<crate::model::LayoutEdge> {
+        // Mermaid 12.2 render.spec.ts (#8368), before terminal straightening.
+        let forward = layout_edge(
+            "L_A_B_0",
+            "A",
+            "B",
+            points(&[
+                (74.34375, 54.61979166666667),
+                (94.34375, 54.61979166666667),
+                (94.34375, 42.203125),
+                (142.8125, 42.203125),
+                (191.28125, 42.203125),
+                (191.28125, 45.96875),
+                (211.28125, 45.96875),
+                (223.26566632092, 45.96875),
+            ]),
+            None,
+        );
+        let back = layout_edge(
+            "L_B_A_0",
+            "B",
+            "A",
+            points(&[
+                (223.26566632092, 69.9375),
+                (211.28125, 69.9375),
+                (191.28125, 69.9375),
+                (191.28125, 73.703125),
+                (94.34375, 73.703125),
+                (94.34375, 61.28645833333333),
+                (74.34375, 61.28645833333333),
+            ]),
+            Some(label(142.8125, 73.203125, 56.9375, 20.0)),
+        );
+        if reverse {
+            vec![back, forward]
+        } else {
+            vec![forward, back]
+        }
+    }
+
+    /// Independent overlap oracle for the orthogonal source fixture.
+    fn other_edge_under_label(edges: &[crate::model::LayoutEdge], labelled: usize) -> bool {
+        let label = edges[labelled].label.as_ref().unwrap();
+        let (x1, x2) = (label.x - label.width / 2.0, label.x + label.width / 2.0);
+        let (y1, y2) = (label.y - label.height / 2.0, label.y + label.height / 2.0);
+        edges.iter().enumerate().any(|(index, edge)| {
+            index != labelled
+                && edge.points.windows(2).any(|segment| {
+                    segment[0].x.max(segment[1].x) >= x1
+                        && segment[0].x.min(segment[1].x) <= x2
+                        && segment[0].y.max(segment[1].y) >= y1
+                        && segment[0].y.min(segment[1].y) <= y2
+                })
+        })
+    }
+
     #[test]
-    fn moved_run_reports_match_upstream_and_layout_edges_project_their_main_labels() {
+    fn upstream_review_routes_keep_labels_clear_in_both_source_orders() {
+        for reverse in [false, true] {
+            for separate_label_cache in [false, true] {
+                let mut edges = review_edges(reverse);
+                let originals: Vec<_> = edges.iter().map(|edge| coords(&edge.points)).collect();
+                let work = meter();
+                if separate_label_cache {
+                    let mut routes: Vec<_> = edges
+                        .iter_mut()
+                        .map(|edge| LabeledTerminalRoute {
+                            points: &mut edge.points,
+                            label: edge.label.as_mut(),
+                        })
+                        .collect();
+                    straighten_edge_terminals(&mut routes, |units| {
+                        work.charge(units).map_err(Into::into)
+                    })
+                    .unwrap();
+                } else {
+                    straighten_edge_terminals(&mut edges, |units| {
+                        work.charge(units).map_err(Into::into)
+                    })
+                    .unwrap();
+                }
+                assert_ne!(coords(&edges[0].points), originals[0]);
+                assert_eq!(coords(&edges[1].points), originals[1]);
+                assert!(!other_edge_under_label(&edges, usize::from(!reverse)));
+            }
+        }
+    }
+
+    #[test]
+    fn overlap_guard_allows_equal_net_counts_and_charges_label_checks_before_mutation() {
+        let original = points(&[
+            (0.0, 0.0),
+            (20.0, 0.0),
+            (20.0, 10.0),
+            (100.0, 10.0),
+            (100.0, 100.0),
+        ]);
+        // Moving the label replaces one existing covered route with another, preserving the count.
+        let mut edges = [
+            layout_edge(
+                "jog",
+                "A",
+                "B",
+                original.clone(),
+                Some(label(60.0, 10.0, 20.0, 6.0)),
+            ),
+            layout_edge("old", "C", "D", points(&[(30.0, 10.0), (90.0, 10.0)]), None),
+            layout_edge("new", "E", "F", points(&[(30.0, 0.0), (90.0, 0.0)]), None),
+        ];
+        let work = meter();
+        straighten_edge_terminals(&mut edges, |units| work.charge(units).map_err(Into::into))
+            .unwrap();
+        assert_eq!(edges[0].label.as_ref().unwrap().y, 0.0);
+        assert_eq!(
+            coords(&edges[0].points),
+            [(0.0, 0.0), (100.0, 0.0), (100.0, 100.0)]
+        );
+
+        let mut edges = [
+            layout_edge(
+                "jog",
+                "A",
+                "B",
+                original.clone(),
+                Some(label(60.0, 10.0, 20.0, 6.0)),
+            ),
+            layout_edge("new", "E", "F", points(&[(30.0, 0.0), (90.0, 0.0)]), None),
+        ];
+        let work = OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 17)
+                .unwrap(),
+        );
+        assert!(matches!(
+            straighten_edge_terminals(&mut edges, |units| work.charge(units).map_err(Into::into)),
+            Err(crate::Error::ResourceLimitExceeded(_))
+        ));
+        assert_eq!(coords(&edges[0].points), coords(&original));
+        assert_eq!(edges[0].label.as_ref().unwrap().y, 10.0);
+    }
+
+    #[test]
+    fn liang_barsky_clip_preserves_source_boundary_and_diagonal_cases() {
+        let bounds = BoxBounds {
+            x1: 0.0,
+            y1: 0.0,
+            x2: 10.0,
+            y2: 10.0,
+        };
+        for (start, end, expected) in [
+            ((-1.0, 5.0), (11.0, 5.0), true),
+            ((-1.0, 0.0), (11.0, 0.0), true),
+            ((-1.0, -1.0), (0.0, 0.0), false),
+            ((-1.0, 1.0), (1.0, -1.0), false),
+            ((-5.0, 8.0), (8.0, 15.0), false),
+            ((5.0, 5.0), (5.0, 5.0), true),
+            ((-1.0, 5.0), (-1.0, 5.0), false),
+        ] {
+            assert_eq!(
+                segment_hits_box(
+                    &LayoutPoint {
+                        x: start.0,
+                        y: start.1
+                    },
+                    &LayoutPoint { x: end.0, y: end.1 },
+                    &bounds,
+                ),
+                expected,
+                "{start:?} -> {end:?}",
+            );
+        }
+    }
+
+    #[test]
+    fn moved_runs_match_upstream_and_layout_edges_project_their_main_labels() {
         let mut edges = [layout_edge(
             "e",
             "A",
@@ -634,15 +918,12 @@ mod tests {
             label_jog(),
             Some(label(300.0, 119.5, 40.0, 20.0)),
         )];
+        let candidate = straighten_terminal_jogs(&edges[0].points).unwrap();
         let work = meter();
-        let changed = straighten_edge_terminals_with_runs(&mut edges, |units| {
-            work.charge(units).map_err(Into::into)
-        })
-        .unwrap();
-        assert_eq!(changed.len(), 1);
-        assert_eq!(changed[0].route_index, 0);
-        assert_eq!(changed[0].runs.len(), 1);
-        let run = &changed[0].runs[0];
+        straighten_edge_terminals(&mut edges, |units| work.charge(units).map_err(Into::into))
+            .unwrap();
+        assert_eq!(candidate.runs.len(), 1);
+        let run = &candidate.runs[0];
         assert_eq!(
             coords(&[run.old.a.clone(), run.old.b.clone()]),
             [(218.0, 119.5), (400.0, 119.5)]
@@ -672,14 +953,13 @@ mod tests {
         let mut route = label_jog();
         route.extend(points(&[(350.0, 300.0), (250.0, 118.0), (350.0, 118.0)]));
         let mut routes = [route];
+        let candidate = straighten_terminal_jogs(&routes[0]).unwrap();
         let work = meter();
-        let changed = straighten_edge_terminals_with_runs(&mut routes, |units| {
-            work.charge(units).map_err(Into::into)
-        })
-        .unwrap();
+        straighten_edge_terminals(&mut routes, |units| work.charge(units).map_err(Into::into))
+            .unwrap();
         let projected = project_label_onto_straightened_run(
             &LayoutPoint { x: 300.0, y: 119.5 },
-            &changed[0].runs,
+            &candidate.runs,
         )
         .unwrap();
         assert_eq!((projected.x, projected.y), (300.0, 116.25));
@@ -714,13 +994,14 @@ mod tests {
                     origin: (500.0, -100.0),
                     changed: (false, false),
                 }];
+                let candidate = straighten_terminal_jogs(&routes[0].points).unwrap();
                 let work = meter();
-                let changed = straighten_edge_terminals_with_runs(&mut routes, |units| {
+                straighten_edge_terminals(&mut routes, |units| {
                     work.charge(units).map_err(Into::into)
                 })
                 .unwrap();
                 let projected =
-                    project_label_onto_straightened_run(&old_label, &changed[0].runs).unwrap();
+                    project_label_onto_straightened_run(&old_label, &candidate.runs).unwrap();
                 assert_eq!((projected.x, projected.y), (expected.x, expected.y));
                 assert_eq!(routes[0].origin, (500.0, -100.0));
                 assert_eq!(routes[0].changed, (!reverse, reverse));
@@ -798,11 +1079,8 @@ mod tests {
             ),
         ];
         let work = meter();
-        let changed = straighten_edge_terminals_with_runs(&mut edges, |units| {
-            work.charge(units).map_err(Into::into)
-        })
-        .unwrap();
-        assert!(changed.is_empty());
+        straighten_edge_terminals(&mut edges, |units| work.charge(units).map_err(Into::into))
+            .unwrap();
         assert_eq!(coords(&edges[0].points), coords(&original));
         assert_eq!(edges[0].label.as_ref().unwrap().y, 5.0);
         let work = OperationWorkMeter::new(

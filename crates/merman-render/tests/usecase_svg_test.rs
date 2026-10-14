@@ -1,9 +1,14 @@
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::LayoutOptions;
-use merman_render::environment::RenderEnvironment;
+use merman_render::environment::{
+    HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+    MeasurementProfileId, RenderEnvironment, TextMeasurementOperation, TextMeasurementPhase,
+    TextMeasurementPolicy, TextMeasurementProfileIdentity, TextMeasurementResultKind,
+};
 use merman_render::family;
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
+use std::sync::Arc;
 
 const SOURCE: &str = r#"usecase-beta
 direction LR
@@ -32,14 +37,20 @@ fn render_config(
     source: &str,
     config: serde_json::Value,
 ) -> (merman_core::ManagedSemanticJson, String) {
+    render_config_with_environment(source, config, RenderEnvironment::deterministic())
+}
+
+fn render_config_with_environment(
+    source: &str,
+    config: serde_json::Value,
+    environment: RenderEnvironment,
+) -> (merman_core::ManagedSemanticJson, String) {
     let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
     let parsed = engine
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse Usecase")
         .expect("detect Usecase");
-    let session = RenderEnvironment::deterministic()
-        .begin_session()
-        .expect("render session");
+    let session = environment.begin_session().expect("render session");
     let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
         .expect("prepare Usecase");
     let projection = artifact.layout_json().expect("layout JSON");
@@ -55,6 +66,380 @@ fn render_config(
         .svg()
         .to_owned();
     (projection, svg)
+}
+
+#[test]
+fn usecase_svg_distinguishes_plain_and_positioned_labels_with_signed_host_bbox_offsets() {
+    const TEXT_WIDTH: f64 = 40.0;
+    const TEXT_HEIGHT: f64 = 24.0;
+    const NODE_MIN_WIDTH: f64 = 64.0;
+    struct FixedLabelBox {
+        y_offset: f64,
+    }
+    impl HostTextMeasurer for FixedLabelBox {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            let metrics = merman_render::text::TextMetrics {
+                width: if request.text.is_empty() {
+                    0.0
+                } else {
+                    TEXT_WIDTH
+                },
+                height: if request.text.is_empty() {
+                    0.0
+                } else {
+                    TEXT_HEIGHT
+                },
+                line_count: 1,
+            };
+            Ok(Some(match request.operation.required_result_kind() {
+                TextMeasurementResultKind::Metrics => HostTextMeasurement::Metrics(metrics),
+                TextMeasurementResultKind::Length => {
+                    HostTextMeasurement::Length(match request.operation {
+                        TextMeasurementOperation::CreateTextBBoxYOffset
+                        | TextMeasurementOperation::CreateTextMiddleBBoxYOffset => self.y_offset,
+                        TextMeasurementOperation::RawBBoxHeight
+                        | TextMeasurementOperation::SimpleBBoxHeight
+                        | TextMeasurementOperation::TspanBBoxHeight => metrics.height,
+                        _ => metrics.width,
+                    })
+                }
+                TextMeasurementResultKind::HorizontalExtents => {
+                    HostTextMeasurement::HorizontalExtents {
+                        left: metrics.width / 2.0,
+                        right: metrics.width / 2.0,
+                    }
+                }
+                TextMeasurementResultKind::WrappedWithRawWidth => {
+                    HostTextMeasurement::WrappedWithRawWidth {
+                        raw_width: Some(metrics.width),
+                        metrics,
+                    }
+                }
+            }))
+        }
+    }
+    fn translation(node: roxmltree::Node<'_, '_>) -> (f64, f64) {
+        let coordinates = node
+            .attribute("transform")
+            .expect("label transform")
+            .trim_start_matches("translate(")
+            .trim_end_matches(')')
+            .split(',')
+            .map(|coordinate| coordinate.trim().parse::<f64>().unwrap())
+            .collect::<Vec<_>>();
+        (coordinates[0], coordinates[1])
+    }
+    fn number(node: roxmltree::Node<'_, '_>, attribute: &str) -> f64 {
+        node.attribute(attribute).unwrap().parse().unwrap()
+    }
+    let source = r#"usecase-beta
+direction LR
+Plain[Plain]
+actor Actor(Role) <<Human>>
+Business(Business)@{business:true}
+note for Plain "Help"
+json Data@{"key":"value"}
+Plain approved@-- "Approved" --> Business
+"#;
+    for backend in ["dagre", "elk"] {
+        let mut actor_baseline: Option<(f64, [f64; 2])> = None;
+        for y_offset in [-3.0, 5.0] {
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.usecase-fixed-label-box").unwrap(),
+                "1",
+            )
+            .unwrap();
+            let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+                TextMeasurementPolicy::host_display(
+                    identity,
+                    Arc::new(FixedLabelBox { y_offset }),
+                    TextMeasurementPhase::ALL,
+                ),
+            );
+            let (_, svg) = render_config_with_environment(
+                source,
+                json!({
+                    "layout": backend, "look": "classic", "htmlLabels": false,
+                    "usecase": {"minNodeWidth": NODE_MIN_WIDTH},
+                }),
+                environment,
+            );
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let node = |id: &str| {
+                document
+                    .descendants()
+                    .find(|node| node.attribute("data-usecase-id") == Some(id))
+                    .unwrap()
+            };
+            let label = |owner, class: &str| {
+                document
+                    .descendants()
+                    .find(|label| {
+                        label.attribute("class") == Some(class)
+                            && label.ancestors().any(|ancestor| ancestor == owner)
+                    })
+                    .unwrap()
+            };
+            // util.ts labelHelper centers only Y; custom positionLabel helpers
+            // center the local bbox and subtract its signed SVG Y offset.
+            let plain = label(node("Plain"), "label");
+            assert_eq!(translation(plain), (0.0, -TEXT_HEIGHT / 2.0));
+            for (id, class, width) in [
+                ("Actor", "label actor-label usecase-actor-label", TEXT_WIDTH),
+                ("Actor", "label usecase-stereotype", TEXT_WIDTH),
+                ("Business", "label usecase-label", NODE_MIN_WIDTH),
+                ("note-0", "label noteLabel", NODE_MIN_WIDTH),
+            ] {
+                let positioned = label(node(id), class);
+                assert_eq!(
+                    translation(positioned).0,
+                    -width / 2.0,
+                    "{backend}: {class}"
+                );
+                if id != "Actor" {
+                    assert_eq!(translation(positioned).1, -TEXT_HEIGHT / 2.0 - y_offset);
+                }
+                assert!(
+                    positioned
+                        .descendants()
+                        .filter(|child| child.has_tag_name("text"))
+                        .all(|text| text.attribute("text-anchor").is_none())
+                );
+            }
+            let actor_y = [
+                "label actor-label usecase-actor-label",
+                "label usecase-stereotype",
+            ]
+            .map(|class| translation(label(node("Actor"), class)).1);
+            if let Some((previous_offset, previous_y)) = actor_baseline {
+                for (y, previous) in actor_y.into_iter().zip(previous_y) {
+                    assert_eq!(y + y_offset, previous + previous_offset);
+                }
+            }
+            actor_baseline = Some((y_offset, actor_y));
+            // JSON custom positioning centers each text bbox in its painted cell.
+            for (class, cell_class, width) in [
+                (
+                    "label usecase-json-title",
+                    "usecase-json-title-cell",
+                    NODE_MIN_WIDTH,
+                ),
+                (
+                    "label usecase-json-key",
+                    "usecase-json-key-cell",
+                    TEXT_WIDTH,
+                ),
+                (
+                    "label usecase-json-value",
+                    "usecase-json-value-cell",
+                    TEXT_WIDTH,
+                ),
+            ] {
+                let positioned = label(node("Data"), class);
+                let cell = positioned
+                    .parent()
+                    .unwrap()
+                    .children()
+                    .find(|child| {
+                        child.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_ascii_whitespace()
+                                .any(|value| value == cell_class)
+                        })
+                    })
+                    .unwrap();
+                let (x, y) = translation(positioned);
+                assert_eq!(
+                    x + width / 2.0,
+                    number(cell, "x") + number(cell, "width") / 2.0
+                );
+                assert_eq!(
+                    y + TEXT_HEIGHT / 2.0 + y_offset,
+                    number(cell, "y") + number(cell, "height") / 2.0
+                );
+            }
+            let edge_label = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g") && node.attribute("data-id") == Some("approved")
+                })
+                .unwrap();
+            assert_eq!(
+                translation(edge_label),
+                (0.0, -TEXT_HEIGHT / 2.0 - y_offset)
+            );
+            let background = edge_label
+                .descendants()
+                .find(|node| node.attribute("class") == Some("background"))
+                .unwrap();
+            assert_eq!(number(background, "x"), -TEXT_WIDTH / 2.0 - 2.0);
+            assert_eq!(number(background, "y"), y_offset - 2.0);
+            assert_eq!(number(background, "width"), TEXT_WIDTH + 4.0);
+            assert_eq!(number(background, "height"), TEXT_HEIGHT + 4.0);
+        }
+    }
+}
+
+#[test]
+fn usecase_neo_marker_margin_is_reserved_for_static_relationships() {
+    let source = r#"usecase-beta
+direction LR
+A static@--> B
+A enabled@--> C
+enabled@{animate:true}
+A fast@--> D
+fast@{animation:fast}
+A slow@--> E
+slow@{animation:slow}
+A disabled@--> F
+disabled@{animate:true}
+disabled@{animate:false}
+A styled@--> G
+classDef moving animation:dash 2s linear infinite
+class styled moving
+A inline@--> H
+style inline animation:dash 2s linear infinite
+"#;
+    for backend in ["dagre", "elk"] {
+        let (_, svg) = render_config(
+            source,
+            json!({
+                "layout": backend, "look": "neo", "htmlLabels": false,
+            }),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        for (id, animation, animated_marker) in [
+            ("static", None, false),
+            ("enabled", Some("edge-animation-fast"), true),
+            ("fast", Some("edge-animation-fast"), true),
+            ("slow", Some("edge-animation-slow"), true),
+            ("disabled", None, false),
+            ("styled", None, true),
+            // edges.js considers compiled class animation, not an inline path style.
+            ("inline", None, false),
+        ] {
+            let path = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-usecase-id") == Some(id)
+                })
+                .unwrap();
+            let classes = path.attribute("class").unwrap();
+            let actual_animation = classes
+                .split_ascii_whitespace()
+                .find(|class| class.starts_with("edge-animation-"));
+            assert_eq!(actual_animation, animation, "{backend}: {id}");
+            let expected = if animated_marker {
+                "_usecase-pointEnd)"
+            } else {
+                "_usecase-pointEnd-margin)"
+            };
+            assert!(
+                path.attribute("marker-end").unwrap().ends_with(expected),
+                "{backend}: {id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn usecase_svg_labels_preserve_actual_create_text_groups_and_classic_markers() {
+    const SOURCE: &str =
+        include_str!("../../../fixtures/usecase/local_elk_boundary_label_guard.mmd");
+    let (_, svg) = render(SOURCE, "elk");
+    for svg in [
+        svg.as_str(),
+        include_str!("../../../fixtures/upstream-svgs/usecase/local_elk_boundary_label_guard.svg"),
+    ] {
+        let document = roxmltree::Document::parse(svg).expect("valid actual-reference SVG");
+        for id in ["A", "B", "C"] {
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-usecase-id") == Some(id)
+                        && node.attribute("data-usecase-kind") == Some("usecase")
+                })
+                .expect("Usecase node");
+            let label = node
+                .children()
+                .find(|node| node.attribute("class") == Some("label"))
+                .expect("node label");
+            let children: Vec<_> = label.children().filter(|node| node.is_element()).collect();
+            assert_eq!(children.len(), 2);
+            assert!(children[0].has_tag_name("rect"));
+            assert!(children[1].has_tag_name("g"));
+            let background = children[1]
+                .children()
+                .find(|node| node.attribute("class") == Some("background"))
+                .expect("createText background");
+            assert_eq!(background.attribute("style"), Some("stroke: none"));
+            let text = children[1]
+                .children()
+                .find(|node| node.has_tag_name("text"))
+                .expect("left-anchored node text");
+            assert_eq!(text.attribute("text-anchor"), None);
+        }
+        let labels = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("edgeLabels"))
+            .expect("edge labels");
+        let children: Vec<_> = labels.children().filter(|node| node.is_element()).collect();
+        assert_eq!(children.len(), 2, "ELK omits the unlabeled relationship");
+        for label in children {
+            let background = label
+                .descendants()
+                .find(|node| node.attribute("class") == Some("background"))
+                .expect("edge background");
+            assert_eq!(background.attribute("style"), Some(""));
+            assert!(
+                background
+                    .attribute("width")
+                    .expect("paint width")
+                    .parse::<f64>()
+                    .unwrap()
+                    > 4.0
+            );
+            assert!(
+                background
+                    .attribute("height")
+                    .expect("paint height")
+                    .parse::<f64>()
+                    .unwrap()
+                    > 4.0
+            );
+            let text = label
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .expect("edge text");
+            assert_eq!(text.attribute("text-anchor"), Some("middle"));
+        }
+        let paths: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("data-usecase-kind") == Some("relationship")
+            })
+            .collect();
+        assert_eq!(paths.len(), 3);
+        assert!(paths.iter().all(|path| {
+            path.attribute("marker-end")
+                .is_some_and(|marker| marker.ends_with("_usecase-pointEnd)"))
+        }));
+    }
+    let neo = SOURCE.replace("look: classic", "look: neo");
+    let (_, svg) = render(&neo, "elk");
+    let document = roxmltree::Document::parse(&svg).expect("valid Neo SVG");
+    assert!(
+        document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("data-usecase-kind") == Some("relationship")
+            })
+            .all(|path| path
+                .attribute("marker-end")
+                .is_some_and(|marker| marker.ends_with("_usecase-pointEnd-margin)")))
+    );
 }
 
 #[test]

@@ -28,7 +28,7 @@ export type ExampleEvidence =
 
 export const PLAYGROUND_MERMAN_VERSION = "0.9.0" as const;
 
-export const PLAYGROUND_EXAMPLE_BASELINE = "mermaid@12.1.0" as const;
+export const PLAYGROUND_EXAMPLE_BASELINE = "mermaid@12.2.0" as const;
 
 export const GENERATED_EXAMPLES = [
   {
@@ -576,6 +576,20 @@ export const GENERATED_EXAMPLES = [
     evidence: {"role":"variant","kind":"syntax","claim":"Fixture demonstrates mindmap shapes and icons."},
     mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
     source: "mindmap\nroot\n  child1((Circle))\n      grandchild 1\n      grandchild 2\n  child2(Round rectangle)\n      grandchild 3\n      grandchild 4\n  child3[Square]\n      grandchild 5\n      ::icon(mdi mdi-fire)\n      gc6((grand<br/>child 6))\n      ::icon(mdi mdi-fire)\n    \n",
+  },
+  {
+    id: "mindmap-depth-colors",
+    title: "Mindmap Depth Colors",
+    category: "Strategy",
+    order: 152,
+    diagramType: "mindmap",
+    effectiveLayoutId: "cose-bilkent",
+    syntaxId: "mindmap",
+    aliases: ["hierarchy colors", "colorBy depth", "depth palette"],
+    fixture: "fixtures/mindmap/upstream_mermaid_12_2_depth_colors.mmd",
+    evidence: {"role":"variant","kind":"behavior","claim":"Mermaid 12.2 colors mindmap nodes and edges by structural depth."},
+    mermaidBaseline: PLAYGROUND_EXAMPLE_BASELINE,
+    source: "---\nconfig:\n  mindmap:\n    colorBy: depth\n---\n%% Mermaid 12.2.0 docs/syntax/mindmap.md: coloring by hierarchy depth.\nmindmap\n  root((mindmap))\n    origins{{Origins}}\n      history[Long history]\n        Popularisation\n        British popular psychology author Tony Buzan\n    research{{Research}}\n      uses[Uses]\n        Creative techniques\n",
   },
   {
     id: "packet-layout",

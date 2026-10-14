@@ -290,8 +290,8 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
 
     def test_verify_plan_accepts_native_linux_routes(self) -> None:
         for target, runner in (
-            ("x86_64-unknown-linux-gnu", "ubuntu-24.04"),
-            ("aarch64-unknown-linux-gnu", "ubuntu-24.04-arm"),
+            ("x86_64-unknown-linux-gnu", "ubuntu-22.04"),
+            ("aarch64-unknown-linux-gnu", "ubuntu-22.04-arm"),
         ):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as temp_dir:
                 plan = plan_document()
@@ -307,11 +307,11 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
 
     def test_verify_plan_rejects_missing_or_non_native_routes(self) -> None:
         target = "aarch64-unknown-linux-gnu"
-        native = {"targets": [target], "runner": "ubuntu-24.04-arm", "host": target}
+        native = {"targets": [target], "runner": "ubuntu-22.04-arm", "host": target}
         for label, rows in (
             ("missing", []),
             ("duplicate", [native, native]),
-            ("wrong-runner", [{**native, "runner": "ubuntu-24.04"}]),
+            ("wrong-runner", [{**native, "runner": "ubuntu-22.04"}]),
             ("cross-host", [{**native, "host": "x86_64-unknown-linux-gnu"}]),
             ("container", [{**native, "container": {"image": "custom"}}]),
             ("wrong-target", [{**native, "targets": ["x86_64-unknown-linux-gnu"]}]),
@@ -325,7 +325,7 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
                 with self.assertRaises(bundle.ReleaseArtifactError):
                     bundle.verify_plan(
                         path, tag=TAG, version=VERSION, target=target,
-                        runner="ubuntu-24.04-arm",
+                        runner="ubuntu-22.04-arm",
                     )
 
     def test_verify_plan_requires_candidate_archives_and_full_asset_contract(self) -> None:
@@ -339,14 +339,14 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             with self.subTest(omitted=omitted), tempfile.TemporaryDirectory() as temp_dir:
                 plan = plan_document(release_names() - omitted)
                 plan["ci"] = {"github": {"artifacts_matrix": {"include": [
-                    {"targets": [target], "runner": "ubuntu-24.04-arm", "host": target},
+                    {"targets": [target], "runner": "ubuntu-22.04-arm", "host": target},
                 ]}}}
                 path = Path(temp_dir) / "plan.json"
                 path.write_text(json.dumps(plan), encoding="utf-8")
                 with self.assertRaises(bundle.ReleaseArtifactError):
                     bundle.verify_plan(
                         path, tag=TAG, version=VERSION, target=target,
-                        runner="ubuntu-24.04-arm",
+                        runner="ubuntu-22.04-arm",
                     )
 
     def test_prepare_rejects_missing_verified_archive(self) -> None:

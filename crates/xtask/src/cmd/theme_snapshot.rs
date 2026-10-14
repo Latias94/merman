@@ -16,9 +16,9 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub(super) const THEME_RUNTIME_OUTPUT: &str =
-    "crates/merman-core/src/generated/theme_variables_12_1_0.json";
+    "crates/merman-core/src/generated/theme_variables_12_2_0.json";
 pub(super) const THEME_AUDIT_OUTPUT: &str =
-    "fixtures/_verification/theme_variables_oracle_12_1_0.json";
+    "fixtures/_verification/theme_variables_oracle_12_2_0.json";
 const THEME_RUNTIME_SCHEMA_VERSION: u32 = 3;
 const THEME_AUDIT_SCHEMA_VERSION: u32 = 2;
 const GENERATOR_COMMAND: &str = "cargo run -p xtask -- gen-theme-snapshot";
@@ -1246,7 +1246,7 @@ mod tests {
         );
         assert_eq!(
             runtime_only.audit_out_path,
-            PathBuf::from("tmp/theme_variables_oracle_12_1_0.json")
+            PathBuf::from("tmp/theme_variables_oracle_12_2_0.json")
         );
 
         let oracle_only = parse_generate_options(vec![
@@ -1260,7 +1260,7 @@ mod tests {
         );
         assert_eq!(
             oracle_only.runtime_out_path,
-            PathBuf::from("tmp/theme_variables_12_1_0.json")
+            PathBuf::from("tmp/theme_variables_12_2_0.json")
         );
     }
 
@@ -1275,11 +1275,11 @@ mod tests {
             ],
             vec![
                 "--out".to_string(),
-                "tmp/theme_variables_oracle_12_1_0.json".to_string(),
+                "tmp/theme_variables_oracle_12_2_0.json".to_string(),
             ],
             vec![
                 "--audit-out".to_string(),
-                "tmp/theme_variables_12_1_0.json".to_string(),
+                "tmp/theme_variables_12_2_0.json".to_string(),
             ],
         ] {
             let error = parse_generate_options(args).expect_err("output paths must not collide");

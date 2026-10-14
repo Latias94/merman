@@ -559,7 +559,8 @@ struct NodeProbeResponse {
 ///
 /// This backend is intended for parity work where a real browser DOM is available. It mirrors
 /// Mermaid's flowchart HTML-label KaTeX path closely by:
-/// - rendering KaTeX through the local `katex` npm package, and
+/// - rendering through Mermaid's resolved `katex` dependency when installed, or the host's
+///   local `katex` package otherwise, and
 /// - measuring the wrapped `<foreignObject>` HTML through local `puppeteer`.
 ///
 /// The backend is completely opt-in; if the configured Node.js environment is unavailable or the
