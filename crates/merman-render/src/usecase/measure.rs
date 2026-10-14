@@ -76,12 +76,16 @@ fn styles(
             }
         }
     }
+    apply_inline_styles(&mut values, inline);
+    values
+}
+
+fn apply_inline_styles(values: &mut indexmap::IndexMap<String, String>, inline: &[String]) {
     for item in inline {
         if let Some((key, value)) = crate::mermaid_style::parse_safe_style_decl(item) {
             values.insert(key.to_owned(), value.to_owned());
         }
     }
-    values
 }
 
 fn shape_style(styles: &indexmap::IndexMap<String, String>) -> String {
@@ -597,7 +601,12 @@ pub(super) fn measure(
     let mut edges = Vec::new();
     for edge in &model.relationships {
         work.charge_adapter(1)?;
-        let css = styles(model, &edge.classes, &edge.styles);
+        let mut css = styles(model, &edge.classes, &[]);
+        // Mermaid selects Neo marker margins from class styles before inline edge styles.
+        let source_animated = css
+            .iter()
+            .any(|(key, value)| key.contains("animation") || value.contains("animation"));
+        apply_inline_styles(&mut css, &edge.styles);
         let style = styled(generic.clone(), &css);
         let label_context = LabelContext {
             config: &sanitize_config,
@@ -646,11 +655,7 @@ pub(super) fn measure(
             source_style: shape_style(&css),
             // Mermaid's marker margin decision observes compiled class animation, excluding
             // inline path styles. Prepare that decision alongside the edge's other source facts.
-            animated: edge.animate
-                || edge.animation.is_some()
-                || styles(model, &edge.classes, &[])
-                    .iter()
-                    .any(|(key, value)| key.contains("animation") || value.contains("animation")),
+            animated: edge.animate || edge.animation.is_some() || source_animated,
             original_id: None,
             self_loop_node: None,
             dagre_recursive: false,

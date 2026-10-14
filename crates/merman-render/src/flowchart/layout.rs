@@ -4110,7 +4110,7 @@ fn layout_flowchart_with_model(
         });
     }
 
-    let completed_edges = if merge_self_loops {
+    let merged_edges = if merge_self_loops {
         let merge_work = work_control.checked_add(
             work_control.checked_add(model.edges.len(), out_edge_candidates.len())?,
             out_nodes.len(),
@@ -4126,17 +4126,17 @@ fn layout_flowchart_with_model(
         work_control.charge_adapter(out_edge_candidates.len())?;
         out_edge_candidates
     };
-    let edge_owner_keys = completed_edges
+    let edge_owner_keys = merged_edges
         .iter()
-        .map(|candidate| match candidate.self_loop.as_ref() {
-            Some(meta) => crate::flowchart::FlowchartEdgeKey::self_loop_segment(
+        .map(|candidate| match &candidate.self_loop {
+            Some(segment) => crate::flowchart::FlowchartEdgeKey::self_loop_segment(
                 candidate.owner_index,
-                meta.order,
+                segment.order,
             ),
             None => crate::flowchart::FlowchartEdgeKey::new(candidate.owner_index),
         })
         .collect();
-    let mut out_edges = completed_edges
+    let mut out_edges = merged_edges
         .into_iter()
         .map(|candidate| candidate.edge)
         .collect::<Vec<_>>();

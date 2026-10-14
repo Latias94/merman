@@ -18,6 +18,12 @@ execution: code
 **Authority:** The maintainer's request, pinned Mermaid 12.1.0 semantics and existing operation/resource/consumer contracts govern the repair.
 The measured main revision is a performance control, not a universal correctness oracle.
 
+**Subsequent baseline decision (2026-10-14):** After the frozen repair and measurements, the
+maintainer selected current main and authorized merging it first. That separate integration uses
+main's admitted Mermaid 12.2 graph; see the [integration report](../performance/native_theme_main_integration_2026-10-14.md).
+The fixed 12.1 repair cohort and its measurements below remain historical evidence. This decision
+does not substitute new outputs for the frozen experiment or change its performance conclusions.
+
 **Execution:** Continue on `refactor/theme-ownership-performance` from audited `f47abded02b540d7fe563af7bc75f2fa1bb90c51`.
 The maintainer authorizes deep subagent investigation, refactoring and cleanup of every high-confidence finding.
 Use exclusive file ownership for implementation workers; the integration owner runs Cargo serially and preserves unrelated edits.

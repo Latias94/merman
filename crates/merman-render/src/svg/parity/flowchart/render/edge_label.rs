@@ -31,7 +31,7 @@ fn edge_label_typography_owner(
     edge_id: &str,
     swimlane: bool,
 ) -> Option<crate::flowchart::FlowchartSvgLabelOwner> {
-    let registered_id = if key.self_loop_order().is_some() {
+    let registered_id = if key.self_loop_segment_order().is_some() {
         // Dagre registers the retained label under the logical edge, while its helper segments
         // carry their own public SVG ids. The sidecar remains authoritative for admission.
         semantic_edges.get(key.semantic_index())?.id.as_str()
@@ -376,7 +376,10 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
 ) -> crate::Result<Option<crate::model::LayoutPoint>> {
     let key = edge_ref.key;
     let edge = edge_ref.edge;
-    let label_text = key.label_for_render(ctx.model, edge).unwrap_or_default();
+    let label_text = ctx
+        .model
+        .edge_label_for_occurrence(key, edge)
+        .unwrap_or_default();
     let label_type = edge.label_type.as_deref().unwrap_or("text");
     let compiled_label_styles = ctx.edge_style_plan.edge_for(key)?;
     let font_stack_precedence = crate::flowchart::FlowchartFacetPrecedence::new(
@@ -987,7 +990,10 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
 ) -> crate::Result<Option<crate::model::LayoutPoint>> {
     let key = edge_ref.key;
     let edge = edge_ref.edge;
-    let label_text = key.label_for_render(ctx.model, edge).unwrap_or_default();
+    let label_text = ctx
+        .model
+        .edge_label_for_occurrence(key, edge)
+        .unwrap_or_default();
     // Mermaid's Swimlane adapter creates a fresh `labelRect` without copying `edge.labelType`.
     // The node renderer therefore follows ordinary non-Markdown createText semantics.
     let label_type = "text";
@@ -1089,7 +1095,8 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         return Ok(None);
     };
 
-    // Mermaid 12.2 preserves the layout anchor unless insertEdge marks the path as updated.
+    // Mermaid 12.2's common renderer uses resolveEdgeLabelPosition: preserve the
+    // layout anchor unless insertEdge marks the returned path as updated.
     let position = resolve_flowchart_edge_label_position(
         ctx,
         key,

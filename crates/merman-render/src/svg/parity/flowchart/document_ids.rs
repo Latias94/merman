@@ -14,7 +14,7 @@ const DOCUMENT_NAMESPACE: &str = "merman-flowchart-document";
 enum FlowchartDocumentIdLocal {
     Static(&'static str),
     Indexed(&'static str, usize),
-    Segment(&'static str, usize, u8),
+    EdgeSegment(usize, u8),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -43,8 +43,8 @@ impl fmt::Display for FlowchartDocumentId<'_> {
                 f.write_str(prefix)?;
                 fmt::Display::fmt(&ordinal, f)
             }
-            FlowchartDocumentIdLocal::Segment(prefix, ordinal, order) => {
-                write!(f, "{prefix}{ordinal}-segment-{order}")
+            FlowchartDocumentIdLocal::EdgeSegment(semantic_index, order) => {
+                write!(f, "edge-{semantic_index}-segment-{order}")
             }
         }
     }
@@ -177,11 +177,9 @@ impl<'a> FlowchartDocumentIds<'a> {
         key: crate::flowchart::FlowchartEdgeKey,
     ) -> Option<FlowchartDocumentId<'_>> {
         self.edge_ids.contains(&key).then(|| {
-            self.id(match key.self_loop_order() {
-                Some(order) => {
-                    FlowchartDocumentIdLocal::Segment("edge-", key.semantic_index(), order)
-                }
+            self.id(match key.self_loop_segment_order() {
                 None => FlowchartDocumentIdLocal::Indexed("edge-", key.semantic_index()),
+                Some(order) => FlowchartDocumentIdLocal::EdgeSegment(key.semantic_index(), order),
             })
         })
     }
@@ -265,30 +263,6 @@ impl<'a> FlowchartDocumentIds<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn retained_self_loop_segments_do_not_alias_their_semantic_edge_document_id() {
-        let edge = edge("loop".to_owned());
-        let keys = [
-            crate::flowchart::FlowchartEdgeKey::new(0),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 0),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 1),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 2),
-        ];
-        let edge_order = keys.map(|key| FlowchartRenderEdgeRef { key, edge: &edge });
-        let ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
-            diagram_id: "agentflow",
-            edge_order: &edge_order,
-            node_dom_index: &FxHashMap::default(),
-            subgraph_index_by_id: &FxHashMap::default(),
-            layout_nodes: &[],
-            swimlane_nodes: None,
-            swimlane_lanes: None,
-        });
-        let rendered = keys.map(|key| ids.edge(key).unwrap().to_string());
-        assert_eq!(rendered.iter().collect::<FxHashSet<_>>().len(), 4);
-        assert!(rendered.iter().all(|id| id.starts_with("agentflow-")));
-    }
 
     #[test]
     fn collapsed_subgraph_endpoint_does_not_alias_a_parser_owned_node_ordinal() {
@@ -436,6 +410,50 @@ mod tests {
             ids.icon_scope("node-0").as_deref(),
             Some(expected_icon_scope.as_str()),
             "Iconify must receive the unescaped logical document id bytes"
+        );
+    }
+
+    #[test]
+    fn self_loop_segments_have_distinct_document_ids_under_one_semantic_owner() {
+        let source_edge = edge("authored".to_owned());
+        let edge_order = [
+            crate::flowchart::FlowchartEdgeKey::new(0),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 0),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 1),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 2),
+        ]
+        .map(|key| FlowchartRenderEdgeRef {
+            key,
+            edge: &source_edge,
+        });
+        let ids = FlowchartDocumentIds::prepare(FlowchartDocumentIdRequest {
+            diagram_id: "diagram",
+            edge_order: &edge_order,
+            node_dom_index: &FxHashMap::default(),
+            subgraph_index_by_id: &FxHashMap::default(),
+            layout_nodes: &[],
+            swimlane_nodes: None,
+            swimlane_lanes: None,
+        });
+        let document_ids = edge_order
+            .iter()
+            .map(|edge| ids.edge(edge.key).unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            document_ids.iter().collect::<FxHashSet<_>>().len(),
+            edge_order.len()
+        );
+        assert!(document_ids[0].ends_with("-edge-0"));
+        for (order, id) in document_ids[1..].iter().enumerate() {
+            assert!(id.ends_with(&format!("-edge-0-segment-{order}")));
+        }
+        assert!(
+            ids.edge(crate::flowchart::FlowchartEdgeKey::new(1))
+                .is_none()
+        );
+        assert!(
+            ids.edge(crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 3))
+                .is_none()
         );
     }
 }

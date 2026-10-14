@@ -776,6 +776,7 @@ jobs:
                     if not failure.startswith(("--preset-qualification-", "--resource-")):
                         expected.append(expected_call("lsp", []))
                     self.assertEqual(calls, expected)
+
     def test_linux_release_builds_and_executes_on_glibc_235_baseline(self) -> None:
         dist = tomllib.loads(read(ROOT / "dist-workspace.toml"))["dist"]
         runners = dist["github-custom-runners"]

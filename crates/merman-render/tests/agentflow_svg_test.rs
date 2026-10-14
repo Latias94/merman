@@ -185,7 +185,7 @@ fn agentflow_nested_collapse_keeps_pinned_dagre_segments_and_label_dom_order() {
         end_marker: bool,
         commands: String,
     }
-    fn signature(svg: &str) -> (Vec<EdgeSignature>, Vec<String>) {
+    fn signature(svg: &str, canonical_ids: bool) -> (Vec<EdgeSignature>, Vec<String>) {
         let document = roxmltree::Document::parse(svg).unwrap();
         let paths = document
             .descendants()
@@ -225,18 +225,52 @@ fn agentflow_nested_collapse_keeps_pinned_dagre_segments_and_label_dom_order() {
                 }
             })
             .collect();
-        for helper in ["inner---inner---1", "inner---inner---2"] {
-            let helper = document
-                .descendants()
-                .find(|node| {
-                    node.attribute("data-id").or_else(|| node.attribute("id")) == Some(helper)
-                })
-                .unwrap();
+        let mut helper_dom_ids = std::collections::HashSet::new();
+        for helper_id in ["inner---inner---1", "inner---inner---2"] {
+            let mut matches = document.descendants().filter(|node| {
+                if canonical_ids {
+                    node.attribute("data-id") == Some(helper_id)
+                        && node.attribute("data-et") == Some("edge-label")
+                } else {
+                    node.attribute("id") == Some(helper_id)
+                }
+            });
+            let helper = matches.next().expect("self-loop helper occurrence");
+            assert!(
+                matches.next().is_none(),
+                "duplicate self-loop helper occurrence"
+            );
+            let dom_id = helper.attribute("id").unwrap();
+            assert!(helper_dom_ids.insert(dom_id));
+            if canonical_ids {
+                let prefix = format!(
+                    "{}-merman-flowchart-document-synthetic-label-",
+                    document.root_element().attribute("id").unwrap(),
+                );
+                let ordinal = dom_id
+                    .strip_prefix(&prefix)
+                    .expect("helper DOM identity belongs to its canonical document owner");
+                assert!(!ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit()));
+            }
             assert_eq!(helper.attribute("class"), Some("label edgeLabel"));
             let rect = helper.children().find(roxmltree::Node::is_element).unwrap();
             assert!(rect.has_tag_name("rect"));
             assert_eq!(rect.attribute("width"), Some("0.1"));
             assert_eq!(rect.attribute("height"), Some("0.1"));
+        }
+        if canonical_ids {
+            let ids = document
+                .descendants()
+                .filter_map(|node| node.attribute("id"))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                ids.len(),
+                ids.iter()
+                    .copied()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
+                "duplicate document DOM IDs"
+            );
         }
         (paths, labels)
     }
@@ -244,8 +278,8 @@ fn agentflow_nested_collapse_keeps_pinned_dagre_segments_and_label_dom_order() {
     let upstream =
         include_str!("../../../fixtures/upstream-svgs/agentflow/local_nested_collapse_routes.svg");
     let (layout, svg) = render_agentflow_config_probe(input, json!({}), false);
-    let (paths, labels) = signature(&svg);
-    assert_eq!((paths.clone(), labels.clone()), signature(upstream));
+    let (paths, labels) = signature(&svg, true);
+    assert_eq!((paths.clone(), labels.clone()), signature(upstream, false));
     assert_eq!(
         paths
             .iter()
@@ -372,6 +406,21 @@ fn agentflow_parallel_dagre_loops_replace_metadata_without_moving_the_first_slot
         visible, "second loop",
         "last loop metadata owns the existing helper slots"
     );
+    for id in ["A-cyclic-special-1", "A-cyclic-special-2"] {
+        let helper_label = labels
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some(id))
+            .unwrap();
+        let visible: String = helper_label
+            .descendants()
+            .filter(roxmltree::Node::is_text)
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(
+            visible.is_empty(),
+            "only the middle self-loop segment owns its label"
+        );
+    }
     assert!(!svg.contains("first loop"));
 }
 

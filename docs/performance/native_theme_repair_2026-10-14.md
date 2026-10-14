@@ -2,6 +2,10 @@
 
 Implementation and statistics are reviewed at frozen candidate `ac4a40437a36e301f6ccf0f0f689230c658d567b` (tree `56c083860416371d5efa17b4e6049ded21c68f09`). Completed measurements confirm corrected-control non-regression within the registered thresholds; they do not admit an overall performance win. The original Binaryen 133 gate failure remains explicit.
 
+The maintainer subsequently selected main's Mermaid 12.2 baseline. Its separate
+[main integration report](native_theme_main_integration_2026-10-14.md) records that merge and its
+validation. Measurements and platform results below remain evidence for the frozen 12.1 candidate.
+
 ## Result
 
 N01–N36 have implemented, independently reviewed fixes or test/tool corrections. Structural tests establish removed copies, discarded evidence and repeated XML work while preserving ownership, terminal evidence, resource accounting, cancellation and error order. They do not establish a latency or allocation improvement.

@@ -127,9 +127,7 @@ pub(crate) fn mindmap_text_style_with_font_family(
     effective_config: &Value,
     font_family_css: &str,
 ) -> TextStyle {
-    // Mermaid mindmap uses HTML `<foreignObject>` labels. Mermaid CLI baselines show that the
-    // HTML label contents do not reliably inherit SVG-root `font-size` rules; measurement matches
-    // a 16px default even when users override `themeVariables.fontSize`.
+    // HTML labels retain their 16px measurement baseline; SVG labels inherit root CSS size.
     let font_size = if crate::config::config_effective_html_labels(effective_config) {
         16.0
     } else {
@@ -941,6 +939,19 @@ mod tests {
         let style = super::mindmap_text_style(&config);
         assert_eq!(style.font_family.as_deref(), Some("Theme font"));
         assert_eq!(style.font_size, 24.0);
+        let typed_style =
+            super::mindmap_text_style_with_font_family(&config, "Typed font,monospace");
+        assert_eq!(
+            typed_style.font_family.as_deref(),
+            Some("Typed font,monospace")
+        );
+        assert_eq!(typed_style.font_size, 24.0);
+        let html_style = super::mindmap_text_style_with_font_family(
+            &serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "24px"}}),
+            "Typed font,monospace",
+        );
+        assert_eq!(html_style.font_family, typed_style.font_family);
+        assert_eq!(html_style.font_size, 16.0);
         assert_eq!(
             super::mindmap_text_style(&serde_json::json!({ "htmlLabels": false, "fontSize": 18 }))
                 .font_size,

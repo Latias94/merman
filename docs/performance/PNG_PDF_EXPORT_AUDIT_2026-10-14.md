@@ -178,3 +178,24 @@ There is no local TLS patch or advisory suppression.
 The export source and SVG output do not change in this dependency follow-up. The merge's
 behavioral and full SVG receipts above remain bound to `a74375ef1`; no rerun is claimed solely
 for the unrelated TLS lockfile update.
+
+## Latest #178 base integration
+
+The base branch advanced again to `52c0081e76ebeebd2f20772166538c41095ba933`, which merges
+current main and Mermaid 12.2 into #178. The second integration retained the export branch's
+font, CSS, terminal-fact and best-effort contracts while adopting the base's self-loop occurrence
+ledger, shared Circle work accounting, canonical Mermaid 12.2 DOM identities, Mindmap label
+background shape, Usecase animation precedence and Swimlane layout snapshots.
+
+- Renderer library plus Agentflow, Circle, Swimlane, Mindmap and Usecase integration tests: 3,365
+  passed, two existing audits skipped.
+- The workflow contract suite ran 97 tests on Windows: 94 passed and three Bash-owned execution
+  tests were intentionally skipped because the Windows Bash shim is not a usable Linux shell.
+  Those three cases remain Linux CI-owned; production workflow code was not weakened.
+- Five affected crates pass all-targets/all-features Clippy with `-D warnings`.
+- The final merged head has a fresh 37-family three-mode SVG gate: 3,756 selected, 3,729 rendered,
+  27 documented skips, and owner exit code 0. The per-family parity-root report hashes are recorded
+  in the ignored gate log under `target/issue199-export-audit/merge52-svg-gate.log`.
+- Final-tree focused export checks pass: 43 native PNG/PDF, font-family and font-context tests;
+  the Flowchart text-only glow PNG/PDF test and State per-occurrence fallback test pass; the CLI
+  native-font contract suite adds 22 passing tests.

@@ -1073,5 +1073,17 @@ mod tests {
                 ("tail".to_string(), Em),
             ]]
         );
+        assert_eq!(
+            mermaid_markdown_to_lines(
+                r"Before \*literal\* ![ignored](image.png) **after** \#tail",
+                true
+            ),
+            vec![vec![
+                ("Before".to_string(), Normal),
+                ("literal".to_string(), Normal),
+                ("after".to_string(), Strong),
+                ("tail".to_string(), Normal),
+            ]]
+        );
     }
 }

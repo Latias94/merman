@@ -68,21 +68,34 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
-    let renderable_edges: FxHashSet<crate::flowchart::FlowchartEdgeKey> =
-        layout_edge_owners.iter().collect();
-    let merge_self_loops =
-        crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
+    let merge_self_loops = uses_elk_adapter_dom
+        || crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
+    let renderable_edges: FxHashSet<usize> = layout_edge_owners
+        .iter()
+        .map(crate::flowchart::FlowchartEdgeKey::semantic_index)
+        .collect();
+    let renderable_self_loop_nodes: FxHashSet<&str> = layout_edge_owners
+        .iter()
+        .filter_map(|owner| model.edges.get(owner.semantic_index()))
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge_endpoints(edge, render_context))
+        .filter(|(from, to)| from == to)
+        .map(|(from, _)| from)
+        .collect();
     let semantic_edges = model
         .edges
         .iter()
         .enumerate()
-        .filter(|(semantic_index, _)| {
-            (!uses_elk_adapter_dom && !merge_self_loops)
-                || renderable_edges
-                    .contains(&crate::flowchart::FlowchartEdgeKey::new(*semantic_index))
-        })
         .filter_map(|(semantic_index, edge)| {
             let projected = crate::flowchart::project_flowchart_edge(edge, render_context)?;
+            // Earlier overwritten helper triples still establish Graphlib's insertion slot.
+            // Their later surviving owner replaces the complete value at that same slot.
+            if !renderable_edges.contains(&semantic_index)
+                && (merge_self_loops
+                    || projected.from != projected.to
+                    || !renderable_self_loop_nodes.contains(projected.from.as_str()))
+            {
+                return None;
+            }
             let edge = if projected.from == edge.from && projected.to == edge.to {
                 Cow::Borrowed(edge)
             } else {
@@ -100,7 +113,8 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         };
     }
 
-    // Dagre always inserts helper nodes. Agentflow paints the segments instead of merging them.
+    // Dagre always inserts helper nodes. Only the source's selected diagram types merge their
+    // three segments back into a logical self-loop; Agentflow paints the helper edges directly.
     let self_loop_label_node_ids = flowchart_helper_node_ids(
         model,
         render_context,
@@ -109,36 +123,38 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     );
     let mut render_edges: Vec<FlowchartRenderEdge<'a>> = Vec::new();
     let mut helper_indexes: FxHashMap<String, usize> = FxHashMap::default();
-    for occurrence in semantic_edges {
-        if !merge_self_loops && occurrence.edge.from == occurrence.edge.to {
-            let helpers = crate::flowchart::flowchart_self_loop_helper_edges(&occurrence.edge);
-            // Graphlib replaces parallel helper values without changing their insertion order.
+    for edge in semantic_edges {
+        if !merge_self_loops && edge.edge.from == edge.edge.to {
+            let mut helpers = crate::flowchart::flowchart_self_loop_helper_edges(&edge.edge);
+            helpers.edge_mid.label = render_context
+                .edge_label_for_render(edge.key.semantic_index(), &edge.edge)
+                .map(str::to_owned);
+            // Graphlib overwrites an existing helper triple for parallel self-loops while
+            // retaining its first insertion position. Keep each segment's semantic owner too.
             for (order, helper) in [helpers.edge1, helpers.edge_mid, helpers.edge2]
                 .into_iter()
                 .enumerate()
             {
-                let helper_occurrence = FlowchartRenderEdge {
-                    key: crate::flowchart::FlowchartEdgeKey::self_loop_segment(
-                        occurrence.key.semantic_index(),
-                        order as u8,
-                    ),
-                    edge: Cow::Owned(helper),
-                };
-                if let Some(&index) = helper_indexes.get(helper_occurrence.edge.id.as_str()) {
-                    render_edges[index] = helper_occurrence;
+                let key = crate::flowchart::FlowchartEdgeKey::self_loop_segment(
+                    edge.key.semantic_index(),
+                    order as u8,
+                );
+                if let Some(&index) = helper_indexes.get(helper.id.as_str()) {
+                    render_edges[index] = FlowchartRenderEdge {
+                        key,
+                        edge: Cow::Owned(helper),
+                    };
                 } else {
-                    helper_indexes.insert(helper_occurrence.edge.id.clone(), render_edges.len());
-                    render_edges.push(helper_occurrence);
+                    helper_indexes.insert(helper.id.clone(), render_edges.len());
+                    render_edges.push(FlowchartRenderEdge {
+                        key,
+                        edge: Cow::Owned(helper),
+                    });
                 }
             }
         } else {
-            render_edges.push(occurrence);
+            render_edges.push(edge);
         }
-    }
-    if !merge_self_loops {
-        // Overwritten helpers retain their first Graphlib insertion slots, even when that
-        // initial semantic owner no longer survives layout. Filter only after replacement.
-        render_edges.retain(|edge| renderable_edges.contains(&edge.key));
     }
 
     // Mermaid's `adjustClustersAndEdges(graph)` rewrites edges that connect directly to cluster

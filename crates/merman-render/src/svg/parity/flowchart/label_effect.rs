@@ -256,9 +256,9 @@ impl FlowchartLabelEffects {
                 {
                     continue;
                 }
-                let raw = edge
-                    .key
-                    .label_for_render(ctx.model, edge.edge)
+                let raw = ctx
+                    .model
+                    .edge_label_for_occurrence(edge.key, edge.edge)
                     .unwrap_or_default();
                 if crate::flowchart::flowchart_label_is_empty_for_render(raw) {
                     continue;

@@ -101,12 +101,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
                 common.stroke_width,
                 common.stroke_dasharray,
                 true,
-                ctx.work_meter,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         });
-        ctx.work_meter
-            .checkpoint(merman_core::OperationPhase::Emit)?;
+        ctx.checkpoint_emit()?;
         if let Some(paths) = paths {
             let _ = write!(
                 out,
@@ -115,7 +114,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
             );
             write_rough_circle_paths(out, common, &paths, common.stroke_width);
             out.push_str("</g>");
-            return Ok(());
+            return out.checkpoint();
         }
     }
     let _ = write!(
@@ -125,7 +124,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
         escape_attr(common.style),
         fmt(r),
     );
-    Ok(())
+    out.checkpoint()
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
@@ -147,12 +146,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
                 common.stroke_dasharray,
                 true,
                 0.2,
-                ctx.work_meter,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         });
-        ctx.work_meter
-            .checkpoint(merman_core::OperationPhase::Emit)?;
+        ctx.checkpoint_emit()?;
         let inner = super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_circle_with_roughness(
                 geometry.inner_radius * 2.0,
@@ -160,12 +158,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
                 common.stroke_dasharray,
                 true,
                 0.2,
-                ctx.work_meter,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         });
-        ctx.work_meter
-            .checkpoint(merman_core::OperationPhase::Emit)?;
+        ctx.checkpoint_emit()?;
         if let (Some(outer), Some(inner)) = (outer, inner) {
             let classes = std::iter::once("default")
                 .chain(common.node_classes.iter().map(String::as_str))
@@ -181,7 +178,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
             out.push_str("</g><g>");
             write_rough_circle_paths(out, common, &inner, 1.5);
             out.push_str("</g></g>");
-            return Ok(());
+            return out.checkpoint();
         }
     }
     let _ = write!(
@@ -194,7 +191,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
         fmt(geometry.inner_radius),
         escape_attr(common.style),
     );
-    Ok(())
+    out.checkpoint()
 }
 
 fn hand_drawn_circle_style(styles: &[String]) -> String {

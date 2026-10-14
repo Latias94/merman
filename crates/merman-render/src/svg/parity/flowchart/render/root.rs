@@ -213,9 +213,9 @@ fn edge_label_is_empty(
     ctx: &FlowchartRenderCtx<'_>,
     edge: super::super::render_input::FlowchartRenderEdgeRef<'_>,
 ) -> bool {
-    let label_text = edge
-        .key
-        .label_for_render(ctx.model, edge.edge)
+    let label_text = ctx
+        .model
+        .edge_label_for_occurrence(edge.key, edge.edge)
         .unwrap_or_default();
     crate::flowchart::flowchart_label_is_empty_for_render(label_text)
 }

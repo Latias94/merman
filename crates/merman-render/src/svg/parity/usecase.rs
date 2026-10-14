@@ -219,15 +219,26 @@ fn write_label(
                 )
             }
             UsecaseLabelType::Markdown => {
-                label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
-                    out,
-                    &plan.text,
-                    &css,
-                    measurer,
-                    &plan.style,
-                    plan.max_width,
-                    is_edge_label,
-                )
+                if is_edge_label {
+                    label::write_svg_text_markdown_wrapped_centered_with_style(
+                        out,
+                        &plan.text,
+                        &css,
+                        measurer,
+                        &plan.style,
+                        plan.max_width,
+                    )
+                } else {
+                    label::write_svg_text_markdown_wrapped_from_create_text_source_with_style(
+                        out,
+                        &plan.text,
+                        &css,
+                        measurer,
+                        &plan.style,
+                        plan.max_width,
+                        false,
+                    )
+                }
             }
         }
         out.push_str("</g>");

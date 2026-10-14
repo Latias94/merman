@@ -623,6 +623,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     }
 
     let max_node_width_px = crate::mindmap::mindmap_max_node_width_px(config.as_value());
+    let text_style = crate::mindmap::mindmap_text_style_with_font_family(
+        config.as_value(),
+        node_palette.font_family_css(),
+    );
 
     struct MindmapLabelSpec<'a> {
         text: &'a str,
@@ -638,8 +642,9 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         out: &mut impl SvgOutput,
         spec: MindmapLabelSpec<'_>,
         config: &merman_core::MermaidConfig,
-        font_family_css: &str,
+        _font_family_css: &str,
         options: &SvgExecution<'_>,
+        text_style: &TextStyle,
     ) -> Result<()> {
         let MindmapLabelSpec {
             text,
@@ -652,10 +657,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         } = spec;
 
         if !crate::config::config_effective_html_labels(config.as_value()) {
-            let text_style = crate::mindmap::mindmap_text_style_with_font_family(
-                config.as_value(),
-                font_family_css,
-            );
             let source = crate::mindmap::mindmap_svg_label_source(text);
             let _ = write!(
                 out,
@@ -672,7 +673,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 );
                 let bbox_y = options
                     .text_measurer()
-                    .measure_svg_create_text_bbox_y_offset_px(&plain, &text_style);
+                    .measure_svg_create_text_bbox_y_offset_px(&plain, text_style);
                 let _ = write!(
                     out,
                     r#"<rect class="background" style="stroke: none" x="-2" y="{}" width="{}" height="{}"/>"#,
@@ -683,6 +684,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             } else {
                 out.push_str(r#"<rect class="background" style="stroke: none"/>"#);
             }
+            out.checkpoint()?;
             // Mindmap has no inherited text-anchor rule. Mermaid 12.2's centerLabel offsets
             // the left-aligned createText result by half its width for every node shape.
             crate::svg::parity::label::write_svg_text_markdown_wrapped_from_create_text_source(
@@ -690,9 +692,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                 source.as_ref(),
                 true,
                 options.text_measurer(),
-                &text_style,
+                text_style,
                 Some(max_node_width_px),
             );
+            out.checkpoint()?;
             out.push_str("</g></g>");
             return out.checkpoint();
         }
@@ -1241,6 +1244,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
             "rect" => {
@@ -1271,6 +1275,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
             "rounded" => {
@@ -1301,6 +1306,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
             "mindmapCircle" => {
@@ -1327,6 +1333,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
             "cloud" => {
@@ -1358,6 +1365,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
             "hexagon" => {
@@ -1399,6 +1407,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
             "bang" => {
@@ -1437,6 +1446,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
             _ => {
@@ -1462,6 +1472,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     config,
                     node_palette.font_family_css(),
                     options,
+                    &text_style,
                 )?;
             }
         }
@@ -1645,7 +1656,6 @@ mod tests {
     #[test]
     fn mindmap_edge_label_stops_after_the_first_svg_sink_failure() {
         let mut out = RejectAfterFirstWrite::default();
-
         let error = write_mindmap_edge_label(
             &mut out,
             "edge-0",

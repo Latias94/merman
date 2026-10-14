@@ -42,33 +42,109 @@ fn render_swimlane(source: &str, diagram_id: &str) -> String {
 #[test]
 fn explicit_swimlane_cluster_ids_are_scoped_to_each_diagram() {
     let source = "swimlane-beta LR\nsubgraph Lane\nA --> B\nend\n";
-    let mut ids = Vec::new();
+    let mut cluster_ids = std::collections::HashSet::new();
     for diagram_id in ["first", "second"] {
         let svg = render_swimlane(source, diagram_id);
-        let document = roxmltree::Document::parse(&svg).unwrap();
-        let cluster = cluster_element(&document, "Lane");
-        let id = cluster.attribute("id").unwrap();
-        assert!(id.starts_with(&format!("{diagram_id}-")));
-        ids.push(id.to_owned());
+        let document = roxmltree::Document::parse(&svg).expect("valid Swimlane SVG");
+        let cluster = canonical_lane_cluster(&document, diagram_id, "Lane");
+        assert!(cluster_ids.insert(cluster.attribute("id").unwrap().to_owned()));
     }
-    assert_ne!(ids[0], ids[1]);
+    assert_eq!(
+        cluster_ids.len(),
+        2,
+        "diagram scopes must own distinct lane IDs"
+    );
 }
 
 #[test]
-fn synthetic_swimlane_cluster_preserves_semantic_id_in_the_document_namespace() {
+fn synthetic_swimlane_cluster_keeps_semantic_id_in_a_canonical_scope() {
     let svg = render_swimlane("swimlane-beta LR\nA --> B\n", "synthetic");
-    let document = roxmltree::Document::parse(&svg).unwrap();
-    let cluster = cluster_element(&document, "__swimlane_default__");
-    assert!(cluster.attribute("id").unwrap().starts_with("synthetic-"));
+    let document = roxmltree::Document::parse(&svg).expect("valid synthetic-lane SVG");
+    let cluster = canonical_lane_cluster(&document, "synthetic", "__swimlane_default__");
+    assert_ne!(cluster.attribute("id"), cluster.attribute("data-id"));
 }
 
 #[test]
 fn explicitly_declared_default_swimlane_cluster_is_scoped() {
     let source = "swimlane-beta LR\nsubgraph __swimlane_default__[Named lane]\nA --> B\nend\n";
     let svg = render_swimlane(source, "declared");
-    let document = roxmltree::Document::parse(&svg).unwrap();
-    let cluster = cluster_element(&document, "__swimlane_default__");
-    assert!(cluster.attribute("id").unwrap().starts_with("declared-"));
+    let document = roxmltree::Document::parse(&svg).expect("valid declared-lane SVG");
+    let cluster = canonical_lane_cluster(&document, "declared", "__swimlane_default__");
+    let title = cluster
+        .children()
+        .find(|node| has_class(*node, "cluster-label"))
+        .unwrap();
+    assert_eq!(text_content(title), "Named lane");
+}
+
+fn canonical_lane_cluster<'a>(
+    document: &'a roxmltree::Document<'a>,
+    diagram_id: &str,
+    semantic_id: &str,
+) -> roxmltree::Node<'a, 'a> {
+    let cluster = canonical_cluster(document, diagram_id, semantic_id);
+    assert!(has_class(cluster, "cluster") && has_class(cluster, "swimlane"));
+    let ids = document
+        .descendants()
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids.len(),
+        ids.iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        "duplicate SVG DOM IDs"
+    );
+    cluster
+}
+
+fn semantic_element<'a>(
+    document: &'a roxmltree::Document<'a>,
+    semantic_id: &str,
+    element_type: &str,
+) -> roxmltree::Node<'a, 'a> {
+    let mut matches = document.descendants().filter(|node| {
+        node.attribute("data-id") == Some(semantic_id)
+            && node.attribute("data-et") == Some(element_type)
+    });
+    let element = matches
+        .next()
+        .unwrap_or_else(|| panic!("missing {element_type} {semantic_id}"));
+    assert!(
+        matches.next().is_none(),
+        "duplicate {element_type} {semantic_id}"
+    );
+    element
+}
+
+fn assert_canonical_id(node: roxmltree::Node<'_, '_>, diagram_id: &str, local_kind: &str) {
+    let prefix = format!("{diagram_id}-merman-flowchart-document-{local_kind}-");
+    let ordinal = node
+        .attribute("id")
+        .unwrap()
+        .strip_prefix(&prefix)
+        .expect("DOM identity belongs to its canonical diagram namespace and element owner");
+    assert!(!ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit()));
+}
+
+fn canonical_cluster<'a>(
+    document: &'a roxmltree::Document<'a>,
+    diagram_id: &str,
+    semantic_id: &str,
+) -> roxmltree::Node<'a, 'a> {
+    let cluster = semantic_element(document, semantic_id, "cluster");
+    assert!(has_class(cluster, "cluster"));
+    assert_canonical_id(
+        cluster,
+        diagram_id,
+        if has_class(cluster, "swimlane") {
+            "lane"
+        } else {
+            "cluster"
+        },
+    );
+    cluster
 }
 
 fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
@@ -83,21 +159,15 @@ fn element_by_id<'a>(document: &'a roxmltree::Document<'a>, id: &str) -> roxmltr
         .unwrap_or_else(|| panic!("missing element {id}"))
 }
 
-fn cluster_element<'a>(document: &'a roxmltree::Document<'a>, id: &str) -> roxmltree::Node<'a, 'a> {
-    document
-        .descendants()
-        .find(|node| has_class(*node, "cluster") && node.attribute("data-id") == Some(id))
-        .unwrap_or_else(|| panic!("missing cluster {id}"))
-}
-
 fn node_element<'a>(
     document: &'a roxmltree::Document<'a>,
+    diagram_id: &str,
     node_id: &str,
 ) -> roxmltree::Node<'a, 'a> {
-    document
-        .descendants()
-        .find(|node| has_class(*node, "node") && node.attribute("data-id") == Some(node_id))
-        .unwrap_or_else(|| panic!("missing node {node_id}"))
+    let node = semantic_element(document, node_id, "node");
+    assert!(has_class(node, "node"));
+    assert_canonical_id(node, diagram_id, "node");
+    node
 }
 
 fn text_content(node: roxmltree::Node<'_, '_>) -> String {
@@ -129,13 +199,8 @@ fn unchanged_pinned_routes_keep_edge_labels_at_layout_anchors_inside_the_root() 
             .iter()
             .find(|node| node.id == label_id)
             .unwrap();
-        let element = document
-            .descendants()
-            .find(|node| {
-                node.attribute("data-et") == Some("edge-label")
-                    && node.attribute("data-id") == Some(edge_id)
-            })
-            .unwrap();
+        let element = semantic_element(&document, edge_id, "edge-label");
+        assert_canonical_id(element, "pinned-label", "synthetic-label");
         let coordinates = element
             .attribute("transform")
             .unwrap()
@@ -198,7 +263,7 @@ fn synthetic_lane_palette_follows_visible_container_declaration_slots() {
                     }
                 };
                 assert_eq!(
-                    cluster_element(&document, id).attribute("data-color-id"),
+                    canonical_cluster(&document, diagram_id, id).attribute("data-color-id"),
                     element_by_id(&reference, &scoped_id(reference_diagram_id))
                         .attribute("data-color-id"),
                     "{theme}, htmlLabels={html_labels}, {id}"
@@ -221,9 +286,9 @@ fn distinct_nested_and_synthetic_lanes_preserve_ownership_ids_and_cross_lane_rou
             let (svg, layout) = render_swimlane_with_layout(&source, diagram_id);
             assert_eq!(layout.direction, expected_direction);
             let document = roxmltree::Document::parse(&svg).expect("valid mixed-lane SVG");
-            let outer = cluster_element(&document, "Outer");
-            let inner = cluster_element(&document, "Inner");
-            let synthetic = cluster_element(&document, "__swimlane_default__");
+            let outer = canonical_lane_cluster(&document, diagram_id, "Outer");
+            let inner = canonical_cluster(&document, diagram_id, "Inner");
+            let synthetic = canonical_lane_cluster(&document, diagram_id, "__swimlane_default__");
             assert!(has_class(outer, "cluster") && has_class(outer, "swimlane"));
             assert!(has_class(inner, "cluster") && !has_class(inner, "swimlane"));
             assert!(has_class(synthetic, "cluster") && has_class(synthetic, "swimlane"));
@@ -247,14 +312,14 @@ fn distinct_nested_and_synthetic_lanes_preserve_ownership_ids_and_cross_lane_rou
             for id in ["A", "B"] {
                 assert_eq!(node(id).parent_id.as_deref(), Some("Inner"));
                 assert_eq!(node(id).top_lane_id.as_deref(), Some("Outer"));
-                node_element(&document, id);
+                node_element(&document, diagram_id, id);
             }
             assert_eq!(node("C").parent_id.as_deref(), Some("__swimlane_default__"));
             assert_eq!(
                 node("C").top_lane_id.as_deref(),
                 Some("__swimlane_default__")
             );
-            node_element(&document, "C");
+            node_element(&document, diagram_id, "C");
             if direction == "LR" {
                 assert!(node("A").x < node("B").x);
             } else {
@@ -309,7 +374,7 @@ fn nested_mixed_lane_titles_and_nodes_escape_entities_and_remove_strict_unsafe_l
         let svg = render_swimlane(&source, diagram_id);
         let document = roxmltree::Document::parse(&svg).expect("valid escaped mixed-lane SVG");
         for (id, expected) in [("Outer", "Outer & < lane"), ("Inner", "Inner & < group")] {
-            let cluster = cluster_element(&document, id);
+            let cluster = canonical_cluster(&document, diagram_id, id);
             let title = cluster
                 .children()
                 .find(|node| has_class(*node, "cluster-label"))
@@ -321,7 +386,10 @@ fn nested_mixed_lane_titles_and_nodes_escape_entities_and_remove_strict_unsafe_l
             ("B", "B & < node"),
             ("C", "Loose & < node"),
         ] {
-            assert_eq!(text_content(node_element(&document, id)), expected);
+            assert_eq!(
+                text_content(node_element(&document, diagram_id, id)),
+                expected
+            );
         }
         assert!(document.descendants().all(|node| {
             !node.has_tag_name("script")
@@ -330,7 +398,7 @@ fn nested_mixed_lane_titles_and_nodes_escape_entities_and_remove_strict_unsafe_l
                         && !attribute.value().contains("javascript:")
                 })
         }));
-        let linked = node_element(&document, "A");
+        let linked = node_element(&document, diagram_id, "A");
         let anchor = linked
             .ancestors()
             .find(|node| node.has_tag_name("a"))

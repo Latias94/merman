@@ -33,7 +33,7 @@ impl From<ThemeResolutionError> for crate::Error {
     }
 }
 
-// Source: Mermaid 12.1.0 `packages/mermaid/src/themes/index.js`.
+// Source: Mermaid 12.2.0 `packages/mermaid/src/themes/index.js`.
 macro_rules! define_mermaid_theme_ids {
     ($(($variant:ident, $name:literal)),+ $(,)?) => {
         /// A theme identifier from the pinned Mermaid theme catalog.

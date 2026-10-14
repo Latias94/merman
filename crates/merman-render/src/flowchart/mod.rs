@@ -57,6 +57,17 @@ impl<'a> FlowchartRenderModelRef<'a> {
             .edge_label_for_render(semantic_index, edge)
     }
 
+    pub(crate) fn edge_label_for_occurrence<'b>(
+        &'b self,
+        key: FlowchartEdgeKey,
+        edge: &'b FlowEdge,
+    ) -> Option<&'b str> {
+        match key.self_loop_segment_order() {
+            None | Some(1) => self.edge_label_for_render(key.semantic_index(), edge),
+            Some(_) => None,
+        }
+    }
+
     pub(crate) fn subgraph_title_for_render<'b>(
         &'b self,
         declaration_ordinal: usize,
