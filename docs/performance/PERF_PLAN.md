@@ -602,6 +602,24 @@ backend work, remove the growing `B * K` scratch-copy term, and preserve host/bu
 The side index adds `O(R + K)` logical `usize` slots; no peak-memory or latency improvement is
 claimed. See [the decision receipt](rich_inline_html_planning_2026-08-07.md).
 
+### P1.9: Remove duplicated theme and terminal SVG work
+
+Reduce ownership overhead on the frozen theme-ownership branch without altering configuration
+revisions, provenance, failure atomicity or terminal SVG admission. Keep fresh-process Windows
+CLI startup as a separate full-capability experiment.
+
+The 2026-10-14 candidate removes one complete JSON copy-on-write from exclusively owned legacy
+theme calculation, consumes terminal reference collections instead of cloning discarded data,
+and reuses adjacent final-byte observations to reduce explicit best-effort parity/readable XML
+traversals from three to two. Observations have retention limits and fall back to the existing
+scanner without changing error order. Strict/resvg-safe paths retain their validation scopes.
+
+These are structural work reductions. Combined native diagnostics support non-regression but
+do not establish a calibrated clean-revision latency or peak-memory improvement. The complete
+Windows delay-import candidate did not meet its joint materiality screen and was rejected;
+no linker setting or ordinary CI performance gate is retained. See
+[the checkpoint and validation receipt](SVG_OWNED_WORK_2026-10-14.md).
+
 ## Guardrails
 
 - Correctness and Mermaid parity take precedence over a timing ratio.
