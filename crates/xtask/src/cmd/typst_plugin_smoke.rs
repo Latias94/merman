@@ -180,10 +180,10 @@ pub(crate) fn validate_typst_plugin_with_input(
             .get("spec_schema_version")
             .and_then(JsonValue::as_u64)
             != Some(1)
-        || !materialized_theme
+        || materialized_theme
             .pointer("/spec/styles")
             .and_then(JsonValue::as_array)
-            .is_some_and(|styles| !styles.is_empty())
+            .is_none_or(|styles| styles.is_empty())
     {
         return Err(smoke_error(format!(
             "materialize-theme-json returned an invalid materialized theme: {materialized_theme}"

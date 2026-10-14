@@ -15,7 +15,7 @@ use serde_json::{Value as JsonValue, json};
 use std::collections::BTreeSet;
 #[cfg(test)]
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 
 const DEFAULT_CONFIG_OUTPUT: &str = "crates/merman-core/src/generated/default_config.json";

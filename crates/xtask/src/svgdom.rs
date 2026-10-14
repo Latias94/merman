@@ -1286,9 +1286,9 @@ fn has_flowchart_typed_duplicate_identity(node: roxmltree::Node<'_, '_>) -> bool
     if is_flowchart_typed_synthetic_label(node) {
         return true;
     }
-    if !node
+    if node
         .attribute("data-id")
-        .is_some_and(|value| !value.is_empty())
+        .is_none_or(|value| value.is_empty())
     {
         return false;
     }
