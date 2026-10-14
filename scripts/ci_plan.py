@@ -16,6 +16,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 OWNER_NAMES = (
+    "arch",
     "cli",
     "core",
     "fuzz",
@@ -138,6 +139,8 @@ _CRATE_OWNER_RULES = (
     ("crates/xtask/", _CORE_OWNERS),
 )
 _SCRIPT_EXACT_OWNER_RULES = {
+    "scripts/linux_binary_compatibility.py": frozenset({"cli", "hygiene"}),
+    "scripts/test_linux_binary_compatibility.py": frozenset({"cli", "hygiene"}),
     "scripts/audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/artifact_profile_recipe.py": frozenset(
         {
@@ -250,6 +253,9 @@ _PLAYGROUND_EXAMPLE_CATALOG_OWNERS = frozenset({"core", "hygiene", "npm", "web"}
 _PLAYGROUND_EXAMPLE_CATALOG_INPUT_PREFIX = "playground/examples/"
 _PLAYGROUND_EXAMPLE_CATALOG_OUTPUT = "playground/src/generated/examples.ts"
 _PACKAGE_DOCUMENT_OWNER_RULES = (
+    ("distribution/arch/", {"arch", "hygiene"}),
+    ("distribution/container/", {"cli", "hygiene"}),
+    ("distribution/github-action/", {"cli", "hygiene"}),
     ("distribution/cli/", {"cli", "hygiene"}),
     ("distribution/tree-sitter-mermaid/", {"grammar", "hygiene"}),
     ("distribution/typst/", {"hygiene", "typst"}),
@@ -640,6 +646,11 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         ):
             owners.add("security")
         return frozenset(owners), f"Tree-sitter Mermaid owner changed: {path}", False
+
+    if path.startswith("distribution/arch/"):
+        return frozenset({"arch", "hygiene"}), f"Arch package changed: {path}", False
+    if path.startswith(("distribution/container/", "distribution/github-action/")):
+        return frozenset({"cli", "hygiene"}), f"CLI distribution changed: {path}", False
 
     if path.startswith("capabilities/"):
         return _ALL_OWNERS, f"shared capability schema changed: {path}", True

@@ -29,6 +29,19 @@ python3 scripts/cli_installation_contract.py
 The check binds the Cargo manifest to `dist-workspace.toml`, the artifact profile, and the archive
 layout accepted by `scripts/verify_cli_release_archive.py`.
 
+## GNU Linux compatibility
+
+New GNU CLI and LSP builds use native Ubuntu 22.04 and Ubuntu 22.04 ARM64 runners. The
+`readelf` version-needs check in `scripts/linux_binary_compatibility.py` rejects requirements
+above GLIBC 2.35, and the final archive executes on that same baseline before publication.
+The VS Code runtime builds use the same baseline. This supports systems such as Ubuntu 22.04
+and Debian 12 without relying on a newer build host's libc symbols.
+
+Published archives retain their original compatibility. Both Linux CLI archives in `0.9.0`
+require GLIBC 2.38; this workflow change does not replace those assets. A lower baseline takes
+effect only in a subsequent release built and verified by the updated workflow. The GNU
+archives do not cover musl/Alpine or NixOS; the Nix integration builds from source.
+
 ## CLI contract migration
 
 Complete releases governed by the current source contract report capability document schema 2
@@ -143,8 +156,8 @@ remain workflow artifacts for external submission; they are not uploaded as prod
 
 ## cargo-binstall
 
-`crates/merman-cli/Cargo.toml` resolves the five configured targets as follows. Linux ARM64 remains
-pending native admission evidence; consult the selected release's asset inventory for availability.
+`crates/merman-cli/Cargo.toml` resolves the five configured targets as follows. Stable `0.9.0`
+includes both GNU Linux architectures; consult the selected release's asset inventory for availability.
 
 | Target | Format | Executable path inside the archive |
 | --- | --- | --- |
@@ -168,6 +181,29 @@ Linux ARM64 uses the same generic `pkg-url`, `pkg-fmt`, and `bin-dir` templates 
 the other Unix targets; only Windows keeps an override. The admission record for that target is
 [`docs/release/CLI_TARGET_ADMISSION.md`](../release/CLI_TARGET_ADMISSION.md). A Homebrew ARM64 Linux
 bottle belongs to a different build and verification channel.
+
+## Additional distribution integrations
+
+The repository prepares three integrations independently of registry publication:
+
+- [Arch source package](../../distribution/arch/README.md): `PKGBUILD` and `.SRCINFO` for a
+  checksum-pinned stable source tag, using the canonical `cli-release` recipe. Arch CI builds,
+  installs and checks commands, capabilities, completions, manual pages and legal materials.
+  The recipe's presence does not establish an AUR listing.
+- [Setup Action](../../distribution/github-action/README.md): a dependency-free Node 24 action
+  that installs an exact official release on the five supported runner platforms. It verifies
+  the adjacent SHA-256 before extraction and adds the isolated installation to `PATH`. Pin its
+  repository commit separately from its CLI version. It is not a Marketplace listing.
+- [GNU container](../../distribution/container/README.md): an unprivileged image with CA
+  certificates and DejaVu fonts, built from a verified CLI archive. PR CI builds and executes
+  the x64 and ARM64 images without registry access. Manual `release-cli-container.yml` uses
+  the published release's attested verification manifest, exact source and archive digest,
+  tests both native images, and publishes an exact-version GHCR index. Publication and public
+  package visibility are separate maintainer actions.
+
+These channels keep the existing CLI executable name and complete feature contract. Container
+images include CLI legal and shell assets but do not include the LSP. Additional fonts can be
+mounted for native text measurement and raster/PDF output.
 
 ## Nix source package
 
