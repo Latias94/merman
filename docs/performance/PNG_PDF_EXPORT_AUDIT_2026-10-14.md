@@ -131,7 +131,9 @@ XML owner, with source provenance, retirement criteria and generated legal entri
 change is unrelated to rasterizer fidelity; these export repairs do not patch resvg or usvg.
 Historical pictures and the preceding measurements retain their frozen source labels.
 
-Merged-tree validation uses the same Windows Rust 1.95.0 toolchain and serialized Cargo:
+Merged-tree validation belongs to merge commit
+`a74375ef1dae98d787cac930a69cef71a19a6bd4` and uses the same Windows Rust 1.95.0 toolchain
+and serialized Cargo:
 
 - Core/render/export/bindings all-feature library tests: 5,752 passed, two existing audits skipped.
   The public completion test compares identical output against the three-walk reference and
@@ -156,3 +158,23 @@ Merged-tree validation uses the same Windows Rust 1.95.0 toolchain and serialize
 The broad feature matrix, compiled native-memory experiment, Node/browser and platform SDK
 receipts above remain bound to their earlier source. They are not claimed as reruns of this merge.
 New-head Linux, full painted-corpus and SDK owner lanes remain pending.
+
+## Newly published dependency advisory
+
+The final dependency-policy check found four new advisories in rustls 0.23.45, already present
+in both parent branches: `RUSTSEC-2026-0346` through `RUSTSEC-2026-0349`.
+[Official rustls 0.23.46 release notes](https://github.com/rustls/rustls/releases/tag/v%2F0.23.46)
+confirm the corresponding security fixes. A separate follow-up updates only rustls's lockfile
+version/checksum to that published patch release, preserving other locked dependency edges.
+There is no local TLS patch or advisory suppression.
+
+- All-feature CLI compilation passes with rustls 0.23.46; 16 focused network tests pass
+  (240 unrelated binary tests filtered out). Five affected crates again pass all-targets/
+  all-features Clippy with `-D warnings` on the updated dependency.
+- `cargo deny check advisories bans licenses sources` passes all four policies.
+- All 13 license reports are regenerated and rechecked with pinned cargo-about 0.9.2;
+  424 release legal projections and third-party metadata pass after synchronization.
+
+The export source and SVG output do not change in this dependency follow-up. The merge's
+behavioral and full SVG receipts above remain bound to `a74375ef1`; no rerun is claimed solely
+for the unrelated TLS lockfile update.
