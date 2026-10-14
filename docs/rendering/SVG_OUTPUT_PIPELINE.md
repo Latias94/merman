@@ -93,6 +93,14 @@ and CSS features outside the admitted subset remain residuals. Hosts that need m
 styles must inject them before the fallback stage (through the same `SvgPipeline`); styling added
 after generated text exists may change paint, but cannot make Merman remeasure wrapping or geometry.
 
+The adapter retains admitted inline text runs through whitespace normalization, wrapping, and SVG
+`tspan` emission. HTML emphasis and code defaults yield to explicit source styles. Generated runs
+keep resolved typography and paint isolated from ordinary SVG-only selectors. Styles that cannot
+be projected faithfully, including the native backend's stylesheet `!important` priority residual,
+retain best-effort text output and a sealed `fallback_css_residual` diagnostic. This diagnostic
+lowers fidelity admission without granting font or resource evidence. Default export still succeeds;
+an explicit portable-output requirement rejects known residuals.
+
 The adapter also retains the source `foreignObject` overflow boundary. Compatibility measurement
 and consumer fonts can disagree about glyph bounds; expanding the viewport or discarding its
 clipping would change source behavior. Native encoded outputs can use `--font-measurement native`

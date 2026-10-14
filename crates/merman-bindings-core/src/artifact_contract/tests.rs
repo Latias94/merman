@@ -278,6 +278,8 @@ fn full_default_snapshot_matches_the_feature_owned_declaration() {
             vec![
                 ConstructorServiceKey::HostTextMeasurement,
                 ConstructorServiceKey::IconRegistry,
+                #[cfg(feature = "native-fonts")]
+                ConstructorServiceKey::NativeFontContext,
             ]
         } else {
             Vec::new()

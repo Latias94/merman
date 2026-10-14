@@ -357,11 +357,17 @@ TEXT_MEASUREMENT_PROVIDER_SPECS = (
         "source": "constructor-service",
         "constructor_service_id": "host-text-measurement",
     },
+    {
+        "id": "native-fonts",
+        "source": "constructor-service",
+        "constructor_service_id": "native-font-context",
+    },
 )
 
 TEXT_MEASUREMENT_PROVIDER_IDS = (
     "deterministic",
     "host-callback",
+    "native-fonts",
 )
 
 BINDING_TRANSPORT_EXPOSURE_SPECS = (
@@ -383,7 +389,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "rust",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
-        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
+        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry", "native-font-context"),
     },
     {
         "id": "typst",
@@ -571,6 +577,13 @@ CONSTRUCTOR_SERVICE_SPECS = (
                 "description": "Maximum XML elements in one direct icon SVG fragment",
                 "value": 4096,
             },
+        ),
+    },
+    {
+        "id": "native-font-context",
+        "requires_svg_pipeline": True,
+        "provided_text_measurement_provider_ids": ("native-fonts",),
+        "resource_limits": (
         ),
     },
 )

@@ -22,6 +22,8 @@ pub(super) struct RenderRequestPlan {
     parse_options: merman::ParseOptions,
     input_resources: merman::resources::InputResourcePolicy,
     resource_profile: merman::resources::ResourceProfile,
+    #[cfg(feature = "native-fonts")]
+    native_font_context: Option<merman::svg::export::NativeFontContext>,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -52,7 +54,11 @@ impl RenderRequestPlan {
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
-            .render(self.request(source, merman::RenderTarget::Svg(self.svg.clone()), control))
+            .render(self.request(
+                source,
+                merman::RenderTarget::Svg(self.svg_for_operation(&control)?),
+                control,
+            ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::Svg(svg) = output else {
             return Err(unexpected_render_output("svg"));
@@ -75,7 +81,7 @@ impl RenderRequestPlan {
             .renderer
             .render(self.request(
                 source,
-                merman::RenderTarget::LayoutJson(self.svg.clone()),
+                merman::RenderTarget::LayoutJson(self.svg_for_operation(&control)?),
                 control.clone(),
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
@@ -103,7 +109,7 @@ impl RenderRequestPlan {
             .renderer
             .render(self.request(
                 source,
-                merman::RenderTarget::EdgeGeometryJson(self.svg.clone()),
+                merman::RenderTarget::EdgeGeometryJson(self.svg_for_operation(&control)?),
                 control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
@@ -124,7 +130,7 @@ impl RenderRequestPlan {
             .renderer
             .render(self.request(
                 source,
-                merman::RenderTarget::SvgPlan(self.svg.clone()),
+                merman::RenderTarget::SvgPlan(self.svg_for_operation(&control)?),
                 control,
             ))
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
@@ -147,7 +153,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Png(merman::PngRequest {
-                    svg: self.svg.clone(),
+                    svg: self.svg_for_operation(&control)?,
                     options: self.raster_options.clone(),
                 }),
                 control,
@@ -178,7 +184,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Jpeg(merman::JpegRequest {
-                    svg: self.svg.clone(),
+                    svg: self.svg_for_operation(&control)?,
                     options: self.raster_options.clone(),
                 }),
                 control,
@@ -209,7 +215,7 @@ impl RenderRequestPlan {
             .render(self.request(
                 source,
                 merman::RenderTarget::Pdf(merman::PdfRequest {
-                    svg: self.svg.clone(),
+                    svg: self.svg_for_operation(&control)?,
                     options: self.pdf_options.clone(),
                 }),
                 control,
@@ -227,6 +233,22 @@ impl RenderRequestPlan {
             plan,
             evidence,
         ))
+    }
+
+    fn svg_for_operation(&self, control: &OperationControl) -> Result<SvgRequest, BindingError> {
+        let svg = self.svg.clone();
+        #[cfg(feature = "native-fonts")]
+        if let Some(context) = &self.native_font_context {
+            let mut svg = svg;
+            svg.environment = svg
+                .environment
+                .with_native_font_context(context.for_operation(control))
+                .map_err(|error| classify_render_error(error.into(), self.resource_profile))?;
+            return Ok(svg);
+        }
+        #[cfg(not(feature = "native-fonts"))]
+        let _ = control;
+        Ok(svg)
     }
 
     fn request<'a>(
@@ -464,6 +486,8 @@ impl RenderOperationConfig {
             parse_options,
             input_resources,
             resource_profile,
+            #[cfg(feature = "native-fonts")]
+            native_font_context: services.native_font_context(),
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options: self.raster_options,
             #[cfg(feature = "pdf")]
@@ -608,6 +632,36 @@ fn classify_render_error(
     profile: merman::resources::ResourceProfile,
 ) -> BindingError {
     match err {
+        #[cfg(feature = "native-fonts")]
+        merman::RenderError::NativeFont(merman::svg::export::NativeFontError::Operation(error)) => {
+            classify_render_error(
+                merman::svg::RenderError::OperationResourceTerminal(error).into(),
+                profile,
+            )
+        }
+        #[cfg(feature = "native-fonts")]
+        merman::RenderError::NativeFont(
+            error @ merman::svg::export::NativeFontError::Limit {
+                resource,
+                actual,
+                limit,
+            },
+        ) => BindingError::resource_limit(
+            "native-font-measurement",
+            match resource {
+                "label-bytes" => "native_font_label_bytes",
+                "measurements" => "native_font_measurements",
+                _ => "native_font_resources",
+            },
+            u64::try_from(actual).unwrap_or(u64::MAX),
+            u64::try_from(limit).unwrap_or(u64::MAX),
+            profile.id(),
+            error.to_string(),
+        ),
+        #[cfg(feature = "native-fonts")]
+        merman::RenderError::NativeFont(error) => {
+            BindingError::new(BindingStatus::RenderError, error.to_string())
+        }
         merman::RenderError::Cancelled(err) => BindingError::cancelled(err),
         merman::RenderError::Parse(err) => crate::common::parse_error(err),
         merman::RenderError::ResourceLimitExceeded(err) => BindingError::resource_limit_with_cause(
@@ -681,6 +735,88 @@ fn unexpected_render_output(target: &str) -> BindingError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "native-fonts")]
+    #[test]
+    fn native_font_errors_preserve_structured_operation_terminal_details() {
+        use merman_core::{
+            CancelReason, OperationCancelled, OperationLedgerError, OperationPhase,
+            OperationResourceDomain, OperationResourceLimitExceeded, OperationResourceProvenance,
+        };
+        let profile = merman::resources::ResourceProfile::Interactive;
+        let cancelled = classify_render_error(
+            merman::svg::export::NativeFontError::Operation(OperationLedgerError::Cancelled(
+                OperationCancelled {
+                    phase: OperationPhase::Layout,
+                    reason: CancelReason::Requested,
+                },
+            ))
+            .into(),
+            profile,
+        );
+        assert_eq!(cancelled.status(), BindingStatus::Cancelled);
+        assert!(cancelled.cancellation_details().is_some());
+        assert!(cancelled.resource_details().is_none());
+
+        let limited = classify_render_error(
+            merman::svg::export::NativeFontError::Operation(
+                OperationResourceLimitExceeded {
+                    id: "native_font_measurements",
+                    phase: OperationPhase::Layout,
+                    resource_phase: "native-font-measurement",
+                    limit: 64,
+                    consumed: 64,
+                    requested: 1,
+                    provenance: OperationResourceProvenance::new(
+                        OperationResourceDomain::Render,
+                        None,
+                        [],
+                    ),
+                }
+                .into(),
+            )
+            .into(),
+            profile,
+        );
+        assert_eq!(limited.status(), BindingStatus::ResourceLimitExceeded);
+        let details = limited.resource_details().expect("native resource details");
+        assert_eq!(details.limit_id, "native_font_measurements");
+        assert_eq!(details.phase, "native-font-measurement");
+        assert_eq!(details.actual, 65);
+        assert_eq!(details.max, 64);
+        assert!(limited.cancellation_details().is_none());
+
+        let font_limit = classify_render_error(
+            merman::svg::export::NativeFontError::Limit {
+                resource: "label-bytes",
+                actual: 97,
+                limit: 96,
+            }
+            .into(),
+            profile,
+        );
+        assert_eq!(font_limit.status(), BindingStatus::ResourceLimitExceeded);
+        let details = font_limit
+            .resource_details()
+            .expect("native font ceiling details");
+        assert_eq!(details.limit_id, "native_font_label_bytes");
+        assert_eq!(details.actual, 97);
+        assert_eq!(details.max, 96);
+
+        let measurement = classify_render_error(
+            merman::svg::export::NativeFontError::Measurement(
+                "unsupported native typography".into(),
+            )
+            .into(),
+            profile,
+        );
+        assert_eq!(measurement.status(), BindingStatus::RenderError);
+        assert!(
+            measurement
+                .message()
+                .contains("unsupported native typography")
+        );
+    }
 
     const PORTABILITY_SOURCE: &[u8] =
         b"sequenceDiagram\nparticipant Alice\nparticipant Bob\nAlice->>Bob: Hello";

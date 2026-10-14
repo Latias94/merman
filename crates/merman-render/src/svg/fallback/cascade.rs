@@ -8,7 +8,9 @@ use crate::svg::pipeline::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     find_tag_end_with_checkpoints, find_with_checkpoints, start_tag_name, trim_with_checkpoints,
 };
-use crate::text::{HtmlWhiteSpace, TextStyle};
+use crate::text::{
+    HtmlWhiteSpace, TextStyle, style_requests_bold_font_weight, style_requests_italic_font_style,
+};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
     QualifiedRuleParser, StyleSheetParser, Token, parse_important,
@@ -66,7 +68,7 @@ struct SourceAttribute {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Declaration {
     pub(super) property: String,
-    pub(super) value: String,
+    pub(super) value: Arc<str>,
     pub(super) important: bool,
     pub(super) order: usize,
 }
@@ -74,16 +76,16 @@ pub(super) struct Declaration {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ResolvedStyle {
     pub(super) font_size: f64,
-    pub(super) font_family: String,
-    pub(super) font_weight: Option<String>,
-    pub(super) font_style: Option<String>,
+    pub(super) font_family: Arc<str>,
+    pub(super) font_weight: Option<Arc<str>>,
+    pub(super) font_style: Option<Arc<str>>,
     pub(super) white_space: HtmlWhiteSpace,
     line_height: LineHeight,
-    pub(super) fill: String,
-    color: Option<String>,
-    pub(super) background_color: Option<String>,
+    pub(super) fill: Arc<str>,
+    color: Option<Arc<str>>,
+    pub(super) background_color: Option<Arc<str>>,
     background_color_specified: bool,
-    paint: Vec<(String, String)>,
+    paint: Arc<[(String, Arc<str>)]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -103,31 +105,31 @@ impl LineHeight {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct ResolvedFallbackTypography {
     pub(super) font_size: f64,
-    pub(super) font_family: String,
-    pub(super) font_weight: Option<String>,
-    pub(super) font_style: Option<String>,
+    pub(super) font_family: Arc<str>,
+    pub(super) font_weight: Option<Arc<str>>,
+    pub(super) font_style: Option<Arc<str>>,
     pub(super) line_height: f64,
-    pub(super) fill: String,
-    pub(super) label_background: Option<String>,
+    pub(super) fill: Arc<str>,
+    pub(super) label_background: Option<Arc<str>>,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct ResolvedForeignObject {
     pub(super) typography: ResolvedFallbackTypography,
     pub(super) fragments: Vec<HtmlTextFragment>,
-    pub(super) paint: Vec<(String, String)>,
+    pub(super) paint: Arc<[(String, Arc<str>)]>,
 }
 
 impl ResolvedFallbackTypography {
     pub(super) fn text_style(&self) -> TextStyle {
         TextStyle {
-            font_family: Some(self.font_family.clone()),
+            font_family: Some(self.font_family.to_string()),
             font_size: self.font_size,
-            font_weight: self.font_weight.clone(),
-            font_style: self.font_style.clone(),
+            font_weight: self.font_weight.as_deref().map(str::to_owned),
+            font_style: self.font_style.as_deref().map(str::to_owned),
         }
     }
 }
@@ -157,6 +159,7 @@ enum AttributeMatcher {
     Exists,
     Exact(String),
     ContainsToken(String),
+    Suffix(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -619,7 +622,7 @@ impl CascadeIndex {
             if let Some(value) = attribute_value(&attributes, property) {
                 presentation.push(Declaration {
                     property: property.to_string(),
-                    value: value.to_string(),
+                    value: value.into(),
                     important: false,
                     order: 0,
                 });
@@ -747,7 +750,9 @@ impl CascadeIndex {
                                     false
                                 }
                                 "background" | "background-color" => declaration.important,
-                                "margin" => declaration.value != "0" || declaration.important,
+                                "margin" => {
+                                    declaration.value.as_ref() != "0" || declaration.important
+                                }
                                 _ => true,
                             }
                         }))
@@ -876,15 +881,29 @@ impl CascadeIndex {
                             let element = path.last().expect("projected element");
                             if element.local_name == "text" {
                                 !projection_overrides(declaration)
+                            } else if element.local_name == "tspan" {
+                                !derived_inline_overrides(element, declaration)
+                            } else if element.local_name == "svg"
+                                && matches!(
+                                    declaration.property.as_str(),
+                                    "font-family" | "font-size"
+                                )
+                                && element.inline.iter().any(|inline| {
+                                    inline.property == declaration.property && !inline.important
+                                })
+                            {
+                                // The generated viewport resets these inherited properties;
+                                // emitted text also carries absolute, resolved typography.
+                                declaration.important
                             } else if element.local_name == "rect"
                                 && element
                                     .inline
                                     .iter()
-                                    .any(|d| d.property == "opacity" && d.value == "1")
+                                    .any(|d| d.property == "opacity" && d.value.as_ref() == "1")
                                 && element
                                     .inline
                                     .iter()
-                                    .any(|d| d.property == "stroke" && d.value == "none")
+                                    .any(|d| d.property == "stroke" && d.value.as_ref() == "none")
                                 && element.inline.iter().any(|d| d.property == "fill")
                             {
                                 declaration.important
@@ -907,6 +926,58 @@ impl CascadeIndex {
         Ok(true)
     }
 
+    pub(super) fn inline_text_css_residual<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        fragment: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        if self.budget.projection_unbounded
+            || self.budget.admission_exhausted
+            || self.budget.postings_exhausted
+        {
+            return Ok(true);
+        }
+        let mut path = ancestors.to_vec();
+        let mut scanner = SvgTagScanner::new(fragment);
+        while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+            if end_tag_name(tag.raw()).is_some() {
+                path.pop();
+                continue;
+            }
+            let Some(name) = start_tag_name(tag.raw()) else {
+                continue;
+            };
+            path.push(Self::source_element(tag.raw(), Namespace::Svg, checkpoint)?);
+            if name == "tspan" {
+                let candidates = self.candidate_rules_for_path(&path, selector_limit)?;
+                if self.budget.matching_exhausted {
+                    return Ok(true);
+                }
+                for index in candidates {
+                    let rule = &self.rules[index];
+                    if matches_branch(&rule.branch, &path, checkpoint)?
+                        && (rule.projection_only
+                            || rule.projection_uncertain
+                            || rule.declarations.iter().any(|declaration| {
+                                declaration.important
+                                    || !path.last().is_some_and(|element| {
+                                        derived_inline_overrides(element, declaration)
+                                    })
+                            }))
+                    {
+                        return Ok(true);
+                    }
+                }
+            }
+            if tag.is_self_closing() {
+                path.pop();
+            }
+        }
+        Ok(false)
+    }
+
     pub(super) fn resolve_path<E>(
         &mut self,
         path: &[SourceElement],
@@ -917,6 +988,12 @@ impl CascadeIndex {
     ) -> Result<ResolvedStyle, E> {
         let element = path.last().expect("source path is non-empty");
         let parent = inherited.cloned().unwrap_or_else(default_style);
+        let parent_text_style = TextStyle {
+            font_family: None,
+            font_size: parent.font_size,
+            font_weight: parent.font_weight.as_deref().map(str::to_owned),
+            font_style: parent.font_style.as_deref().map(str::to_owned),
+        };
         let mut specified: HashMap<String, Specified> = HashMap::new();
         let candidate_rule_indices = self.candidate_rules_for_path(path, selector_limit)?;
         for (candidate_index, rule_index) in candidate_rule_indices.into_iter().enumerate() {
@@ -967,7 +1044,7 @@ impl CascadeIndex {
         }
 
         let font_size = resolve_font_size(
-            specified.get("font-size").map(|value| value.value.as_str()),
+            specified.get("font-size").map(|value| value.value.as_ref()),
             parent.font_size,
             root_font_size,
             specified
@@ -975,29 +1052,40 @@ impl CascadeIndex {
                 .is_some_and(|value| value.presentation),
         )
         .unwrap_or(parent.font_size);
-        let font_family = resolve_inherited_text_value(
-            specified
-                .get("font-family")
-                .map(|value| value.value.as_str()),
+        let mut font_family = resolve_inherited_text_value(
+            specified.get("font-family").map(|value| &value.value),
             &parent.font_family,
             DEFAULT_FONT_FAMILY,
         );
-        let font_weight = resolve_optional_text_value(
-            specified
-                .get("font-weight")
-                .map(|value| value.value.as_str()),
-            parent.font_weight.as_deref(),
+        let mut font_weight = resolve_optional_text_value(
+            specified.get("font-weight").map(|value| &value.value),
+            parent.font_weight.as_ref(),
         );
-        let font_style = resolve_optional_text_value(
-            specified
-                .get("font-style")
-                .map(|value| value.value.as_str()),
-            parent.font_style.as_deref(),
+        let mut font_style = resolve_optional_text_value(
+            specified.get("font-style").map(|value| &value.value),
+            parent.font_style.as_ref(),
         );
+        if element.namespace == Namespace::Xhtml {
+            if element.local_name == "code" && !specified.contains_key("font-family") {
+                font_family = "monospace".into();
+            }
+            if matches!(element.local_name.as_str(), "b" | "strong")
+                && !specified.contains_key("font-weight")
+                && !style_requests_bold_font_weight(&parent_text_style)
+            {
+                font_weight = Some("700".into());
+            }
+            if matches!(element.local_name.as_str(), "i" | "em")
+                && !specified.contains_key("font-style")
+                && !style_requests_italic_font_style(&parent_text_style)
+            {
+                font_style = Some("italic".into());
+            }
+        }
         let line_height = resolve_line_height(
             specified
                 .get("line-height")
-                .map(|value| value.value.as_str()),
+                .map(|value| value.value.as_ref()),
             font_size,
             &parent.line_height,
             root_font_size,
@@ -1005,29 +1093,27 @@ impl CascadeIndex {
         let white_space = resolve_white_space(
             specified
                 .get("white-space")
-                .map(|value| value.value.as_str()),
+                .map(|value| value.value.as_ref()),
             parent.white_space,
         );
         let fill = resolve_inherited_text_value(
-            specified.get("fill").map(|value| value.value.as_str()),
+            specified.get("fill").map(|value| &value.value),
             &parent.fill,
             DEFAULT_FILL,
         );
         let color = resolve_optional_color(
-            specified.get("color").map(|value| value.value.as_str()),
-            parent.color.as_deref(),
+            specified.get("color").map(|value| &value.value),
+            parent.color.as_ref(),
         );
         let mut background_color = resolve_background(
-            specified
-                .get("background-color")
-                .map(|value| value.value.as_str()),
-            parent.background_color.as_deref(),
+            specified.get("background-color").map(|value| &value.value),
+            parent.background_color.as_ref(),
         );
         if background_color
             .as_deref()
             .is_some_and(|value| value.eq_ignore_ascii_case("currentcolor"))
         {
-            background_color = Some(color.as_deref().unwrap_or(DEFAULT_COLOR).to_string());
+            background_color = Some(color.clone().unwrap_or_else(|| DEFAULT_COLOR.into()));
         }
         let background_color_specified = specified.contains_key("background-color");
         checkpoint()?;
@@ -1049,7 +1135,8 @@ impl CascadeIndex {
                         .get(*property)
                         .map(|value| ((*property).to_string(), value.value.clone()))
                 })
-                .collect(),
+                .collect::<Vec<_>>()
+                .into(),
         })
     }
 
@@ -1116,6 +1203,13 @@ impl CascadeIndex {
             if !text.is_empty() {
                 fragments.push(HtmlTextFragment::Text {
                     text: text.to_string(),
+                    typography: fallback_typography(
+                        computed_styles
+                            .last()
+                            .cloned()
+                            .unwrap_or_else(default_style),
+                        None,
+                    ),
                     boundary_white_space: text_fragment_boundary_white_space(
                         &mut previous_text_node_path,
                         &node_path,
@@ -1202,6 +1296,13 @@ impl CascadeIndex {
         if !text.is_empty() {
             fragments.push(HtmlTextFragment::Text {
                 text: text.to_string(),
+                typography: fallback_typography(
+                    computed_styles
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(default_style),
+                    None,
+                ),
                 boundary_white_space: text_fragment_boundary_white_space(
                     &mut previous_text_node_path,
                     &node_path,
@@ -1232,10 +1333,12 @@ impl CascadeIndex {
                 if let HtmlTextFragment::Text {
                     white_space,
                     boundary_white_space,
+                    typography,
                     ..
                 } = fragment
                 {
                     *white_space = HtmlWhiteSpace::default();
+                    *typography = default_fallback_typography();
                     if let Some((_, boundary_white_space)) = boundary_white_space {
                         *boundary_white_space = HtmlWhiteSpace::default();
                     }
@@ -1286,7 +1389,7 @@ impl CascadeIndex {
             }
         }
         if label_background.is_none() && label_background_marker && !background_color_specified {
-            label_background = Some("rgba(232, 232, 232, 0.5)".to_string());
+            label_background = Some("rgba(232, 232, 232, 0.5)".into());
         }
         checkpoint()?;
         Ok(ResolvedForeignObject {
@@ -1553,7 +1656,7 @@ struct Priority {
 #[derive(Clone, Debug)]
 struct Specified {
     priority: Priority,
-    value: String,
+    value: Arc<str>,
     presentation: bool,
 }
 
@@ -1591,16 +1694,16 @@ fn select_specified(
 fn default_style() -> ResolvedStyle {
     ResolvedStyle {
         font_size: DEFAULT_FONT_SIZE,
-        font_family: DEFAULT_FONT_FAMILY.to_string(),
+        font_family: DEFAULT_FONT_FAMILY.into(),
         font_weight: None,
         font_style: None,
         white_space: HtmlWhiteSpace::default(),
         line_height: LineHeight::Normal,
-        fill: DEFAULT_FILL.to_string(),
+        fill: DEFAULT_FILL.into(),
         color: None,
         background_color: None,
         background_color_specified: false,
-        paint: Vec::new(),
+        paint: Arc::default(),
     }
 }
 
@@ -1610,9 +1713,9 @@ fn default_fallback_typography() -> ResolvedFallbackTypography {
 
 fn fallback_typography(
     style: ResolvedStyle,
-    label_background: Option<String>,
+    label_background: Option<Arc<str>>,
 ) -> ResolvedFallbackTypography {
-    let fill = effective_html_text_paint(&style).to_string();
+    let fill = style.color.clone().unwrap_or_else(|| style.fill.clone());
     let line_height = style.line_height.pixels(style.font_size);
     ResolvedFallbackTypography {
         font_size: style.font_size,
@@ -2847,6 +2950,12 @@ fn parse_attribute_selector<E>(
                     matcher: AttributeMatcher::ContainsToken(value),
                 })
             }
+            Token::SuffixMatch if modifier.is_none() => {
+                AttributeParse::Admitted(AttributeSelector {
+                    name,
+                    matcher: AttributeMatcher::Suffix(value),
+                })
+            }
             Token::Delim('=')
             | Token::IncludeMatch
             | Token::DashMatch
@@ -2943,6 +3052,12 @@ fn attribute_selector_matches(selector: &AttributeSelector, element: &SourceElem
         AttributeMatcher::ContainsToken(expected) => value
             .as_deref()
             .is_some_and(|value| value.split_whitespace().any(|token| token == expected)),
+        AttributeMatcher::Suffix(expected) => {
+            !expected.is_empty()
+                && value
+                    .as_deref()
+                    .is_some_and(|value| value.ends_with(expected))
+        }
     }
 }
 
@@ -2966,6 +3081,13 @@ fn projection_overrides(declaration: &Declaration) -> bool {
                 | "fill"
                 | "stroke"
         )
+}
+
+fn derived_inline_overrides(element: &SourceElement, declaration: &Declaration) -> bool {
+    element
+        .inline
+        .iter()
+        .any(|inline| inline.property == declaration.property && inline.important)
 }
 
 fn parse_declarations<E>(
@@ -2996,7 +3118,7 @@ fn parse_fragment_paint_declaration(raw: &str, order: usize) -> Option<Declarati
     parser.expect_exhausted().ok()?;
     Some(Declaration {
         property,
-        value: value.to_string(),
+        value: value.into(),
         important,
         order,
     })
@@ -3017,7 +3139,7 @@ fn parse_declarations_with_limit<E>(
         let declaration = if let Some(parsed) = parse_style_declaration(boundary.raw()) {
             Declaration {
                 property: parsed.property().to_owned(),
-                value: parsed.value().to_owned(),
+                value: parsed.value().into(),
                 important: parsed.important(),
                 order: current_order,
             }
@@ -3084,25 +3206,36 @@ fn resolve_font_size(
     }
 }
 
-fn resolve_inherited_text_value(value: Option<&str>, parent: &str, initial: &str) -> String {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return parent.to_string();
+fn resolve_inherited_text_value(
+    value: Option<&Arc<str>>,
+    parent: &Arc<str>,
+    initial: &str,
+) -> Arc<str> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return Arc::clone(parent);
     };
-    match value.to_ascii_lowercase().as_str() {
-        "inherit" | "unset" => parent.to_string(),
-        "initial" => initial.to_string(),
-        _ => value.to_string(),
+    if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") {
+        Arc::clone(parent)
+    } else if value.eq_ignore_ascii_case("initial") {
+        initial.into()
+    } else {
+        Arc::clone(value)
     }
 }
 
-fn resolve_optional_text_value(value: Option<&str>, parent: Option<&str>) -> Option<String> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return parent.map(str::to_owned);
+fn resolve_optional_text_value(
+    value: Option<&Arc<str>>,
+    parent: Option<&Arc<str>>,
+) -> Option<Arc<str>> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return parent.cloned();
     };
-    match value.to_ascii_lowercase().as_str() {
-        "inherit" | "unset" => parent.map(str::to_owned),
-        "initial" => None,
-        _ => Some(value.to_string()),
+    if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") {
+        parent.cloned()
+    } else if value.eq_ignore_ascii_case("initial") {
+        None
+    } else {
+        Some(Arc::clone(value))
     }
 }
 
@@ -3115,15 +3248,18 @@ fn resolve_white_space(value: Option<&str>, parent: HtmlWhiteSpace) -> HtmlWhite
     }
 }
 
-fn resolve_optional_color(value: Option<&str>, parent: Option<&str>) -> Option<String> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return parent.map(str::to_owned);
+fn resolve_optional_color(value: Option<&Arc<str>>, parent: Option<&Arc<str>>) -> Option<Arc<str>> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return parent.cloned();
     };
-    match value.to_ascii_lowercase().as_str() {
-        "inherit" | "unset" => parent.map(str::to_owned),
-        "initial" => Some(DEFAULT_COLOR.to_string()),
-        "currentcolor" => Some(parent.unwrap_or(DEFAULT_COLOR).to_string()),
-        _ => Some(value.to_string()),
+    if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") {
+        parent.cloned()
+    } else if value.eq_ignore_ascii_case("initial") {
+        Some(DEFAULT_COLOR.into())
+    } else if value.eq_ignore_ascii_case("currentcolor") {
+        Some(parent.cloned().unwrap_or_else(|| DEFAULT_COLOR.into()))
+    } else {
+        Some(Arc::clone(value))
     }
 }
 
@@ -3175,12 +3311,14 @@ fn resolve_line_height(
     inherited.clone()
 }
 
-fn resolve_background(value: Option<&str>, parent: Option<&str>) -> Option<String> {
-    let value = value.map(str::trim).filter(|value| !value.is_empty())?;
-    match value.to_ascii_lowercase().as_str() {
-        "initial" | "unset" => None,
-        "inherit" => parent.map(str::to_owned),
-        _ => Some(value.to_string()),
+fn resolve_background(value: Option<&Arc<str>>, parent: Option<&Arc<str>>) -> Option<Arc<str>> {
+    let value = value.filter(|value| !value.is_empty())?;
+    if value.eq_ignore_ascii_case("initial") || value.eq_ignore_ascii_case("unset") {
+        None
+    } else if value.eq_ignore_ascii_case("inherit") {
+        parent.cloned()
+    } else {
+        Some(Arc::clone(value))
     }
 }
 
@@ -3205,6 +3343,110 @@ mod tests {
     use std::convert::Infallible;
 
     #[test]
+    fn fallback_viewport_resets_only_its_emitted_typography() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        for (declarations, permitted) in [
+            ("font-family:Arial;font-size:16px", true),
+            ("font-size:99px!important", false),
+            ("font-family:Arial!important", false),
+            ("width:1px", false),
+            ("overflow:hidden", false),
+        ] {
+            let source = format!("<svg><style>#diagram svg{{{declarations}}}</style></svg>");
+            let mut cascade =
+                CascadeIndex::new(&source, &mut checkpoint, &mut selector_limit).unwrap();
+            let root =
+                CascadeIndex::source_element("<svg id='diagram'>", Namespace::Svg, &mut checkpoint)
+                    .unwrap();
+            assert_eq!(
+                cascade
+                    .permits_in_place_fallback(
+                        &[root],
+                        "<svg width='120' height='24' style='font-family:Cousine;font-size:16px'><text style='font-family:Cousine;font-size:16px'>Label</text></svg>",
+                        &mut checkpoint,
+                        &mut selector_limit,
+                    )
+                    .unwrap(),
+                permitted,
+                "{declarations}"
+            );
+        }
+    }
+
+    #[test]
+    fn derived_tspan_styles_preserve_authored_cascade_for_best_effort_exports() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        let mut cascade = CascadeIndex::new(
+            "<svg><style>tspan{font-size:64px;opacity:0;stroke:red}</style></svg>",
+            &mut checkpoint,
+            &mut selector_limit,
+        )
+        .unwrap();
+        let fragment = "<g><text><tspan style='font-size:16px!important;opacity:1!important;stroke:none!important'>Alpha</tspan></text></g>";
+        assert!(
+            cascade
+                .permits_in_place_fallback(&[], fragment, &mut checkpoint, &mut selector_limit)
+                .unwrap()
+        );
+        let mut important = CascadeIndex::new(
+            "<svg><style>tspan{font-size:64px!important}</style></svg>",
+            &mut checkpoint,
+            &mut selector_limit,
+        )
+        .unwrap();
+        assert!(
+            important
+                .inline_text_css_residual(&[], fragment, &mut checkpoint, &mut selector_limit)
+                .unwrap(),
+            "keep the authored inline cascade even when the backend reports an important-style residual"
+        );
+        assert!(
+            !cascade
+                .inline_text_css_residual(&[], fragment, &mut checkpoint, &mut selector_limit)
+                .unwrap()
+        );
+        let unsafe_fragment = fragment.replace("opacity:1!important", "opacity:1");
+        assert!(
+            !cascade
+                .permits_in_place_fallback(
+                    &[],
+                    &unsafe_fragment,
+                    &mut checkpoint,
+                    &mut selector_limit
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn marker_id_suffix_rules_do_not_reject_unrelated_rich_text() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        let mut cascade = CascadeIndex::new("<svg><style>defs [id$='-barbEnd']{stroke-width:2px}[id$='-dependencyStart']{fill:red}</style></svg>", &mut checkpoint, &mut selector_limit).unwrap();
+        assert!(!cascade.budget.projection_unbounded);
+        assert!(!cascade.inline_text_css_residual(&[], "<defs><g id='label-definition'><text><tspan style='fill:black!important'>Alpha</tspan></text></g></defs>", &mut checkpoint, &mut selector_limit).unwrap());
+        for (id, expected) in [
+            ("diagram-barbEnd", true),
+            ("diagram-label", false),
+            ("", false),
+        ] {
+            let element = CascadeIndex::source_element(
+                &format!("<path id='{id}'/>"),
+                Namespace::Svg,
+                &mut checkpoint,
+            )
+            .unwrap();
+            let selector = AttributeSelector {
+                name: "id".to_string(),
+                matcher: AttributeMatcher::Suffix("-barbEnd".to_string()),
+            };
+            assert_eq!(attribute_selector_matches(&selector, &element), expected);
+        }
+    }
+
+    #[test]
     fn fallback_paint_fragments_preserve_importance_and_reject_external_urls() {
         let mut checkpoint = || Ok::<(), Infallible>(());
         let local = parse_declarations_with_limit(
@@ -3216,11 +3458,11 @@ mod tests {
         assert!(!local.unparsed);
         assert_eq!(local.declarations.len(), 4);
         assert_eq!(local.declarations[0].property, "clip-path");
-        assert_eq!(local.declarations[0].value, "url(#clip)");
+        assert_eq!(local.declarations[0].value.as_ref(), "url(#clip)");
         assert!(local.declarations[0].important);
-        assert_eq!(local.declarations[1].value, "url('#mask')");
+        assert_eq!(local.declarations[1].value.as_ref(), "url('#mask')");
         assert!(!local.declarations[1].important);
-        assert_eq!(local.declarations[2].value, "url(#shadow)");
+        assert_eq!(local.declarations[2].value.as_ref(), "url(#shadow)");
         for external in [
             "clip-path:url(https://example.test/paint.svg#clip)",
             "mask:url('../paint.svg#mask')!important",
@@ -3304,6 +3546,51 @@ mod tests {
                 (HtmlWhiteSpace::Normal, Some((2, HtmlWhiteSpace::Nowrap))),
             ]
         );
+    }
+
+    #[test]
+    fn rich_text_leaves_share_inherited_and_rule_owned_font_payloads() {
+        let family = "Shared family ".repeat(256);
+        let html = format!(
+            "<div style='font-family:{family}'>{}</div>",
+            "<span>Alpha</span><b>Beta</b>".repeat(128)
+        );
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        for (stylesheet, html) in [
+            ("<svg/>".to_string(), html),
+            (
+                format!("<svg><style>span,b{{font-family:{family}}}</style></svg>"),
+                format!("<div>{}</div>", "<span>Alpha</span><b>Beta</b>".repeat(128)),
+            ),
+        ] {
+            let mut cascade =
+                CascadeIndex::new(&stylesheet, &mut checkpoint, &mut selector_limit).unwrap();
+            let resolved = cascade
+                .resolve_foreign_object(
+                    &[],
+                    "<foreignObject/>",
+                    &html,
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+            let families = resolved
+                .fragments
+                .iter()
+                .filter_map(|fragment| match fragment {
+                    HtmlTextFragment::Text { typography, .. } => Some(&typography.font_family),
+                    HtmlTextFragment::HardBreak => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(families.len(), 256);
+            assert!(
+                families
+                    .iter()
+                    .all(|family| Arc::ptr_eq(families[0], family)),
+                "one source font payload must serve every styled leaf"
+            );
+        }
     }
 
     #[test]

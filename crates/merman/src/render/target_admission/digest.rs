@@ -423,6 +423,7 @@ pub(in crate::render) fn standalone_target_evidence_digest(
                 |hasher, name| update_digest_field(hasher, name.as_bytes()),
             );
             update_digest_bool(hasher, report.drop_native_duplicate_fallbacks());
+            update_digest_bool(hasher, report.fallback_css_residual());
             let reference_plan = report.reference_plan();
             update_digest_usize(hasher, reference_plan.expanded_elements());
             update_digest_usize(hasher, reference_plan.max_tree_depth());
@@ -537,6 +538,8 @@ pub(super) fn raster_target_evidence_digest(
         update_prepared_math_digest(hasher, prepared_math);
         update_native_filter_digest(hasher, expected_native_filter);
         update_native_filter_digest(hasher, report.native_filter_receipt());
+        update_digest_bool(hasher, report.directional_filter_transform_residual());
+        update_digest_bool(hasher, report.fallback_css_residual());
         let output = match report.output() {
             merman_export::RasterOutputKind::Png => "png",
             merman_export::RasterOutputKind::Jpeg => "jpeg",
@@ -576,6 +579,9 @@ pub(super) fn pdf_target_evidence_digest(
         update_native_filter_digest(hasher, expected_native_filter);
         update_native_filter_digest(hasher, report.native_filter_receipt());
         update_digest_bool(hasher, report.native_filter_fully_localized());
+        update_digest_bool(hasher, report.directional_filter_transform_residual());
+        update_digest_bool(hasher, report.implicit_viewport_clipping_residual());
+        update_digest_bool(hasher, report.fallback_css_residual());
         let page = report.page();
         update_digest_f32(hasher, page.page_width_pt());
         update_digest_f32(hasher, page.page_height_pt());

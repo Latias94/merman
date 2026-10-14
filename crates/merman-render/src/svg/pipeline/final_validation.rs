@@ -742,6 +742,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     let mut reference_stack = Vec::new();
     let mut resource_closure = SvgResourceClosureBuilder::default();
     let mut text_content = SvgTextContentTracker::default();
+    let mut fallback_css_residual = false;
 
     loop {
         checkpoint()?;
@@ -770,6 +771,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                         validation_error("terminal SVG text elements cannot be tracked")
                     })?;
                 let opens_style = validated.is_style;
+                fallback_css_residual |= validated.fallback_css_residual;
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -800,6 +802,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     checkpoint,
                 )?;
                 let empty_style = validated.is_style;
+                fallback_css_residual |= validated.fallback_css_residual;
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -935,6 +938,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
         resource_closure,
         text_elements,
         font_seal,
+        fallback_css_residual,
     })
 }
 
@@ -948,6 +952,7 @@ pub(crate) struct TerminalSvgValidation {
     pub(super) resource_closure: SvgResourceClosure,
     pub(super) text_elements: usize,
     pub(super) font_seal: SvgFontSeal,
+    pub(super) fallback_css_residual: bool,
 }
 
 impl std::ops::Deref for TerminalSvgValidation {
@@ -968,6 +973,7 @@ fn reject_additional_root(is_root: bool, root_seen: bool, root_closed: bool) -> 
 }
 
 struct ValidatedElement {
+    fallback_css_residual: bool,
     is_style: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
@@ -1069,6 +1075,7 @@ fn validate_element_after_xml(
     let mut reference_attributes = ReferenceAttributes::new(element_name, is_svg_element);
     let mut root_width_seen = false;
     let mut root_height_seen = false;
+    let mut fallback_css_residual = false;
     // The caller already validated this immutable element, including lexical and expanded
     // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
     for attribute in element.attributes().with_checks(false) {
@@ -1098,6 +1105,15 @@ fn validate_element_after_xml(
         }
         let semantic_name = local_name.as_ref();
         checkpoint()?;
+        if is_svg_element
+            && is_unbound_attribute
+            && qualified_name == "data-merman-fallback-css-residual"
+            && value == "true"
+        {
+            // An authored marker can only request a warning or stricter fidelity rejection.
+            // It cannot grant compatibility, font, or resource evidence.
+            fallback_css_residual = true;
+        }
         if is_unbound_attribute && qualified_name == "data-merman-typed-fonts" {
             return Err(validation_error(
                 "embedded theme font resources are not supported",
@@ -1158,7 +1174,8 @@ fn validate_element_after_xml(
     if let Some(error) = reference_attributes.marker_error.take() {
         return Err(error);
     }
-    let validated = reference_attributes.finish();
+    let mut validated = reference_attributes.finish();
+    validated.fallback_css_residual = fallback_css_residual;
     if let Some(id) = &validated.parsed_id {
         resource_closure.observe_fragment_id(id);
     }
@@ -1327,6 +1344,7 @@ impl<'a> ReferenceAttributes<'a> {
             });
         }
         ValidatedElement {
+            fallback_css_residual: false,
             is_style: self.is_svg_element && self.element_name.eq_ignore_ascii_case("style"),
             is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
             may_repeat_per_element: self.is_svg_element

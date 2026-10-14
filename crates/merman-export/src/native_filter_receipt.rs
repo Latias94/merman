@@ -1223,12 +1223,15 @@ mod tests {
             512,
             "translate(40 60)",
         )
-        .replace(r#" viewBox="0 0 512 512""#, "");
-        let tree = parse_text_tree(&source);
-        assert!(
-            preflight_native_filter_receipt(&source, &tree).is_some(),
-            "the declared viewport contains the effect"
+        .replace(r#" viewBox="0 0 512 512""#, "")
+        .replace(
+            r#"width="512" height="512""#,
+            r#"width="100%" style="max-width:512px""#,
         );
+        let tree = parse_text_tree(&source);
+        let reference_viewport = usvg::Rect::from_xywh(0.0, 0.0, 512.0, 512.0).unwrap();
+        let expected = super::preflight_native_filter_receipt(&source, &tree, reference_viewport)
+            .expect("the full reference viewport contains the effect");
         let metadata =
             crate::parse_root_svg_metadata(&source, &crate::OperationControl::new()).unwrap();
         let (geometry, translated) = crate::raster_geometry_for_svg(metadata, &tree);
@@ -1240,9 +1243,52 @@ mod tests {
             geometry.height,
         )
         .unwrap();
+        assert_eq!(
+            super::preflight_native_filter_receipt(&source, &tree, actual_viewport),
+            Some(expected),
+            "dimensionless content fitting retains the exact unclipped glyph-glow receipt"
+        );
         assert!(
-            super::preflight_native_filter_receipt(&source, &tree, actual_viewport).is_none(),
-            "the PNG content crop excludes glow, even though the declared SVG viewport contains it"
+            super::preflight_native_filter_receipt(
+                &source,
+                &tree,
+                tree.root().abs_stroke_bounding_box(),
+            )
+            .is_none(),
+            "the old stroke-only content crop excludes glow and must never be certified"
+        );
+    }
+
+    #[cfg(feature = "png")]
+    #[test]
+    fn text_shadow_receipt_preserves_explicit_viewport_without_viewbox() {
+        let source = text_shadow_svg(
+            "userSpaceOnUse",
+            r#"x="0" y="0" width="200" height="200""#,
+            512,
+            "translate(40 60)",
+        )
+        .replace(r#" viewBox="0 0 512 512""#, "");
+        let tree = parse_text_tree(&source);
+        let expected = preflight_native_filter_receipt(&source, &tree)
+            .expect("the explicit viewport contains actual glyph ink and glow");
+        let metadata =
+            crate::parse_root_svg_metadata(&source, &crate::OperationControl::new()).unwrap();
+        let (geometry, translated) = crate::raster_geometry_for_svg(metadata, &tree);
+        assert!(!translated);
+        assert_eq!((geometry.min_x, geometry.min_y), (0.0, 0.0));
+        assert_eq!((geometry.width, geometry.height), (512.0, 512.0));
+        let actual_viewport = usvg::Rect::from_xywh(
+            geometry.min_x,
+            geometry.min_y,
+            geometry.width,
+            geometry.height,
+        )
+        .unwrap();
+        assert_eq!(
+            super::preflight_native_filter_receipt(&source, &tree, actual_viewport),
+            Some(expected),
+            "raster preparation preserves the exact unclipped text-shadow receipt"
         );
     }
 

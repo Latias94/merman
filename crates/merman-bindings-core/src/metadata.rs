@@ -11,6 +11,7 @@ pub const RUNTIME_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const THEME_CATALOG_SCHEMA_VERSION: u32 = 1;
 pub const TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK: &str = "host-callback";
 pub const TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC: &str = "deterministic";
+pub const TEXT_MEASUREMENT_PROVIDER_NATIVE_FONTS: &str = "native-fonts";
 
 static SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 static ASCII_SUPPORTED_DIAGRAMS_JSON: OnceLock<Vec<u8>> = OnceLock::new();
@@ -27,6 +28,7 @@ static CONFIGURABLE_LINT_RULE_CATALOG_JSON: OnceLock<Vec<u8>> = OnceLock::new();
 /// The protocol version belongs to the independently versioned text-measurement contract. Provider
 /// IDs describe actual installation routes, not Cargo features: `deterministic` is the built-in
 /// renderer measurer and `host-callback` means this transport accepts a host callback.
+/// `native-fonts` means the Rust transport accepts an already loaded native font context.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[non_exhaustive]
 pub struct TextMeasurementCapabilities {
@@ -1208,6 +1210,8 @@ mod tests {
                 [
                     TEXT_MEASUREMENT_PROVIDER_DETERMINISTIC,
                     TEXT_MEASUREMENT_PROVIDER_HOST_CALLBACK,
+                    #[cfg(feature = "native-fonts")]
+                    TEXT_MEASUREMENT_PROVIDER_NATIVE_FONTS,
                 ]
             );
         }

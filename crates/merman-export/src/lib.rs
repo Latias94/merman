@@ -60,7 +60,7 @@ pub enum ExportError {
     PixmapAlloc,
     #[error("invalid raster scale; expected a finite positive number")]
     InvalidScale,
-    #[error("invalid raster sizing option: {0}")]
+    #[error("invalid SVG export sizing option: {0}")]
     InvalidSizing(&'static str),
     #[error("failed to encode PNG")]
     PngEncode,
@@ -1338,6 +1338,8 @@ pub enum RasterOutputKind {
 pub struct RasterExportReport {
     resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
+    directional_filter_transform_residual: bool,
+    fallback_css_residual: bool,
     output: RasterOutputKind,
     raster: RasterPlan,
     embedded_images: EmbeddedImagePlan,
@@ -1358,6 +1360,23 @@ impl RasterExportReport {
         self,
     ) -> Option<merman_render::__private::NativeSvgFilterReceipt> {
         self.native_filter_receipt
+    }
+
+    /// Returns whether directional filter offsets may differ from their SVG transform.
+    ///
+    /// The native raster backend renders these effects with scale magnitudes and can lose
+    /// rotation, shear or reflection. Best-effort export still produces the diagram; callers
+    /// should disclose this paint-quality limitation or reject it under an exactness policy.
+    pub const fn directional_filter_transform_residual(self) -> bool {
+        self.directional_filter_transform_residual
+    }
+
+    /// Returns whether converted HTML label styles can differ in the native CSS backend.
+    ///
+    /// This quality observation is retained from the sealed SVG's terminal validation. It does
+    /// not authorize resources, relax SVG safety, or prevent best-effort image encoding.
+    pub const fn fallback_css_residual(self) -> bool {
+        self.fallback_css_residual
     }
 
     pub const fn output(self) -> RasterOutputKind {
@@ -1396,6 +1415,8 @@ impl RasterExportReport {
 struct RasterReportSeed {
     resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
+    directional_filter_transform_residual: bool,
+    fallback_css_residual: bool,
     raster: RasterPlan,
     embedded_images: EmbeddedImagePlan,
     conversion: SvgConversionPlan,
@@ -1448,6 +1469,9 @@ pub struct PdfExportReport {
     resource_fingerprint: merman_render::svg::SvgResourceFingerprint,
     native_filter_receipt: Option<merman_render::__private::NativeSvgFilterReceipt>,
     native_filter_fully_localized: bool,
+    directional_filter_transform_residual: bool,
+    implicit_viewport_clipping_residual: bool,
+    fallback_css_residual: bool,
     page: PdfPagePlan,
     filters: PdfFilterImagePlan,
     embedded_images: EmbeddedImagePlan,
@@ -1472,6 +1496,31 @@ impl PdfExportReport {
     #[doc(hidden)]
     pub const fn native_filter_fully_localized(self) -> bool {
         self.native_filter_fully_localized
+    }
+
+    /// Returns whether offsets inside a localized filter image may paint in a different direction.
+    ///
+    /// Vector ancestor transforms remain supported. A transform on the rasterized group or its
+    /// descendants can expose the raster backend's offset limitation. Best-effort export still
+    /// produces the diagram and reports this paint-quality residual.
+    pub const fn directional_filter_transform_residual(self) -> bool {
+        self.directional_filter_transform_residual
+    }
+
+    /// Returns whether a dimensionless SVG's derived PDF viewport can clip its layer bounds.
+    ///
+    /// This reports best-effort output without changing the sealed SVG. An explicit viewBox or
+    /// width and height define a caller-owned viewport and do not produce this residual.
+    pub const fn implicit_viewport_clipping_residual(self) -> bool {
+        self.implicit_viewport_clipping_residual
+    }
+
+    /// Returns whether converted HTML label styles can differ in the native CSS backend.
+    ///
+    /// This quality observation is retained from the sealed SVG's terminal validation. It does
+    /// not authorize resources, relax SVG safety, or prevent best-effort PDF encoding.
+    pub const fn fallback_css_residual(self) -> bool {
+        self.fallback_css_residual
     }
 
     pub const fn page(self) -> PdfPagePlan {
@@ -1554,6 +1603,10 @@ impl PreparedRaster {
         RasterExportReport {
             resource_fingerprint: self.report.resource_fingerprint,
             native_filter_receipt: self.report.native_filter_receipt,
+            directional_filter_transform_residual: self
+                .report
+                .directional_filter_transform_residual,
+            fallback_css_residual: self.report.fallback_css_residual,
             output,
             raster: self.report.raster,
             embedded_images: self.report.embedded_images,
@@ -1862,7 +1915,10 @@ fn prepare_raster_source_on_backend_stack(
         native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
     });
     let font_plan = font_plan.finish_with_tree(&tree);
+    let fallback_css_residual = svg.finalization_report().fallback_css_residual();
     let conversion_plan = plan_svg_conversion(&tree, options.conversion_limits, control)?;
+    let directional_filter_transform_residual =
+        !raster_filter_transforms_supported(tree.root(), control)?;
     let embedded_image_plan =
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
     let plan = raster_plan_for_geometry(geometry, options, control)?;
@@ -1875,6 +1931,8 @@ fn prepare_raster_source_on_backend_stack(
         report: RasterReportSeed {
             resource_fingerprint: svg.resource_fingerprint(),
             native_filter_receipt,
+            directional_filter_transform_residual,
+            fallback_css_residual,
             raster: plan,
             embedded_images: embedded_image_plan,
             conversion: conversion_plan,
@@ -1936,6 +1994,19 @@ fn prepare_pdf_on_backend_stack(
         control,
     )?;
     let (tree, font_plan) = parse_pdf_tree(svg, options, control)?;
+    let fallback_css_residual = svg.finalization_report().fallback_css_residual();
+    let metadata = parse_root_svg_metadata(source, control)?;
+    let implicit_viewport_clipping_residual =
+        if !metadata.has_view_box && !metadata.has_explicit_size {
+            let layer = tree.root().abs_layer_bounding_box();
+            let viewport = tree.size();
+            layer.left() < 0.0
+                || layer.top() < 0.0
+                || layer.right() > viewport.width()
+                || layer.bottom() > viewport.height()
+        } else {
+            false
+        };
     let native_filter_receipt = tree.size().to_rect(0.0, 0.0).and_then(|viewport| {
         native_filter_receipt::preflight_native_filter_receipt(source, &tree, viewport)
     });
@@ -1944,7 +2015,7 @@ fn prepare_pdf_on_backend_stack(
         plan_embedded_images(&tree, options.embedded_image_limit, data_plan, control)?;
     let svg_size = pdf_svg_size(&tree)?;
     let layout = pdf_page_layout(svg_size, options.page_policy)?;
-    let filter_plan = plan_pdf_filter_images(
+    let (filter_plan, directional_filter_transform_residual) = plan_pdf_filter_images(
         &tree,
         layout.drawing_size.width() / svg_size.width(),
         options.filter_scale,
@@ -1963,6 +2034,9 @@ fn prepare_pdf_on_backend_stack(
         resource_fingerprint: svg.resource_fingerprint(),
         native_filter_receipt,
         native_filter_fully_localized,
+        directional_filter_transform_residual,
+        implicit_viewport_clipping_residual,
+        fallback_css_residual,
         page: layout.plan(),
         filters: filter_plan,
         embedded_images: embedded_image_plan,
@@ -2450,6 +2524,88 @@ fn check_svg_conversion_limit(
     })
 }
 
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn raster_filter_transforms_supported(
+    root: &usvg::Group,
+    control: &OperationControl,
+) -> Result<bool> {
+    let mut stack = vec![(root, usvg::Transform::identity())];
+    while let Some((group, parent_transform)) = stack.pop() {
+        export_checkpoint(control)?;
+        let transform = parent_transform.pre_concat(group.transform());
+        let preserves_offset_axes =
+            transform.kx == 0.0 && transform.ky == 0.0 && transform.sx > 0.0 && transform.sy > 0.0;
+        if !preserves_offset_axes {
+            for primitive in group
+                .filters()
+                .iter()
+                .flat_map(|filter| filter.primitives())
+            {
+                export_checkpoint(control)?;
+                // resvg 0.47's scale_coordinates uses only scale magnitudes, so directional
+                // offsets lose rotation, shear and reflection. Report the residual without
+                // preventing best-effort output. PDF uses this rasterizer inside each filtered
+                // group, so its ancestor transforms remain outside this validation root.
+                let directional = match primitive.kind() {
+                    usvg::filter::Kind::Offset(offset) => offset.dx() != 0.0 || offset.dy() != 0.0,
+                    usvg::filter::Kind::DropShadow(shadow) => {
+                        shadow.dx() != 0.0 || shadow.dy() != 0.0
+                    }
+                    _ => false,
+                };
+                if directional {
+                    return Ok(false);
+                }
+            }
+        }
+
+        let mut mask = group.mask();
+        while let Some(current) = mask {
+            export_checkpoint(control)?;
+            stack.push((current.root(), transform));
+            mask = current.mask();
+        }
+        for filter in group.filters() {
+            for primitive in filter.primitives() {
+                export_checkpoint(control)?;
+                if let usvg::filter::Kind::Image(image) = primitive.kind() {
+                    stack.push((image.root(), transform));
+                }
+            }
+        }
+        for node in group.children() {
+            export_checkpoint(control)?;
+            match node {
+                usvg::Node::Group(child) => stack.push((child, transform)),
+                usvg::Node::Image(image) => {
+                    if let usvg::ImageKind::SVG(nested) = image.kind() {
+                        stack.push((nested.root(), transform));
+                    }
+                }
+                // Borrow these owners directly: Node::subroots limits callback borrows to the
+                // callback body. resvg samples pattern paints in axis-aligned pixmaps.
+                usvg::Node::Path(path) => {
+                    for paint in [
+                        path.fill().map(|fill| fill.paint()),
+                        path.stroke().map(|stroke| stroke.paint()),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        if let usvg::Paint::Pattern(pattern) = paint {
+                            stack.push((pattern.root(), usvg::Transform::identity()));
+                        }
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    stack.push((text.flattened(), usvg::Transform::identity()));
+                }
+            }
+        }
+    }
+    Ok(true)
+}
+
 #[cfg(feature = "pdf")]
 fn plan_pdf_filter_images(
     tree: &usvg::Tree,
@@ -2457,95 +2613,215 @@ fn plan_pdf_filter_images(
     requested_scale: f32,
     limit: PdfFilterImageLimit,
     control: &OperationControl,
-) -> Result<PdfFilterImagePlan> {
-    let filtered_groups = pdf_filtered_group_bounds(tree, control)?;
-    let requested_pixels =
-        pdf_filter_pixels(&filtered_groups, page_scale, requested_scale, control)?;
+) -> Result<(PdfFilterImagePlan, bool)> {
+    let filtered_groups = pdf_filtered_group_bounds(tree, page_scale, control)?;
+    let directional_residual = filtered_groups
+        .iter()
+        .any(|geometry| geometry.directional_transform_residual);
+    let requested_pixels = pdf_filter_pixels(&filtered_groups, requested_scale, control)?.ok_or(
+        ExportError::InvalidSizing(
+            "PDF filter scale and backend side cap must leave every image dimension nonzero",
+        ),
+    )?;
     let Some(max_pixels) = limit.max_total_pixels else {
-        return Ok(PdfFilterImagePlan {
-            filtered_groups: filtered_groups.len(),
-            requested_scale,
-            effective_scale: requested_scale,
-            requested_image_pixels: requested_pixels,
-            effective_image_pixels: requested_pixels,
-            limited: false,
-        });
+        return Ok((
+            PdfFilterImagePlan {
+                filtered_groups: filtered_groups.len(),
+                requested_scale,
+                effective_scale: requested_scale,
+                requested_image_pixels: requested_pixels,
+                effective_image_pixels: requested_pixels,
+                limited: false,
+            },
+            directional_residual,
+        ));
     };
     if requested_pixels <= max_pixels {
-        return Ok(PdfFilterImagePlan {
-            filtered_groups: filtered_groups.len(),
-            requested_scale,
-            effective_scale: requested_scale,
-            requested_image_pixels: requested_pixels,
-            effective_image_pixels: requested_pixels,
-            limited: false,
-        });
+        return Ok((
+            PdfFilterImagePlan {
+                filtered_groups: filtered_groups.len(),
+                requested_scale,
+                effective_scale: requested_scale,
+                requested_image_pixels: requested_pixels,
+                effective_image_pixels: requested_pixels,
+                limited: false,
+            },
+            directional_residual,
+        ));
     }
 
-    let mut accepted = 0.0_f32;
+    let mut lower = 0.0_f32;
+    let mut accepted = None;
     let mut rejected = requested_scale;
     for _ in 0..48 {
-        let candidate = accepted + (rejected - accepted) / 2.0;
+        let candidate = lower + (rejected - lower) / 2.0;
         export_checkpoint(control)?;
-        if pdf_filter_pixels(&filtered_groups, page_scale, candidate, control)? <= max_pixels {
-            accepted = candidate;
-        } else {
-            rejected = candidate;
+        match pdf_filter_pixels(&filtered_groups, candidate, control)? {
+            Some(pixels) if pixels <= max_pixels => {
+                lower = candidate;
+                accepted = Some((candidate, pixels));
+            }
+            Some(_) => rejected = candidate,
+            // A zero-size backend image drops the entire group. It is not a valid budget fit.
+            None => lower = candidate,
         }
     }
-    if !(accepted.is_finite() && accepted > 0.0) {
-        return Err(ExportError::PdfFilterImageLimit {
-            actual: requested_pixels,
-            max: max_pixels,
-        });
-    }
-    let effective_pixels = pdf_filter_pixels(&filtered_groups, page_scale, accepted, control)?;
-    Ok(PdfFilterImagePlan {
-        filtered_groups: filtered_groups.len(),
-        requested_scale,
-        effective_scale: accepted,
-        requested_image_pixels: requested_pixels,
-        effective_image_pixels: effective_pixels,
-        limited: true,
-    })
+    let (accepted, effective_pixels) = accepted.ok_or(ExportError::PdfFilterImageLimit {
+        actual: requested_pixels,
+        max: max_pixels,
+    })?;
+    Ok((
+        PdfFilterImagePlan {
+            filtered_groups: filtered_groups.len(),
+            requested_scale,
+            effective_scale: accepted,
+            requested_image_pixels: requested_pixels,
+            effective_image_pixels: effective_pixels,
+            limited: true,
+        },
+        directional_residual,
+    ))
+}
+
+#[cfg(feature = "pdf")]
+struct PdfFilterGeometry {
+    width: f32,
+    height: f32,
+    scale: f32,
+    directional_transform_residual: bool,
 }
 
 #[cfg(feature = "pdf")]
 fn pdf_filtered_group_bounds(
     tree: &usvg::Tree,
+    page_scale: f32,
     control: &OperationControl,
-) -> Result<Vec<(f64, f64)>> {
+) -> Result<Vec<PdfFilterGeometry>> {
     let mut bounds = Vec::new();
-    let mut stack = vec![(tree.root(), 1.0_f64)];
-    while let Some((group, coordinate_scale)) = stack.pop() {
+    let mut stack = vec![(
+        tree.root(),
+        usvg::Transform::from_scale(page_scale, page_scale),
+    )];
+    while let Some((group, parent_transform)) = stack.pop() {
         export_checkpoint(control)?;
         if !group.filters().is_empty() {
-            let bbox = group.abs_layer_bounding_box();
-            bounds.push((
-                f64::from(bbox.width()) * coordinate_scale,
-                f64::from(bbox.height()) * coordinate_scale,
-            ));
+            // krilla reapplies vector ancestor transforms after rasterization, but a transform
+            // on this group or its rasterized descendants still reaches resvg's offset bug.
+            let directional_transform_residual =
+                !raster_filter_transforms_supported(group, control)?;
+            // Match krilla-svg 0.8.1's filter.rs before its f32 side cap and pixel rounding.
+            // Absolute bounds are insufficient: isolated PDF streams reset their current CTM.
+            let local = group
+                .layer_bounding_box()
+                .transform(group.transform())
+                .ok_or(ExportError::SvgDocSize)?;
+            let actual = group
+                .layer_bounding_box()
+                .transform(parent_transform)
+                .and_then(|bbox| bbox.transform(group.transform()))
+                .ok_or(ExportError::SvgDocSize)?;
+            bounds.push(PdfFilterGeometry {
+                width: local.width(),
+                height: local.height(),
+                scale: (actual.width() / local.width()).max(actual.height() / local.height()),
+                directional_transform_residual,
+            });
             // krilla-svg rasterizes this whole group through resvg and returns. Descendant
             // filters contribute to that localized render, but they do not allocate a second
             // krilla-owned PDF image and must not be counted as independent top-level groups.
             continue;
         }
+
+        let mut transform = parent_transform.pre_concat(group.transform());
+        if let Some(clip) = group.clip_path()
+            && pdf_clip_path_uses_mask(clip, control)?
+        {
+            let mut clip = Some(clip);
+            while let Some(current) = clip {
+                export_checkpoint(control)?;
+                if pdf_clip_path_uses_mask(current, control)? {
+                    stack.push((current.root(), current.transform()));
+                }
+                clip = current.clip_path();
+            }
+            transform = usvg::Transform::identity();
+        }
+        let mut mask = group.mask();
+        while let Some(current) = mask {
+            export_checkpoint(control)?;
+            stack.push((current.root(), usvg::Transform::identity()));
+            mask = current.mask();
+        }
+        // These operations start new krilla content streams with an identity CTM.
+        if group.isolate()
+            || group.opacity() != usvg::Opacity::ONE
+            || group.mask().is_some()
+            || group.blend_mode() != usvg::BlendMode::Normal
+        {
+            transform = usvg::Transform::identity();
+        }
         for node in group.children() {
             export_checkpoint(control)?;
             match node {
-                usvg::Node::Group(child) => stack.push((child, coordinate_scale)),
+                usvg::Node::Group(child) => stack.push((child, transform)),
                 usvg::Node::Image(image) => {
                     if let usvg::ImageKind::SVG(nested) = image.kind() {
-                        let (scale_x, scale_y) = image.abs_transform().get_scale();
-                        let image_scale = f64::from(scale_x.abs().max(scale_y.abs()));
-                        stack.push((nested.root(), coordinate_scale * image_scale));
+                        stack.push((nested.root(), transform));
                     }
                 }
-                _ => {}
+                // Pattern paints use separate streams, independent of the consuming path CTM.
+                // Keep tree-owner borrows instead of escaping Node::subroots callback borrows.
+                usvg::Node::Path(path) => {
+                    for paint in [
+                        path.fill().map(|fill| fill.paint()),
+                        path.stroke().map(|stroke| stroke.paint()),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        if let usvg::Paint::Pattern(pattern) = paint {
+                            stack.push((pattern.root(), usvg::Transform::identity()));
+                        }
+                    }
+                }
+                usvg::Node::Text(text) => {
+                    stack.push((text.flattened(), usvg::Transform::identity()));
+                }
             }
         }
     }
     Ok(bounds)
+}
+
+#[cfg(feature = "pdf")]
+fn pdf_clip_path_uses_mask(clip: &usvg::ClipPath, control: &OperationControl) -> Result<bool> {
+    // Match krilla-svg's native-clip admission; complex clips use a new masked content stream.
+    let mut stack = vec![clip.root()];
+    let mut rules = 0_usize;
+    let mut nonzero = 0_usize;
+    while let Some(group) = stack.pop() {
+        export_checkpoint(control)?;
+        for node in group.children() {
+            export_checkpoint(control)?;
+            match node {
+                usvg::Node::Group(child) => {
+                    if child.clip_path().is_some() {
+                        return Ok(true);
+                    }
+                    stack.push(child);
+                }
+                usvg::Node::Text(text) => stack.push(text.flattened()),
+                usvg::Node::Path(path) => {
+                    if let Some(fill) = path.fill() {
+                        rules += 1;
+                        nonzero += usize::from(fill.rule() == usvg::FillRule::NonZero);
+                    }
+                }
+                usvg::Node::Image(_) => {}
+            }
+        }
+    }
+    Ok(nonzero != rules && !(nonzero == 0 && rules == 1))
 }
 
 #[cfg(feature = "pdf")]
@@ -2570,14 +2846,14 @@ fn pdf_native_filter_fully_localized(
         return Ok(false);
     }
 
-    let bounds = pdf_filtered_group_bounds(tree, control)?;
+    let bounds = pdf_filtered_group_bounds(tree, page_scale, control)?;
     if bounds.len() != reference_count {
         return Ok(false);
     }
-    let scale = f64::from(page_scale) * f64::from(requested_scale);
-    Ok(bounds.into_iter().all(|(width, height)| {
-        let width = width * scale;
-        let height = height * scale;
+    Ok(bounds.into_iter().all(|geometry| {
+        let scale = f64::from(geometry.scale) * f64::from(requested_scale);
+        let width = f64::from(geometry.width) * scale;
+        let height = f64::from(geometry.height) * scale;
         width.is_finite()
             && height.is_finite()
             && width <= KRILLA_MAX_FILTER_SIDE_PX
@@ -2587,25 +2863,31 @@ fn pdf_native_filter_fully_localized(
 
 #[cfg(feature = "pdf")]
 fn pdf_filter_pixels(
-    bounds: &[(f64, f64)],
-    page_scale: f32,
+    bounds: &[PdfFilterGeometry],
     filter_scale: f32,
     control: &OperationControl,
-) -> Result<u64> {
-    let scale = f64::from(page_scale) * f64::from(filter_scale);
+) -> Result<Option<u64>> {
     let mut total = 0_u64;
-    for &(width, height) in bounds {
+    for geometry in bounds {
         export_checkpoint(control)?;
-        let requested_width = width * scale;
-        let requested_height = height * scale;
-        let cap = (KRILLA_MAX_FILTER_SIDE_PX / requested_width)
-            .min(KRILLA_MAX_FILTER_SIDE_PX / requested_height)
-            .min(1.0);
-        let width_px = (requested_width * cap).round().clamp(0.0, 5000.0) as u64;
-        let height_px = (requested_height * cap).round().clamp(0.0, 5000.0) as u64;
+        let max_scale = ((KRILLA_MAX_FILTER_SIDE_PX as f32) / geometry.width)
+            .min((KRILLA_MAX_FILTER_SIDE_PX as f32) / geometry.height);
+        let scale = (geometry.scale * filter_scale).min(max_scale);
+        let width = geometry.width * scale;
+        let height = geometry.height * scale;
+        if !width.is_finite() || !height.is_finite() {
+            return Err(ExportError::InvalidSizing(
+                "PDF filter image dimensions must be finite",
+            ));
+        }
+        let width_px = width.round() as u64;
+        let height_px = height.round() as u64;
+        if width_px == 0 || height_px == 0 {
+            return Ok(None);
+        }
         total = total.saturating_add(width_px.saturating_mul(height_px));
     }
-    Ok(total)
+    Ok(Some(total))
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -2878,14 +3160,16 @@ fn draw_pdf_page_paint(
     surface.set_fill(None);
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 #[derive(Debug, Clone, Copy, Default)]
 struct RootSvgMetadata {
     has_view_box: bool,
+    has_explicit_size: bool,
+    #[cfg(any(feature = "png", feature = "jpeg"))]
     max_width_px: Option<f32>,
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<RootSvgMetadata> {
     use quick_xml::{XmlVersion, events::Event, name::ResolveResult, reader::NsReader};
 
@@ -2913,6 +3197,9 @@ fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<Root
 
         let mut metadata = RootSvgMetadata::default();
         let mut view_box_seen = false;
+        let mut width = None;
+        let mut height = None;
+        #[cfg(any(feature = "png", feature = "jpeg"))]
         let mut style_seen = false;
         for attribute in element.attributes() {
             export_checkpoint(control)?;
@@ -2921,6 +3208,7 @@ fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<Root
                 continue;
             }
             let (namespace, local_name) = reader.resolver().resolve_attribute(attribute.key);
+            #[cfg(any(feature = "png", feature = "jpeg"))]
             let is_unbound_attribute = matches!(&namespace, ResolveResult::Unbound);
             let consumed_by_usvg = match namespace {
                 ResolveResult::Unknown(_) => return Err(ExportError::SvgParse),
@@ -2944,8 +3232,15 @@ fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<Root
                     view_box_seen = true;
                     metadata.has_view_box = has_valid_svg_view_box(value.as_ref());
                 }
+                "width" if width.is_none() => {
+                    width = Some(has_explicit_svg_length(value.as_ref()));
+                }
+                "height" if height.is_none() => {
+                    height = Some(has_explicit_svg_length(value.as_ref()));
+                }
                 // usvg projects namespaced presentation attributes by local name, but parses the
                 // `style` declaration list only from the unbound XML attribute.
+                #[cfg(any(feature = "png", feature = "jpeg"))]
                 "style" if is_unbound_attribute && !style_seen => {
                     style_seen = true;
                     metadata.max_width_px = parse_inline_max_width_px(value.as_ref(), control)?;
@@ -2953,11 +3248,21 @@ fn parse_root_svg_metadata(svg: &str, control: &OperationControl) -> Result<Root
                 _ => {}
             }
         }
+        metadata.has_explicit_size = width == Some(true) && height == Some(true);
         return Ok(metadata);
     }
 }
 
-#[cfg(any(feature = "png", feature = "jpeg"))]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn has_explicit_svg_length(value: &str) -> bool {
+    value.parse::<svgtypes::Length>().is_ok_and(|length| {
+        length.unit != svgtypes::LengthUnit::Percent
+            && length.number.is_finite()
+            && length.number > 0.0
+    })
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn has_valid_svg_view_box(value: &str) -> bool {
     let Ok(view_box) = value.parse::<svgtypes::ViewBox>() else {
         return false;
@@ -3017,7 +3322,7 @@ struct RasterGeometry {
 
 #[cfg(any(feature = "png", feature = "jpeg"))]
 fn raster_geometry_for_svg(metadata: RootSvgMetadata, tree: &usvg::Tree) -> (RasterGeometry, bool) {
-    if metadata.has_view_box {
+    if metadata.has_view_box || metadata.has_explicit_size {
         // `usvg`/`resvg` already apply the root viewBox transform (including translating the
         // viewBox min corner to (0,0)) when building/rendering the tree. If we also translate
         // by `-min_x/-min_y` here, diagrams with negative viewBox mins (e.g. kanban, gitGraph)
@@ -3036,7 +3341,7 @@ fn raster_geometry_for_svg(metadata: RootSvgMetadata, tree: &usvg::Tree) -> (Ras
 
     // Some Mermaid diagrams (e.g. `info`) don't emit a viewBox upstream.
     // For raster formats, fall back to the rendered content bounds as computed by usvg.
-    let bbox = tree.root().abs_stroke_bounding_box();
+    let bbox = tree.root().abs_layer_bounding_box();
     let w = bbox.width().max(1.0);
     let h = bbox.height().max(1.0);
     if w.is_finite() && h.is_finite() && w > 0.0 && h > 0.0 {
@@ -4588,6 +4893,53 @@ mod tests {
     }
 
     #[test]
+    fn export_reports_retain_sealed_fallback_css_residual() {
+        for (css, expected) in [
+            ("", false),
+            ("<style>tspan{font-size:64px!important}</style>", true),
+        ] {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 200 100">{css}<foreignObject x="10" y="10" width="180" height="60"><div xmlns="http://www.w3.org/1999/xhtml"><p>Alpha <b>Beta</b></p></div></foreignObject></svg>"#
+            );
+            let session = merman_render::environment::RenderEnvironment::deterministic()
+                .begin_session()
+                .unwrap();
+            let svg = merman_render::svg::SvgPipeline::resvg_safe()
+                .process_resvg_compatible(&source, &session)
+                .unwrap();
+            assert_eq!(svg.finalization_report().fallback_css_residual(), expected);
+
+            let raster = super::prepare_raster(&svg, &RasterOptions::default()).unwrap();
+            assert_eq!(
+                raster
+                    .report_for_output(RasterOutputKind::Png)
+                    .fallback_css_residual(),
+                expected
+            );
+            assert_eq!(
+                raster
+                    .report_for_output(RasterOutputKind::Jpeg)
+                    .fallback_css_residual(),
+                expected
+            );
+            let (png, report) = raster.encode_png_with_report().unwrap();
+            assert_eq!(report.fallback_css_residual(), expected);
+            assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+
+            let (jpeg, report) =
+                super::svg_to_jpeg_with_report(&svg, &RasterOptions::default()).unwrap();
+            assert_eq!(report.fallback_css_residual(), expected);
+            assert!(jpeg.starts_with(&[0xff, 0xd8]));
+
+            let pdf = super::prepare_pdf(&svg, &PdfOptions::default()).unwrap();
+            assert_eq!(pdf.report().fallback_css_residual(), expected);
+            let (pdf, report) = pdf.encode_with_report().unwrap();
+            assert_eq!(report.fallback_css_residual(), expected);
+            assert!(pdf.starts_with(b"%PDF-"));
+        }
+    }
+
+    #[test]
     fn root_viewport_dimensions_drive_raster_planning_and_pixels() {
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="100" viewBox="0 0 10 10"><rect width="10" height="10" fill="black"/></svg>"#;
         let options = RasterOptions::default();
@@ -4610,6 +4962,220 @@ mod tests {
             [0, 0, 0, 0],
             "preserveAspectRatio should leave transparent side padding"
         );
+    }
+
+    #[test]
+    fn explicit_root_size_without_viewbox_preserves_canvas() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><rect x="20" y="30" width="10" height="10" fill="red"/></svg>"#;
+        let options = RasterOptions::default();
+        let png = svg_to_png(svg, &options).unwrap();
+
+        assert_eq!(png_size(&png), (100, 100));
+        assert_eq!(rgba_pixel(&png, 25, 35), [255, 0, 0, 255]);
+        assert_eq!(rgba_pixel(&png, 0, 0), [0, 0, 0, 0]);
+
+        let jpeg = svg_to_jpeg(svg, &options).unwrap();
+        let jpeg = image::load_from_memory_with_format(&jpeg, image::ImageFormat::Jpeg).unwrap();
+        assert_eq!((jpeg.width(), jpeg.height()), (100, 100));
+    }
+
+    #[test]
+    fn explicit_root_size_without_viewbox_preserves_filter_pixels() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><filter id="shadow" x="-100%" y="-100%" width="400%" height="300%"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><rect x="20" y="30" width="10" height="10" fill="red" filter="url(#shadow)"/></svg>"##;
+        let png = svg_to_png(svg, &RasterOptions::default()).unwrap();
+
+        assert_eq!(png_size(&png), (100, 100));
+        assert_eq!(rgba_pixel(&png, 25, 35), [255, 0, 0, 255]);
+        assert_eq!(rgba_pixel(&png, 40, 35), [0, 0, 255, 255]);
+    }
+
+    #[test]
+    fn dimensionless_root_keeps_content_fit() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><rect x="20" y="30" width="10" height="10" fill="red"/></svg>"#;
+        let png = svg_to_png(svg, &RasterOptions::default()).unwrap();
+
+        assert_eq!(png_size(&png), (10, 10));
+        assert_eq!(rgba_pixel(&png, 5, 5), [255, 0, 0, 255]);
+    }
+
+    #[test]
+    fn dimensionless_root_content_fit_preserves_filter_pixels() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><defs><filter id="shadow" filterUnits="userSpaceOnUse" x="10" y="20" width="40" height="30"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><rect x="20" y="30" width="10" height="10" fill="red" filter="url(#shadow)"/></svg>"##;
+        let png = svg_to_png(svg, &RasterOptions::default()).unwrap();
+
+        assert_eq!(png_size(&png), (40, 30));
+        assert_eq!(rgba_pixel(&png, 15, 15), [255, 0, 0, 255]);
+        assert_eq!(rgba_pixel(&png, 30, 15), [0, 0, 255, 255]);
+        assert_eq!(rgba_pixel(&png, 0, 0), [0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn dimensionless_pdf_reports_content_outside_derived_viewport() {
+        for body in [
+            r#"<rect x="-10" y="10" width="20" height="20" fill="red"/>"#,
+            r##"<defs><filter id="shadow" filterUnits="userSpaceOnUse" x="10" y="20" width="40" height="30"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><rect x="20" y="30" width="10" height="10" fill="red" filter="url(#shadow)"/>"##,
+        ] {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px">{body}</svg>"#
+            );
+            let prepared = prepare_pdf(&source, &PdfOptions::default())
+                .expect("best-effort PDF reports a derived-viewport limitation and still exports");
+            assert!(prepared.report().implicit_viewport_clipping_residual());
+            assert!(prepared.encode().unwrap().starts_with(b"%PDF-"));
+            let explicit = source.replace(
+                r#"width="100%" style="max-width:400px""#,
+                r#"width="100" height="100""#,
+            );
+            let prepared = prepare_pdf(&explicit, &PdfOptions::default())
+                .expect("a caller's explicit viewport keeps intentional source clipping");
+            assert!(!prepared.report().implicit_viewport_clipping_residual());
+        }
+    }
+
+    #[test]
+    fn dimensionless_pdf_preserves_visible_info_style_text() {
+        let source = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><text x="100" y="40" font-size="32" text-anchor="middle" fill="#333">v0.9.0</text></svg>"##;
+        let prepared = prepare_pdf(source, &PdfOptions::default())
+            .expect("ordinary dimensionless Info text stays inside its derived viewport");
+        let page = prepared.report().page();
+        assert!(page.page_width_pt > 0.0 && page.page_height_pt > 0.0);
+        assert!(!prepared.report().implicit_viewport_clipping_residual());
+        let pdf = prepared.encode().unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
+        assert!(
+            pdf.contains("/Type/Font"),
+            "Info must contain actual native text"
+        );
+    }
+
+    #[test]
+    fn raster_directional_filters_report_transform_residual_and_encode() {
+        for transform in ["rotate(90)", "skewX(30)", "scale(-1 1)"] {
+            for primitive in [
+                r#"<feDropShadow dx="7" dy="4" stdDeviation="0" flood-color="blue"/>"#,
+                r#"<feOffset dx="7" dy="4"/>"#,
+            ] {
+                let svg = format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" x="-100%" y="-100%" width="400%" height="400%">{primitive}</filter></defs><g transform="translate(50 50) {transform}"><rect width="10" height="20" fill="red" filter="url(#effect)"/></g></svg>"##
+                );
+                let prepared = prepare_raster(&svg, &RasterOptions::default()).expect(
+                    "best-effort raster export still renders directional filter transforms",
+                );
+                assert!(
+                    prepared
+                        .report_for_output(RasterOutputKind::Png)
+                        .directional_filter_transform_residual()
+                );
+                assert!(
+                    prepared
+                        .report_for_output(RasterOutputKind::Jpeg)
+                        .directional_filter_transform_residual()
+                );
+                let (png, report) = prepared.encode_png_with_report().unwrap();
+                assert!(report.directional_filter_transform_residual());
+                assert_png_has_visible_non_background_ink(&png);
+                let (jpeg, report) =
+                    svg_to_jpeg_with_report(&svg, &RasterOptions::default()).unwrap();
+                assert!(report.directional_filter_transform_residual());
+                assert!(jpeg.starts_with(&[0xff, 0xd8]));
+            }
+        }
+    }
+
+    #[test]
+    fn raster_nondirectional_filters_keep_transformed_content() {
+        for primitive in [
+            r#"<feGaussianBlur stdDeviation="1"/>"#,
+            r#"<feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="blue"/>"#,
+            r#"<feOffset dx="0" dy="0"/>"#,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" x="-100%" y="-100%" width="400%" height="400%">{primitive}</filter></defs><g transform="translate(50 20) rotate(90)"><rect width="10" height="20" fill="red" filter="url(#effect)"/></g></svg>"##
+            );
+            let (png, report) = svg_to_png_with_report(&svg, &RasterOptions::default()).unwrap();
+            assert!(!report.directional_filter_transform_residual());
+            assert!(rgba_pixel(&png, 40, 25)[3] > 200, "{primitive}");
+        }
+    }
+
+    #[test]
+    fn directional_filters_keep_axis_aligned_raster_and_localized_pdf_support() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" primitiveUnits="objectBoundingBox" x="-100%" y="-100%" width="400%" height="400%"><feDropShadow dx=".5" dy=".5" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(20 20) scale(2)"><rect width="10" height="10" fill="red" filter="url(#effect)"/></g></svg>"##;
+        let (png, report) = svg_to_png_with_report(svg, &RasterOptions::default()).unwrap();
+        assert!(!report.directional_filter_transform_residual());
+        assert_eq!(rgba_pixel(&png, 45, 45), [0, 0, 255, 255]);
+
+        let rotated = svg.replace("translate(20 20) scale(2)", "translate(50 20) rotate(90)");
+        let pdf = svg_to_pdf(&rotated).unwrap();
+        assert!(String::from_utf8_lossy(&pdf).contains("/Subtype/Image"));
+    }
+
+    #[test]
+    fn pdf_directional_filters_report_local_transform_residual_and_encode() {
+        for transform in ["rotate(90)", "skewX(30)", "scale(-1 1)"] {
+            for primitive in [
+                r#"<feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/>"#,
+                r#"<feOffset dx="15" dy="0"/>"#,
+            ] {
+                let svg = format!(
+                    r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80">{primitive}</filter></defs><g transform="translate(60 20) {transform}" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##
+                );
+                let prepared = prepare_pdf(&svg, &PdfOptions::default()).expect(
+                    "best-effort PDF still exports localized directional filter transforms",
+                );
+                assert!(prepared.report().directional_filter_transform_residual());
+                let (pdf, report) = prepared.encode_with_report().unwrap();
+                assert!(report.directional_filter_transform_residual());
+                assert!(String::from_utf8_lossy(&pdf).contains("/Subtype/Image"));
+            }
+        }
+    }
+
+    #[test]
+    fn pdf_directional_filters_allow_ancestor_transforms() {
+        for transform in ["rotate(90)", "skewX(30)", "scale(-1 1)"] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) {transform}"><g filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></g></svg>"##
+            );
+            let prepared = prepare_pdf(&svg, &PdfOptions::default())
+                .expect("vector ancestor transforms remain supported outside the filter image");
+            let plan = prepared.filter_plan();
+            assert_eq!(plan.filtered_groups, 1);
+            assert!(plan.effective_image_pixels > 0, "{transform}: {plan:?}");
+            assert!(!plan.limited, "{transform}: {plan:?}");
+            assert!(!prepared.report().directional_filter_transform_residual());
+            let pdf = prepared.encode().unwrap();
+            assert!(pdf.starts_with(b"%PDF-"));
+        }
+    }
+
+    #[test]
+    fn pdf_nondirectional_filters_keep_local_transforms() {
+        for primitive in [
+            r#"<feGaussianBlur stdDeviation="1"/>"#,
+            r#"<feDropShadow dx="0" dy="0" stdDeviation="1" flood-color="blue"/>"#,
+            r#"<feOffset dx="0" dy="0"/>"#,
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80">{primitive}</filter></defs><g transform="translate(60 20) rotate(90)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##
+            );
+            let prepared = prepare_pdf(&svg, &PdfOptions::default()).unwrap();
+            assert_eq!(prepared.filter_plan().filtered_groups, 1);
+            assert!(prepared.filter_plan().effective_image_pixels > 0);
+            assert!(!prepared.report().directional_filter_transform_residual());
+            assert!(prepared.encode().unwrap().starts_with(b"%PDF-"));
+        }
+    }
+
+    #[test]
+    fn pdf_directional_filters_report_nested_local_transform_residual() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="outer"><feGaussianBlur stdDeviation="0"/></filter><filter id="shadow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g filter="url(#outer)"><g transform="translate(60 20) rotate(90)" filter="url(#shadow)"><rect width="20" height="10" fill="red"/></g></g></svg>"##;
+        let prepared = prepare_pdf(svg, &PdfOptions::default())
+            .expect("descendant transform limitations must not disable best-effort PDF output");
+        assert!(prepared.report().directional_filter_transform_residual());
+        let (pdf, report) = prepared.encode_with_report().unwrap();
+        assert!(report.directional_filter_transform_residual());
+        assert!(String::from_utf8_lossy(&pdf).contains("/Subtype/Image"));
     }
 
     #[test]
@@ -5140,6 +5706,113 @@ mod tests {
         assert_eq!(plan.requested_image_pixels, 50_000_000);
         assert_eq!(plan.effective_image_pixels, 50_000_000);
         assert!(!plan.limited, "{plan:?}");
+    }
+
+    const TWO_FILTERED_SQUARES: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="identity"><feGaussianBlur stdDeviation="0"/></filter></defs><rect x="10" y="10" width="20" height="20" fill="red" filter="url(#identity)"/><rect x="50" y="10" width="20" height="20" fill="blue" filter="url(#identity)"/></svg>"##;
+
+    #[test]
+    fn pdf_filter_budget_rejects_zero_dimension_images() {
+        let error = prepare_pdf(
+            TWO_FILTERED_SQUARES,
+            &PdfOptions::default().with_filter_image_limit(PdfFilterImageLimit::new(Some(1))),
+        )
+        .err()
+        .expect("two filtered groups cannot be represented by one retained pixel");
+
+        let details = error
+            .resource_limit_details()
+            .expect("typed filter budget failure");
+        assert_eq!(
+            details.limit_id,
+            MAX_PDF_FILTER_IMAGE_PIXELS_RESOURCE_LIMIT_ID
+        );
+        assert_eq!(details.phase, "pdf_filter_rasterization");
+        assert!(details.actual >= 2, "{details:?}");
+        assert_eq!(details.max, 1);
+    }
+
+    #[test]
+    fn pdf_filter_cap_rejects_zero_dimension_images() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="identity" filterUnits="userSpaceOnUse" x="0" y="0" width="1000000" height="1"><feGaussianBlur stdDeviation="0"/></filter></defs><rect width="1000000" height="1" fill="red" filter="url(#identity)"/></svg>"##;
+        let error = prepare_pdf(svg, &PdfOptions::default())
+            .err()
+            .expect("the backend's side cap must not silently erase a thin filtered group");
+
+        assert!(matches!(error, ExportError::InvalidSizing(_)), "{error}");
+    }
+
+    #[test]
+    fn pdf_filter_small_requested_scale_rejects_zero_dimension_images() {
+        let error = prepare_pdf(
+            TWO_FILTERED_SQUARES,
+            &PdfOptions::default().with_filter_scale(0.001),
+        )
+        .err()
+        .expect("a requested scale that erases every filter image must fail preparation");
+
+        assert!(matches!(error, ExportError::InvalidSizing(_)), "{error}");
+    }
+
+    #[test]
+    fn pdf_filter_budget_retains_nonzero_images_when_feasible() {
+        let prepared = prepare_pdf(
+            TWO_FILTERED_SQUARES,
+            &PdfOptions::default().with_filter_image_limit(PdfFilterImageLimit::new(Some(2))),
+        )
+        .unwrap();
+        let plan = prepared.filter_plan();
+        assert_eq!(plan.filtered_groups, 2);
+        assert_eq!(plan.effective_image_pixels, 2);
+
+        let pdf = String::from_utf8_lossy(&prepared.encode().unwrap()).into_owned();
+        assert!(
+            pdf.contains("/Subtype/Image"),
+            "filtered content must survive encoding"
+        );
+    }
+
+    #[test]
+    fn pdf_filter_budget_includes_mask_and_pattern_subroots() {
+        for body in [
+            r##"<defs><filter id="identity"><feGaussianBlur stdDeviation="0"/></filter><mask id="mask"><rect width="80" height="80" fill="white" filter="url(#identity)"/></mask></defs><rect width="80" height="80" fill="red" mask="url(#mask)"/>"##,
+            r##"<defs><filter id="identity"><feGaussianBlur stdDeviation="0"/></filter><pattern id="pattern" patternUnits="userSpaceOnUse" width="80" height="80"><rect width="80" height="80" fill="red" filter="url(#identity)"/></pattern></defs><rect width="80" height="80" fill="url(#pattern)"/>"##,
+        ] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100">{body}</svg>"#
+            );
+            let prepared = prepare_pdf(
+                &svg,
+                &PdfOptions::default().with_filter_image_limit(PdfFilterImageLimit::new(Some(1))),
+            )
+            .unwrap();
+            let plan = prepared.filter_plan();
+            assert_eq!(plan.filtered_groups, 1, "{body}");
+            assert!(plan.requested_image_pixels > 1, "{plan:?}");
+            assert_eq!(plan.effective_image_pixels, 1);
+            assert!(plan.limited);
+            let pdf = prepared.encode().unwrap();
+            assert!(String::from_utf8_lossy(&pdf).contains("/Subtype/Image"));
+        }
+    }
+
+    #[test]
+    fn pdf_filter_plan_matches_isolated_content_stream_scale() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" viewBox="0 0 100 100"><defs><filter id="identity"><feGaussianBlur stdDeviation="0"/></filter></defs><g transform="scale(5)" opacity=".5"><rect width="16" height="16" fill="red" filter="url(#identity)"/></g></svg>"##;
+        let prepared = prepare_pdf(svg, &PdfOptions::default()).unwrap();
+        let plan = prepared.filter_plan();
+        // 16px * the default 1.2 filter region * 4 sampling = 76.8, rounded to 77.
+        // The opacity content stream is isolated before the parent's scale is reapplied.
+        assert_eq!(plan.requested_image_pixels, 77 * 77);
+        let pdf = prepared.encode().unwrap();
+        let pdf = String::from_utf8_lossy(&pdf);
+        assert!(
+            pdf.contains("/Width 77") || pdf.contains("/Width77"),
+            "{pdf}"
+        );
+        assert!(
+            pdf.contains("/Height 77") || pdf.contains("/Height77"),
+            "{pdf}"
+        );
     }
 
     #[test]

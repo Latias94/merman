@@ -51,6 +51,7 @@ pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_
 pub(crate) use metrics::{
     measure_svg_markdown_word_lines, measure_wrapped_markdown_with_inline_styles,
     measure_xhtml_label_fragment, mermaid_markdown_to_wrapped_word_lines,
+    style_requests_bold_font_weight, style_requests_italic_font_style,
 };
 
 pub(crate) use prepared::{PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId};

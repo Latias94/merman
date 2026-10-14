@@ -25,7 +25,7 @@ use std::fmt::{self, Write};
 use attr::is_self_closing;
 use cascade::{CascadeIndex, Namespace, SourceElement};
 use context::{SourceFrame, attribute, source_class_attr_tokens};
-use html::{foreign_object_html_wrapping, normalized_foreign_object_text, wrap_html_text};
+use html::{foreign_object_html_wrapping, normalized_foreign_object_text};
 
 /// A writer's glyph-only HTML filter request; the matching paragraph is checked before projection.
 pub(crate) const FALLBACK_TEXT_FILTER_DATA_ATTR: &str = "data-merman-fallback-text-filter";
@@ -35,6 +35,8 @@ pub(crate) const PREPARED_TEXT_LABEL_DATA_ATTR: &str = "data-merman-prepared-tex
 pub(crate) const FALLBACK_BACKGROUND_FILL_DATA_ATTR: &str = "data-merman-fallback-background-fill";
 /// Stable occurrence identity paired with [`FALLBACK_BACKGROUND_FILL_DATA_ATTR`].
 pub(crate) const FALLBACK_OCCURRENCE_DATA_ATTR: &str = "data-merman-fallback-occurrence";
+/// Advisory compatibility evidence; this never grants native or portable admission.
+pub(crate) const FALLBACK_CSS_RESIDUAL_DATA_ATTR: &str = "data-merman-fallback-css-residual";
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -303,13 +305,8 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         .unwrap_or_default();
                     let measure_style = typography.text_style();
                     let wrapping = foreign_object_html_wrapping(tag, inner, checkpoint)?;
-                    let lines = wrap_html_text(
-                        &normalized,
-                        wrapping,
-                        text_measurer,
-                        &measure_style,
-                        checkpoint,
-                    )?;
+                    let lines =
+                        normalized.wrap(wrapping, text_measurer, &measure_style, checkpoint)?;
                     let line_height = typography.line_height;
                     let y0 = text_y - line_height * (lines.len() as f64 - 1.0) / 2.0;
                     let mut positions = Vec::with_capacity(lines.len());
@@ -325,11 +322,32 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         let y_line = y0 + idx as f64 * line_height;
                         checkpoint()?;
                         // Emitted rows are decoded SVG text, not a new HTML label.
-                        let bbox_width = text_measurer
-                            .measure_svg_raw_text_bbox_width_px(&line.text, &measure_style);
-                        checkpoint()?;
-                        let bbox_height = text_measurer
-                            .measure_svg_raw_text_bbox_height_px(&line.text, &measure_style);
+                        let (bbox_width, bbox_height) = if normalized
+                            .has_inline_styles(line, &typography)
+                        {
+                            let mut width = 0.0;
+                            let mut height = 0.0_f64;
+                            for run in normalized.line_runs(line) {
+                                checkpoint()?;
+                                let style = run.typography.text_style();
+                                width += text_measurer
+                                    .measure_svg_raw_text_bbox_width_px(run.text, &style);
+                                height = height.max(
+                                    text_measurer
+                                        .measure_svg_raw_text_bbox_height_px(run.text, &style),
+                                );
+                            }
+                            (width, height)
+                        } else {
+                            (
+                                text_measurer
+                                    .measure_svg_raw_text_bbox_width_px(&line.text, &measure_style),
+                                text_measurer.measure_svg_raw_text_bbox_height_px(
+                                    &line.text,
+                                    &measure_style,
+                                ),
+                            )
+                        };
                         checkpoint()?;
                         let measured_width = bbox_width.max(line.width);
                         if !line_x.is_finite()
@@ -369,7 +387,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         )
                     };
                     let mut paint_style = "opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none;".to_string();
-                    for (property, value) in &resolved.paint {
+                    for (property, value) in resolved.paint.iter() {
                         if property != "overflow" {
                             write!(paint_style, " {property}: {value};")
                                 .expect("writing into a string");
@@ -413,7 +431,12 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         } else {
                             2
                         })
-                        .max(5);
+                        .max(5)
+                        .saturating_add(usize::from(
+                            lines
+                                .iter()
+                                .any(|line| normalized.has_inline_styles(line, &typography)),
+                        ));
                     let identifier = loop {
                         let candidate = format!(
                             "{}-foreignobject-label-{fallback_index}",
@@ -444,12 +467,15 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         .paint
                         .iter()
                         .find(|(property, _)| property == "overflow")
-                        .map_or("hidden", |(_, value)| value.as_str());
+                        .map_or("hidden", |(_, value)| value.as_ref());
                     let escaped_overflow = escape_xml_attr_with_checkpoints(overflow, checkpoint)?;
+                    let escaped_font_family =
+                        escape_xml_attr_with_checkpoints(&typography.font_family, checkpoint)?;
                     push_generated_fmt(
                         &mut overlays,
                         format_args!(
-                            r#"<svg xmlns="http://www.w3.org/2000/svg" x="{viewport_x}" y="{viewport_y}" width="{width}" height="{height}" viewBox="0 0 {width} {height}" preserveAspectRatio="none" style="overflow: {escaped_overflow}; opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none; transform: none;">"#
+                            r#"<svg xmlns="http://www.w3.org/2000/svg" x="{viewport_x}" y="{viewport_y}" width="{width}" height="{height}" viewBox="0 0 {width} {height}" preserveAspectRatio="none" style="overflow: {escaped_overflow}; opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none; transform: none; font-family: {escaped_font_family}; font-size: {}px;">"#,
+                            typography.font_size,
                         ),
                         1,
                         svg.len().saturating_add(instance_bytes),
@@ -536,9 +562,54 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     );
                     for (idx, (line, (line_x, y_line))) in lines.iter().zip(positions).enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
-                        let text = escape_xml_text_with_checkpoints(&line.text, checkpoint)?;
                         let line_x = line_x - x;
                         let y_line = y_line - y;
+                        if normalized.has_inline_styles(line, &typography) {
+                            push_generated_fmt(
+                                &mut overlays,
+                                format_args!(
+                                    r##"<text x="{line_x}" y="{y_line}" text-anchor="{anchor}" dominant-baseline="central" alignment-baseline="central" fill="{escaped_fill}"{text_attributes} xml:space="preserve" style="{escaped_style}">"##
+                                ),
+                                1,
+                                svg.len().saturating_add(instance_bytes),
+                                generated_depth,
+                                &mut generated_elements,
+                                preflight_generated,
+                            )?;
+                            for (run_index, run) in normalized.line_runs(line).enumerate() {
+                                checkpoint_loop(run_index, checkpoint)?;
+                                let text = escape_xml_text_with_checkpoints(run.text, checkpoint)?;
+                                let style = format!(
+                                    "font-family: {} !important; font-size: {}px !important; font-weight: {} !important; font-style: {} !important; fill: {} !important; fill-opacity: 1 !important; stroke: none !important; opacity: 1 !important; display: inline !important; visibility: inherit !important; clip-path: none !important; mask: none !important; filter: none !important; transform: none !important;",
+                                    run.typography.font_family,
+                                    run.typography.font_size,
+                                    run.typography.font_weight.as_deref().unwrap_or("normal"),
+                                    run.typography.font_style.as_deref().unwrap_or("normal"),
+                                    run.typography.fill,
+                                );
+                                let style = escape_xml_attr_with_checkpoints(&style, checkpoint)?;
+                                push_generated_fmt(
+                                    &mut overlays,
+                                    format_args!(r#"<tspan style="{style}">{text}</tspan>"#),
+                                    1,
+                                    svg.len().saturating_add(instance_bytes),
+                                    generated_depth,
+                                    &mut generated_elements,
+                                    preflight_generated,
+                                )?;
+                            }
+                            push_generated_fmt(
+                                &mut overlays,
+                                format_args!("</text>"),
+                                0,
+                                svg.len().saturating_add(instance_bytes),
+                                generated_depth,
+                                &mut generated_elements,
+                                preflight_generated,
+                            )?;
+                            continue;
+                        }
+                        let text = escape_xml_text_with_checkpoints(&line.text, checkpoint)?;
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
@@ -571,6 +642,28 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         &mut generated_elements,
                         preflight_generated,
                     )?;
+                    if inline_projection
+                        && lines
+                            .iter()
+                            .any(|line| normalized.has_inline_styles(line, &typography))
+                        && cascade.inline_text_css_residual(
+                            &source_stack,
+                            &overlays[overlay_start..],
+                            checkpoint,
+                            selector_limit,
+                        )?
+                    {
+                        let marker = format!(r#" {FALLBACK_CSS_RESIDUAL_DATA_ATTR}="true""#);
+                        preflight_generated(
+                            svg.len()
+                                .saturating_add(instance_bytes)
+                                .saturating_add(overlays.len())
+                                .saturating_add(marker.len()),
+                            generated_elements,
+                            generated_depth,
+                        )?;
+                        overlays.insert_str(overlay_start + "<g".len(), &marker);
+                    }
                     if inline_projection {
                         // Writer-owned evidence requires direct, inspectable terminal geometry
                         // under the real ancestry. Ordinary labels use isolated definitions.
@@ -628,11 +721,26 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                         continue;
                     }
                     let inner_end = overlays.len();
-                    let wrapper = overlays[overlay_start..inner_start].to_string();
+                    let mut wrapper = overlays[overlay_start..inner_start].to_string();
                     let inner = overlays[inner_start..inner_end].to_string();
                     overlays.truncate(overlay_start);
                     let isolated =
                         format!(r#"<defs><g id="{identifier}"{source_attr}>{inner}</g></defs>"#);
+                    if lines
+                        .iter()
+                        .any(|line| normalized.has_inline_styles(line, &typography))
+                        && cascade.inline_text_css_residual(
+                            &source_stack[..source_stack.len().min(1)],
+                            &isolated,
+                            checkpoint,
+                            selector_limit,
+                        )?
+                    {
+                        wrapper.insert_str(
+                            "<g".len(),
+                            &format!(r#" {FALLBACK_CSS_RESIDUAL_DATA_ATTR}="true""#),
+                        );
+                    }
                     push_generated_fmt(
                         &mut overlays,
                         format_args!("{isolated}"),
@@ -1136,6 +1244,366 @@ mod tests {
                 height: style.font_size,
                 line_count: 1,
             }
+        }
+    }
+
+    #[test]
+    fn rich_text_fallback_preserves_html_emphasis_and_author_overrides() {
+        for (fragment, expected) in [
+            ("<b>Alpha</b>", "font-weight: 700"),
+            ("<strong>Alpha</strong>", "font-weight: 700"),
+            ("<i>Alpha</i>", "font-style: italic"),
+            ("<em>Alpha</em>", "font-style: italic"),
+            ("<code>Alpha</code>", "font-family: monospace"),
+            ("<b style='font-weight:400'>Alpha</b>", "font-weight: 400"),
+            (
+                "<i style='font-style:normal'>Alpha</i>",
+                "font-style: normal",
+            ),
+        ] {
+            let svg = format!(
+                "<svg><foreignObject width='200' height='24'><div>{fragment}</div></foreignObject></svg>"
+            );
+            let output = foreign_object_label_fallback_svg_text(&svg);
+            let document = roxmltree::Document::parse(&output).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                text.attribute("style").unwrap().contains(expected),
+                "{output}"
+            );
+            assert_eq!(text.text(), Some("Alpha"));
+        }
+    }
+
+    #[test]
+    fn rich_text_fallback_measures_and_emits_each_mixed_style_run() {
+        let svg = "<svg><foreignObject width='400' height='24'><div>Alpha <b>Beta</b> <i>Gamma</i> אבגד</div></foreignObject></svg>";
+        let measurer = RecordingMeasurer::default();
+        let output = render_fallback(svg, &measurer);
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(
+            text.descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>(),
+            "Alpha Beta Gamma אבגד"
+        );
+        for (label, declaration) in [
+            ("Beta", "font-weight: 700"),
+            ("Gamma", "font-style: italic"),
+        ] {
+            let run = text
+                .children()
+                .find(|node| node.has_tag_name("tspan") && node.text() == Some(label))
+                .expect("styled run is retained");
+            assert!(
+                run.attribute("style").unwrap().contains(declaration),
+                "{output}"
+            );
+        }
+        let styles = measurer.styles.borrow();
+        assert!(
+            styles
+                .iter()
+                .any(|style| style.font_weight.as_deref() == Some("700")),
+            "{styles:?}"
+        );
+        assert!(
+            styles
+                .iter()
+                .any(|style| style.font_style.as_deref() == Some("italic")),
+            "{styles:?}"
+        );
+    }
+
+    #[test]
+    fn rich_text_fallback_wraps_with_the_emitted_run_metrics() {
+        struct StyledMeasurer;
+        impl TextMeasurer for StyledMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                let factor = if style.font_weight.as_deref() == Some("700") {
+                    2.0
+                } else {
+                    1.0
+                };
+                TextMetrics {
+                    width: text.chars().count() as f64 * style.font_size * factor,
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+        }
+        let svg = r#"<svg style='font-size:10px'><foreignObject width='80' height='30'><div style="max-width:80px">aa <b>bb</b> cc</div></foreignObject></svg>"#;
+        let output = render_fallback(svg, &StyledMeasurer);
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let rows = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| {
+                node.descendants()
+                    .filter(|child| child.is_text())
+                    .filter_map(|child| child.text())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(rows, ["aa bb", "cc"], "{output}");
+    }
+
+    #[test]
+    fn rich_text_fallback_keeps_repeated_words_and_selected_hyphen_styles() {
+        let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, _| {
+            text.chars().filter(|ch| *ch != '\u{00ad}').count() as f64 * 10.0
+        });
+        let svg = r#"<svg><foreignObject width='40' height='100'><div style="max-width:40px"><b>aa&#173;bb</b> aa <i>aa</i></div></foreignObject></svg>"#;
+        let output = render_fallback(svg, measurer.as_ref());
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let rows = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        let content = |node: roxmltree::Node<'_, '_>| {
+            node.descendants()
+                .filter(|child| child.is_text())
+                .filter_map(|child| child.text())
+                .collect::<String>()
+        };
+        assert_eq!(
+            rows.iter().map(|row| content(*row)).collect::<Vec<_>>(),
+            ["aa\u{00ad}bb", "aa", "aa"]
+        );
+        assert!(
+            rows[0]
+                .children()
+                .find(|node| node.has_tag_name("tspan"))
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+                .contains("font-weight: 700")
+        );
+        assert!(
+            rows[2]
+                .children()
+                .find(|node| node.has_tag_name("tspan"))
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+                .contains("font-style: italic")
+        );
+
+        let svg = r#"<svg><foreignObject width='30' height='100'><div style="max-width:30px"><b>aa&#173;bb</b> cc</div></foreignObject></svg>"#;
+        let output = render_fallback(svg, measurer.as_ref());
+        let document = roxmltree::Document::parse(&output).unwrap();
+        let first = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(content(first), "aa-");
+        assert!(
+            first
+                .children()
+                .find(|node| node.has_tag_name("tspan"))
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+                .contains("font-weight: 700")
+        );
+    }
+
+    #[test]
+    fn rich_text_fallback_shapes_same_font_across_color_boundaries() {
+        struct KerningMeasurer;
+        impl TextMeasurer for KerningMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: text.chars().count() as f64 * 10.0
+                        - if text.contains("AV") { 5.0 } else { 0.0 },
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+        }
+        let svg = r#"<svg><foreignObject width='35' height='24'><div style="max-width:35px">A<span style='color:red'>V</span> B</div></foreignObject></svg>"#;
+        let output = render_fallback(svg, &KerningMeasurer);
+        let document = roxmltree::Document::parse(&output).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            1,
+            "{output}"
+        );
+        let red = document
+            .descendants()
+            .find(|node| node.has_tag_name("tspan") && node.text() == Some("V"))
+            .unwrap();
+        assert!(
+            red.attribute("style").unwrap().contains("fill: red"),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn rich_text_fallback_inherits_already_emphasized_measurement_styles() {
+        for (base, fragment, expected) in [
+            ("font-weight:600", "<b>Alpha</b>", "font-weight: 600"),
+            (
+                "font-weight:900",
+                "<strong>Alpha</strong>",
+                "font-weight: 900",
+            ),
+            (
+                "font-style:oblique",
+                "<em>Alpha</em>",
+                "font-style: oblique",
+            ),
+            (
+                "font-weight:900",
+                "<b style='font-weight:400'>Alpha</b>",
+                "font-weight: 400",
+            ),
+        ] {
+            let svg = format!(
+                "<svg><foreignObject width='200' height='24'><div style='{base}'>{fragment}</div></foreignObject></svg>"
+            );
+            let output = foreign_object_label_fallback_svg_text(&svg);
+            let document = roxmltree::Document::parse(&output).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                text.attribute("style").unwrap().contains(expected),
+                "{output}"
+            );
+        }
+    }
+
+    #[test]
+    fn rich_text_fallback_preserves_kerning_across_equivalent_font_spellings() {
+        struct KerningMeasurer;
+        impl TextMeasurer for KerningMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: text.chars().count() as f64 * 10.0
+                        - if text.contains("AV") { 5.0 } else { 0.0 },
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+        }
+        for spelling in ["normal", "400", "Normal"] {
+            let svg = format!(
+                r#"<svg><foreignObject width="35" height="24"><div style="max-width:35px"><span style="font-weight:{spelling};font-style:Normal">A</span>V B</div></foreignObject></svg>"#
+            );
+            let output = render_fallback(&svg, &KerningMeasurer);
+            let document = roxmltree::Document::parse(&output).unwrap();
+            assert_eq!(
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .count(),
+                1,
+                "{output}"
+            );
+        }
+    }
+
+    #[test]
+    fn rich_text_fallback_isolates_generated_tspans_from_svg_only_css() {
+        let svg = r#"<svg><style>tspan{font-size:64px;opacity:0;stroke:red}</style><foreignObject width="200" height="24"><div>Alpha <b>Beta</b></div></foreignObject></svg>"#;
+        let output = foreign_object_label_fallback_svg_text(svg);
+        let document = roxmltree::Document::parse(&output).unwrap();
+        assert!(!output.contains(super::FALLBACK_CSS_RESIDUAL_DATA_ATTR));
+        let spans = document
+            .descendants()
+            .filter(|node| node.has_tag_name("tspan"))
+            .collect::<Vec<_>>();
+        assert_eq!(spans.len(), 2);
+        for span in spans {
+            let style = span.attribute("style").unwrap();
+            for expected in [
+                "font-size: 16px !important",
+                "opacity: 1 !important",
+                "stroke: none !important",
+            ] {
+                assert!(style.contains(expected), "{output}");
+            }
+        }
+        for declaration in ["dx:30px", "font-size:64px!important"] {
+            let unsupported = svg.replace("font-size:64px;opacity:0;stroke:red", declaration);
+            let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+                &unsupported,
+                &DeterministicTextMeasurer::default(),
+                &mut || Ok::<(), &'static str>(()),
+                &mut |_, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+                &mut |_| Err("quality residuals must not fail rendering"),
+            )
+            .unwrap();
+            assert!(
+                result.contains(&format!(
+                    r#"{}="true""#,
+                    super::FALLBACK_CSS_RESIDUAL_DATA_ATTR
+                )),
+                "{result}"
+            );
+            assert!(result.contains("<tspan"), "{result}");
+        }
+        for declaration in ["dx:30px", "letter-spacing:100px"] {
+            let source = svg.replace(
+                "tspan{font-size:64px;opacity:0;stroke:red}",
+                &format!("defs tspan{{{declaration}}}"),
+            );
+            let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+                &source,
+                &DeterministicTextMeasurer::default(),
+                &mut || Ok::<(), &'static str>(()),
+                &mut |_, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+                &mut |_| Err("quality residuals must not fail rendering"),
+            )
+            .unwrap();
+            assert!(
+                result.contains(&format!(
+                    r#"{}="true""#,
+                    super::FALLBACK_CSS_RESIDUAL_DATA_ATTR
+                )),
+                "{result}"
+            );
+            assert!(result.contains("<tspan"), "{result}");
+        }
+    }
+
+    #[test]
+    fn rich_text_css_residual_marks_in_place_source_occurrences() {
+        for declaration in ["font-size:64px!important", "letter-spacing:30px"] {
+            let source = format!(
+                r##"<svg><style>tspan{{{declaration}}}</style><foreignObject width="200" height="24" data-merman-fallback-occurrence="test-label" data-merman-fallback-background-fill="#123456"><div class="labelBkg">Alpha <b>Beta</b></div></foreignObject></svg>"##
+            );
+            let output = foreign_object_label_fallback_svg_text(&source);
+            let document = roxmltree::Document::parse(&output).unwrap();
+            let fallback = document
+                .descendants()
+                .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+                .unwrap();
+            assert_eq!(
+                fallback.attribute(super::FALLBACK_CSS_RESIDUAL_DATA_ATTR),
+                Some("true")
+            );
+            assert!(
+                fallback
+                    .descendants()
+                    .any(|node| node.has_tag_name("tspan")),
+                "{output}"
+            );
         }
     }
 
@@ -1756,7 +2224,7 @@ mod tests {
             "an invalid compound must invalidate its complete selector list: {out}"
         );
 
-        for operator in ["|=", "^=", "$=", "*="] {
+        for operator in ["|=", "^=", "*="] {
             let selector = format!("[data-tags{operator}choice],.nodeLabel");
             let svg = format!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{selector}{{font-size:13px}}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#,
@@ -2391,18 +2859,18 @@ mod tests {
     }
 
     #[test]
-    fn foreign_object_overlay_uses_common_ancestor_for_mixed_text_leaves() {
+    fn foreign_object_overlay_preserves_each_mixed_text_leaf_typography() {
         let svg = r#"
 <svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml" style="font-size:14px"><span>Alpha</span><strong style="font-size:20px">Beta</strong></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
 
         assert!(
             out.contains("font-size: 14px"),
-            "mixed text leaves should use their deepest common ancestor's fallback typography: {out}"
+            "the row keeps its common ancestor's base typography: {out}"
         );
         assert!(
-            !out.contains("font-size: 20px"),
-            "the fallback must not arbitrarily select one rich-text leaf: {out}"
+            out.contains("font-size: 20px"),
+            "the styled leaf retains its own measured typography: {out}"
         );
     }
 

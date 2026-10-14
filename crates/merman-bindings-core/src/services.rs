@@ -49,6 +49,8 @@ impl std::fmt::Debug for BindingIconRegistry {
 pub struct BindingEngineServices {
     #[cfg(feature = "svg")]
     host_text_measurer: Option<Arc<dyn crate::HostTextMeasurer>>,
+    #[cfg(feature = "native-fonts")]
+    native_font_context: Option<merman::svg::export::NativeFontContext>,
     #[cfg(feature = "svg")]
     icon_registry: Option<BindingIconRegistry>,
 }
@@ -58,6 +60,8 @@ impl std::fmt::Debug for BindingEngineServices {
         let mut debug = formatter.debug_struct("BindingEngineServices");
         #[cfg(feature = "svg")]
         debug.field("host_text_measurer", &self.host_text_measurer.is_some());
+        #[cfg(feature = "native-fonts")]
+        debug.field("native_font_context", &self.native_font_context.is_some());
         #[cfg(feature = "svg")]
         debug.field("icon_registry", &self.icon_registry.is_some());
         debug.finish_non_exhaustive()
@@ -70,6 +74,8 @@ impl BindingEngineServices {
         Self {
             #[cfg(feature = "svg")]
             host_text_measurer: None,
+            #[cfg(feature = "native-fonts")]
+            native_font_context: None,
             #[cfg(feature = "svg")]
             icon_registry: None,
         }
@@ -79,6 +85,20 @@ impl BindingEngineServices {
     #[must_use]
     pub fn with_host_text_measurer(mut self, measurer: Arc<dyn crate::HostTextMeasurer>) -> Self {
         self.host_text_measurer = Some(measurer);
+        self
+    }
+
+    /// Installs already loaded fonts for operation-local measurement and native painting.
+    ///
+    /// Engine construction rejects a simultaneous host text measurer or explicit JSON text
+    /// measurement selector. No font source is acquired while installing this service.
+    #[cfg(feature = "native-fonts")]
+    #[must_use]
+    pub fn with_native_font_context(
+        mut self,
+        context: merman::svg::export::NativeFontContext,
+    ) -> Self {
+        self.native_font_context = Some(context);
         self
     }
 
@@ -93,7 +113,10 @@ impl BindingEngineServices {
     pub fn is_empty(&self) -> bool {
         #[cfg(feature = "svg")]
         {
-            self.host_text_measurer.is_none() && self.icon_registry.is_none()
+            let empty = self.host_text_measurer.is_none() && self.icon_registry.is_none();
+            #[cfg(feature = "native-fonts")]
+            let empty = empty && self.native_font_context.is_none();
+            empty
         }
         #[cfg(not(feature = "svg"))]
         {
@@ -105,6 +128,19 @@ impl BindingEngineServices {
         &self,
         options: &common::BindingOptions,
     ) -> Result<(), BindingError> {
+        #[cfg(feature = "native-fonts")]
+        if self.native_font_context.is_some() {
+            if self.host_text_measurer.is_some() {
+                return Err(BindingError::invalid_argument(
+                    "constructor service `native-font-context` conflicts with constructor service `host-text-measurement`",
+                ));
+            }
+            if options.text_measurement_selector_explicit {
+                return Err(BindingError::invalid_argument(
+                    "constructor service `native-font-context` conflicts with explicit option `environment.text_measurement`",
+                ));
+            }
+        }
         #[cfg(feature = "svg")]
         if self.host_text_measurer.is_some() && options.text_measurement_selector_explicit {
             return Err(BindingError::invalid_argument(
@@ -119,6 +155,11 @@ impl BindingEngineServices {
     #[cfg(feature = "svg")]
     pub(crate) fn host_text_measurer(&self) -> Option<Arc<dyn crate::HostTextMeasurer>> {
         self.host_text_measurer.as_ref().map(Arc::clone)
+    }
+
+    #[cfg(feature = "native-fonts")]
+    pub(crate) fn native_font_context(&self) -> Option<merman::svg::export::NativeFontContext> {
+        self.native_font_context.clone()
     }
 
     #[cfg(feature = "svg")]
@@ -138,6 +179,10 @@ impl BindingEngineServices {
                 self.icon_registry
                     .is_some()
                     .then_some(ConstructorServiceKey::IconRegistry),
+                #[cfg(feature = "native-fonts")]
+                self.native_font_context
+                    .is_some()
+                    .then_some(ConstructorServiceKey::NativeFontContext),
             ]
             .into_iter()
             .flatten()

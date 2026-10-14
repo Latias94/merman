@@ -187,6 +187,7 @@ pub struct SvgFinalizationReport {
     resource_closure: SvgResourceClosure,
     text_element_count: usize,
     font_seal: SvgFontSeal,
+    fallback_css_residual: bool,
 }
 
 impl SvgFinalizationReport {
@@ -216,6 +217,13 @@ impl SvgFinalizationReport {
         self.text_element_count
     }
 
+    /// Returns whether readable HTML projection encountered CSS whose native rendering may differ.
+    ///
+    /// This diagnostic only lowers fidelity admission; it does not establish resource or font safety.
+    pub const fn fallback_css_residual(&self) -> bool {
+        self.fallback_css_residual
+    }
+
     pub(crate) const fn font_seal(&self) -> &SvgFontSeal {
         &self.font_seal
     }
@@ -237,6 +245,7 @@ impl SvgFinalizationReport {
             resource_closure: terminal.resource_closure,
             text_element_count: terminal.text_elements,
             font_seal: terminal.font_seal,
+            fallback_css_residual: terminal.fallback_css_residual,
         }
     }
 }
@@ -1260,6 +1269,32 @@ mod tests {
             sealed.finalization_report().resource_closure()
         );
         assert_eq!(work.calls, 1);
+    }
+
+    #[test]
+    fn fallback_css_diagnostics_are_sealed_without_granting_resource_admission() {
+        let session = render_session();
+        for (marker, expected) in [("true", true), ("false", false)] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><g data-merman-fallback-css-residual="{marker}"><path d="M0 0h1v1z"/></g></svg>"#
+            );
+            let (sealed, work) = final_validation::measure_terminal_validation_work(|| {
+                SvgPipeline::resvg_safe()
+                    .process_resvg_compatible(&svg, &session)
+                    .unwrap()
+            });
+            assert_eq!(
+                sealed.finalization_report().fallback_css_residual(),
+                expected
+            );
+            assert_eq!(work.calls, 1);
+        }
+        let invalid = r##"<svg xmlns="http://www.w3.org/2000/svg"><use data-merman-fallback-css-residual="true" href="#missing"/></svg>"##;
+        assert!(
+            SvgPipeline::resvg_safe()
+                .process_resvg_compatible(invalid, &session)
+                .is_err()
+        );
     }
 
     #[test]

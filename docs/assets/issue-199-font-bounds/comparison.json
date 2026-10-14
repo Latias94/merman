@@ -1,0 +1,424 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-10-14T10:10:42.620349+00:00",
+  "host": "Windows-11-10.0.26100-SP0",
+  "source_identity": {
+    "base_revision": "051c435fe79c32dc63aa9876969a09ed5661606e",
+    "state": "uncommitted working-tree capture",
+    "source_receipt_sha256": "7be1da233e81c0b1f862b8fea8c61961666f17e35872258ea86cb814592f746d",
+    "source_snapshot_files": 698,
+    "source_snapshot_canonical_sha256": "a19ca45f15d4df3b189df7ab2e14dbcac1f2238a53e958f280bdc93b2d2467a5",
+    "changed_source_sha256": {
+      "Cargo.lock": "88b0d0baa92a1b62b915e5d9c7c542219a84dcb1f043a42078e994ef35f2b068",
+      "crates/merman/src/render/target_admission/digest.rs": "65ef37b336fec570e95a36b0e3c7a77fb2424674dd701e468d01422bae8c29e7",
+      "crates/merman/src/render/target_admission/mod.rs": "735440c74a11c156c5cc3e3e615f24c569d3c42effea658ae6446e621618fccc",
+      "crates/merman-bindings-core/Cargo.toml": "e08a45da933b8c622b2d4dfe099db00b83003bff7da33521326b77968edaa46c",
+      "crates/merman-bindings-core/src/artifact_contract/tests.rs": "067dea57347e540d0e6df567661f8ef36859d006f75ab9dff39a19eb53cd3973",
+      "crates/merman-bindings-core/src/artifact_contract.rs": "b71466c27ac7cd1936791854d19f9ee196bb90402335930a448fffd613ace52f",
+      "crates/merman-bindings-core/src/lib.rs": "d177306472fa729002329f7070fdb7d8d546c0f0d46fcaba0923fe9424a54d5b",
+      "crates/merman-bindings-core/src/metadata.rs": "18a9ce06a7a47384ea712e21877fad95135d3786656d682a2fd1fd04adb0f74f",
+      "crates/merman-bindings-core/src/render/request.rs": "5fd9d7bc52aecfa457b1b8ccc6e3242e568df8639365b2c0538a4ecb59503ab6",
+      "crates/merman-bindings-core/src/service_contract.rs": "5b077a89976caff3c463c7f80775fc0e71ec62ce3058e1ddbce7200e1382e313",
+      "crates/merman-bindings-core/src/services.rs": "f83977b884719efd33238344f9cb9af5c2c400a87fca416193cf8ceb25721525",
+      "crates/merman-bindings-core/src/theme_execution_evidence.rs": "d51a75ccc41d9b81f66968b4218501ed2dcc8796c5e0febe78aabdf9c3193a70",
+      "crates/merman-bindings-core/src/transport_contract.rs": "f5ece777996e88486511bf105d7f34e2f61bf0c1c4e129a67d77758fb82e4620",
+      "crates/merman-export/src/lib.rs": "a5e9bb8106740af3519133bc8e9e4e24925f9dcb3e73a1ba4cd296ca26762002",
+      "crates/merman-export/src/native_filter_receipt.rs": "2cbe22f500004c85fe81f27c1332f1001bccaeb378dae3a620647c3f8431b8b4",
+      "crates/merman-render/src/svg/fallback/cascade.rs": "081c241fe9f09ae2595f658e1d66234f395e3a54dc947f712de5bd71c579840b",
+      "crates/merman-render/src/svg/fallback/html.rs": "04e59718b752a5f2fd32982784779fcb493a7cf5582932d5bf570e19d56fcf83",
+      "crates/merman-render/src/svg/fallback.rs": "b98221a74ebc22b9ab4429d694ae9c2d7f077d2f4827ec5fe5de88089a85501f",
+      "crates/merman-render/src/svg/pipeline/final_validation.rs": "c17c95131175bb8a9331a90679fff5679af1cc69f6dd84aee07eb3954ab201de",
+      "crates/merman-render/src/svg/pipeline/mod.rs": "04e97ede772d00e5a7af3b69853c5f6c1259802710ab6c38bafbcf93e5c7e614",
+      "crates/merman-render/src/text/html_wrap.rs": "9bfadef91f0105add6fb84d3a05e93d1684470e9b2f93f6e5b16a8b12f323cb8",
+      "crates/merman-render/src/text.rs": "056d6a76ebab9415defe7cf0c7e400af78e749b891652d5837f9776e86f69488",
+      "docs/assets/issue-199-font-bounds/capture.rs": "36d8e9832b914df710d2b362061cb9e7b0bf42b11670850443d4a407b8e60453"
+    },
+    "capture_project_lock_sha256": "4b702b7b90645bcbd2586a0c353149af673319724998317bb1e4bcc805ee788a",
+    "build_command": "cargo build --offline --manifest-path target/issue199-font-bounds-20261014/capture-project/Cargo.toml",
+    "note": "The full local source receipt was frozen before build and verified against the capture; no post-commit revision is claimed."
+  },
+  "capture_binary": {
+    "name": "issue199-native-capture.exe",
+    "bytes": 77372416,
+    "sha256": "19640de11657ecf0af89ff9f5cb1a49a699e6058314c3212301f491151371023"
+  },
+  "capture_helper": {
+    "path": "docs/assets/issue-199-font-bounds/capture.rs",
+    "bytes": 1784,
+    "sha256": "36d8e9832b914df710d2b362061cb9e7b0bf42b11670850443d4a407b8e60453"
+  },
+  "capture_features": [
+    "all-diagrams",
+    "svg",
+    "png",
+    "pdf",
+    "native-fonts",
+    "layout-cytoscape"
+  ],
+  "composition": {
+    "python": "3.12.10 (tags/v3.12.10:0cc8128, Apr  8 2025, 12:21:36) [MSC v.1943 64 bit (AMD64)]",
+    "pillow": "12.2.0",
+    "pymupdf": "1.26.7",
+    "mupdf": "1.26.12",
+    "heading_font": "Segoe UI",
+    "heading_font_sha256": "73db31e13ef5151beb6a5272cff4c6de6ae2f0bbc3688f4046e5e63593f9953a",
+    "script": {
+      "path": "target/issue199-font-bounds-20261014/compose_evidence.py",
+      "bytes": 10173,
+      "sha256": "4002695b3c68b8df4aebf2232f629f10926f85a20ac4a0aef5c66a9fbeaee878"
+    },
+    "policy": "Complete outputs; shared scale per pair; no recoloring, retouching or diagram canvas expansion."
+  },
+  "cases": [
+    {
+      "stem": "deterministic-mindmap",
+      "family": "mindmap",
+      "measurement": "deterministic",
+      "input": {
+        "path": "docs/assets/presentation-issues-197-200/issue-199-mindmap.mmd",
+        "bytes": 78,
+        "sha256": "1f2a490e6395f2d3d1a2723e00062b2fd9da749c086cad46ffabddb93b4a91b4"
+      },
+      "options": {
+        "path": "docs/assets/issue-199-font-bounds/mindmap.json",
+        "bytes": 542,
+        "sha256": "aec1eedaade158bf5a3146e0cefe1f1ddb2b7a1a53e6eea36e0cbdda9257b6c7"
+      },
+      "font_files": [],
+      "svg": {
+        "path": "docs/assets/issue-199-font-bounds/deterministic-mindmap.svg",
+        "bytes": 37125,
+        "sha256": "675e055b48a6fc92d7d22b3b677351a5aa1ac79e91109623a3933c77c2169da6"
+      },
+      "png": {
+        "path": "docs/assets/issue-199-font-bounds/deterministic-mindmap.png",
+        "bytes": 9043,
+        "sha256": "a3e8cc9cb3fff5374ec9572da29e0c2a33da993cbd5fda216bd4aab8730d809f",
+        "pixels": [
+          584,
+          450
+        ]
+      },
+      "pdf": {
+        "path": "docs/assets/issue-199-font-bounds/deterministic-mindmap.pdf",
+        "bytes": 15817,
+        "sha256": "4dfc1f46c9c1b6d1736ec65a2021e08e3383d10419d41784bc14a458bdadac52",
+        "pages": 1,
+        "page_points": [
+          291.07574462890625,
+          224.59693908691406
+        ],
+        "extracted_text": "root\nSquare\nlai\nith ico\n",
+        "fonts": [
+          {
+            "name": "AQPTWU+CourierNewPSMT",
+            "type": "Type0",
+            "extension": "ttf",
+            "resource": "f0",
+            "encoding": "Identity-H",
+            "embedded_bytes": 22840,
+            "embedded_sha256": "072c2285fa210258cecf36e6dc105f26d6557aa37db43d2d09db98c1f9b96adc"
+          }
+        ],
+        "render": {
+          "path": "docs/assets/issue-199-font-bounds/deterministic-mindmap-pdf.png",
+          "bytes": 10188,
+          "sha256": "789296a6915f360daa4bb87c6e514c30975026bd55db1b3373361a0844266442",
+          "scale": 2,
+          "pixels": [
+            583,
+            450
+          ]
+        }
+      }
+    },
+    {
+      "stem": "native-mindmap",
+      "family": "mindmap",
+      "measurement": "native",
+      "input": {
+        "path": "docs/assets/presentation-issues-197-200/issue-199-mindmap.mmd",
+        "bytes": 78,
+        "sha256": "1f2a490e6395f2d3d1a2723e00062b2fd9da749c086cad46ffabddb93b4a91b4"
+      },
+      "options": {
+        "path": "docs/assets/issue-199-font-bounds/mindmap.json",
+        "bytes": 542,
+        "sha256": "aec1eedaade158bf5a3146e0cefe1f1ddb2b7a1a53e6eea36e0cbdda9257b6c7"
+      },
+      "font_files": [
+        {
+          "path": "crates/merman-export/tests/fonts/Cousine-Regular.ttf",
+          "bytes": 296856,
+          "sha256": "1da22250675fc4c42fcf3a9736c44bc0570516105331443b663fd5cfbd1412fe"
+        },
+        {
+          "path": "crates/merman-export/tests/fonts/Cousine-Bold.ttf",
+          "bytes": 298048,
+          "sha256": "17c8a7245156d2253531c9e529474937b09d9f641c5ae7695c5e33f22822eef4"
+        },
+        {
+          "path": "crates/merman-export/tests/fonts/Cousine-Italic.ttf",
+          "bytes": 306880,
+          "sha256": "ea2a76ae3d0ece9cd59f0d30fdc08dd70e8f5f457beee5b0852a7b50c2286c7c"
+        }
+      ],
+      "svg": {
+        "path": "docs/assets/issue-199-font-bounds/native-mindmap.svg",
+        "bytes": 37208,
+        "sha256": "bcdf95646c3dda48e08fba49dd0bb40343a95b4d40b50a46ebb8fb5f6e87a5cf"
+      },
+      "png": {
+        "path": "docs/assets/issue-199-font-bounds/native-mindmap.png",
+        "bytes": 12032,
+        "sha256": "5555d8871d097803fceb27ae15d4ae2e2405ca29d31729acff074893d70f4eb4",
+        "pixels": [
+          660,
+          452
+        ]
+      },
+      "pdf": {
+        "path": "docs/assets/issue-199-font-bounds/native-mindmap.pdf",
+        "bytes": 9405,
+        "sha256": "df34389fa143431459122409a792c9cd6bc218bd1bd9287eed151527cba982c6",
+        "pages": 1,
+        "page_points": [
+          329.3255310058594,
+          225.3819122314453
+        ],
+        "extracted_text": "root\nSquare\nplain\nwith icon\n",
+        "fonts": [
+          {
+            "name": "AQPTWU+Cousine-Regular",
+            "type": "Type0",
+            "extension": "ttf",
+            "resource": "f0",
+            "encoding": "Identity-H",
+            "embedded_bytes": 8064,
+            "embedded_sha256": "9f819978e6c1bb0b3de27ccb73b8deb5619cd5949bb110b6b1dc64631f79f93b"
+          }
+        ],
+        "render": {
+          "path": "docs/assets/issue-199-font-bounds/native-mindmap-pdf.png",
+          "bytes": 13600,
+          "sha256": "368c0608fa6decbc3e528d1771ea543889a40301b68caada95c71ca043997e79",
+          "scale": 2,
+          "pixels": [
+            659,
+            451
+          ]
+        }
+      }
+    },
+    {
+      "stem": "native-xychart",
+      "family": "xychart",
+      "measurement": "native",
+      "input": {
+        "path": "docs/assets/presentation-issues-197-200/issue-199-xychart.mmd",
+        "bytes": 28,
+        "sha256": "2b64d066d87691438eb27efc14a7a55e4052e3e142b1f58bc2ed828b6fb5e5d0"
+      },
+      "options": {
+        "path": "docs/assets/issue-199-font-bounds/xychart.json",
+        "bytes": 522,
+        "sha256": "40710b4a7651ec4e44d2f3cba1fcf47074de5d6106a3c84958c83c9a1edc6c21"
+      },
+      "font_files": [
+        {
+          "path": "crates/merman-export/tests/fonts/Cousine-Regular.ttf",
+          "bytes": 296856,
+          "sha256": "1da22250675fc4c42fcf3a9736c44bc0570516105331443b663fd5cfbd1412fe"
+        }
+      ],
+      "svg": {
+        "path": "docs/assets/issue-199-font-bounds/native-xychart.svg",
+        "bytes": 9473,
+        "sha256": "e1964c39844459dde9023482a9f8a74c59c30114d142534c50884ed927eeb8df"
+      },
+      "png": {
+        "path": "docs/assets/issue-199-font-bounds/native-xychart.png",
+        "bytes": 46382,
+        "sha256": "33477710bab5e1879485fd605de799608af25d30ae556572a4a5bbe855997a80",
+        "pixels": [
+          1400,
+          1000
+        ]
+      },
+      "pdf": {
+        "path": "docs/assets/issue-199-font-bounds/native-xychart.pdf",
+        "bytes": 7493,
+        "sha256": "8a84003257337ad30955aad5db1e67687990ee5f73cda34864ccb3e2458b530d",
+        "pages": 1,
+        "page_points": [
+          700.0,
+          500.0
+        ],
+        "extracted_text": "1\n1.2\n1.4\n1.6\n1.8\n2\n2.2\n2.4\n2.6\n2.8\n3\n30\n28\n26\n24\n22\n20\n18\n16\n14\n12\n10\n",
+        "fonts": [
+          {
+            "name": "BRAPSC+Cousine-Regular",
+            "type": "Type0",
+            "extension": "ttf",
+            "resource": "f0",
+            "encoding": "Identity-H",
+            "embedded_bytes": 6824,
+            "embedded_sha256": "e40ec70e82d47b9584ae5988877b8da45545cd5a7aafd9367f2c0d6fc7eeeddc"
+          }
+        ],
+        "render": {
+          "path": "docs/assets/issue-199-font-bounds/native-xychart-pdf.png",
+          "bytes": 42117,
+          "sha256": "34abb24cbf3f42f1444bdc27c18160a51a09cb5d99bd3d1569fbede82e0c7f79",
+          "scale": 2,
+          "pixels": [
+            1400,
+            1000
+          ]
+        }
+      }
+    }
+  ],
+  "comparisons": [
+    {
+      "path": "docs/assets/issue-199-font-bounds/mindmap-measurement.png",
+      "bytes": 77407,
+      "sha256": "4ea75ea44dc767b1ed847f16e71d382a9900be3465e14a4f7c92c7567cb2e692",
+      "pixels": [
+        1800,
+        1251
+      ],
+      "rows": [
+        {
+          "caption": "Full PNG output; raster scale 2",
+          "sources": [
+            "deterministic-mindmap.png",
+            "native-mindmap.png"
+          ],
+          "crop": null,
+          "shared_scale": 1.0,
+          "preview_pixels": [
+            [
+              584,
+              450
+            ],
+            [
+              660,
+              452
+            ]
+          ]
+        },
+        {
+          "caption": "Full PDF pages rendered by MuPDF at 2x",
+          "sources": [
+            "deterministic-mindmap-pdf.png",
+            "native-mindmap-pdf.png"
+          ],
+          "crop": null,
+          "shared_scale": 1.0,
+          "preview_pixels": [
+            [
+              583,
+              450
+            ],
+            [
+              659,
+              451
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "path": "docs/assets/issue-199-font-bounds/xychart-native.png",
+      "bytes": 122030,
+      "sha256": "0d2f3b7ea9599e470ca6aa93d4a810e5110805d455a46ad8121c072db6d278ff",
+      "pixels": [
+        1800,
+        891
+      ],
+      "rows": [
+        {
+          "caption": "Same native font context; equal preview scale",
+          "sources": [
+            "native-xychart.png",
+            "native-xychart-pdf.png"
+          ],
+          "crop": null,
+          "shared_scale": 0.6128571428571429,
+          "preview_pixels": [
+            [
+              858,
+              613
+            ],
+            [
+              858,
+              613
+            ]
+          ]
+        }
+      ]
+    }
+  ],
+  "historical_gantt": {
+    "before_revision": "19091f004d0f234d4fd59a64f0ed7cd04bfa4cdd",
+    "after_revision": "b99388ffc63fe5dcf8cb761ad57313a58f66bdb3",
+    "original_manifest": {
+      "path": "docs/assets/presentation-issues-197-200/comparison.json",
+      "bytes": 23712,
+      "sha256": "0175db5d116e4136afabbbac8cbb818cd4a0dbca9067743ac1b2647a85b09dd2"
+    },
+    "detail": {
+      "path": "docs/assets/issue-199-font-bounds/gantt-detail.png",
+      "bytes": 18329,
+      "sha256": "2e99cb6a17c938b8afdf5bc80562f4fdc2c5e802aed31f08ed3040891f862a0c",
+      "pixels": [
+        1400,
+        330
+      ],
+      "resampling": "nearest",
+      "sources": [
+        {
+          "path": "docs/assets/presentation-issues-197-200/before/issue-199-gantt-dark.png",
+          "bytes": 11577,
+          "sha256": "fc9b3bbf26377869153cf79bce39cc3e595e81a2206f0d9a400efb516a098668",
+          "crop": [
+            140,
+            60,
+            460,
+            160
+          ],
+          "scale": 2,
+          "preview_pixels": [
+            640,
+            200
+          ],
+          "panel_origin": [
+            24,
+            90
+          ]
+        },
+        {
+          "path": "docs/assets/presentation-issues-197-200/after/issue-199-gantt-dark.png",
+          "bytes": 11593,
+          "sha256": "38554fac11f7775bfd9d6d2a72a3c909d86e19b6f2bd85cc2fa4dfbc7933a90b",
+          "crop": [
+            140,
+            60,
+            460,
+            160
+          ],
+          "scale": 2,
+          "preview_pixels": [
+            640,
+            200
+          ],
+          "panel_origin": [
+            714,
+            90
+          ]
+        }
+      ]
+    }
+  }
+}

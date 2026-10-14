@@ -471,3 +471,105 @@ const fn theme_status_id(status: merman::ThemeEvidenceStatus) -> Option<&'static
         _ => None,
     }
 }
+
+#[cfg(all(
+    test,
+    feature = "svg",
+    feature = "diagram-info",
+    any(feature = "png", feature = "pdf")
+))]
+mod native_quality_tests {
+    use super::*;
+    use std::borrow::Cow;
+
+    struct ReplaceScene(&'static str);
+
+    impl merman::svg::SvgPostprocessor for ReplaceScene {
+        fn name(&self) -> &'static str {
+            "test-binding-quality-scene"
+        }
+        fn process<'a>(
+            &self,
+            _: Cow<'a, str>,
+            _: &merman::svg::SvgPostprocessContext<'_>,
+        ) -> merman::svg::RenderResult<Cow<'a, str>> {
+            Ok(Cow::Owned(self.0.to_owned()))
+        }
+    }
+
+    #[test]
+    fn successful_best_effort_native_quality_residuals_remain_visible_in_binding_metadata() {
+        let scenes = [
+            (
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><defs><filter id="effect" filterUnits="userSpaceOnUse" x="-20" y="-20" width="80" height="80"><feDropShadow dx="15" dy="0" stdDeviation="0" flood-color="blue"/></filter></defs><g transform="translate(60 20) rotate(90)" filter="url(#effect)"><rect width="20" height="10" fill="red"/></g></svg>"##,
+                "native_directional_filter_transform_residual",
+            ),
+            (
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><g data-merman-fallback-css-residual="true"><rect width="20" height="10" fill="red"/></g></svg>"#,
+                "fallback_css_residual",
+            ),
+            #[cfg(feature = "pdf")]
+            (
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="100%" style="max-width:400px"><rect x="-10" y="10" width="20" height="20" fill="red"/></svg>"#,
+                "pdf_implicit_viewport_clipping_residual",
+            ),
+        ];
+        for (source, reason) in scenes {
+            let result = merman::Renderer::new()
+                .render(merman::RenderRequest::document(
+                    "info",
+                    merman::OperationControl::new(),
+                    merman::SvgRequest {
+                        pipeline: Some(
+                            merman::svg::SvgPipeline::resvg_safe()
+                                .with_postprocessor(ReplaceScene(source)),
+                        ),
+                        ..Default::default()
+                    },
+                ))
+                .expect("default document preserves export availability");
+            let merman::RenderOutput::Document(Some(document)) = result else {
+                panic!("expected document");
+            };
+            let mut projections = Vec::new();
+            #[cfg(feature = "png")]
+            if reason != "pdf_implicit_viewport_clipping_residual" {
+                let output = document
+                    .export_png(&Default::default(), merman::OperationControl::new())
+                    .expect("best-effort PNG remains available");
+                projections.push(
+                    BindingThemeExecutionEvidence::project(output.evidence(), output.admission())
+                        .unwrap(),
+                );
+            }
+            #[cfg(feature = "pdf")]
+            {
+                let output = document
+                    .export_pdf(&Default::default(), merman::OperationControl::new())
+                    .expect("best-effort PDF remains available");
+                projections.push(
+                    BindingThemeExecutionEvidence::project(output.evidence(), output.admission())
+                        .unwrap(),
+                );
+            }
+            for evidence in projections {
+                let projection = evidence.as_v1().unwrap();
+                assert_eq!(
+                    projection.target_status_id(),
+                    "rejected",
+                    "nonportable quality must not be advertised as portable"
+                );
+                assert!(projection.target_reason_ids().iter().any(|id| id == reason));
+                let encoded = serde_json::to_value(&evidence)
+                    .expect("existing schema-one binding projection");
+                assert!(
+                    encoded["target_reason_ids"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .any(|id| id == reason)
+                );
+            }
+        }
+    }
+}

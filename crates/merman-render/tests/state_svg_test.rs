@@ -3141,15 +3141,73 @@ Second --> Third: second transition
                         == Some(occurrence.as_str())
             })
             .unwrap_or_else(|| panic!("missing ResvgSafe occurrence {occurrence}: {native_svg}"));
-        let fallback_rect = fallback_group
+        let fallback_viewport = fallback_group
             .children()
-            .find(|node| node.has_tag_name("rect"))
-            .unwrap_or_else(|| panic!("missing ResvgSafe rect for {occurrence}: {native_svg}"));
-        assert_eq!(fallback_rect.attribute("fill"), Some(fill));
-        let expected_style = format!("fill:{fill} !important");
+            .find(|node| node.has_tag_name("svg"))
+            .unwrap_or_else(|| panic!("missing ResvgSafe viewport for {occurrence}: {native_svg}"));
+        let dimension = |node: roxmltree::Node<'_, '_>, name| {
+            node.attribute(name)
+                .expect("label viewport dimension")
+                .parse::<f64>()
+                .expect("finite label viewport dimension")
+        };
+        let width = dimension(foreign_object, "width");
+        let height = dimension(foreign_object, "height");
+        assert_eq!(dimension(fallback_viewport, "width"), width);
+        assert_eq!(dimension(fallback_viewport, "height"), height);
+        let view_box = fallback_viewport
+            .attribute("viewBox")
+            .expect("fallback viewport viewBox")
+            .split_whitespace()
+            .map(|value| value.parse::<f64>().expect("finite viewBox component"))
+            .collect::<Vec<_>>();
+        assert_eq!(view_box, [0.0, 0.0, width, height]);
+        let source_overflow = foreign_object
+            .attribute("style")
+            .and_then(|style| {
+                style.split(';').find_map(|declaration| {
+                    let (property, value) = declaration.split_once(':')?;
+                    (property.trim() == "overflow").then(|| value.trim())
+                })
+            })
+            .or_else(|| foreign_object.attribute("overflow"))
+            .unwrap_or("hidden");
+        assert!(
+            fallback_viewport
+                .attribute("style")
+                .expect("fallback viewport style")
+                .split(';')
+                .filter_map(|declaration| declaration.split_once(':'))
+                .any(|(property, value)| {
+                    property.trim() == "overflow" && value.trim() == source_overflow
+                }),
+            "ResvgSafe must preserve source clipping for {occurrence}: {native_svg}"
+        );
+        let fallback_rects = fallback_viewport
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("data-merman-fallback-occurrence")
+                        == Some(occurrence.as_str())
+            })
+            .collect::<Vec<_>>();
         assert_eq!(
-            fallback_rect.attribute("style"),
-            Some(expected_style.as_str()),
+            fallback_rects.len(),
+            1,
+            "ResvgSafe must emit one bound background for {occurrence}: {native_svg}"
+        );
+        let fallback_rect = fallback_rects[0];
+        assert_eq!(fallback_rect.attribute("fill"), Some(fill));
+        let expected_fill = format!("{fill} !important");
+        assert!(
+            fallback_rect
+                .attribute("style")
+                .expect("bound background style")
+                .split(';')
+                .filter_map(|declaration| declaration.split_once(':'))
+                .any(|(property, value)| {
+                    property.trim() == "fill" && value.trim() == expected_fill
+                }),
             "legacy edge-label CSS must not override {occurrence}: {native_svg}"
         );
         assert_eq!(
