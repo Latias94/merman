@@ -3,6 +3,8 @@
 //! Call-site regressions for Mermaid 12.1's shared ELK edge projection.
 //! Sources: render.ts and subgraphFeedbackEdges.ts at
 //! 21f72f07ea22c0af48a3149c550654e80d8e40cb.
+//! The boundary label-clearance regression also covers render.ts's Mermaid 12.2 guard at
+//! 1fb7869866dd619168d840291c9c54b4f129758b.
 
 use base64::Engine as _;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
@@ -55,6 +57,20 @@ fn translation(value: &str) -> (f64, f64) {
 }
 
 fn render(source: &str, algorithm: &str, elk_options: Value) -> Rendered {
+    render_with_environment(
+        source,
+        algorithm,
+        elk_options,
+        &RenderEnvironment::deterministic(),
+    )
+}
+
+fn render_with_environment(
+    source: &str,
+    algorithm: &str,
+    elk_options: Value,
+    environment: &RenderEnvironment,
+) -> Rendered {
     let parsed = Engine::new()
         .with_site_config(MermaidConfig::from_value(json!({
             "layout": algorithm, "htmlLabels": false, "look": "classic",
@@ -66,7 +82,7 @@ fn render(source: &str, algorithm: &str, elk_options: Value) -> Rendered {
     let artifact = family::prepare(
         parsed,
         &LayoutOptions::headless_svg_defaults(),
-        RenderEnvironment::deterministic().begin_session().unwrap(),
+        environment.begin_session().unwrap(),
     )
     .expect("prepare real family fixture");
     let projection = artifact.layout_json().expect("layout JSON");
@@ -513,6 +529,220 @@ fn usecase_main_labels_follow_their_straightened_paint_routes() {
         })
         .collect();
     assert_labels_follow_straightened_routes(&sources);
+}
+
+#[cfg(feature = "diagram-usecase")]
+#[test]
+fn usecase_boundary_label_guard_rejects_a_candidate_after_an_earlier_route_moves() {
+    use merman_render::environment::{
+        MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
+        TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+    };
+    use std::sync::Arc;
+
+    struct FixedRelationshipBounds;
+    impl TextMeasurer for FixedRelationshipBounds {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            // Freeze the deterministic profile's actual text bboxes. Source createText adds
+            // 2px per side before these SVG labels enter the provider and terminal guard.
+            let width = match text {
+                "approved" => 48.160000000000004,
+                "changes" => 42.14,
+                _ => return DeterministicTextMeasurer::default().measure(text, style),
+            };
+            TextMetrics {
+                width,
+                height: 15.400000000000002,
+                line_count: 1,
+            }
+        }
+
+        fn measure_wrapped(
+            &self,
+            text: &str,
+            style: &TextStyle,
+            max_width: Option<f64>,
+            wrap_mode: WrapMode,
+        ) -> TextMetrics {
+            if matches!(text, "approved" | "changes") {
+                self.measure(text, style)
+            } else {
+                DeterministicTextMeasurer::default()
+                    .measure_wrapped(text, style, max_width, wrap_mode)
+            }
+        }
+    }
+
+    // Independent oracle for this orthogonal fixture. The candidate lies strictly inside the
+    // label box, so source-specific boundary contacts and Liang-Barsky are not needed here.
+    let covers = |route: &[(f64, f64)], label: &Label| {
+        let (left, right) = (
+            label.center.0 - label.width / 2.0,
+            label.center.0 + label.width / 2.0,
+        );
+        let (top, bottom) = (
+            label.center.1 - label.height / 2.0,
+            label.center.1 + label.height / 2.0,
+        );
+        route.windows(2).any(|pair| {
+            let [(ax, ay), (bx, by)] = [pair[0], pair[1]];
+            if (ay - by).abs() < 1e-9 {
+                top < ay && ay < bottom && ax.max(bx) > left && ax.min(bx) < right
+            } else {
+                assert!((ax - bx).abs() < 1e-9, "fixture route is orthogonal");
+                left < ax && ax < right && ay.max(by) > top && ay.min(by) < bottom
+            }
+        })
+    };
+    let profile = TextMeasurementProfile::new(
+        TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.usecase-boundary-label-clearance").unwrap(),
+            "fixture",
+        )
+        .unwrap(),
+        Arc::new(FixedRelationshipBounds),
+    );
+    let environment = RenderEnvironment::deterministic()
+        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
+    let source = include_str!("../../../fixtures/usecase/local_elk_boundary_label_guard.mmd");
+    for direction in ["LR", "TB"] {
+        let source = source.replace("direction LR", &format!("direction {direction}"));
+        let render = |straighten| {
+            render_with_environment(
+                &source,
+                "elk",
+                json!({"straightenEdges": straighten, "lineHops": false}),
+                &environment,
+            )
+        };
+        let original = render(false);
+        let guarded = render(true);
+        assert_eq!(original.layout["nodes"], guarded.layout["nodes"]);
+        assert_eq!(
+            provider_points(&original.layout),
+            provider_points(&guarded.layout)
+        );
+        assert_eq!(
+            semantic_edges(&original.layout),
+            semantic_edges(&guarded.layout)
+        );
+        assert_eq!(
+            original.labels, guarded.labels,
+            "rejected candidate keeps both labels"
+        );
+        for (before, after) in original.edges.iter().zip(&guarded.edges) {
+            assert_eq!(before.id, after.id);
+            assert_eq!(before.points.first(), after.points.first(), "source port");
+            assert_eq!(before.points.last(), after.points.last(), "target port");
+            assert_eq!(before.start_marker, after.start_marker);
+            assert_eq!(before.end_marker, after.end_marker);
+        }
+        if direction == "TB" {
+            assert_eq!(original.edges, guarded.edges);
+            assert!(original.edges.iter().all(|edge| edge.points.len() == 3));
+            continue;
+        }
+
+        let edge = |rendered: &Rendered, id: &str| {
+            rendered
+                .edges
+                .iter()
+                .find(|edge| edge.id == id)
+                .unwrap()
+                .points
+                .clone()
+        };
+        let moved = edge(&guarded, "edge-0");
+        assert_ne!(
+            moved,
+            edge(&original, "edge-0"),
+            "earlier route must actually move"
+        );
+        let rejected = edge(&original, "edge-2");
+        assert_eq!(rejected, edge(&guarded, "edge-2"));
+        assert_eq!(rejected.len(), 6);
+        let label = original
+            .labels
+            .iter()
+            .find(|label| label.id == "edge-2")
+            .unwrap();
+        assert_eq!(
+            (label.width, label.height),
+            (42.14 + 4.0, 15.400000000000002 + 4.0),
+            "guard uses the source's complete padded SVG label bbox"
+        );
+        assert!(!covers(&moved, label));
+
+        // The captured provider route has 30px terminal runs and an 8px jog. Both ports share
+        // a horizontal lane, so removing the jog produces the explicit straight candidate.
+        assert_eq!(rejected[0].1, rejected[5].1);
+        assert_eq!(rejected[0].1, rejected[1].1);
+        assert_eq!(rejected[1].0, rejected[2].0);
+        assert_eq!(rejected[2].1, rejected[3].1);
+        assert_eq!(rejected[3].0, rejected[4].0);
+        assert_eq!(rejected[4].1, rejected[5].1);
+        assert!((rejected[0].0 - rejected[1].0).abs() <= 30.0);
+        assert!(
+            (rejected[1].0 - rejected[0].0) * (rejected[3].0 - rejected[2].0) > 0.0,
+            "terminal and displaced run point in the same direction"
+        );
+        let jog = (rejected[1].1 - rejected[2].1).abs();
+        assert!(jog > 0.01 && jog <= 16.0, "eligible terminal jog: {jog}");
+        let candidate = [rejected[0], rejected[5]];
+        let candidate_label = Label {
+            id: label.id.clone(),
+            center: (label.center.0, candidate[0].1),
+            width: label.width,
+            height: label.height,
+        };
+        assert!(moved.iter().all(|point| point.1 == moved[0].1));
+        assert_ne!(moved[0].1, candidate[0].1, "parallel lanes do not cross");
+        let external = edge(&guarded, "edge-1");
+        assert!(external.iter().all(|point| point.0 > candidate[0].0));
+        assert!(
+            !covers(&external, label) && !covers(&external, &candidate_label),
+            "the external route contributes no old or new label overlap"
+        );
+        assert!(
+            covers(&moved, &candidate_label),
+            "candidate adds label-over-edge coverage"
+        );
+
+        let nodes = guarded.layout["nodes"].as_array().unwrap();
+        let boundary = nodes.iter().find(|node| node["id"] == "G").unwrap();
+        let origin = (
+            boundary["x"].as_f64().unwrap() - boundary["width"].as_f64().unwrap() / 2.0,
+            boundary["y"].as_f64().unwrap() - boundary["height"].as_f64().unwrap() / 2.0,
+        );
+        assert!(
+            origin.0 > 0.0 && origin.1 > 0.0,
+            "boundary must have a real parent offset"
+        );
+        let local_label = Label {
+            id: label.id.clone(),
+            center: (
+                candidate_label.center.0 - origin.0,
+                candidate_label.center.1 - origin.1,
+            ),
+            width: label.width,
+            height: label.height,
+        };
+        assert!(
+            !covers(&moved, &local_label),
+            "mixing local and absolute coordinates misses the overlap"
+        );
+        let local_moved: Vec<_> = moved
+            .iter()
+            .map(|&(x, y)| (x - origin.0, y - origin.1))
+            .collect();
+        assert!(
+            covers(&local_moved, &local_label),
+            "common parent coordinates recover the overlap"
+        );
+    }
 }
 
 #[cfg(feature = "diagram-er")]

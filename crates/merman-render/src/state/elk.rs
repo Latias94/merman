@@ -462,15 +462,20 @@ fn prepare_paint_paths(
         .and_then(Value::as_bool)
         != Some(false)
     {
-        let changes =
-            crate::elk_terminal_jogs::straighten_edge_terminals_with_runs(&mut paths, |units| {
-                work.charge_adapter(units)
-            })?;
-        for change in changes {
-            if let Some(label) = layout.edges[change.route_index].label.as_mut() {
-                crate::elk_terminal_jogs::reproject_label(label, &change.runs);
-            }
-        }
+        work.charge_adapter(paths.len())?;
+        let mut labelled_routes: Vec<_> = paths
+            .iter_mut()
+            .zip(layout.edges.iter_mut())
+            .map(
+                |(points, edge)| crate::elk_terminal_jogs::LabeledTerminalRoute {
+                    points,
+                    label: edge.label.as_mut(),
+                },
+            )
+            .collect();
+        crate::elk_terminal_jogs::straighten_edge_terminals(&mut labelled_routes, |units| {
+            work.charge_adapter(units)
+        })?;
     }
     for (edge, points) in layout.edges.iter_mut().zip(paths) {
         if edge.points.is_empty()

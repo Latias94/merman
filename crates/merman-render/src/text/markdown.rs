@@ -216,6 +216,11 @@ pub(crate) fn mermaid_markdown_to_lines(
     let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
 
     fn needs_full_delimiter_resolution(markdown: &str) -> bool {
+        // The lightweight SVG word scanner does not parse images. Marked's markdownToLines
+        // skips their tokens, so use the full parser to resume correctly at following text.
+        if markdown.contains("![") {
+            return true;
+        }
         let chars: Vec<char> = markdown.chars().collect();
         if chars
             .windows(2)
@@ -922,5 +927,25 @@ mod tests {
         let multiline = analyze_mermaid_markdown("first<br/>second", true);
         assert_eq!(multiline.line_count, 2);
         assert!(multiline.all_runs_normal());
+    }
+
+    #[test]
+    fn svg_markdown_images_skip_alt_text_and_resume_following_styles() {
+        use MermaidMarkdownWordType::*;
+        assert_eq!(
+            mermaid_markdown_to_lines("![alt](image.png)", true),
+            vec![vec![]]
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines(
+                "Before ![alt **ignored**](image.png) **after** *tail*",
+                true
+            ),
+            vec![vec![
+                ("Before".to_string(), Normal),
+                ("after".to_string(), Strong),
+                ("tail".to_string(), Em),
+            ]]
+        );
     }
 }

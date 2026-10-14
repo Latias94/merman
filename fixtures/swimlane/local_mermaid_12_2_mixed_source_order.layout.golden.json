@@ -1,0 +1,264 @@
+{
+  "diagramType": "swimlane",
+  "layout": {
+    "SwimlaneDiagram": {
+      "direction": "LR",
+      "nodes": [
+        {
+          "id": "Z",
+          "label": "Z",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "D",
+          "top_lane_id": "D",
+          "x": 36.0,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "E",
+          "label": "E",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "D",
+          "top_lane_id": "D",
+          "x": 1062.844,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "X",
+          "label": "X",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "D",
+          "top_lane_id": "D",
+          "x": 2603.111,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 5.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "A",
+          "label": "A",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "D",
+          "top_lane_id": "D",
+          "x": 1576.267,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 3.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "C",
+          "label": "C",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "D",
+          "top_lane_id": "D",
+          "x": 549.422,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "Y",
+          "label": "Y",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "D",
+          "top_lane_id": "D",
+          "x": 3116.533,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 6.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "M",
+          "label": "M",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "D",
+          "top_lane_id": "D",
+          "x": 2089.689,
+          "y": 0.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 4.0,
+          "order": 0.0,
+          "is_edge_label": false
+        },
+        {
+          "id": "N",
+          "label": "N",
+          "label_type": "text",
+          "shape": "squareRect",
+          "parent_id": "B",
+          "top_lane_id": "B",
+          "x": 36.0,
+          "y": 252.0,
+          "width": 152.0,
+          "height": 45.0,
+          "label_width": 120.0,
+          "label_height": 21.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "is_edge_label": false
+        }
+      ],
+      "lanes": [
+        {
+          "id": "B",
+          "title": "Second lane",
+          "parent_id": null,
+          "x": 1558.267,
+          "y": 218.25,
+          "width": 3288.533,
+          "height": 184.5,
+          "padding": 8.0,
+          "title_label_width": 65.094,
+          "title_label_height": 21.0,
+          "content_top": 229.5,
+          "title_rect": {
+            "left": -86.0,
+            "right": -50.0,
+            "top": 126.0,
+            "bottom": 310.5
+          },
+          "requested_dir": "LR"
+        },
+        {
+          "id": "D",
+          "title": "First lane",
+          "parent_id": null,
+          "x": 1558.267,
+          "y": 33.75,
+          "width": 3288.533,
+          "height": 184.5,
+          "padding": 8.0,
+          "title_label_width": 56.984,
+          "title_label_height": 21.0,
+          "content_top": -22.5,
+          "title_rect": {
+            "left": -86.0,
+            "right": -50.0,
+            "top": -58.5,
+            "bottom": 126.0
+          },
+          "requested_dir": "LR"
+        }
+      ],
+      "edges": [
+        {
+          "id": "L_E_X_0",
+          "from": "E",
+          "to": "X",
+          "points": [
+            {
+              "x": 1062.844,
+              "y": -22.5
+            },
+            {
+              "x": 1062.844,
+              "y": -22.5
+            },
+            {
+              "x": 1062.844,
+              "y": -42.5
+            },
+            {
+              "x": 2603.111,
+              "y": -42.5
+            },
+            {
+              "x": 2603.111,
+              "y": -22.5
+            },
+            {
+              "x": 2603.111,
+              "y": -22.5
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        },
+        {
+          "id": "L_C_Y_0",
+          "from": "C",
+          "to": "Y",
+          "points": [
+            {
+              "x": 549.422,
+              "y": 22.5
+            },
+            {
+              "x": 549.422,
+              "y": 22.5
+            },
+            {
+              "x": 549.422,
+              "y": 42.5
+            },
+            {
+              "x": 3116.533,
+              "y": 42.5
+            },
+            {
+              "x": 3116.533,
+              "y": 22.5
+            },
+            {
+              "x": 3116.533,
+              "y": 22.5
+            }
+          ],
+          "label_node_id": null,
+          "reversed_for_layout": false,
+          "curve": "rounded"
+        }
+      ],
+      "bounds": {
+        "min_x": -86.0,
+        "min_y": -58.5,
+        "max_x": 3202.533,
+        "max_y": 310.5
+      }
+    }
+  }
+}

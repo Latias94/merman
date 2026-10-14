@@ -4,7 +4,17 @@ const url = require('url');
 const { createRequire } = require('module');
 
 const requireFromCwd = createRequire(path.resolve(process.cwd(), 'package.json'));
-const katex = requireFromCwd('katex');
+let requireForKatex = requireFromCwd;
+try {
+  // A reference workspace can contain a different KaTeX copy for an external plugin.
+  // Resolve from Mermaid's entry so both math output and CSS use the core's dependency.
+  requireForKatex = createRequire(requireFromCwd.resolve('mermaid'));
+} catch (error) {
+  if (error.code !== 'MODULE_NOT_FOUND' || error.path || error.requestPath) {
+    throw error;
+  }
+}
+const katex = requireForKatex('katex');
 
 const lineBreakRegex = /<br\s*\/?>/gi;
 const katexRegex = /\$\$(.*)\$\$/g;
@@ -15,7 +25,7 @@ function hasKatex(text) {
 
 function katexCssPath() {
   try {
-    return requireFromCwd.resolve('katex/dist/katex.css');
+    return requireForKatex.resolve('katex/dist/katex.css');
   } catch {
     return null;
   }

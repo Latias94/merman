@@ -435,7 +435,7 @@ jobs:
 
       - name: Test selected reference runtime builder
         if: matrix.parity
-        run: node --test tools/mermaid-cli/reference-runtime.test.mjs
+        run: node --test tools/mermaid-cli/reference-runtime.test.mjs crates/merman-render/tests/katex_flowchart_probe.test.cjs
 
       - name: Verify pull-request architecture contracts
         if: matrix.parity

@@ -2,6 +2,20 @@
 
 This document records the admitted local support for Mermaid `swimlane-beta`.
 
+## Mermaid 12.2 behavior
+
+Disconnected nodes retain their declaration order within each lane. Crossing cleanup is followed
+by another terminal-lane separation pass. Title-band rail avoidance includes the band's borders
+and inherits the diagram direction when a lane has none. Explicit lane SVG IDs include the diagram
+prefix; the synthetic default lane retains the upstream fallback. Edge clipping follows the actual
+Swimlane renderer even when the configuration names another default layout. See
+[ADR-0093](../adr/0093-mermaid-12-2-upstream-transition.md) for source and regression ownership.
+
+Content-node preparation also applies the shared Flowchart minimum label width. Circle and
+double-circle retain their source-defined opt-out. Omitting this rule changes rounded/diamond
+node dimensions and can select a different orthogonal route; the 12.2 source-regression fixtures
+exercise the same rule in HTML and SVG label modes.
+
 Upstream references at pinned Mermaid 11.16.1:
 
 - Detector: `packages/mermaid/src/diagrams/swimlanes/detector.ts`

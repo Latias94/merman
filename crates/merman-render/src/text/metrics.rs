@@ -3503,6 +3503,33 @@ pub(crate) fn mermaid_markdown_to_wrapped_word_lines(
     wrap_markdown_word_lines(measurer, &parsed, style, max_width_px, wrap_mode, true)
 }
 
+/// Measures the SVG word rows emitted by `createText`, without HTML-only image sizing.
+pub(crate) fn measure_svg_markdown_word_lines(
+    measurer: &dyn TextMeasurer,
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: &TextStyle,
+) -> TextMetrics {
+    if lines.iter().all(Vec::is_empty) {
+        return TextMetrics {
+            width: 0.0,
+            height: 0.0,
+            line_count: 0,
+        };
+    }
+    let mut plain_lines = Vec::with_capacity(lines.len());
+    let mut width = 0.0_f64;
+    for line in lines {
+        let (plain, line_width) =
+            markdown_word_line_plain_text_and_width_px(measurer, line, style, WrapMode::SvgLike);
+        plain_lines.push(plain);
+        width = width.max(line_width);
+    }
+    let mut metrics =
+        measurer.measure_wrapped(&plain_lines.join("\n"), style, None, WrapMode::SvgLike);
+    metrics.width = round_to_1_64_px(width);
+    metrics
+}
+
 fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {
     if !markdown.contains("\n\n") && !markdown.contains("\r\n\r\n") {
         return 0;

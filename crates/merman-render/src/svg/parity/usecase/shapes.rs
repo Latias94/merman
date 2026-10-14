@@ -39,6 +39,10 @@ pub(super) fn write_empty_edge_label(
         out.push_str(r#"<text y="-10.1" text-anchor="middle"><tspan class="text-outer-tspan row" x="0" y="-0.1em" dy="1.1em" text-anchor="middle"/></text>"#);
     }
     out.push_str("</g></g>");
+    if !html {
+        // Empty createText returns only its text, leaving the background group beside edgeLabel.
+        out.push_str(r#"<g><rect class="background" style="stroke: none"/></g>"#);
+    }
 }
 
 pub(super) fn rect(
@@ -97,7 +101,7 @@ pub(super) fn write_node(
             write_label(
                 out,
                 stereotype,
-                UsecaseLabelKind::Node("label usecase-stereotype"),
+                UsecaseLabelKind::PositionedNode("label usecase-stereotype"),
                 0.0,
                 y + stereotype.metrics.height / 2.0,
                 UsecaseLabelRenderContext {
@@ -110,7 +114,7 @@ pub(super) fn write_node(
         write_label(
             out,
             &plan.label,
-            UsecaseLabelKind::Node("label actor-label usecase-actor-label"),
+            UsecaseLabelKind::PositionedNode("label actor-label usecase-actor-label"),
             0.0,
             y + plan.label.metrics.height / 2.0,
             UsecaseLabelRenderContext {
@@ -203,7 +207,7 @@ pub(super) fn write_node(
         write_label(
             out,
             &plan.label,
-            UsecaseLabelKind::Node("label usecase-json-title"),
+            UsecaseLabelKind::PositionedNode("label usecase-json-title"),
             0.0,
             top + table.title_height / 2.0,
             UsecaseLabelRenderContext {
@@ -240,7 +244,7 @@ pub(super) fn write_node(
             write_label(
                 out,
                 &row.key,
-                UsecaseLabelKind::Node("label usecase-json-key"),
+                UsecaseLabelKind::PositionedNode("label usecase-json-key"),
                 left + table.key_width / 2.0,
                 row.height / 2.0,
                 UsecaseLabelRenderContext {
@@ -251,7 +255,7 @@ pub(super) fn write_node(
             write_label(
                 out,
                 &row.value,
-                UsecaseLabelKind::Node("label usecase-json-value"),
+                UsecaseLabelKind::PositionedNode("label usecase-json-value"),
                 left + table.key_width + table.value_width / 2.0,
                 row.height / 2.0,
                 UsecaseLabelRenderContext {
@@ -360,7 +364,7 @@ pub(super) fn write_node(
             write_label(
                 out,
                 stereotype,
-                UsecaseLabelKind::Node("label usecase-stereotype"),
+                UsecaseLabelKind::PositionedNode("label usecase-stereotype"),
                 0.0,
                 -height / 2.0 + stereo_height / 2.0,
                 UsecaseLabelRenderContext {
@@ -374,12 +378,12 @@ pub(super) fn write_node(
             out,
             &plan.label,
             if context.note {
-                UsecaseLabelKind::Node("label noteLabel")
+                UsecaseLabelKind::PositionedNode("label noteLabel")
             } else if context
                 .source
                 .is_some_and(|node| node.business && plan.ellipse)
             {
-                UsecaseLabelKind::Node("label usecase-label")
+                UsecaseLabelKind::PositionedNode("label usecase-label")
             } else {
                 UsecaseLabelKind::Node("label")
             },

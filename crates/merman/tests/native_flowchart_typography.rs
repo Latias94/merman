@@ -39,9 +39,7 @@ fn native_flowchart_rejects_configurations_with_different_layout_and_css_typogra
             RenderTarget::Svg(request(true)),
             OperationControl::new(),
         ));
-        let error = native
-            .err()
-            .expect("native typography mismatch must fail admission");
+        let error = native.expect_err("native typography mismatch must fail admission");
         assert!(error.to_string().contains(expected), "{error}");
         let compatibility = Renderer::new().render(RenderRequest::new(
             &source,
@@ -84,8 +82,7 @@ fn native_flowchart_rejects_unmeasured_inline_html_typography() {
                 RenderTarget::Svg(request(true)),
                 OperationControl::new(),
             ))
-            .err()
-            .expect("unmeasured inline typography must fail native admission");
+            .expect_err("unmeasured inline typography must fail native admission");
         assert!(
             error
                 .to_string()
@@ -157,8 +154,7 @@ fn native_flowchart_admission_follows_effective_markdown_html() {
                 RenderTarget::Svg(request(true)),
                 OperationControl::new(),
             ))
-            .err()
-            .expect("effective HTML typography must fail native admission");
+            .expect_err("effective HTML typography must fail native admission");
         assert!(error.to_string().contains(property), "{label}: {error}");
 
         // Mermaid outputs unsupported Markdown tokens as raw HTML, including code spelling.
@@ -228,8 +224,7 @@ fn native_flowchart_rejects_inheritance_that_overrides_element_typography() {
                 RenderTarget::Svg(request(true)),
                 OperationControl::new(),
             ))
-            .err()
-            .expect("intrinsic element typography must remain consistent with measurement");
+            .expect_err("intrinsic element typography must remain consistent with measurement");
         assert!(
             error.to_string().contains(property),
             "{tag}/{property}: {error}"

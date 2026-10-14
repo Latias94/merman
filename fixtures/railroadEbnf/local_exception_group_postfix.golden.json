@@ -1,0 +1,86 @@
+{
+  "diagramType": "railroadEbnf",
+  "model": {
+    "type": "railroadEbnf",
+    "title": "Exception and grouped postfixes",
+    "accTitle": "EBNF exception branches",
+    "accDescr": "Difference keeps both operands while postfixes wrap grouped choices.",
+    "rules": [
+      {
+        "name": "token",
+        "definition": {
+          "type": "sequence",
+          "elements": [
+            {
+              "type": "sequence",
+              "elements": [
+                {
+                  "type": "nonterminal",
+                  "name": "letter"
+                },
+                {
+                  "type": "terminal",
+                  "value": "-"
+                },
+                {
+                  "type": "terminal",
+                  "value": "x"
+                }
+              ]
+            },
+            {
+              "type": "optional",
+              "element": {
+                "type": "choice",
+                "alternatives": [
+                  {
+                    "type": "terminal",
+                    "value": "a"
+                  },
+                  {
+                    "type": "terminal",
+                    "value": "b"
+                  }
+                ]
+              }
+            },
+            {
+              "type": "repetition",
+              "element": {
+                "type": "choice",
+                "alternatives": [
+                  {
+                    "type": "terminal",
+                    "value": "c"
+                  },
+                  {
+                    "type": "terminal",
+                    "value": "d"
+                  }
+                ]
+              },
+              "min": 1,
+              "max": null
+            }
+          ]
+        }
+      },
+      {
+        "name": "letter",
+        "definition": {
+          "type": "choice",
+          "alternatives": [
+            {
+              "type": "special",
+              "text": "alphabetic"
+            },
+            {
+              "type": "terminal",
+              "value": "z"
+            }
+          ]
+        }
+      }
+    ]
+  }
+}

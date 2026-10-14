@@ -1,0 +1,18 @@
+---
+config:
+  look: classic
+  htmlLabels: false
+  flowchart:
+    htmlLabels: false
+    minNodeWidth: 180
+    wrappingWidth: 600
+---
+swimlane-beta LR
+subgraph Shapes[Label-derived dimensions]
+  R(X)
+  L(This label remains wider than the configured minimum width)
+  D{X}
+  C((X))
+  B(((X)))
+  R --> L --> D --> C --> B
+end

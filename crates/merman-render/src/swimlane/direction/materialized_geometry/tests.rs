@@ -133,6 +133,155 @@ fn separates_shared_visible_terminal_rails_on_the_same_node_face() {
 }
 
 #[test]
+fn finalizer_separates_terminal_lanes_after_crossing_cleanup() {
+    let mut layout = layout(
+        vec![
+            node("A", WorkingNodeKind::Content, -40.0, -30.0, 10.0, 10.0),
+            node("B", WorkingNodeKind::Content, 0.0, 0.0, 10.0, 80.0),
+        ],
+        vec![
+            edge("A_B_1", "A", "B", vec![point(-30.0, 0.0), point(-5.0, 0.0)]),
+            edge("A_B_2", "A", "B", vec![point(-30.0, 0.0), point(-5.0, 0.0)]),
+        ],
+    );
+
+    super::super::finalize_rendered_edges(&mut layout, &mut unbounded_work_budget()).unwrap();
+
+    let first = layout.original_edges[0].points.last().unwrap();
+    let second = layout.original_edges[1].points.last().unwrap();
+    assert_ne!(first.y, second.y);
+}
+
+#[test]
+fn upstream_same_rank_detour_keeps_distinct_terminal_attachments() {
+    // Port the fixed dimensions and graph in Mermaid 12.2 sameRankDetour.spec.ts.
+    let lanes = ["Lead", "Head", "Seeker"];
+    let mut nodes = lanes
+        .iter()
+        .map(|id| {
+            let mut lane = node(id, WorkingNodeKind::Group, 0.0, 0.0, 0.0, 0.0);
+            lane.shape = "swimlane".to_string();
+            lane.padding = 8.0;
+            lane.requested_dir = Some("LR".to_string());
+            lane
+        })
+        .collect::<Vec<_>>();
+    for (id, lane, width, height, shape) in [
+        ("A", "Seeker", 128.0, 45.0, "roundedRect"),
+        ("A2", "Seeker", 142.0, 142.0, "diamond"),
+        ("E", "Head", 142.0, 142.0, "diamond"),
+        ("F", "Head", 79.0, 45.0, "roundedRect"),
+        ("G", "Head", 100.0, 45.0, "roundedRect"),
+        ("F2", "Head", 79.0, 45.0, "roundedRect"),
+        ("B", "Lead", 142.0, 142.0, "diamond"),
+        ("C", "Lead", 79.0, 45.0, "roundedRect"),
+    ] {
+        let mut content = node(id, WorkingNodeKind::Content, 0.0, 0.0, width, height);
+        content.shape = shape.to_string();
+        content.parent_id = Some(lane.to_string());
+        content.top_lane_id = Some(lane.to_string());
+        content.padding = 15.0;
+        nodes.push(content);
+    }
+    let edges = [
+        ("E", "F"),
+        ("E", "G"),
+        ("G", "F2"),
+        ("B", "C"),
+        ("A", "A2"),
+        ("A2", "B"),
+        ("A2", "E"),
+        ("B", "E"),
+    ]
+    .into_iter()
+    .map(|(from, to)| edge(&format!("L_{from}_{to}_0"), from, to, Vec::new()))
+    .collect();
+    let mut layout = layout(nodes, edges);
+    layout.direction = SwimlaneDirection::Lr;
+    layout.top_lane_order = lanes.iter().rev().map(|id| id.to_string()).collect();
+    layout.graph_edges = layout.original_edges.clone();
+    crate::swimlane::run_layout_core(
+        &mut layout,
+        crate::swimlane::config::SwimlaneConfig {
+            node_gap: 50.0,
+            layer_gap: 50.0,
+            ignore_cross_lane_edges: true,
+            optimize_ranks_by_crossings: true,
+            automatic_lane_ordering: false,
+        },
+        std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )),
+    )
+    .unwrap();
+
+    let issues = super::super::validation::validate_swimlanes_layout(&layout);
+    // Upstream's validateLayout counts crossings in its score, not its issues.
+    // Its pure core retains this one crossing while fixing the shared attachment.
+    assert_eq!(
+        issues
+            .iter()
+            .map(|issue| (issue.kind, issue.edge_id.as_str(), issue.target_id.as_str()))
+            .collect::<Vec<_>>(),
+        [(
+            super::super::validation::ValidationIssueKind::EdgeEdgeCrossing,
+            "L_E_F_0",
+            "L_A2_B_0"
+        )],
+        "edges: {:?}; nodes: {:?}",
+        layout.original_edges,
+        layout.nodes
+    );
+    let points_for = |id: &str| {
+        layout
+            .original_edges
+            .iter()
+            .find(|edge| edge.id == id)
+            .unwrap()
+            .points
+            .as_slice()
+    };
+    assert_points(
+        points_for("L_E_F_0"),
+        &[(303.4032258064516, 242.0), (389.30645161290323, 242.0)],
+    );
+    assert_points(
+        points_for("L_A2_B_0"),
+        &[
+            (303.4032258064516, 0.0),
+            (303.4032258064516, 0.0),
+            (323.4032258064516, 0.0),
+            (323.4032258064516, 477.0),
+            (303.4032258064516, 477.0),
+            (303.4032258064516, 477.0),
+        ],
+    );
+    for node_id in ["A2", "B", "E"] {
+        let attachments = layout
+            .original_edges
+            .iter()
+            .filter_map(|edge| {
+                if edge.from == node_id {
+                    edge.points.first()
+                } else if edge.to == node_id {
+                    edge.points.last()
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>();
+        for (index, first) in attachments.iter().enumerate() {
+            for second in &attachments[index + 1..] {
+                assert!(
+                    (first.x - second.x).hypot(first.y - second.y) > 3.0,
+                    "shared terminal attachment on {node_id}: {first:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn terminal_lane_candidate_is_rejected_before_scanning_other_lanes() {
     let mut layout = layout(
         vec![
@@ -403,6 +552,134 @@ fn shifts_lr_lane_title_bands_left_of_a_clear_left_side_rail() {
         (bod.left, bod.right, bod.top, bod.bottom),
         (-130.0, -94.0, 0.0, 200.0)
     );
+}
+
+#[test]
+fn left_title_bands_clear_rails_on_all_four_borders() {
+    // Mermaid 12.2 counts boundary rails as intersections, like validateLayout.
+    for points in [
+        vec![point(-40.0, 100.0), point(60.0, 100.0)],
+        vec![point(-40.0, 300.0), point(60.0, 300.0)],
+        vec![point(0.0, 150.0), point(0.0, 250.0)],
+        vec![point(24.0, 150.0), point(24.0, 250.0)],
+    ] {
+        let mut layout = layout(
+            vec![group(
+                "lane",
+                "LR",
+                100.0,
+                200.0,
+                200.0,
+                200.0,
+                SwimlaneTitleRect {
+                    left: 0.0,
+                    right: 24.0,
+                    top: 100.0,
+                    bottom: 300.0,
+                },
+            )],
+            vec![edge("rail", "a", "b", points)],
+        );
+        shift_left_lane_title_bands_left_of_rails(&mut layout, &mut unbounded_work_budget())
+            .unwrap();
+        assert!(layout.nodes["lane"].title_rect.as_ref().unwrap().left < 0.0);
+    }
+}
+
+#[test]
+fn left_title_bands_inherit_layout_direction_and_accept_mixed_case() {
+    for requested_dir in [None, Some("lr"), Some("Lr")] {
+        let mut lane = group(
+            "lane",
+            "LR",
+            100.0,
+            200.0,
+            200.0,
+            200.0,
+            SwimlaneTitleRect {
+                left: 0.0,
+                right: 24.0,
+                top: 100.0,
+                bottom: 300.0,
+            },
+        );
+        lane.requested_dir = requested_dir.map(str::to_string);
+        let mut layout = layout(
+            vec![lane],
+            vec![edge(
+                "rail",
+                "a",
+                "b",
+                vec![point(10.0, 150.0), point(60.0, 150.0)],
+            )],
+        );
+        layout.direction = SwimlaneDirection::Lr;
+        shift_left_lane_title_bands_left_of_rails(&mut layout, &mut unbounded_work_budget())
+            .unwrap();
+        assert!(layout.nodes["lane"].title_rect.as_ref().unwrap().left < 0.0);
+    }
+}
+
+#[test]
+fn title_bands_leave_clear_rails_and_inherited_opposite_directions_alone() {
+    for (layout_direction, rail_y) in [
+        (SwimlaneDirection::Tb, 80.0),
+        (SwimlaneDirection::Bt, 100.0),
+        (SwimlaneDirection::Lr, 100.0),
+        (SwimlaneDirection::Rl, 100.0),
+    ] {
+        let title = SwimlaneTitleRect {
+            left: 0.0,
+            right: 200.0,
+            top: 100.0,
+            bottom: 124.0,
+        };
+        let mut lane = group("lane", "TB", 100.0, 200.0, 200.0, 200.0, title.clone());
+        lane.requested_dir = None;
+        let mut layout = layout(
+            vec![lane],
+            vec![edge(
+                "rail",
+                "a",
+                "b",
+                vec![point(0.0, rail_y), point(200.0, rail_y)],
+            )],
+        );
+        layout.direction = layout_direction;
+        lift_top_lane_title_bands_above_rails(&mut layout, &mut unbounded_work_budget()).unwrap();
+        let actual = layout.nodes["lane"].title_rect.as_ref().unwrap();
+        assert_eq!((actual.top, actual.bottom), (title.top, title.bottom));
+    }
+}
+
+#[test]
+fn top_title_bands_clear_rails_on_both_horizontal_borders() {
+    for rail_y in [100.0, 124.0] {
+        let mut layout = layout(
+            vec![group(
+                "lane",
+                "tb",
+                100.0,
+                200.0,
+                200.0,
+                200.0,
+                SwimlaneTitleRect {
+                    left: 0.0,
+                    right: 200.0,
+                    top: 100.0,
+                    bottom: 124.0,
+                },
+            )],
+            vec![edge(
+                "rail",
+                "a",
+                "b",
+                vec![point(0.0, rail_y), point(200.0, rail_y)],
+            )],
+        );
+        lift_top_lane_title_bands_above_rails(&mut layout, &mut unbounded_work_budget()).unwrap();
+        assert!(layout.nodes["lane"].title_rect.as_ref().unwrap().bottom < rail_y);
+    }
 }
 
 #[test]

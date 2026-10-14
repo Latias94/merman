@@ -166,6 +166,7 @@ fn label(
                     .measure_wrapped(source, style, max_width, mode)
             }
         });
+    let text_metrics = metrics;
     // labelHelper.withMinWidth also widens the measured box for SVG labels.
     if !text.is_empty() {
         metrics.width = metrics.width.max(min_width);
@@ -173,6 +174,7 @@ fn label(
     UsecaseLabelPlan {
         text: text.to_owned(),
         label_type,
+        text_metrics,
         metrics,
         style: style.clone(),
         max_width,
@@ -625,14 +627,27 @@ pub(super) fn measure(
             source: edge.source.clone(),
             target: edge.target.clone(),
             label: text.map(|text| {
-                label(
+                let mut plan = label(
                     &sanitize(text),
                     kind,
                     &style,
                     Some(200.0),
                     0.0,
                     &label_context,
-                )
+                );
+                if sanitize_config
+                    .as_value()
+                    .get("htmlLabels")
+                    .and_then(Value::as_bool)
+                    == Some(false)
+                    && !plan.text.is_empty()
+                {
+                    // insertEdgeLabel passes createText's padded background bbox to both
+                    // graph providers and the label-aware ELK terminal guard.
+                    plan.metrics.width += 4.0;
+                    plan.metrics.height += 4.0;
+                }
+                plan
             }),
             minlen: edge.minlen,
             start_marker: start.map(str::to_owned),

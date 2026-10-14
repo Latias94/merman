@@ -13,8 +13,16 @@ use std::path::Path;
 struct BrowserLabelBoxes {
     raw: std::collections::HashMap<String, TextMetrics>,
     svg_markdown: std::collections::HashMap<String, TextMetrics>,
+    html_lines: std::collections::HashMap<String, f64>,
 }
 impl TextMeasurer for BrowserLabelBoxes {
+    fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+        self.html_lines.get(text).copied().unwrap_or_else(|| {
+            self.measure_wrapped(text, style, None, WrapMode::HtmlLike)
+                .width
+        })
+    }
+
     fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
         self.raw
             .get(text)
@@ -46,6 +54,104 @@ impl TextMeasurer for BrowserLabelBoxes {
                 DeterministicTextMeasurer::default().measure_wrapped(text, style, max_width, mode)
             })
     }
+}
+
+fn intrinsic_browser_label_metrics(
+    fixture: &str,
+    text: &str,
+    captures: &[(TextMetrics, f64)],
+) -> TextMetrics {
+    let intrinsic = captures
+        .iter()
+        .map(|(metrics, _)| *metrics)
+        .min_by(|left, right| left.width.total_cmp(&right.width))
+        .unwrap();
+    for (captured, min_width) in captures {
+        // Mermaid 12.2 labelHelper applies minWidth after measuring the text; circles
+        // opt out. Undo only that known floor, leaving the renderer to apply it again.
+        assert_eq!(
+            (captured.width, captured.height, captured.line_count),
+            (
+                intrinsic.width.max(*min_width),
+                intrinsic.height,
+                intrinsic.line_count,
+            ),
+            "{fixture}: ambiguous captured label {text}"
+        );
+    }
+    intrinsic
+}
+
+#[test]
+fn browser_label_profile_recovers_intrinsic_width_from_shape_minimum() {
+    let intrinsic = TextMetrics {
+        width: 52.9375,
+        height: 21.0,
+        line_count: 1,
+    };
+    let widened = TextMetrics {
+        width: 120.0,
+        ..intrinsic
+    };
+    for captures in [
+        [(widened, 120.0), (intrinsic, 0.0)],
+        [(intrinsic, 0.0), (widened, 120.0)],
+    ] {
+        let actual = intrinsic_browser_label_metrics("fixture", "blue text", &captures);
+        assert_eq!(
+            (actual.width, actual.height, actual.line_count),
+            (intrinsic.width, intrinsic.height, intrinsic.line_count)
+        );
+    }
+}
+
+#[test]
+#[should_panic(expected = "ambiguous captured label")]
+fn browser_label_profile_rejects_width_difference_without_shape_minimum() {
+    let metrics = TextMetrics {
+        width: 52.9375,
+        height: 21.0,
+        line_count: 1,
+    };
+    intrinsic_browser_label_metrics(
+        "fixture",
+        "blue text",
+        &[
+            (metrics, 0.0),
+            (
+                TextMetrics {
+                    width: 60.0,
+                    ..metrics
+                },
+                120.0,
+            ),
+        ],
+    );
+}
+
+#[test]
+#[should_panic(expected = "ambiguous captured label")]
+fn browser_label_profile_rejects_different_wrapping_despite_shape_minimum() {
+    let metrics = TextMetrics {
+        width: 52.9375,
+        height: 21.0,
+        line_count: 1,
+    };
+    intrinsic_browser_label_metrics(
+        "fixture",
+        "blue text",
+        &[
+            (metrics, 0.0),
+            (
+                TextMetrics {
+                    width: 120.0,
+                    height: 42.0,
+                    line_count: 2,
+                },
+                120.0,
+            ),
+        ],
+    );
 }
 
 #[test]
@@ -119,8 +225,8 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             ..SvgRenderOptions::default()
         };
         let debug = SvgDebugOptions::default();
-        let mut labels = std::collections::HashMap::new();
-        let mut svg_markdown = std::collections::HashMap::new();
+        let mut label_captures = std::collections::HashMap::<String, Vec<_>>::new();
+        let mut markdown_captures = std::collections::HashMap::<String, Vec<_>>::new();
         for node in fixture["nodes"].as_array().unwrap() {
             let Some(text) = node["label_box"]["text"].as_str() else {
                 continue;
@@ -134,9 +240,18 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                 height: node["label_box"]["size"][1].as_f64().unwrap(),
                 line_count: normalized.lines().count(),
             };
-            if model.nodes.iter().any(|n| {
-                n.id == node["id"].as_str().unwrap() && n.label_type.as_deref() == Some("markdown")
-            }) {
+            let model_node = model
+                .nodes
+                .iter()
+                .find(|n| n.id == node["id"].as_str().unwrap());
+            let min_width = model_node.map_or(0.0, |n| {
+                crate::flowchart::flowchart_node_label_min_width(
+                    text,
+                    n.layout_shape.as_deref(),
+                    &metadata.effective_config,
+                )
+            });
+            if model_node.is_some_and(|n| n.label_type.as_deref() == Some("markdown")) {
                 let key = crate::text::mermaid_markdown_to_lines(text, true)
                     .into_iter()
                     .flatten()
@@ -148,18 +263,27 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
                     .split_whitespace()
                     .collect::<Vec<_>>()
                     .join(" ");
-                svg_markdown.insert(key, metrics);
+                markdown_captures
+                    .entry(key)
+                    .or_default()
+                    .push((metrics, min_width));
             }
             for key in [text.to_string(), normalized] {
-                if let Some(previous) = labels.insert(key.clone(), metrics) {
-                    assert_eq!(
-                        (previous.width, previous.height, previous.line_count),
-                        (metrics.width, metrics.height, metrics.line_count),
-                        "{name}: ambiguous captured label {key}"
-                    );
-                }
+                label_captures
+                    .entry(key)
+                    .or_default()
+                    .push((metrics, min_width));
             }
         }
+        let recover_intrinsic = |(key, captures): (String, Vec<_>)| {
+            let metrics = intrinsic_browser_label_metrics(name, &key, &captures);
+            (key, metrics)
+        };
+        let labels = label_captures.into_iter().map(recover_intrinsic).collect();
+        let svg_markdown = markdown_captures
+            .into_iter()
+            .map(recover_intrinsic)
+            .collect();
         use crate::environment::{
             MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
             TextMeasurementProfileIdentity,
@@ -173,6 +297,23 @@ fn flowchart_browser_measured_terminals_preserve_upstream_geometry() {
             std::sync::Arc::new(BrowserLabelBoxes {
                 raw: labels,
                 svg_markdown,
+                // The plain <br> planner probes individual lines, beyond the captured full
+                // label request. Chromium 151 Range bounds with the actual paragraph font
+                // verify these rows; the last is exactly the recorded 112.828125px FO width.
+                // The captured 63px height is three 21px line boxes, not the 16px glyph bbox.
+                html_lines: if name
+                    == "upstream_docs_examples_larger_flowchart_with_some_styling_009"
+                {
+                    [
+                        ("Inner / circle".to_owned(), 76.25),
+                        ("and some odd ".to_owned(), 88.734375),
+                        ("special characters".to_owned(), 112.828125),
+                    ]
+                    .into_iter()
+                    .collect()
+                } else {
+                    Default::default()
+                },
             }),
         );
         let session = environment

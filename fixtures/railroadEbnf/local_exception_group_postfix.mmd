@@ -1,0 +1,6 @@
+railroad-ebnf-beta
+title Exception and grouped postfixes
+accTitle: EBNF exception branches
+accDescr: Difference keeps both operands while postfixes wrap grouped choices.
+token = (letter - "x") , ("a" | "b")? , ("c" | "d")+ ;
+letter = ? alphabetic ? | "z" ;

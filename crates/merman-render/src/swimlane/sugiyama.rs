@@ -328,6 +328,28 @@ fn topo_order(layout: &WorkingLayout, edges: &[WorkingEdge], by_generation: bool
         .map(|(id, _)| id.clone())
         .collect();
     frontier.sort_by(|left, right| deterministic_identifier_cmp(left, right));
+
+    // Unconnected content nodes occupy the same sorted slots, but keep source order.
+    // Linked nodes and groups retain Mermaid's deterministic identifier ordering.
+    let linked: HashSet<&str> = edges
+        .iter()
+        .flat_map(|edge| [edge.from.as_str(), edge.to.as_str()])
+        .collect();
+    let is_unconnected = |id: &str| {
+        !linked.contains(id) && layout.nodes.get(id).is_some_and(|node| !node.is_group())
+    };
+    let unconnected = layout
+        .nodes
+        .keys()
+        .filter(|id| indegree.get(*id) == Some(&0) && is_unconnected(id))
+        .cloned();
+    for (slot, id) in frontier
+        .iter_mut()
+        .filter(|id| is_unconnected(id))
+        .zip(unconnected)
+    {
+        *slot = id;
+    }
     let mut output = Vec::with_capacity(layout.nodes.len());
 
     while !frontier.is_empty() {
@@ -1156,4 +1178,75 @@ pub(super) fn run(layout: &mut WorkingLayout, config: SwimlaneConfig) -> HashSet
     let ordered = order_layers(layout, proper.layers, &proper_edges);
     assign_coordinates(layout, &ordered, &proper_edges, config);
     cycle_result.reversed_logical_ids
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mixed_frontier_refills_only_disconnected_content_slots_in_source_order() {
+        // Mermaid 12.2 phase0.helpers.ts::sortedZeroInDegreeNodes preserves the
+        // ID-sorted group/linked slots, even when their source order differs.
+        let nodes = ["Z", "E", "D", "A", "C", "B", "M", "X", "Y"]
+            .into_iter()
+            .map(|id| {
+                (
+                    id.to_string(),
+                    WorkingNode {
+                        id: id.to_string(),
+                        label: id.to_string(),
+                        label_type: "text".to_string(),
+                        shape: "rect".to_string(),
+                        kind: if matches!(id, "B" | "D") {
+                            WorkingNodeKind::Group
+                        } else {
+                            WorkingNodeKind::Content
+                        },
+                        parent_id: None,
+                        top_lane_id: None,
+                        requested_dir: None,
+                        padding: 0.0,
+                        x: 0.0,
+                        y: 0.0,
+                        width: 0.0,
+                        height: 0.0,
+                        label_width: 0.0,
+                        label_height: 0.0,
+                        layer: 0,
+                        order: 0,
+                        content_top: None,
+                        title_rect: None,
+                    },
+                )
+            })
+            .collect();
+        let edges = [("C", "Y"), ("E", "X")]
+            .into_iter()
+            .map(|(from, to)| WorkingEdge {
+                id: format!("{from}_{to}"),
+                from: from.to_string(),
+                to: to.to_string(),
+                reference_id: format!("{from}_{to}"),
+                label_node_id: None,
+                reversed_for_layout: false,
+                points: Vec::new(),
+            })
+            .collect::<Vec<_>>();
+        let layout = WorkingLayout {
+            direction: SwimlaneDirection::Tb,
+            nodes,
+            graph_edges: edges.clone(),
+            original_edges: edges.clone(),
+            top_lane_order: Vec::new(),
+        };
+
+        for by_generation in [false, true] {
+            assert_eq!(
+                topo_order(&layout, &edges, by_generation),
+                ["Z", "B", "C", "D", "E", "A", "M", "X", "Y"],
+                "by_generation={by_generation}"
+            );
+        }
+    }
 }

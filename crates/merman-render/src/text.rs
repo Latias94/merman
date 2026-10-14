@@ -47,8 +47,8 @@ pub(crate) use measure::{
 pub use metrics::unsupported_html_label_style;
 pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_styles};
 pub(crate) use metrics::{
-    measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
-    mermaid_markdown_to_wrapped_word_lines,
+    measure_svg_markdown_word_lines, measure_wrapped_markdown_with_inline_styles,
+    measure_xhtml_label_fragment, mermaid_markdown_to_wrapped_word_lines,
 };
 pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,

@@ -49,7 +49,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_bucket(out, ctx, common, label, details);
         }
         FlowchartShape::Circle => {
-            super::render_circle(out, common);
+            super::render_circle(out, ctx, common, details)?;
         }
         FlowchartShape::Cloud => {
             super::render_cloud(out, ctx, common, label, details);
@@ -87,7 +87,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_wave_document(out, ctx, common, label, details);
         }
         FlowchartShape::DoubleCircle => {
-            super::render_double_circle(out, common);
+            super::render_double_circle(out, ctx, common, details)?;
         }
         FlowchartShape::Ellipse => {
             return Err(Error::InvalidModel {

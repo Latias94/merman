@@ -1,0 +1,788 @@
+{
+  "diagramType": "mindmap",
+  "model": {
+    "type": "mindmap",
+    "nodes": [
+      {
+        "id": "0",
+        "domId": "node_0",
+        "label": "Palette root",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 0,
+        "nodeId": "root",
+        "type": 3
+      },
+      {
+        "id": "1",
+        "domId": "node_1",
+        "label": "Depth 1",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 2,
+        "nodeId": "d01",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "2",
+        "domId": "node_2",
+        "label": "Depth 2",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 4,
+        "nodeId": "d02",
+        "type": 2,
+        "section": 1
+      },
+      {
+        "id": "3",
+        "domId": "node_3",
+        "label": "Depth 3",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-2",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 6,
+        "nodeId": "d03",
+        "type": 2,
+        "section": 2
+      },
+      {
+        "id": "4",
+        "domId": "node_4",
+        "label": "Depth 4",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-3",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 8,
+        "nodeId": "d04",
+        "type": 2,
+        "section": 3
+      },
+      {
+        "id": "5",
+        "domId": "node_5",
+        "label": "Depth 5",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-4",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 10,
+        "nodeId": "d05",
+        "type": 2,
+        "section": 4
+      },
+      {
+        "id": "6",
+        "domId": "node_6",
+        "label": "Depth 6",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-5",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 12,
+        "nodeId": "d06",
+        "type": 2,
+        "section": 5
+      },
+      {
+        "id": "7",
+        "domId": "node_7",
+        "label": "Depth 7",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-6",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 14,
+        "nodeId": "d07",
+        "type": 2,
+        "section": 6
+      },
+      {
+        "id": "8",
+        "domId": "node_8",
+        "label": "Depth 8",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-7",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 16,
+        "nodeId": "d08",
+        "type": 2,
+        "section": 7
+      },
+      {
+        "id": "9",
+        "domId": "node_9",
+        "label": "Depth 9",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-8",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 18,
+        "nodeId": "d09",
+        "type": 2,
+        "section": 8
+      },
+      {
+        "id": "10",
+        "domId": "node_10",
+        "label": "Depth 10",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-9",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 20,
+        "nodeId": "d10",
+        "type": 2,
+        "section": 9
+      },
+      {
+        "id": "11",
+        "domId": "node_11",
+        "label": "Depth 11",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-10",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 22,
+        "nodeId": "d11",
+        "type": 2,
+        "section": 10
+      },
+      {
+        "id": "12",
+        "domId": "node_12",
+        "label": "Depth 12",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 24,
+        "nodeId": "d12",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "13",
+        "domId": "node_13",
+        "label": "Depth 13",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 26,
+        "nodeId": "d13",
+        "type": 2,
+        "section": 1
+      },
+      {
+        "id": "14",
+        "domId": "node_14",
+        "label": "Other branch",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 2,
+        "nodeId": "other",
+        "type": 2,
+        "section": 0
+      },
+      {
+        "id": "15",
+        "domId": "node_15",
+        "label": "Same depth 2",
+        "labelType": "markdown",
+        "isGroup": false,
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20,
+        "cssClasses": "mindmap-node section-1",
+        "cssStyles": [],
+        "centerLabel": true,
+        "look": "neo",
+        "level": 4,
+        "nodeId": "leaf",
+        "type": 2,
+        "section": 1
+      }
+    ],
+    "edges": [
+      {
+        "id": "edge_0_1",
+        "start": "0",
+        "end": "1",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_1_2",
+        "start": "1",
+        "end": "2",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      },
+      {
+        "id": "edge_2_3",
+        "start": "2",
+        "end": "3",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-2 edge-depth-5",
+        "depth": 4,
+        "section": 2
+      },
+      {
+        "id": "edge_3_4",
+        "start": "3",
+        "end": "4",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-3 edge-depth-7",
+        "depth": 6,
+        "section": 3
+      },
+      {
+        "id": "edge_4_5",
+        "start": "4",
+        "end": "5",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-4 edge-depth-9",
+        "depth": 8,
+        "section": 4
+      },
+      {
+        "id": "edge_5_6",
+        "start": "5",
+        "end": "6",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-5 edge-depth-11",
+        "depth": 10,
+        "section": 5
+      },
+      {
+        "id": "edge_6_7",
+        "start": "6",
+        "end": "7",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-6 edge-depth-13",
+        "depth": 12,
+        "section": 6
+      },
+      {
+        "id": "edge_7_8",
+        "start": "7",
+        "end": "8",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-7 edge-depth-15",
+        "depth": 14,
+        "section": 7
+      },
+      {
+        "id": "edge_8_9",
+        "start": "8",
+        "end": "9",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-8 edge-depth-17",
+        "depth": 16,
+        "section": 8
+      },
+      {
+        "id": "edge_9_10",
+        "start": "9",
+        "end": "10",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-9 edge-depth-19",
+        "depth": 18,
+        "section": 9
+      },
+      {
+        "id": "edge_10_11",
+        "start": "10",
+        "end": "11",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-10 edge-depth-21",
+        "depth": 20,
+        "section": 10
+      },
+      {
+        "id": "edge_11_12",
+        "start": "11",
+        "end": "12",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-0 edge-depth-23",
+        "depth": 22,
+        "section": 0
+      },
+      {
+        "id": "edge_12_13",
+        "start": "12",
+        "end": "13",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-1 edge-depth-25",
+        "depth": 24,
+        "section": 1
+      },
+      {
+        "id": "edge_0_14",
+        "start": "0",
+        "end": "14",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-0 edge-depth-1",
+        "depth": 0,
+        "section": 0
+      },
+      {
+        "id": "edge_14_15",
+        "start": "14",
+        "end": "15",
+        "type": "normal",
+        "curve": "basis",
+        "thickness": "normal",
+        "look": "neo",
+        "classes": "edge section-edge-1 edge-depth-3",
+        "depth": 2,
+        "section": 1
+      }
+    ],
+    "diagramId": "<dynamic>",
+    "rootNode": {
+      "id": 0,
+      "nodeId": "root",
+      "level": 0,
+      "descr": "Palette root",
+      "type": 3,
+      "children": [
+        {
+          "id": 1,
+          "nodeId": "d01",
+          "level": 2,
+          "descr": "Depth 1",
+          "type": 2,
+          "children": [
+            {
+              "id": 2,
+              "nodeId": "d02",
+              "level": 4,
+              "descr": "Depth 2",
+              "type": 2,
+              "children": [
+                {
+                  "id": 3,
+                  "nodeId": "d03",
+                  "level": 6,
+                  "descr": "Depth 3",
+                  "type": 2,
+                  "children": [
+                    {
+                      "id": 4,
+                      "nodeId": "d04",
+                      "level": 8,
+                      "descr": "Depth 4",
+                      "type": 2,
+                      "children": [
+                        {
+                          "id": 5,
+                          "nodeId": "d05",
+                          "level": 10,
+                          "descr": "Depth 5",
+                          "type": 2,
+                          "children": [
+                            {
+                              "id": 6,
+                              "nodeId": "d06",
+                              "level": 12,
+                              "descr": "Depth 6",
+                              "type": 2,
+                              "children": [
+                                {
+                                  "id": 7,
+                                  "nodeId": "d07",
+                                  "level": 14,
+                                  "descr": "Depth 7",
+                                  "type": 2,
+                                  "children": [
+                                    {
+                                      "id": 8,
+                                      "nodeId": "d08",
+                                      "level": 16,
+                                      "descr": "Depth 8",
+                                      "type": 2,
+                                      "children": [
+                                        {
+                                          "id": 9,
+                                          "nodeId": "d09",
+                                          "level": 18,
+                                          "descr": "Depth 9",
+                                          "type": 2,
+                                          "children": [
+                                            {
+                                              "id": 10,
+                                              "nodeId": "d10",
+                                              "level": 20,
+                                              "descr": "Depth 10",
+                                              "type": 2,
+                                              "children": [
+                                                {
+                                                  "id": 11,
+                                                  "nodeId": "d11",
+                                                  "level": 22,
+                                                  "descr": "Depth 11",
+                                                  "type": 2,
+                                                  "children": [
+                                                    {
+                                                      "id": 12,
+                                                      "nodeId": "d12",
+                                                      "level": 24,
+                                                      "descr": "Depth 12",
+                                                      "type": 2,
+                                                      "children": [
+                                                        {
+                                                          "id": 13,
+                                                          "nodeId": "d13",
+                                                          "level": 26,
+                                                          "descr": "Depth 13",
+                                                          "type": 2,
+                                                          "children": [],
+                                                          "width": 200,
+                                                          "padding": 20,
+                                                          "section": 1
+                                                        }
+                                                      ],
+                                                      "width": 200,
+                                                      "padding": 20,
+                                                      "section": 0
+                                                    }
+                                                  ],
+                                                  "width": 200,
+                                                  "padding": 20,
+                                                  "section": 10
+                                                }
+                                              ],
+                                              "width": 200,
+                                              "padding": 20,
+                                              "section": 9
+                                            }
+                                          ],
+                                          "width": 200,
+                                          "padding": 20,
+                                          "section": 8
+                                        }
+                                      ],
+                                      "width": 200,
+                                      "padding": 20,
+                                      "section": 7
+                                    }
+                                  ],
+                                  "width": 200,
+                                  "padding": 20,
+                                  "section": 6
+                                }
+                              ],
+                              "width": 200,
+                              "padding": 20,
+                              "section": 5
+                            }
+                          ],
+                          "width": 200,
+                          "padding": 20,
+                          "section": 4
+                        }
+                      ],
+                      "width": 200,
+                      "padding": 20,
+                      "section": 3
+                    }
+                  ],
+                  "width": 200,
+                  "padding": 20,
+                  "section": 2
+                }
+              ],
+              "width": 200,
+              "padding": 20,
+              "section": 1
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 0
+        },
+        {
+          "id": 14,
+          "nodeId": "other",
+          "level": 2,
+          "descr": "Other branch",
+          "type": 2,
+          "children": [
+            {
+              "id": 15,
+              "nodeId": "leaf",
+              "level": 4,
+              "descr": "Same depth 2",
+              "type": 2,
+              "children": [],
+              "width": 200,
+              "padding": 20,
+              "section": 1
+            }
+          ],
+          "width": 200,
+          "padding": 20,
+          "section": 0
+        }
+      ],
+      "width": 200,
+      "padding": 10,
+      "isRoot": true
+    },
+    "markers": [
+      "point"
+    ],
+    "direction": "TB",
+    "nodeSpacing": 50,
+    "rankSpacing": 50,
+    "shapes": {
+      "0": {
+        "shape": "mindmapCircle",
+        "width": 200,
+        "height": 0,
+        "padding": 10
+      },
+      "1": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "2": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "3": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "4": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "5": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "6": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "7": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "8": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "9": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "10": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "11": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "12": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "13": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "14": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      },
+      "15": {
+        "shape": "rect",
+        "width": 200,
+        "height": 0,
+        "padding": 20
+      }
+    }
+  }
+}
