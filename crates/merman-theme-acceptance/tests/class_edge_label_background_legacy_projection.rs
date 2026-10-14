@@ -148,9 +148,37 @@ fn class_direct_background_reaches_native_output_without_reviving_the_retired_cs
                             })
                             .collect::<Vec<_>>();
                         assert_eq!(label_groups.len(), 1);
+                        let label_content = if html_labels {
+                            let instances = receipt
+                                .descendants_of(label_groups[0].index())
+                                .filter(|element| {
+                                    element.tag_name() == "use"
+                                        && element.parent_index() == Some(label_groups[0].index())
+                                })
+                                .collect::<Vec<_>>();
+                            assert_eq!(instances.len(), 1, "isolated label instance");
+                            let id = instances[0]
+                                .attribute("href")
+                                .and_then(|reference| reference.strip_prefix('#'))
+                                .filter(|id| !id.is_empty())
+                                .expect("label instance must reference a local definition");
+                            let definitions = receipt
+                                .elements()
+                                .iter()
+                                .filter(|element| element.id() == Some(id))
+                                .collect::<Vec<_>>();
+                            assert_eq!(definitions.len(), 1, "unique label definition");
+                            definitions[0]
+                        } else {
+                            label_groups[0]
+                        };
                         let backgrounds = receipt
-                            .descendants_of(label_groups[0].index())
-                            .filter(|element| element.tag_name() == "rect")
+                            .descendants_of(label_content.index())
+                            .filter(|element| {
+                                // The isolated HTML viewport also has an unpainted extent rect.
+                                element.tag_name() == "rect"
+                                    && (!html_labels || element.attribute("fill") != Some("none"))
+                            })
                             .collect::<Vec<_>>();
                         if html_labels && transparent {
                             // Transparent HTML backgrounds intentionally produce no fallback rect.
@@ -171,11 +199,19 @@ fn class_direct_background_reaches_native_output_without_reviving_the_retired_cs
                                 "{scheme}/{look}/html={html_labels}/{variant:?}/{transparent}: native label background paint"
                             );
                         }
+                        let themed_pixels = raster(&document);
                         assert_ne!(
-                            raster(&document),
-                            pixels,
+                            themed_pixels, pixels,
                             "{scheme}/{look}/html={html_labels}/{variant:?}/{transparent}"
                         );
+                        if !transparent {
+                            assert!(
+                                themed_pixels.2.chunks_exact(4).any(|pixel| {
+                                    pixel[3] != 0 && pixel[..3] == [0xb3, 0x16, 0xcd]
+                                }),
+                                "{scheme}/{look}/html={html_labels}/{variant:?}: themed background must paint native pixels"
+                            );
+                        }
                     }
                 }
                 for target in [ThemeTarget::Node, ThemeTarget::NodeLabel] {

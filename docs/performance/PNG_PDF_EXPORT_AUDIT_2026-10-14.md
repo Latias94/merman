@@ -227,3 +227,21 @@ both LF and CRLF checkouts without relaxing toolchain assertions. Release legal 
 (424 files) and third-party metadata remain fresh; root license-generator inputs are unchanged.
 All seven binding-contract projection tests pass, including the originally failing Kotlin/Dart case. The new-head full Linux,
 nightly libFuzzer and platform owner jobs remain CI-owned.
+
+## Class background acceptance, 2026-10-15
+
+The Linux run for `cb85d35be` passed all 12,991 workspace tests and all 3,163 private-library
+acceptance tests (eleven and two existing skips respectively). Its later Class integration test
+still searched for an inline HTML background rectangle, although ordinary fallback content now
+lives in an isolated definition reached by a local `<use>`.
+
+The original assertion reproduces on Windows with the exact private PNG/all-diagram recipe.
+The corrected test resolves the label's unique local instance to its unique definition and
+excludes the unpainted `fill="none"` viewport extent rectangle. It retains stylesheet equality,
+background count/color checks and decoded PNG differences, and adds actual `#b316cd` PNG pixel
+checks for solid fills. Renderer and exporter production code is unchanged.
+
+All nine tests in the four-binary CI integration recipe pass with no skips or early cancellation.
+The Class case covers five schemes, three looks, both label modes, both selector variants, and
+solid/transparent fills. The following exact minimal-feature CI discovery recipe also passes
+all 52 tests. Source formatting, whitespace and the indexed path budget pass.
