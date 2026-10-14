@@ -44,9 +44,9 @@ use crate::math::PreparedMathEvidenceLease;
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
-    FlowchartEdgeTraceCollector, ResvgCompatibleSvg, StandaloneSvgArtifact, SvgDebugOptions,
-    SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution, SvgPostprocessMetadata,
-    SvgRenderOptions,
+    FlowchartEdgeTraceCollector, OrdinarySvgBudgetFacts, ResvgCompatibleSvg, StandaloneSvgArtifact,
+    SvgDebugOptions, SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution,
+    SvgPostprocessMetadata, SvgRenderOptions,
 };
 #[cfg(feature = "diagram-wardley")]
 use crate::wardley::WardleyDiagramLayout;
@@ -3257,14 +3257,17 @@ impl RenderedFamilySvg {
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(self, pipeline: &SvgPipeline) -> Result<Self> {
-        self.apply_pipeline_with_portability(pipeline, true)
+        Ok(self
+            .apply_pipeline_with_budget_facts(pipeline, true, false)?
+            .0)
     }
 
-    fn apply_pipeline_with_portability(
+    fn apply_pipeline_with_budget_facts(
         mut self,
         pipeline: &SvgPipeline,
         enforce_portability: bool,
-    ) -> Result<Self> {
+        retain_budget_facts: bool,
+    ) -> Result<(Self, Option<OrdinarySvgBudgetFacts>)> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata()?;
         self.prepared_text_evidence_valid &=
@@ -3275,12 +3278,24 @@ impl RenderedFamilySvg {
         let supplies_prepared_math = self.prepared_math_evidence_valid
             && (preserves_prepared_math || requires_prepared_math_projection);
         let source_svg = std::mem::take(&mut self.svg);
-        let processed_svg = pipeline.process_owned_to_string_with_metadata_and_math_evidence(
-            source_svg,
-            &output_metadata,
-            &self.session,
-            supplies_prepared_math.then_some(&self.prepared_math_evidence),
-        )?;
+        let (processed_svg, budget_facts) = if retain_budget_facts {
+            pipeline.process_owned_with_standalone_budget_facts(
+                source_svg,
+                &output_metadata,
+                &self.session,
+                supplies_prepared_math.then_some(&self.prepared_math_evidence),
+            )?
+        } else {
+            (
+                pipeline.process_owned_to_string_with_metadata_and_math_evidence(
+                    source_svg,
+                    &output_metadata,
+                    &self.session,
+                    supplies_prepared_math.then_some(&self.prepared_math_evidence),
+                )?,
+                None,
+            )
+        };
         self.svg = processed_svg;
         if !preserves_prepared_math {
             self.prepared_math_evidence_valid = false;
@@ -3308,7 +3323,7 @@ impl RenderedFamilySvg {
             }
         }
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        Ok(self)
+        Ok((self, budget_facts))
     }
 
     /// Finalizes the typed family output for resvg/raster consumption.
@@ -3412,23 +3427,30 @@ impl RenderedFamilySvg {
                     self.finalize_resvg_with_portability(pipeline, enforce_portability)?;
                 Ok(finalized.into_standalone())
             }
-            Some(pipeline) => self
-                .apply_pipeline_with_portability(pipeline, enforce_portability)?
-                .finalize_exact_standalone(pipeline),
+            Some(pipeline) => {
+                let (processed, budget_facts) =
+                    self.apply_pipeline_with_budget_facts(pipeline, enforce_portability, true)?;
+                processed.finalize_exact_standalone(pipeline, budget_facts)
+            }
             None => {
                 let pipeline = SvgPipeline::parity();
-                self.finalize_exact_standalone(&pipeline)
+                self.finalize_exact_standalone(&pipeline, None)
             }
         }
     }
 
-    fn finalize_exact_standalone(self, pipeline: &SvgPipeline) -> Result<RenderedStandaloneSvg> {
+    fn finalize_exact_standalone(
+        self,
+        pipeline: &SvgPipeline,
+        budget_facts: Option<OrdinarySvgBudgetFacts>,
+    ) -> Result<RenderedStandaloneSvg> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        let artifact = StandaloneSvgArtifact::finalize_exact(
+        let artifact = StandaloneSvgArtifact::finalize_exact_with_budget_facts(
             self.svg,
             self.prepared_text_evidence_valid,
             pipeline,
             &self.session,
+            budget_facts,
         )?;
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(RenderedStandaloneSvg {

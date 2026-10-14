@@ -31,6 +31,8 @@ const XML_VALIDATION_PASS: &str = "validate-well-formed-svg";
 pub(super) struct TerminalValidationWork {
     pub calls: usize,
     pub svg_bytes: usize,
+    pub xml_walks: usize,
+    pub xml_bytes: usize,
 }
 
 #[cfg(test)]
@@ -116,6 +118,14 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
     observe_element: &mut dyn FnMut(ValidatedElement, usize) -> Result<()>,
 ) -> Result<SvgStructureMetrics> {
+    #[cfg(test)]
+    TERMINAL_VALIDATION_WORK.with(|counter| {
+        counter.set(counter.get().map(|mut work| {
+            work.xml_walks += 1;
+            work.xml_bytes += svg.len();
+            work
+        }));
+    });
     let mut reader = NsReader::from_str(svg);
     reader.config_mut().enable_all_checks(true);
     let mut depth = 0usize;
@@ -594,7 +604,110 @@ fn check_svg_resource_budget_with_controls(
             Ok(())
         },
     )?;
-    let plan = match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, checkpoint) {
+    check_reference_budget_with_controls(&reference_nodes, checkpoint, check_structure)
+}
+
+/// Reference facts from the immediately preceding final pipeline XML check. The owning renderer
+/// transfers these together with that exact, unmodified SVG, never across an opaque callback.
+pub(crate) struct OrdinarySvgBudgetFacts {
+    structure: SvgStructureMetrics,
+    reference_nodes: Vec<ReferenceNode>,
+}
+
+pub(super) fn validate_well_formed_svg_with_budget_facts(
+    svg: &str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<Option<OrdinarySvgBudgetFacts>> {
+    collect_ordinary_budget_facts_with_controls(
+        svg,
+        crate::resources::MAX_RESVG_TREE_NODES,
+        svg.len().saturating_mul(2),
+        &mut || execution.checkpoint(),
+        &mut |elements, _depth| {
+            execution
+                .resource_policy()
+                .check_svg_element_count(elements)
+                .map_err(|error| execution.terminate_resource_error(error))
+        },
+    )
+}
+
+fn collect_ordinary_budget_facts_with_controls(
+    svg: &str,
+    max_nodes: usize,
+    max_string_bytes: usize,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
+) -> Result<Option<OrdinarySvgBudgetFacts>> {
+    let mut nodes = Some(Vec::new());
+    let mut stack = Vec::new();
+    let mut string_bytes = 0usize;
+    let structure = visit_well_formed_svg_with_controls::<true>(
+        svg,
+        checkpoint,
+        check_structure,
+        &mut |references, depth| {
+            let Some(reference_nodes) = nodes.as_mut() else {
+                return Ok(());
+            };
+            let additional_bytes = references
+                .use_id
+                .as_ref()
+                .map_or(0, String::len)
+                .saturating_add(references.parsed_id.as_ref().map_or(0, String::len));
+            let additional_bytes = references
+                .references
+                .iter()
+                .fold(additional_bytes, |bytes, reference| {
+                    bytes.saturating_add(reference.target.len())
+                });
+            string_bytes = string_bytes.saturating_add(additional_bytes);
+            if reference_nodes.len() >= max_nodes || string_bytes > max_string_bytes {
+                // This is a retention bound, not admission. Complete XML/raw budget checks
+                // continue; terminal admission falls back to the ordinary budget walker.
+                nodes = None;
+                stack.clear();
+                return Ok(());
+            }
+            stack.truncate(depth);
+            append_reference_node(reference_nodes, stack.last().copied(), references);
+            stack.push(reference_nodes.len() - 1);
+            Ok(())
+        },
+    )?;
+    Ok(nodes.map(|reference_nodes| OrdinarySvgBudgetFacts {
+        structure,
+        reference_nodes,
+    }))
+}
+
+impl OrdinarySvgBudgetFacts {
+    pub(super) fn check_resource_budget(
+        self,
+        execution: SvgPostprocessExecution<'_>,
+    ) -> Result<()> {
+        execution.checkpoint()?;
+        let mut check_structure = |elements, _depth| {
+            execution
+                .resource_policy()
+                .check_svg_element_count(elements)
+                .map_err(|error| execution.terminate_resource_error(error))
+        };
+        check_structure(self.structure.elements, self.structure.max_tree_depth)?;
+        check_reference_budget_with_controls(
+            &self.reference_nodes,
+            &mut || execution.checkpoint(),
+            &mut check_structure,
+        )
+    }
+}
+
+fn check_reference_budget_with_controls(
+    reference_nodes: &[ReferenceNode],
+    checkpoint: &mut impl FnMut() -> Result<()>,
+    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
+) -> Result<()> {
+    let plan = match plan_svg_reference_expansion_with_checkpoints(reference_nodes, checkpoint) {
         Ok(plan) => plan,
         // XML and raw element budgets have already been checked. A cycle prevents a complete
         // expansion plan, including for mixed cyclic/acyclic graphs, but does not make ordinary
@@ -612,6 +725,14 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     mut checkpoint: &mut dyn FnMut() -> Result<()>,
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
+    #[cfg(test)]
+    TERMINAL_VALIDATION_WORK.with(|counter| {
+        counter.set(counter.get().map(|mut work| {
+            work.xml_walks += 1;
+            work.xml_bytes += svg.len();
+            work
+        }));
+    });
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
     let mut root_seen = false;
@@ -2101,9 +2222,8 @@ mod tests {
         })
     }
 
-    #[test]
-    fn single_traversal_matches_two_pass_results_and_budget_observations() {
-        let fixtures = [
+    fn ordinary_budget_fixtures() -> Vec<String> {
+        vec![
             "<svg/>".to_owned(),
             nested_group_svg(64),
             branching_use_svg(8),
@@ -2126,8 +2246,12 @@ mod tests {
             "<svg><g/>text ]]> tail</svg>".to_owned(),
             "<svg><g/><![CDATA[text]]></svg>trailing".to_owned(),
             String::new(),
-        ];
-        for svg in fixtures {
+        ]
+    }
+
+    #[test]
+    fn single_traversal_matches_two_pass_results_and_budget_observations() {
+        for svg in ordinary_budget_fixtures() {
             for limit in [1, 2, 5, 32, 100, 10_000, usize::MAX] {
                 let policy = RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(ResourceLimitId::MaxSvgElements, limit)
@@ -2154,6 +2278,106 @@ mod tests {
                 assert_eq!(old_observations, new_observations, "{svg:?}, limit {limit}");
             }
         }
+    }
+
+    #[test]
+    fn retained_final_xml_facts_match_terminal_budget_results() {
+        for svg in ordinary_budget_fixtures() {
+            for limit in [1, 2, 5, 32, 100, 10_000, usize::MAX] {
+                let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxSvgElements, limit)
+                    .unwrap();
+                let reference = check_budget(&svg, limit);
+                for (max_nodes, max_string_bytes) in [
+                    (
+                        crate::resources::MAX_RESVG_TREE_NODES,
+                        svg.len().saturating_mul(2),
+                    ),
+                    (0, 0),
+                    (2, 0),
+                ] {
+                    let result = collect_ordinary_budget_facts_with_controls(
+                        &svg,
+                        max_nodes,
+                        max_string_bytes,
+                        &mut || Ok(()),
+                        &mut |elements, _depth| {
+                            policy.check_svg_element_count(elements).map_err(Into::into)
+                        },
+                    )
+                    .and_then(|facts| match facts {
+                        Some(facts) => {
+                            let session = crate::environment::RenderEnvironment::deterministic()
+                                .with_resource_policy(policy)
+                                .begin_session()
+                                .unwrap();
+                            facts.check_resource_budget(SvgPostprocessExecution::new(&session))
+                        }
+                        None => check_budget(&svg, limit),
+                    });
+                    assert_eq!(
+                        format!("{reference:?}"),
+                        format!("{result:?}"),
+                        "{svg:?}, limit {limit}, retention {max_nodes}/{max_string_bytes}",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn retained_xml_facts_defer_expansion_and_preserve_sticky_termination() {
+        let svg = branching_use_svg(8);
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgElements, 100)
+            .unwrap();
+        let control = merman_core::OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let facts = validate_well_formed_svg_with_budget_facts(
+            &svg,
+            SvgPostprocessExecution::new(&session),
+        )
+        .expect("final pipeline XML checks only the raw element budget")
+        .expect("the small graph fits the retention bound");
+        assert!(
+            control
+                .terminal_checkpoint_at(merman_core::OperationPhase::Postprocess)
+                .is_ok()
+        );
+        let error = facts
+            .check_resource_budget(SvgPostprocessExecution::new(&session))
+            .unwrap_err();
+        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        let terminal = control
+            .terminal_checkpoint_at(merman_core::OperationPhase::Export)
+            .unwrap_err();
+        control.cancel();
+        assert_eq!(
+            control.terminal_checkpoint_at(merman_core::OperationPhase::Emit),
+            Err(terminal)
+        );
+    }
+
+    #[test]
+    fn retained_xml_facts_observe_cancellation_before_terminal_planning() {
+        let control = merman_core::OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let facts = validate_well_formed_svg_with_budget_facts(
+            &branching_use_svg(8),
+            SvgPostprocessExecution::new(&session),
+        )
+        .unwrap()
+        .unwrap();
+        control.cancel();
+        assert!(matches!(
+            facts.check_resource_budget(SvgPostprocessExecution::new(&session)),
+            Err(Error::Cancelled(_)),
+        ));
     }
 
     #[test]

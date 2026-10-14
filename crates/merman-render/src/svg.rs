@@ -77,6 +77,7 @@ pub(crate) use parity::theme as render_theme;
 ))]
 pub(crate) use parity::{FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes};
 pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
+pub(crate) use pipeline::OrdinarySvgBudgetFacts;
 pub(crate) use pipeline::SvgPostprocessExecution;
 pub(crate) use pipeline::reject_reserved_prepared_text_tokens;
 

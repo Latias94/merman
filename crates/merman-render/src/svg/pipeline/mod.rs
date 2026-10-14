@@ -25,6 +25,7 @@ pub use builtin::{
 pub(crate) use builtin::{GitGraphBranchLabelBaselinePostprocessor, RebaseSvgIdsPostprocessor};
 pub(crate) use context::SvgPostprocessExecution;
 pub use context::{SvgPostprocessContext, SvgPostprocessMetadata};
+pub(crate) use final_validation::OrdinarySvgBudgetFacts;
 pub(crate) use final_validation::{SvgStructureMetrics, validate_well_formed_svg_with_controls};
 pub use policy::SvgOutputPolicy;
 pub(crate) use prepared_text::reject_reserved_prepared_text_tokens;
@@ -220,7 +221,7 @@ impl SvgFinalizationReport {
 
     fn from_pipeline(
         pipeline: &SvgPipeline,
-        terminal: &final_validation::TerminalSvgValidation,
+        terminal: final_validation::TerminalSvgValidation,
     ) -> Self {
         Self {
             preset: pipeline.preset,
@@ -231,10 +232,10 @@ impl SvgFinalizationReport {
                 .collect::<Vec<_>>()
                 .into_boxed_slice(),
             drop_native_duplicate_fallbacks: pipeline.drop_native_duplicate_fallbacks,
-            reference_plan: terminal.reference_plan.clone(),
-            resource_closure: terminal.resource_closure.clone(),
+            reference_plan: terminal.reference_plan,
+            resource_closure: terminal.resource_closure,
             text_element_count: terminal.text_elements,
-            font_seal: terminal.font_seal.clone(),
+            font_seal: terminal.font_seal,
         }
     }
 }
@@ -287,7 +288,7 @@ impl ResvgCompatibleSvg {
             prepared_math_evidence,
             prepared_math_terminal_receipt,
             prepared_math_evidence_valid,
-            finalization_report: SvgFinalizationReport::from_pipeline(pipeline, &terminal),
+            finalization_report: SvgFinalizationReport::from_pipeline(pipeline, terminal),
             font_catalog,
             font_source_policy,
             resource_fingerprint,
@@ -435,6 +436,19 @@ pub struct SvgPipeline {
     drop_native_duplicate_fallbacks: bool,
     inline_contract: Option<InlineContract>,
     isolate_ids: bool,
+}
+
+#[derive(Clone, Copy)]
+enum TerminalValidationMode {
+    Pipeline,
+    ResvgSeal,
+    DeferredResvgSeal,
+    Standalone,
+}
+
+struct PipelineValidation {
+    resvg: Option<final_validation::TerminalSvgValidation>,
+    ordinary: Option<OrdinarySvgBudgetFacts>,
 }
 
 impl fmt::Debug for SvgPipeline {
@@ -688,29 +702,34 @@ impl SvgPipeline {
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
     ) -> Result<Cow<'a, str>> {
         Ok(self
-            .process_cow_with_reference_plan(
+            .process_cow_with_validation(
                 svg,
                 metadata,
                 session,
                 prepared_math_evidence,
-                true,
-                true,
+                TerminalValidationMode::Pipeline,
             )?
             .0)
     }
 
-    fn process_cow_with_reference_plan<'a>(
+    fn process_cow_with_validation<'a>(
         &self,
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         session: &RenderSession,
         prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
-        validate_resvg_terminal: bool,
-        validate_prepared_math_receipt: bool,
-    ) -> Result<(
-        Cow<'a, str>,
-        Option<final_validation::TerminalSvgValidation>,
-    )> {
+        validation_mode: TerminalValidationMode,
+    ) -> Result<(Cow<'a, str>, PipelineValidation)> {
+        let validate_resvg_terminal =
+            !matches!(validation_mode, TerminalValidationMode::DeferredResvgSeal);
+        let validate_prepared_math_receipt = matches!(
+            validation_mode,
+            TerminalValidationMode::Pipeline | TerminalValidationMode::Standalone
+        );
+        let retain_ordinary_budget_facts =
+            matches!(validation_mode, TerminalValidationMode::Standalone)
+                && session.portability_requirement()
+                    == crate::diagram_theme::ThemePortabilityRequirement::BestEffort;
         let execution = SvgPostprocessExecution::new(session);
         execution.checkpoint()?;
         execution.preflight_svg_byte_count(svg.len())?;
@@ -838,6 +857,7 @@ impl SvgPipeline {
             }
             None => {}
         }
+        let mut ordinary_budget_facts = None;
         let terminal = if self.preset == SvgPipelinePreset::ResvgSafe && validate_resvg_terminal {
             if validate_prepared_math_receipt
                 && let Some(evidence) =
@@ -862,10 +882,18 @@ impl SvgPipeline {
             )
         } else {
             if self.preset != SvgPipelinePreset::ResvgSafe {
-                final_validation::validate_well_formed_svg_with_execution(
-                    finalized.as_ref(),
-                    execution,
-                )?;
+                if retain_ordinary_budget_facts {
+                    ordinary_budget_facts =
+                        final_validation::validate_well_formed_svg_with_budget_facts(
+                            finalized.as_ref(),
+                            execution,
+                        )?;
+                } else {
+                    final_validation::validate_well_formed_svg_with_execution(
+                        finalized.as_ref(),
+                        execution,
+                    )?;
+                }
             }
             None
         };
@@ -874,7 +902,13 @@ impl SvgPipeline {
         if self.preset != SvgPipelinePreset::ResvgSafe || validate_resvg_terminal {
             execution.checkpoint()?;
         }
-        Ok((finalized, terminal))
+        Ok((
+            finalized,
+            PipelineValidation {
+                resvg: terminal,
+                ordinary: ordinary_budget_facts,
+            },
+        ))
     }
 
     pub fn process_to_string(&self, svg: &str, session: &RenderSession) -> Result<String> {
@@ -926,6 +960,23 @@ impl SvgPipeline {
             .into_owned())
     }
 
+    pub(crate) fn process_owned_with_standalone_budget_facts(
+        &self,
+        svg: String,
+        metadata: &SvgPostprocessMetadata,
+        session: &RenderSession,
+        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+    ) -> Result<(String, Option<OrdinarySvgBudgetFacts>)> {
+        let (svg, validation) = self.process_cow_with_validation(
+            Cow::Owned(svg),
+            metadata,
+            session,
+            prepared_math_evidence,
+            TerminalValidationMode::Standalone,
+        )?;
+        Ok((svg.into_owned(), validation.ordinary))
+    }
+
     pub fn process_resvg_compatible(
         &self,
         svg: &str,
@@ -943,17 +994,16 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) = self.process_cow_with_reference_plan(
+        let (svg, validation) = self.process_cow_with_validation(
             Cow::Borrowed(svg),
             metadata,
             session,
             None,
-            true,
-            false,
+            TerminalValidationMode::ResvgSeal,
         )?;
         ResvgCompatibleSvg::seal(
             svg.into_owned(),
-            terminal,
+            validation.resvg,
             true,
             PreparedMathEvidenceLease::default(),
             true,
@@ -969,17 +1019,16 @@ impl SvgPipeline {
         session: &RenderSession,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) = self.process_cow_with_reference_plan(
+        let (svg, validation) = self.process_cow_with_validation(
             Cow::Owned(svg),
             metadata,
             session,
             None,
-            true,
-            false,
+            TerminalValidationMode::ResvgSeal,
         )?;
         ResvgCompatibleSvg::seal(
             svg.into_owned(),
-            terminal,
+            validation.resvg,
             true,
             PreparedMathEvidenceLease::default(),
             true,
@@ -998,18 +1047,17 @@ impl SvgPipeline {
         prepared_math_evidence_valid: bool,
     ) -> Result<ResvgCompatibleSvg> {
         self.ensure_resvg_safe_contract()?;
-        let (svg, terminal) = self.process_cow_with_reference_plan(
+        let (svg, validation) = self.process_cow_with_validation(
             Cow::Owned(svg),
             metadata,
             session,
             prepared_math_evidence_valid.then_some(&prepared_math_evidence),
             // The seal preserves math-receipt, terminal-resource, then reserved-token ordering.
-            false,
-            false,
+            TerminalValidationMode::DeferredResvgSeal,
         )?;
         ResvgCompatibleSvg::seal(
             svg.into_owned(),
-            terminal,
+            validation.resvg,
             prepared_text_evidence_valid,
             prepared_math_evidence,
             prepared_math_evidence_valid,
@@ -1070,6 +1118,47 @@ mod tests {
         assert_eq!(sealed.as_str(), svg);
         assert_eq!(work.calls, 1);
         assert_eq!(work.svg_bytes, sealed.as_str().len());
+    }
+
+    #[test]
+    fn finalization_report_moves_terminal_owned_allocations() {
+        let session = render_session();
+        let svg =
+            r##"<svg><defs><path id="shape"/></defs><use href="#shape"/><text>label</text></svg>"##;
+        let terminal = final_validation::validate_resvg_compatible_svg_with_execution(
+            svg,
+            SvgPostprocessExecution::new(&session),
+        )
+        .unwrap();
+        let occurrences = terminal.reference_plan.raw_element_occurrences().as_ptr();
+        let available_ids = terminal.resource_closure.available_fragment_ids().as_ptr();
+        let referenced_ids = terminal.resource_closure.referenced_fragment_ids().as_ptr();
+        let available_id = terminal.resource_closure.available_fragment_ids()[0].as_ptr();
+        let referenced_id = terminal.resource_closure.referenced_fragment_ids()[0].as_ptr();
+        let report = SvgFinalizationReport::from_pipeline(&SvgPipeline::resvg_safe(), terminal);
+
+        assert_eq!(
+            report.reference_plan().raw_element_occurrences().as_ptr(),
+            occurrences
+        );
+        assert_eq!(
+            report.resource_closure().available_fragment_ids().as_ptr(),
+            available_ids
+        );
+        assert_eq!(
+            report.resource_closure().referenced_fragment_ids().as_ptr(),
+            referenced_ids
+        );
+        assert_eq!(
+            report.resource_closure().available_fragment_ids()[0].as_ptr(),
+            available_id
+        );
+        assert_eq!(
+            report.resource_closure().referenced_fragment_ids()[0].as_ptr(),
+            referenced_id
+        );
+        assert_eq!(report.text_element_count(), 1);
+        assert!(!report.font_seal().is_complete());
     }
 
     #[cfg(feature = "diagram-flowchart")]
@@ -1139,19 +1228,18 @@ mod tests {
             SvgPostprocessMetadata::from_svg(&svg).with_family_id(crate::DiagramFamilyId::STATE);
 
         let (sealed, work) = final_validation::measure_terminal_validation_work(|| {
-            let (svg, terminal) = pipeline
-                .process_cow_with_reference_plan(
+            let (svg, validation) = pipeline
+                .process_cow_with_validation(
                     Cow::Owned(svg),
                     &metadata,
                     &session,
                     None,
-                    true,
-                    false,
+                    TerminalValidationMode::ResvgSeal,
                 )
                 .unwrap();
             ResvgCompatibleSvg::seal(
                 svg.into_owned(),
-                terminal,
+                validation.resvg,
                 true,
                 PreparedMathEvidenceLease::default(),
                 true,
