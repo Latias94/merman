@@ -62,4 +62,4 @@ The maintainer's fixture-sufficiency review adds eleven primary inputs in total 
 and two controlled family-local browser references. The primary matrix now has 3,755 inputs,
 3,752 layout goldens and 3,731 actual upstream SVGs. The focused review, remaining combinations
 and artifact boundaries are recorded in [the coverage review](../alignment/FIXTURE_COVERAGE_12_2.md)
-and [ADR-0093](../adr/0093-mermaid-12-2-upstream-transition.md).
+and [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md).

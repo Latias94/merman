@@ -299,6 +299,19 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                         contract_root=fixture.contract_root,
                     )
 
+    def test_legacy_cli_source_without_catalog_keeps_its_version_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / "crates/merman-cli/src/capabilities.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("struct CapabilityDocument;\n", encoding="utf-8")
+            self.assertFalse(installation_verifier._publishes_theme_preset_catalog(Path(temporary)))
+
+            source.write_text(
+                "fn theme_preset_catalog_document() {}\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(installation_verifier._publishes_theme_preset_catalog(Path(temporary)))
+
     def test_ascii_capability_subcontract_is_exact(self) -> None:
         for mutation in ("missing_encodings", "missing_swimlane", "extra_field"):
             with self.subTest(mutation=mutation):
