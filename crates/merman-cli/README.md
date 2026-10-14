@@ -77,6 +77,16 @@ merman-cli completion elvish
 
 Release archives beginning with `0.8.0-alpha.5` also include legal notices. Cargo-binstall installs only the executable. The cargo-dist installers likewise omit completion and man files, but may create an environment file and update shell startup configuration to expose their install directory on `PATH`. Direct archive users should verify the adjacent checksum and the GitHub attestation constrained to the release workflow and tag; the [CLI release contract](https://github.com/Latias94/merman/blob/main/docs/releasing/CLI.md) provides the exact command and trust boundary.
 
+The repository also provides an [Arch source package recipe](../../distribution/arch/README.md),
+a [GitHub Actions setup action](../../distribution/github-action/README.md), and a
+[container build and publishing workflow](../../distribution/container/README.md). AUR, GHCR,
+and Marketplace availability are separate from these repository integrations. The setup action
+requires an exact CLI version and a separately pinned action commit.
+
+GNU Linux compatibility depends on the selected release: the published `0.9.0` archives require
+GLIBC 2.38. The updated build workflow verifies a GLIBC 2.35 ceiling for subsequent GNU releases;
+it does not replace old archives. See the [Linux release contract](../../docs/releasing/CLI.md#gnu-linux-compatibility).
+
 The executable is named `merman-cli`; Merman does not install an `mmdc` alias.
 
 ## First Render
