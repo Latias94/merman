@@ -30,7 +30,7 @@
       "fragment": "crate-overview",
       "source": "docs/rustdoc-src/crate-overview.md",
       "path": "crate-overview.md",
-      "sha256": "a4bf8cc3c338f34533b2800fbc12467b088fb38898f69bb238f432e4a69ebff9"
+      "sha256": "3d9e52c3511eec1cafe055612ecc86cb69f807eac34b1bd40b9e22b2a7184f4d"
     },
     {
       "fragment": "render-module",
