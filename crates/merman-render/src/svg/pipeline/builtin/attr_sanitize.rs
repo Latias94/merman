@@ -1201,7 +1201,7 @@ mod tests {
         let svg = r#"<svg><text style="font-family:&quot;a;b&quot;,sans-serif;--data:url(data:image/png;base64,AAAA);stroke:#333"/></svg>"#;
 
         let out = sanitize_element_attributes(svg);
-        roxmltree::Document::parse(&out).expect("sanitized style must remain valid XML");
+        crate::xml_dom::Document::parse(&out).expect("sanitized style must remain valid XML");
 
         assert!(
             out.contains("font-family:&quot;a;b&quot;,sans-serif"),

@@ -28,8 +28,9 @@ pub(crate) use relation_width::ClassRelationWidthBinding;
 use terminal::ClassClusterTerminalExpectation;
 pub(crate) use terminal::ClassTerminalReceiptSummary;
 pub(crate) use terminal::{
-    ClassMarkerTerminalExpectation, ClassNodePaintTerminalEmission, ClassNodeTerminalEmission,
-    ClassNodeTerminalExpectation, ClassRelationTerminalExpectation, ClassRelationThemeReceipt,
+    ClassMarkerTerminalExpectation, ClassNodePaintTerminal, ClassNodeTerminalExpectation,
+    ClassNodeTerminalObservation, ClassRelationTerminalEvent, ClassRelationTerminalExpectation,
+    ClassRelationThemeReceipt,
 };
 pub(crate) use text::{
     ClassNodeLabelStyleFacts, ClassTextPaint, ClassTextTerminalFacts, ClassTextThemePlan,
@@ -327,7 +328,7 @@ impl ClassRelationThemePlan {
         relations: Vec<ClassRelationTerminalExpectation>,
         markers: Vec<ClassMarkerTerminalExpectation>,
         hand_drawn: bool,
-    ) -> ClassRelationThemeReceipt {
+    ) -> ClassRelationThemeReceipt<'static> {
         ClassRelationThemeReceipt::new(
             relations,
             if self.stroke_binding.typed().is_some() {
@@ -343,14 +344,15 @@ impl ClassRelationThemePlan {
         .with_edge_label_background_paint(self.edge_label_background.clone())
     }
 
-    pub(crate) fn begin_terminal_receipt_with_nodes(
+    pub(crate) fn begin_terminal_receipt_with_nodes<'nodes>(
         &self,
-        nodes: Vec<ClassNodeTerminalExpectation>,
+        nodes: &'nodes [ClassNodeTerminalExpectation],
+        unique_node_domain: bool,
         cluster_ids: Vec<String>,
         relations: Vec<ClassRelationTerminalExpectation>,
         markers: Vec<ClassMarkerTerminalExpectation>,
         hand_drawn: bool,
-    ) -> ClassRelationThemeReceipt {
+    ) -> ClassRelationThemeReceipt<'nodes> {
         ClassRelationThemeReceipt::new_with_clusters(
             relations,
             if self.stroke_binding.typed().is_some() {
@@ -370,7 +372,7 @@ impl ClassRelationThemePlan {
         .with_note_attachments(self.note_attachment_indices.clone())
         .with_edge_label_backgrounds(self.track_edge_label_backgrounds)
         .with_edge_label_background_paint(self.edge_label_background.clone())
-        .with_nodes(nodes)
+        .with_borrowed_nodes(nodes, unique_node_domain)
     }
 
     pub(crate) fn resolve_node_expectations(
@@ -541,10 +543,26 @@ mod tests {
             .map(|index| ClassRelationTerminalExpectation::new(index, None, None))
             .collect();
         let mut receipt = plan.begin_terminal_receipt(relations, Vec::new(), false);
-        receipt.record_relation(0, None, None, None, ";;;", None, true);
+        receipt.record_relation(ClassRelationTerminalEvent {
+            relation_index: 0,
+            start_marker: None,
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: ";;;",
+            hand_drawn_stroke: None,
+            typed_width_emitted: true,
+        });
         assert!(!receipt.proves_typed_width());
 
-        receipt.record_relation(1, None, None, None, ";;;", None, true);
+        receipt.record_relation(ClassRelationTerminalEvent {
+            relation_index: 1,
+            start_marker: None,
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: ";;;",
+            hand_drawn_stroke: None,
+            typed_width_emitted: true,
+        });
         assert!(receipt.proves_typed_width());
     }
 }

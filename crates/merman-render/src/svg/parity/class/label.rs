@@ -541,7 +541,7 @@ mod paint_emission_tests {
                 } else {
                     assert_eq!(receipt, Some(style));
                     assert_eq!(output.replacen(style, "", 1), expected);
-                    let document = roxmltree::Document::parse(&output).unwrap();
+                    let document = crate::xml_dom::Document::parse(&output).unwrap();
                     assert_eq!(document.root_element().attribute("style"), Some(style));
                 }
             }
@@ -730,7 +730,7 @@ mod paint_emission_tests {
                 Channel::Title => write_class_diagram_title(&mut svg, 20.0, 30.0, "Label", style),
             };
             svg.checkpoint().unwrap();
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             assert_eq!(
                 doc.root_element()
                     .attribute("style")

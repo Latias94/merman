@@ -96,7 +96,7 @@ fn gitgraph_css(
     typography_theme: &crate::gitgraph::GitGraphTypographyThemePlan,
 ) -> GitGraphCss {
     let id = crate::svg::escape_css_identifier(diagram_id);
-    let fragment_id = escape_xml(diagram_id);
+    let fragment_id = super::super::css::FragmentDiagramId(diagram_id);
     let terminal = static_paint.terminal_styles();
     let css = super::super::css::InfoCssWriter::from_prepared(&binding.common)
         .with_text_color(&terminal.text_color);
@@ -732,11 +732,13 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         node_palette,
         &mut node_palette_receipt,
     );
-    let _ = write!(
-        &mut out,
-        r#"<style>{}{}</style>"#,
-        css.css, node_palette_css
-    );
+    out.push_str("<style>");
+    {
+        let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
+        css_out.push_str(&css.css);
+        css_out.push_str(&node_palette_css);
+    }
+    out.push_str("</style>");
     out.checkpoint()?;
     if let Some(receipt) = branch_stroke_receipt.as_mut() {
         receipt.record_css(&css.branch_stroke);

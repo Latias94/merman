@@ -55,11 +55,11 @@ pub struct ClassNodeRowMetrics {
 
 #[derive(Debug, Clone)]
 #[cfg(feature = "diagram-class")]
+#[non_exhaustive]
 pub struct ClassPreparedHtmlLabel {
     pub metrics: crate::text::TextMetrics,
     pub max_width_px: i64,
     pub xhtml: String,
-    pub(crate) visible_style_facts: crate::text::VisibleTextStyleFacts,
 }
 
 #[derive(Debug, Clone)]

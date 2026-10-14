@@ -951,13 +951,11 @@ fn railroad_font_ampersand_is_xml_text_encoded_without_changing_css() {
         .find(|node| node.has_tag_name("style"))
         .and_then(|node| node.text())
         .unwrap();
-    assert!(css.contains(&format!("font-family:{expected};")));
+    assert_eq!(css.matches(&format!("font-family:{expected};")).count(), 6);
     assert!(rendered.svg().contains("A&amp;B"));
-    assert_eq!(
-        merman_render::__private::family_evidence(rendered.into_completion().report())
-            .applied_count(),
-        2
-    );
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.applied_count(), 2);
+    assert_eq!(evidence.theme_residual_count(), 0);
 }
 
 #[test]

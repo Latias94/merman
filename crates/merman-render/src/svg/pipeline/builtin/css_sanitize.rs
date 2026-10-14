@@ -934,7 +934,7 @@ mod tests {
                 Ok::<(), std::convert::Infallible>(())
             })
             .unwrap();
-            let document = roxmltree::Document::parse(&output)
+            let document = crate::xml_dom::Document::parse(&output)
                 .expect("sanitized CSS must remain well-formed XML");
             let css = document
                 .descendants()
@@ -968,7 +968,7 @@ mod tests {
                 Ok::<(), std::convert::Infallible>(())
             })
             .unwrap();
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             assert_eq!(
                 document
                     .descendants()
@@ -986,7 +986,7 @@ mod tests {
             Ok::<(), std::convert::Infallible>(())
         })
         .unwrap();
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         assert_eq!(
             document
                 .descendants()

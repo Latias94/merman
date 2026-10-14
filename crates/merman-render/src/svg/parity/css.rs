@@ -20,7 +20,7 @@ where
 }
 
 #[derive(Clone, Copy)]
-struct FragmentDiagramId<I>(I);
+pub(super) struct FragmentDiagramId<I>(pub(super) I);
 
 impl<I> std::fmt::Display for FragmentDiagramId<I>
 where
@@ -30,7 +30,19 @@ where
         if is_normalized_svg_diagram_id(self.0.semantic_value()) {
             return std::fmt::Display::fmt(&self.0, formatter);
         }
-        formatter.write_str(&escape_xml(self.0.semantic_value()))
+        // An unquoted CSS URL has a different token grammar from a selector identifier.
+        // Keep punctuation such as `:` and `.` literal; XML metacharacters belong to the sink.
+        for character in self.0.semantic_value().chars() {
+            if character <= '\u{20}' || character == '\u{7f}' {
+                write!(formatter, "\\{:x} ", character as u32)?;
+            } else {
+                if matches!(character, '"' | '\'' | '(' | ')' | '\\') {
+                    formatter.write_str("\\")?;
+                }
+                formatter.write_char(character)?;
+            }
+        }
+        Ok(())
     }
 }
 

@@ -277,15 +277,15 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
     diagram_marker_class: &str,
     include_margin_markers: bool,
     relation_theme: &crate::class::ClassRelationThemePlan,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
 ) -> Result<()> {
     // Match Mermaid unified output: multiple <defs> wrappers, one marker each.
-    struct MarkerContext<'a, O: SvgOutput, I: SvgDiagramIdValue> {
+    struct MarkerContext<'a, 'nodes, O: SvgOutput, I: SvgDiagramIdValue> {
         out: &'a mut O,
         diagram_id: I,
         diagram_marker_class: &'a str,
         relation_theme: &'a crate::class::ClassRelationThemePlan,
-        theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt,
+        theme_receipt: &'a mut crate::class::ClassRelationThemeReceipt<'nodes>,
     }
 
     enum MarkerShape<'a> {
@@ -316,7 +316,7 @@ pub(super) fn class_markers<I: SvgDiagramIdValue>(
     }
 
     fn marker<O: SvgOutput, I: SvgDiagramIdValue>(
-        ctx: &mut MarkerContext<'_, O, I>,
+        ctx: &mut MarkerContext<'_, '_, O, I>,
         spec: MarkerSpec<'_>,
     ) -> Result<()> {
         let typed_stroke = if ctx.theme_receipt.themes_marker(spec.name) {

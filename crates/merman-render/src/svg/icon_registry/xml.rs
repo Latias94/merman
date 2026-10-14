@@ -765,7 +765,7 @@ fn plan_xml_rewrites(
     retained_plan_bytes_used: usize,
     build_work_units_used: usize,
 ) -> Result<(Vec<IdEdit>, Vec<DefsRange>), IconRegistryBuildError> {
-    let document = roxmltree::Document::parse(wrapped).map_err(|_| {
+    let document = crate::xml_dom::Document::parse(wrapped).map_err(|_| {
         invalid_xml_error(
             pack_index,
             "icon body could not be represented as strict XML",
@@ -783,7 +783,7 @@ fn plan_xml_rewrites(
 
     for attribute in document
         .descendants()
-        .filter(roxmltree::Node::is_element)
+        .filter(crate::xml_dom::Node::is_element)
         .flat_map(|node| node.attributes())
         .filter(|attribute| attribute.namespace().is_none() && attribute.name() == "id")
     {
@@ -827,7 +827,7 @@ fn plan_xml_rewrites(
     if !id_indexes.is_empty() {
         for attribute in document
             .descendants()
-            .filter(roxmltree::Node::is_element)
+            .filter(crate::xml_dom::Node::is_element)
             .flat_map(|node| node.attributes())
         {
             if attribute.namespace().is_none() && attribute.name() == "id" {
@@ -996,7 +996,7 @@ fn push_id_edit(
 
 fn plan_defs_ranges(
     body: &str,
-    document: &roxmltree::Document<'_>,
+    document: &crate::xml_dom::Document<'_>,
     pack_index: usize,
     limits: &IconRegistryBuildLimits,
     retained_plan_bytes_used: usize,
@@ -1211,7 +1211,7 @@ struct SemanticEdit {
 }
 
 fn attribute_reference_edits(
-    attribute: roxmltree::Attribute<'_, '_>,
+    attribute: crate::xml_dom::Attribute<'_, '_>,
     id_indexes: &HashMap<String, usize>,
     base_count: usize,
     maximum: usize,

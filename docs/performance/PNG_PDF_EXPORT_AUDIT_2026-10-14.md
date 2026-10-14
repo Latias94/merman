@@ -73,9 +73,12 @@ Default best-effort export attempts all supported content and reports known resi
 export reports, target-admission reasons, binding metadata and CLI warnings (`--quiet` suppresses
 the latter). Only explicitly requested portable output rejects these fidelity residuals. Invalid
 geometry, cancelled work and impossible resource budgets still fail with their existing errors.
-This PR adds no fork, vendored backend or workspace patch for upstream limitations.
+These export repairs add no resvg/usvg fork or workspace patch for upstream fidelity limits.
 
-## Validation
+## Validation of export repair commit
+
+The following receipts belong to export repair commit
+`783bacdb785bbefb7894ec7c9b782fd30041f356`, before the later base-branch integration below.
 
 Validation used Rust 1.95.0 on Windows, with serialized Cargo commands. Local diagnosis receipts
 remain under ignored `target/issue199-font-bounds-20261014` and `target/issue199-export-audit`.
@@ -107,3 +110,49 @@ remain under ignored `target/issue199-font-bounds-20261014` and `target/issue199
 
 New-head Linux tests, the full browser painted corpus and native SDK target builds are not
 claimed from these Windows checks. This audit changes no release recipe or dependency version.
+
+## Integration with the updated theme base
+
+PR #178 advanced to `95d0e452021edb3b6a7e1be25e5d5eddca382831` after the export repair
+commit. PR #202 merges that frozen base while preserving both branches' contracts:
+
+- The base's exact theme-variable owner predicate and locally resolved compatibility values
+  combine with the export branch's atomic publication and detector mutation revisions.
+- `SvgPipelineBuffer` owns the SVG and same-generation `ValidatedSvgXmlFacts`; the retired
+  ordinary-budget tuple is removed. External processors invalidate facts even for equal bytes.
+  Built-in Readable mutations collect fresh final facts instead of adding another XML traversal.
+- Terminal resource/reference collections still move into the sealed report, including the
+  fallback-CSS diagnostic. Publication observes cancellation after the final observations.
+- XYChart retains compiled common CSS and actual font-write receipts while adopting the base's
+  XML-safe stylesheet output. No comparator policy or layout golden changes.
+
+The updated base separately imports a pinned upstream iterative XML parser into its private
+XML owner, with source provenance, retirement criteria and generated legal entries. That base
+change is unrelated to rasterizer fidelity; these export repairs do not patch resvg or usvg.
+Historical pictures and the preceding measurements retain their frozen source labels.
+
+Merged-tree validation uses the same Windows Rust 1.95.0 toolchain and serialized Cargo:
+
+- Core/render/export/bindings all-feature library tests: 5,752 passed, two existing audits skipped.
+  The public completion test compares identical output against the three-walk reference and
+  observes one XML traversal for immutable Parity and two for Readable.
+- The first merged library compile found old test-helper node types after the base's XML-owner
+  migration. Helpers now use the same private XML owner; the retired ownership predicate and
+  its obsolete-only test are removed rather than retained with warning suppression.
+- Ten focused native/family integration binaries: 212 passed. Both originally failing Linux
+  Flowchart-glow and State-occurrence tests pass. Actual encoding proves default residual output,
+  quiet-aware CLI notices, strict rejection and shared native fonts.
+- The full 37-family `structure,parity,parity-root` gate passes again: 3,756 selected,
+  3,729 rendered and 27 documented skips. The cold release-tool build took 32m34s;
+  corpus comparison then completed separately. No baseline or comparison allowance changed.
+- Rustdoc freshness passes with the newly built all-feature CLI. Scoped formatting passes for
+  142 merged Rust files; pinned upstream XML files retain the base's declared formatting exclusion.
+- Five affected crates pass all-targets/all-features Clippy with `-D warnings`.
+- With pinned cargo-about 0.9.2, all 13 merged dependency reports pass (3,776,566 bytes),
+  as do 424 release projections, third-party metadata, 18 legal contracts, 36 representative
+  artifact closures, binding-contract and native-ABI verification. The no-default-feature
+  core/render build passes with the existing disabled-leaf warnings.
+
+The broad feature matrix, compiled native-memory experiment, Node/browser and platform SDK
+receipts above remain bound to their earlier source. They are not claimed as reruns of this merge.
+New-head Linux, full painted-corpus and SDK owner lanes remain pending.

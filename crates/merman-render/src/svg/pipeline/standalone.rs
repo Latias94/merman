@@ -5,7 +5,7 @@ use crate::diagram_theme::ThemePortabilityRequirement;
 use crate::environment::RenderSession;
 
 use super::{
-    ResvgCompatibleSvg, SvgFinalizationReport, SvgPipeline, SvgPipelinePreset,
+    ResvgCompatibleSvg, SvgFinalizationReport, SvgPipeline, SvgPipelineBuffer, SvgPipelinePreset,
     SvgPostprocessExecution, SvgResourceFingerprint, final_validation, resource_closure,
 };
 
@@ -80,22 +80,21 @@ impl StandaloneSvgArtifact {
         pipeline: &SvgPipeline,
         session: &RenderSession,
     ) -> Result<Self> {
-        Self::finalize_exact_with_budget_facts(
-            svg,
+        Self::finalize_exact_buffer(
+            SvgPipelineBuffer::new(svg),
             prepared_text_evidence_valid,
             pipeline,
             session,
-            None,
         )
     }
 
-    pub(crate) fn finalize_exact_with_budget_facts(
-        svg: String,
+    pub(crate) fn finalize_exact_buffer(
+        svg: SvgPipelineBuffer,
         prepared_text_evidence_valid: bool,
         pipeline: &SvgPipeline,
         session: &RenderSession,
-        budget_facts: Option<super::OrdinarySvgBudgetFacts>,
     ) -> Result<Self> {
+        let (svg, xml_facts) = svg.into_parts();
         session.checkpoint(OperationPhase::Postprocess)?;
         let resource_fingerprint = resource_closure::fingerprint_svg_resources(
             &svg,
@@ -106,20 +105,26 @@ impl StandaloneSvgArtifact {
             == ThemePortabilityRequirement::BestEffort
             && pipeline.preset() != SvgPipelinePreset::ResvgSafe
         {
-            let execution = SvgPostprocessExecution::new(session);
-            match budget_facts {
-                Some(facts) => facts.check_resource_budget(execution)?,
-                None => {
-                    final_validation::check_svg_resource_budget_with_execution(&svg, execution)?;
-                }
-            }
+            check_exact_svg_resource_budget(
+                &svg,
+                xml_facts,
+                SvgPostprocessExecution::new(session),
+            )?;
             (StandaloneSvgTerminalStatus::Unverified, None)
         } else {
-            let validation = final_validation::validate_resvg_compatible_svg_with_checkpoint(
-                &svg,
-                session.resource_policy(),
-                &mut || session.checkpoint(OperationPhase::Postprocess),
-            );
+            let validation = match &xml_facts {
+                Some(facts) => final_validation::validate_resvg_compatible_svg_after_xml(
+                    &svg,
+                    facts.structure(),
+                    session.resource_policy(),
+                    &mut || session.checkpoint(OperationPhase::Postprocess),
+                ),
+                None => final_validation::validate_resvg_compatible_svg_with_checkpoint(
+                    &svg,
+                    session.resource_policy(),
+                    &mut || session.checkpoint(OperationPhase::Postprocess),
+                ),
+            };
             // Native compatibility failures remain observational for non-resvg pipelines.
             // Caller resource limits and cancellation must still fail the operation.
             session.checkpoint(OperationPhase::Postprocess)?;
@@ -133,8 +138,9 @@ impl StandaloneSvgArtifact {
                 {
                     // Compatibility can stop before walking the complete use DAG. Its
                     // observational envelope must still admit all expanded caller-owned work.
-                    final_validation::check_svg_resource_budget_with_execution(
+                    check_exact_svg_resource_budget(
                         &svg,
+                        xml_facts,
                         SvgPostprocessExecution::new(session),
                     )?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
@@ -145,8 +151,9 @@ impl StandaloneSvgArtifact {
                 {
                     // Compatibility can stop before walking the complete use DAG. Its
                     // observational envelope must still admit all expanded caller-owned work.
-                    final_validation::check_svg_resource_budget_with_execution(
+                    check_exact_svg_resource_budget(
                         &svg,
+                        xml_facts,
                         SvgPostprocessExecution::new(session),
                     )?;
                     (StandaloneSvgTerminalStatus::ValidationFailed, None)
@@ -162,6 +169,7 @@ impl StandaloneSvgArtifact {
         #[cfg(merman_internal_theme_acceptance)]
         let artifact_receipt =
             crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(&svg);
+        session.checkpoint(OperationPhase::Postprocess)?;
         Ok(Self {
             inner: StandaloneSvgArtifactKind::Standalone(StandaloneSvg {
                 svg,
@@ -260,6 +268,19 @@ impl From<ResvgCompatibleSvg> for StandaloneSvgArtifact {
     }
 }
 
+fn check_exact_svg_resource_budget(
+    svg: &str,
+    xml_facts: Option<final_validation::ValidatedSvgXmlFacts>,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    match xml_facts {
+        Some(facts) => final_validation::check_svg_resource_budget_from_xml_facts_with_execution(
+            facts, execution,
+        ),
+        None => final_validation::check_svg_resource_budget_with_execution(svg, execution),
+    }
+}
+
 impl AsRef<str> for StandaloneSvgArtifact {
     fn as_ref(&self) -> &str {
         self.as_str()
@@ -334,10 +355,15 @@ mod tests {
 
             assert_eq!(completion.output(), &reference);
             assert_eq!(reference_work.xml_walks, 3);
-            assert_eq!(reused_work.xml_walks, 2);
+            let expected_reused_walks = match pipeline.preset() {
+                SvgPipelinePreset::Parity => 1,
+                SvgPipelinePreset::Readable => 2,
+                SvgPipelinePreset::ResvgSafe => unreachable!(),
+            };
+            assert_eq!(reused_work.xml_walks, expected_reused_walks);
             assert_eq!(
                 reference_work.xml_bytes - reused_work.xml_bytes,
-                reference.as_str().len(),
+                reference.as_str().len() * (3 - expected_reused_walks),
             );
             assert_eq!(
                 reference.terminal_status(),
@@ -381,7 +407,7 @@ mod tests {
         });
         assert_eq!(completion.output().as_str(), replacement);
         assert!(!completion.output().prepared_text_evidence_valid());
-        assert_eq!(work.xml_walks, 3);
+        assert_eq!(work.xml_walks, 4);
 
         let rendered = rendered_flowchart(session_with_max_svg_elements(10_000));
         let same_bytes = rendered.svg().to_owned();
@@ -420,13 +446,17 @@ mod tests {
         let pipeline = SvgPipeline::parity().with_postprocessor(Shrink);
         let session = session_with_max_svg_elements(6);
         let metadata = super::super::SvgPostprocessMetadata::from_svg(&svg);
-        let (svg, facts) = pipeline
-            .process_owned_with_standalone_budget_facts(svg, &metadata, &session, None)
+        let svg = pipeline
+            .process_owned_buffer_with_metadata_and_math_evidence(
+                SvgPipelineBuffer::new(svg),
+                &metadata,
+                &session,
+                None,
+                true,
+            )
             .expect("only the final XML observation retains references");
-        let artifact = StandaloneSvgArtifact::finalize_exact_with_budget_facts(
-            svg, true, &pipeline, &session, facts,
-        )
-        .unwrap();
+        let artifact =
+            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session).unwrap();
         assert_eq!(artifact.as_str(), "<svg/>");
         assert_eq!(
             artifact.terminal_status(),
@@ -459,24 +489,22 @@ mod tests {
             .unwrap();
         let pipeline = SvgPipeline::parity();
         let (artifact, work) = final_validation::measure_terminal_validation_work(|| {
-            let (svg, facts) = pipeline
-                .process_owned_with_standalone_budget_facts(
-                    svg.to_owned(),
+            let svg = pipeline
+                .process_owned_buffer_with_metadata_and_math_evidence(
+                    SvgPipelineBuffer::new(svg.to_owned()),
                     &super::super::SvgPostprocessMetadata::from_svg(svg),
                     &session,
                     None,
+                    true,
                 )
                 .unwrap();
             assert!(
-                facts.is_none(),
-                "ordinary facts do not certify native compatibility"
+                svg.xml_facts.is_some(),
+                "exact XML facts are reused without certifying native compatibility"
             );
-            StandaloneSvgArtifact::finalize_exact_with_budget_facts(
-                svg, true, &pipeline, &session, facts,
-            )
-            .unwrap()
+            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session).unwrap()
         });
-        assert_eq!(work.xml_walks, 4);
+        assert_eq!(work.xml_walks, 2);
         assert_eq!(
             artifact.terminal_status(),
             StandaloneSvgTerminalStatus::Compatible
@@ -502,19 +530,18 @@ mod tests {
         let svg = r##"<svg><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
         let session = session_with_max_svg_elements(6);
         let pipeline = SvgPipeline::parity();
-        let (svg, facts) = pipeline
-            .process_owned_with_standalone_budget_facts(
-                svg.to_owned(),
+        let svg = pipeline
+            .process_owned_buffer_with_metadata_and_math_evidence(
+                SvgPipelineBuffer::new(svg.to_owned()),
                 &super::super::SvgPostprocessMetadata::from_svg(svg),
                 &session,
                 None,
+                true,
             )
             .expect("pipeline validation admits the six raw elements");
-        assert!(facts.is_some());
+        assert!(svg.xml_facts.is_some());
         let (result, work) = resource_closure::measure_resource_fingerprint_work(|| {
-            StandaloneSvgArtifact::finalize_exact_with_budget_facts(
-                svg, true, &pipeline, &session, facts,
-            )
+            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session)
         });
         assert_max_svg_elements(result.unwrap_err());
         assert_eq!(
@@ -602,10 +629,17 @@ mod tests {
         let pipeline = SvgPipeline::readable();
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
         let processed = pipeline
-            .process_owned_to_string(svg.to_owned(), &session)
+            .process_owned_buffer_with_metadata_and_math_evidence(
+                SvgPipelineBuffer::new(svg.to_owned()),
+                &super::super::SvgPostprocessMetadata::from_svg(svg),
+                &session,
+                None,
+                true,
+            )
             .expect("the explicit non-resvg pipeline should stay within the raw element limit");
-        let error = StandaloneSvgArtifact::finalize_exact(processed, true, &pipeline, &session)
-            .unwrap_err();
+        let error =
+            StandaloneSvgArtifact::finalize_exact_buffer(processed, true, &pipeline, &session)
+                .unwrap_err();
 
         assert_max_svg_elements(error);
     }
@@ -666,9 +700,11 @@ mod tests {
     #[test]
     fn strict_parity_compatibility_failure_keeps_expansion_budget_terminal() {
         let dag = r##"<defs><g id="leaf"><path/></g><g id="branch"><use href="#leaf"/><use href="#leaf"/></g></defs><use href="#branch"/><use href="#branch"/>"##;
-        for svg in [
-            format!("<svg><foreignObject/>{dag}</svg>"),
-            format!("<svg>{dag}<foreignObject/></svg>"),
+        for (svg, carry_xml_facts) in [
+            (format!("<svg><foreignObject/>{dag}</svg>"), false),
+            (format!("<svg>{dag}<foreignObject/></svg>"), false),
+            (format!("<svg><foreignObject/>{dag}</svg>"), true),
+            (format!("<svg>{dag}<foreignObject/></svg>"), true),
         ] {
             let control = merman_core::OperationControl::new();
             let session = crate::environment::RenderEnvironment::deterministic()
@@ -680,8 +716,22 @@ mod tests {
                 )
                 .begin_session_with_control(control.clone())
                 .unwrap();
+            let pipeline = SvgPipeline::parity();
+            let svg = if carry_xml_facts {
+                pipeline
+                    .process_owned_buffer_with_metadata_and_math_evidence(
+                        SvgPipelineBuffer::new(svg.clone()),
+                        &super::super::SvgPostprocessMetadata::from_svg(&svg),
+                        &session,
+                        None,
+                        true,
+                    )
+                    .unwrap()
+            } else {
+                SvgPipelineBuffer::new(svg)
+            };
             assert_max_svg_elements(
-                StandaloneSvgArtifact::finalize_exact(svg, true, &SvgPipeline::parity(), &session)
+                StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session)
                     .expect_err("compatibility failure must not hide expanded resource work"),
             );
             let terminal = control

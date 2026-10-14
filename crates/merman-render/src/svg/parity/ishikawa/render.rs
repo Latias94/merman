@@ -47,7 +47,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
 
     out.push_str("<style>");
     write_ishikawa_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         super::super::util::css_selector_diagram_id(diagram_id),
         theme,
         &mut text_terminals.receipt,
@@ -482,17 +482,13 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
         let first_y = -((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
         let _ = write!(
             out,
-            r#"<text class="{}" text-anchor="{}" x="{}" y="{}" transform="translate({},{})" data-merman-text-bbox="{},{},{},{}""#,
+            r#"<text class="{}" text-anchor="{}" x="{}" y="{}" transform="translate({},{})""#,
             escape_attr_display(&text.class_name),
             escape_attr_display(&text.anchor),
             fmt(0.0),
             fmt(first_y),
             fmt(transform_x),
-            fmt(transform_y),
-            fmt(text.bbox.min_x),
-            fmt(text.bbox.min_y),
-            fmt(text.bbox.max_x),
-            fmt(text.bbox.max_y)
+            fmt(transform_y)
         );
         self.push_fill_style(out, emitted_index);
         out.push('>');
@@ -529,15 +525,11 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
             text.y + dy - ((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
         let _ = write!(
             out,
-            r#"<text class="{}" text-anchor="{}" x="{}" y="{}" data-merman-text-bbox="{},{},{},{}""#,
+            r#"<text class="{}" text-anchor="{}" x="{}" y="{}""#,
             escape_attr_display(&text.class_name),
             escape_attr_display(&text.anchor),
             fmt(text.x + dx),
-            fmt(first_y),
-            fmt(text.bbox.min_x),
-            fmt(text.bbox.min_y),
-            fmt(text.bbox.max_x),
-            fmt(text.bbox.max_y)
+            fmt(first_y)
         );
         self.push_fill_style(out, emitted_index);
         out.push('>');

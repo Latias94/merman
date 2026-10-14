@@ -114,10 +114,19 @@ fn write_er_style_with_font_family(
     let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
 
     out.push_str("<style>");
-    out.push_str(&css[..insertion_point]);
-    out.checkpoint()?;
-    write_er_redux_color_css(out, diagram_id, data_look, border_colors, background_colors)?;
-    out.push_str(&css[insertion_point..]);
+    {
+        let mut css_out = super::super::output::XmlTextOutput::new(out);
+        css_out.push_str(&css[..insertion_point]);
+        css_out.checkpoint()?;
+        write_er_redux_color_css(
+            &mut css_out,
+            diagram_id,
+            data_look,
+            border_colors,
+            background_colors,
+        )?;
+        css_out.push_str(&css[insertion_point..]);
+    }
     out.push_str("</style>");
     out.checkpoint()?;
     Ok((emission.font_family.into(), emission.font_size.into()))

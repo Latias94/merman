@@ -31,7 +31,7 @@ pub(crate) struct ClassThemeEvidenceRecorder {
     table_group_lengths: Vec<usize>,
     request: ClassThemeEvidenceRequest,
     // Some(None) records completion without retaining the ordinary-render receipt.
-    terminal_receipt: OnceLock<Option<ClassRelationThemeReceipt>>,
+    terminal_receipt: OnceLock<Option<ClassTerminalReceiptSummary>>,
 }
 
 impl ClassThemeEvidenceRecorder {
@@ -58,7 +58,7 @@ impl ClassThemeEvidenceRecorder {
         }
     }
 
-    pub(crate) fn record_terminal(&self, receipt: ClassRelationThemeReceipt) -> bool {
+    pub(crate) fn record_terminal(&self, receipt: ClassRelationThemeReceipt<'_>) -> bool {
         if receipt.expected_relation_count() != self.expected_relation_paths
             || receipt.expected_note_attachment_count() != self.expected_note_paths
             || receipt.expected_node_count() < self.node_count
@@ -69,7 +69,7 @@ impl ClassThemeEvidenceRecorder {
         }
         let retained_receipt = match self.request {
             ClassThemeEvidenceRequest::CompletionOnly => None,
-            ClassThemeEvidenceRequest::ThemeEvidence => Some(receipt),
+            ClassThemeEvidenceRequest::ThemeEvidence => Some(receipt.into_terminal_summary()),
         };
         self.terminal_receipt.set(retained_receipt).is_ok()
     }
@@ -85,17 +85,17 @@ impl ClassThemeEvidenceRecorder {
             return Ok(evidence);
         };
         let receipt = self.terminal_receipt.get().and_then(Option::as_ref);
-        let receipt_summary = receipt.map(ClassRelationThemeReceipt::terminal_summary);
-        if let Some(summary) = receipt_summary.as_ref() {
+        let receipt_summary = receipt;
+        if let Some(summary) = receipt_summary {
             work_meter.charge(summary.work_units())?;
         }
         let has_relations = self.expected_relation_paths != 0;
         let visible_node_count = receipt
-            .map(ClassRelationThemeReceipt::expected_node_count)
+            .map(ClassTerminalReceiptSummary::expected_node_count)
             .unwrap_or(self.node_count);
         let mut rules = BTreeMap::<(usize, ThemeTarget), ClassRuleObservation>::new();
         let background_count =
-            receipt.and_then(ClassRelationThemeReceipt::edge_label_background_count);
+            receipt.and_then(ClassTerminalReceiptSummary::edge_label_background_count);
         let mut background_winners = BTreeSet::new();
         if let Some(count) = background_count.filter(|count| *count > 0) {
             let has_ordinals = theme.family_rules().any(|(_, rule)| {
@@ -173,7 +173,7 @@ impl ClassThemeEvidenceRecorder {
                                         | (ThemeTarget::Node, ResolvedStyleProperty::Stroke)
                                         | (ThemeTarget::NodeLabel, ResolvedStyleProperty::Fill)
                                 ) {
-                                    receipt_summary.as_ref().is_some_and(|summary| {
+                                    receipt_summary.is_some_and(|summary| {
                                         summary.has_node_paint_winner_rule(
                                             rule_index, target, property,
                                         )
@@ -249,7 +249,7 @@ impl ClassThemeEvidenceRecorder {
                             ) if matches!(target, ThemeTarget::Node | ThemeTarget::NodeLabel) => {
                                 observe_terminal_node_paint(
                                     observation,
-                                    receipt_summary.as_ref(),
+                                    receipt_summary,
                                     rule_index,
                                     target,
                                     ResolvedStyleProperty::Fill,
@@ -264,7 +264,7 @@ impl ClassThemeEvidenceRecorder {
                             ) if target == ThemeTarget::Node => {
                                 observe_terminal_node_paint(
                                     observation,
-                                    receipt_summary.as_ref(),
+                                    receipt_summary,
                                     rule_index,
                                     target,
                                     ResolvedStyleProperty::Stroke,
@@ -322,7 +322,7 @@ impl ClassThemeEvidenceRecorder {
                                 if winner != rule_index {
                                     observation.incomplete = true;
                                 } else if receipt
-                                    .is_some_and(ClassRelationThemeReceipt::proves_typed_width)
+                                    .is_some_and(ClassTerminalReceiptSummary::proves_typed_width)
                                 {
                                     observation
                                         .capabilities
@@ -378,7 +378,7 @@ impl ClassThemeEvidenceRecorder {
             .with_fill_fully_overridden(plan.cluster_plan.fill.config_owned()),
         );
         if let Some(count) =
-            receipt.and_then(ClassRelationThemeReceipt::edge_label_background_count)
+            receipt.and_then(ClassTerminalReceiptSummary::edge_label_background_count)
         {
             unsupported_domains.push(
                 UnsupportedTerminalDomain::fallbacks_only(
@@ -396,9 +396,8 @@ impl ClassThemeEvidenceRecorder {
             ThemeTarget::NodeLabel,
             TerminalVariantDomain::uniform(visible_node_count, ThemeVariant::Default),
         ));
-        if let Some(marker_count) = receipt_summary
-            .as_ref()
-            .and_then(ClassTerminalReceiptSummary::visible_marker_occurrence_count)
+        if let Some(marker_count) =
+            receipt_summary.and_then(ClassTerminalReceiptSummary::visible_marker_occurrence_count)
         {
             unsupported_domains.push(UnsupportedTerminalDomain::direct(
                 ThemeTarget::Marker,
@@ -518,7 +517,15 @@ mod tests {
                 .collect::<Vec<_>>();
             let mut receipt = ClassRelationThemeReceipt::new(relations, Vec::new(), None, false);
             for index in 0..count {
-                receipt.record_relation(index, None, None, None, ";;;", None, false);
+                receipt.record_relation(super::super::ClassRelationTerminalEvent {
+                    relation_index: index,
+                    start_marker: None,
+                    end_marker: None,
+                    emitted_stroke: None,
+                    terminal_style: ";;;",
+                    hand_drawn_stroke: None,
+                    typed_width_emitted: false,
+                });
             }
             receipt
         };
@@ -543,7 +550,15 @@ mod tests {
             );
             assert!(!recorder.record_terminal(receipt.clone()));
             assert!(recorder.terminal_receipt.get().is_none());
-            receipt.record_relation(0, None, None, None, "", None, false);
+            receipt.record_relation(super::super::ClassRelationTerminalEvent {
+                relation_index: 0,
+                start_marker: None,
+                end_marker: None,
+                emitted_stroke: None,
+                terminal_style: "",
+                hand_drawn_stroke: None,
+                typed_width_emitted: false,
+            });
             assert!(recorder.record_terminal(receipt.clone()));
             let retained = recorder.terminal_receipt.get().expect("completed render");
             assert_eq!(retained.is_some(), request.is_some());
@@ -609,7 +624,15 @@ mod tests {
             false,
         );
         receipt.record_marker("extensionStart", false, None, None);
-        receipt.record_relation(0, Some("extensionStart"), None, None, ";;;", None, false);
+        receipt.record_relation(super::super::ClassRelationTerminalEvent {
+            relation_index: 0,
+            start_marker: Some("extensionStart"),
+            end_marker: None,
+            emitted_stroke: None,
+            terminal_style: ";;;",
+            hand_drawn_stroke: None,
+            typed_width_emitted: false,
+        });
         assert!(recorder.record_terminal(receipt));
 
         let evidence = recorder

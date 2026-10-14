@@ -122,6 +122,39 @@ fn shared_css_keeps_selectors_and_url_fragments_in_their_own_escaping_domains() 
 }
 
 #[test]
+fn logical_css_fragment_ids_survive_one_terminal_xml_encoding() {
+    use ::cssparser::ToCss;
+
+    let diagram_id = "scope&<quoted \"Ω'()\\";
+    let fragment = format!("url(#{}-gradient)", FragmentDiagramId(diagram_id));
+    let mut parser = ::cssparser::Parser::new(&fragment);
+    let ::cssparser::Token::UnquotedUrl(value) = parser.next().unwrap() else {
+        panic!("expected one escaped CSS URL token: {fragment}");
+    };
+    assert_eq!(value.as_ref(), format!("#{diagram_id}-gradient"));
+    let canonical = ::cssparser::Token::UnquotedUrl(value.clone()).to_css_string();
+    assert_eq!(canonical, fragment);
+
+    let css = info_css_with_config(
+        diagram_id,
+        &serde_json::json!({"look": "neo", "themeVariables": {"useGradient": true}}),
+    );
+    assert!(css.contains(&crate::svg::escape_css_identifier(diagram_id)));
+    let mut serialized = String::from("<svg><style>");
+    super::super::output::XmlTextOutput::new(&mut serialized).push_str(&css);
+    serialized.push_str("</style></svg>");
+    let document = crate::xml_dom::Document::parse(&serialized).unwrap();
+    let decoded = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert_eq!(decoded, css);
+    assert!(!decoded.contains("&amp;"));
+}
+
+#[test]
 fn neo_css_accepts_renderer_owned_resource_ids() {
     let mut css = String::new();
     PreparedCommonNeoCss::new(&serde_json::json!({ "themeVariables": { "useGradient": true } }))

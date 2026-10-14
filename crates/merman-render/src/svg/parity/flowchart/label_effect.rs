@@ -519,7 +519,7 @@ fn plain_html_shadow_bounds(
     );
     ctx.work_meter.charge(html.len())?;
     let wrapped = format!("<span>{html}</span>");
-    let Ok(document) = roxmltree::Document::parse(&wrapped) else {
+    let Ok(document) = crate::xml_dom::Document::parse(&wrapped) else {
         return Ok(None);
     };
     if document

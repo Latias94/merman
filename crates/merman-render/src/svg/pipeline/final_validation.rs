@@ -61,10 +61,96 @@ pub(super) fn measure_terminal_validation_work<T>(
     (output, work)
 }
 
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) struct XmlValidationWork {
+    pub calls: usize,
+    pub svg_bytes: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static XML_VALIDATION_WORK: std::cell::Cell<Option<XmlValidationWork>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+#[cfg(test)]
+pub(super) fn measure_xml_validation_work<T>(
+    operation: impl FnOnce() -> T,
+) -> (T, XmlValidationWork) {
+    struct Restore(Option<XmlValidationWork>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            XML_VALIDATION_WORK.set(self.0);
+        }
+    }
+
+    let _restore = Restore(XML_VALIDATION_WORK.replace(Some(Default::default())));
+    let output = operation();
+    let work = XML_VALIDATION_WORK
+        .get()
+        .expect("XML validation scope is active");
+    (output, work)
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct ReferenceAnalysisWork {
+    dependency_nodes: usize,
+    postorder_slots: usize,
+    occurrence_slots: usize,
+    occurrence_edges: usize,
+}
+
+#[cfg(test)]
+thread_local! {
+    static REFERENCE_ANALYSIS_WORK: std::cell::Cell<Option<ReferenceAnalysisWork>> = const {
+        std::cell::Cell::new(None)
+    };
+}
+
+#[cfg(test)]
+fn record_reference_analysis_work(update: impl FnOnce(&mut ReferenceAnalysisWork)) {
+    if let Some(mut work) = REFERENCE_ANALYSIS_WORK.get() {
+        update(&mut work);
+        REFERENCE_ANALYSIS_WORK.set(Some(work));
+    }
+}
+
+#[cfg(test)]
+fn measure_reference_analysis_work<T>(operation: impl FnOnce() -> T) -> (T, ReferenceAnalysisWork) {
+    struct Restore(Option<ReferenceAnalysisWork>);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            REFERENCE_ANALYSIS_WORK.set(self.0);
+        }
+    }
+
+    let _restore = Restore(REFERENCE_ANALYSIS_WORK.replace(Some(Default::default())));
+    let output = operation();
+    let work = REFERENCE_ANALYSIS_WORK
+        .get()
+        .expect("reference analysis scope is active");
+    (output, work)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SvgStructureMetrics {
     pub(crate) elements: usize,
     pub(crate) max_tree_depth: usize,
+}
+
+/// Complete XML and reference facts for one immutable SVG generation.
+pub(crate) struct ValidatedSvgXmlFacts {
+    raw_structure: SvgStructureMetrics,
+    reference_nodes: Vec<ReferenceNode>,
+}
+
+impl ValidatedSvgXmlFacts {
+    pub(crate) fn structure(&self) -> SvgStructureMetrics {
+        self.raw_structure
+    }
 }
 
 /// Proves the terminal contract shared by every public SVG output profile.
@@ -90,6 +176,8 @@ pub(crate) fn validate_well_formed_svg_with_execution(
     )
 }
 
+#[cfg(test)]
+#[cfg(test)]
 pub(crate) fn validate_well_formed_svg_with_checkpoint(
     svg: &str,
     limits: RenderResourcePolicy,
@@ -123,6 +211,14 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
         counter.set(counter.get().map(|mut work| {
             work.xml_walks += 1;
             work.xml_bytes += svg.len();
+            work
+        }));
+    });
+    #[cfg(test)]
+    XML_VALIDATION_WORK.with(|counter| {
+        counter.set(counter.get().map(|mut work| {
+            work.calls += 1;
+            work.svg_bytes += svg.len();
             work
         }));
     });
@@ -217,6 +313,7 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                 }
                 let text = text.xml10_content();
                 checkpoint()?;
+                validate_xml_characters(&text, checkpoint)?;
                 let text_outside_root = depth == 0 && !text.trim().is_empty();
                 checkpoint()?;
                 if text_outside_root {
@@ -225,7 +322,7 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                     ));
                 }
             }
-            Event::CData(_) => {
+            Event::CData(text) => {
                 document_started = true;
                 checkpoint()?;
                 if depth == 0 {
@@ -233,6 +330,7 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                         "CDATA is not allowed outside the SVG root",
                     ));
                 }
+                validate_xml_characters(text.as_ref(), checkpoint)?;
             }
             Event::GeneralRef(reference) => {
                 document_started = true;
@@ -265,8 +363,9 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
                 validate_xml_declaration(&declaration)?;
                 document_started = true;
             }
-            Event::Comment(_) => {
+            Event::Comment(text) => {
                 checkpoint()?;
+                validate_xml_characters(text.as_ref(), checkpoint)?;
                 document_started = true;
             }
             Event::Eof => break,
@@ -342,6 +441,7 @@ fn validate_well_formed_element<const REFERENCES: bool>(
         let value = normalized.map_err(|error| {
             xml_validation_error(format!("invalid XML attribute value: {error}"))
         })?;
+        validate_xml_characters(&value, checkpoint)?;
 
         if attribute.key.as_namespace_binding().is_some() {
             continue;
@@ -434,6 +534,23 @@ fn validate_xml_declaration(declaration: &BytesDecl<'_>) -> Result<()> {
     Ok(())
 }
 
+fn validate_xml_characters(
+    value: &str,
+    mut checkpoint: &mut dyn FnMut() -> Result<()>,
+) -> Result<()> {
+    for (iteration, character) in value.chars().enumerate() {
+        checkpoint_loop(iteration, &mut checkpoint)?;
+        if !crate::xml::is_xml_1_0_char(character) {
+            checkpoint()?;
+            return Err(xml_validation_error(format!(
+                "the character U+{:04X} is forbidden in XML 1.0",
+                u32::from(character)
+            )));
+        }
+    }
+    checkpoint()
+}
+
 fn validate_xml_qname(name: &str) -> Result<()> {
     let mut components = name.split(':');
     let first = components.next().unwrap_or_default();
@@ -503,9 +620,13 @@ fn validate_resvg_compatible_svg_inner(
     limits: RenderResourcePolicy,
 ) -> Result<TerminalSvgValidation> {
     let mut checkpoint = || Ok(());
-    validate_well_formed_svg_with_checkpoint(svg, limits, &mut checkpoint)?;
+    let raw_structure =
+        validate_well_formed_svg_with_controls(svg, &mut checkpoint, &mut |elements, _| {
+            limits.check_svg_element_count(elements).map_err(Into::into)
+        })?;
     validate_resvg_compatible_svg_after_xml_with_structure(
         svg,
+        raw_structure,
         &mut checkpoint,
         &mut |elements, tree_depth| {
             limits
@@ -520,8 +641,11 @@ pub(crate) fn validate_resvg_compatible_svg_with_checkpoint(
     limits: RenderResourcePolicy,
     checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
-    validate_well_formed_svg_with_checkpoint(svg, limits, checkpoint)?;
-    validate_resvg_compatible_svg_after_xml(svg, limits, checkpoint)
+    let raw_structure =
+        validate_well_formed_svg_with_controls(svg, checkpoint, &mut |elements, _| {
+            limits.check_svg_element_count(elements).map_err(Into::into)
+        })?;
+    validate_resvg_compatible_svg_after_xml(svg, raw_structure, limits, checkpoint)
 }
 
 pub(crate) fn validate_resvg_compatible_svg_with_execution(
@@ -539,21 +663,25 @@ pub(crate) fn validate_resvg_compatible_svg_with_execution(
     let mut checkpoint = || execution.checkpoint();
     let mut check_structure =
         |elements, tree_depth| execution.preflight_svg_structure(elements, tree_depth);
-    validate_well_formed_svg_with_controls(svg, &mut checkpoint, &mut check_structure)?;
+    let raw_structure =
+        validate_well_formed_svg_with_controls(svg, &mut checkpoint, &mut check_structure)?;
     validate_resvg_compatible_svg_after_xml_with_structure(
         svg,
+        raw_structure,
         &mut checkpoint,
         &mut check_structure,
     )
 }
 
-fn validate_resvg_compatible_svg_after_xml(
+pub(super) fn validate_resvg_compatible_svg_after_xml(
     svg: &str,
+    raw_structure: SvgStructureMetrics,
     limits: RenderResourcePolicy,
     checkpoint: &mut impl FnMut() -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
     validate_resvg_compatible_svg_after_xml_with_structure(
         svg,
+        raw_structure,
         checkpoint,
         &mut |elements, tree_depth| {
             limits
@@ -580,14 +708,55 @@ pub(super) fn check_svg_resource_budget_with_execution(
     )
 }
 
+pub(crate) fn validate_svg_xml_facts_with_execution(
+    svg: &str,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<ValidatedSvgXmlFacts> {
+    validate_svg_xml_facts_with_controls(
+        svg,
+        &mut || execution.checkpoint(),
+        &mut |elements, _tree_depth| {
+            execution
+                .resource_policy()
+                .check_svg_element_count(elements)
+                .map_err(|error| execution.terminate_resource_error(error))
+        },
+    )
+}
+
+pub(super) fn check_svg_resource_budget_from_xml_facts_with_execution(
+    facts: ValidatedSvgXmlFacts,
+    execution: SvgPostprocessExecution<'_>,
+) -> Result<()> {
+    check_svg_resource_budget_from_xml_facts_with_controls(
+        facts,
+        &mut || execution.checkpoint(),
+        &mut |elements, _tree_depth| {
+            execution
+                .resource_policy()
+                .check_svg_element_count(elements)
+                .map_err(|error| execution.terminate_resource_error(error))
+        },
+    )
+}
+
 fn check_svg_resource_budget_with_controls(
     svg: &str,
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<()> {
+    let facts = validate_svg_xml_facts_with_controls(svg, checkpoint, check_structure)?;
+    check_svg_resource_budget_from_xml_facts_with_controls(facts, checkpoint, check_structure)
+}
+
+fn validate_svg_xml_facts_with_controls(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<()>,
+    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
+) -> Result<ValidatedSvgXmlFacts> {
     let mut reference_nodes = Vec::new();
     let mut reference_stack = Vec::new();
-    visit_well_formed_svg_with_controls::<true>(
+    let raw_structure = visit_well_formed_svg_with_controls::<true>(
         svg,
         checkpoint,
         check_structure,
@@ -604,110 +773,22 @@ fn check_svg_resource_budget_with_controls(
             Ok(())
         },
     )?;
-    check_reference_budget_with_controls(&reference_nodes, checkpoint, check_structure)
-}
-
-/// Reference facts from the immediately preceding final pipeline XML check. The owning renderer
-/// transfers these together with that exact, unmodified SVG, never across an opaque callback.
-pub(crate) struct OrdinarySvgBudgetFacts {
-    structure: SvgStructureMetrics,
-    reference_nodes: Vec<ReferenceNode>,
-}
-
-pub(super) fn validate_well_formed_svg_with_budget_facts(
-    svg: &str,
-    execution: SvgPostprocessExecution<'_>,
-) -> Result<Option<OrdinarySvgBudgetFacts>> {
-    collect_ordinary_budget_facts_with_controls(
-        svg,
-        crate::resources::MAX_RESVG_TREE_NODES,
-        svg.len().saturating_mul(2),
-        &mut || execution.checkpoint(),
-        &mut |elements, _depth| {
-            execution
-                .resource_policy()
-                .check_svg_element_count(elements)
-                .map_err(|error| execution.terminate_resource_error(error))
-        },
-    )
-}
-
-fn collect_ordinary_budget_facts_with_controls(
-    svg: &str,
-    max_nodes: usize,
-    max_string_bytes: usize,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-    check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
-) -> Result<Option<OrdinarySvgBudgetFacts>> {
-    let mut nodes = Some(Vec::new());
-    let mut stack = Vec::new();
-    let mut string_bytes = 0usize;
-    let structure = visit_well_formed_svg_with_controls::<true>(
-        svg,
-        checkpoint,
-        check_structure,
-        &mut |references, depth| {
-            let Some(reference_nodes) = nodes.as_mut() else {
-                return Ok(());
-            };
-            let additional_bytes = references
-                .use_id
-                .as_ref()
-                .map_or(0, String::len)
-                .saturating_add(references.parsed_id.as_ref().map_or(0, String::len));
-            let additional_bytes = references
-                .references
-                .iter()
-                .fold(additional_bytes, |bytes, reference| {
-                    bytes.saturating_add(reference.target.len())
-                });
-            string_bytes = string_bytes.saturating_add(additional_bytes);
-            if reference_nodes.len() >= max_nodes || string_bytes > max_string_bytes {
-                // This is a retention bound, not admission. Complete XML/raw budget checks
-                // continue; terminal admission falls back to the ordinary budget walker.
-                nodes = None;
-                stack.clear();
-                return Ok(());
-            }
-            stack.truncate(depth);
-            append_reference_node(reference_nodes, stack.last().copied(), references);
-            stack.push(reference_nodes.len() - 1);
-            Ok(())
-        },
-    )?;
-    Ok(nodes.map(|reference_nodes| OrdinarySvgBudgetFacts {
-        structure,
+    Ok(ValidatedSvgXmlFacts {
+        raw_structure,
         reference_nodes,
-    }))
+    })
 }
 
-impl OrdinarySvgBudgetFacts {
-    pub(super) fn check_resource_budget(
-        self,
-        execution: SvgPostprocessExecution<'_>,
-    ) -> Result<()> {
-        execution.checkpoint()?;
-        let mut check_structure = |elements, _depth| {
-            execution
-                .resource_policy()
-                .check_svg_element_count(elements)
-                .map_err(|error| execution.terminate_resource_error(error))
-        };
-        check_structure(self.structure.elements, self.structure.max_tree_depth)?;
-        check_reference_budget_with_controls(
-            &self.reference_nodes,
-            &mut || execution.checkpoint(),
-            &mut check_structure,
-        )
-    }
-}
-
-fn check_reference_budget_with_controls(
-    reference_nodes: &[ReferenceNode],
+fn check_svg_resource_budget_from_xml_facts_with_controls(
+    facts: ValidatedSvgXmlFacts,
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<()> {
-    let plan = match plan_svg_reference_expansion_with_checkpoints(reference_nodes, checkpoint) {
+    let summary = match analyze_svg_reference_expansion_with_checkpoints::<false, _>(
+        &facts.reference_nodes,
+        Some(facts.raw_structure),
+        checkpoint,
+    ) {
         Ok(plan) => plan,
         // XML and raw element budgets have already been checked. A cycle prevents a complete
         // expansion plan, including for mixed cyclic/acyclic graphs, but does not make ordinary
@@ -716,12 +797,13 @@ fn check_reference_budget_with_controls(
         Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
     };
     checkpoint()?;
-    check_structure(plan.expanded_elements(), plan.max_tree_depth())
+    check_structure(summary.structure.elements, summary.structure.max_tree_depth)
 }
 
 #[inline(never)]
 fn validate_resvg_compatible_svg_after_xml_with_structure(
     svg: &str,
+    raw_structure: SvgStructureMetrics,
     mut checkpoint: &mut dyn FnMut() -> Result<()>,
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
@@ -913,14 +995,17 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
         return Err(validation_error("the SVG root is not closed"));
     }
     checkpoint()?;
-    let reference_plan =
-        match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, &mut checkpoint) {
-            Ok(plan) => plan,
-            Err(ReferencePlanningError::Invalid(error)) => {
-                return Err(validation_error(error));
-            }
-            Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
-        };
+    let reference_plan = match analyze_svg_reference_expansion_with_checkpoints::<true, _>(
+        &reference_nodes,
+        Some(raw_structure),
+        &mut checkpoint,
+    ) {
+        Ok(plan) => plan.into_detailed_plan(),
+        Err(ReferencePlanningError::Invalid(error)) => {
+            return Err(validation_error(error));
+        }
+        Err(ReferencePlanningError::Checkpoint(error)) => return Err(error),
+    };
     checkpoint()?;
     check_structure(
         reference_plan.expanded_elements(),
@@ -1487,19 +1572,75 @@ fn marker_mid_instance_upper_bound(element_name: &str, geometry_source_len: usiz
     }
 }
 
+struct SvgReferenceAnalysis {
+    structure: SvgStructureMetrics,
+    raw_element_occurrences: Box<[usize]>,
+}
+
+impl SvgReferenceAnalysis {
+    fn into_detailed_plan(self) -> SvgReferencePlan {
+        SvgReferencePlan {
+            expanded_elements: self.structure.elements,
+            max_tree_depth: self.structure.max_tree_depth,
+            raw_element_occurrences: self.raw_element_occurrences,
+        }
+    }
+}
+
+#[cfg(test)]
 fn plan_svg_reference_expansion_with_checkpoints<E>(
     nodes: &[ReferenceNode],
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferencePlan, E> {
+    analyze_svg_reference_expansion_with_checkpoints::<true, _>(nodes, None, checkpoint)
+        .map(SvgReferenceAnalysis::into_detailed_plan)
+}
+
+fn analyze_svg_reference_expansion_with_checkpoints<const DETAILED: bool, E>(
+    nodes: &[ReferenceNode],
+    raw_structure: Option<SvgStructureMetrics>,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
     let Some(_) = nodes.first() else {
         return Err(ReferencePlanningError::Invalid(
             "the document does not contain an SVG reference root".to_string(),
         ));
     };
 
+    if let Some(structure) = raw_structure {
+        // Only this XML owner supplies complete, validated element facts for these exact bytes.
+        // Unused IDs/markers/gradients do not expand. References and all conservative effect
+        // applications must use the graph, including missing targets and duplicate parsed IDs.
+        let mut no_expansion = true;
+        for (index, node) in nodes.iter().enumerate() {
+            checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+            if !node.references.is_empty() || node.may_repeat_per_element {
+                no_expansion = false;
+                break;
+            }
+        }
+        if no_expansion {
+            debug_assert_eq!(structure.elements, nodes.len());
+            let raw_element_occurrences = if DETAILED {
+                #[cfg(test)]
+                record_reference_analysis_work(|work| {
+                    work.occurrence_slots += nodes.len();
+                });
+                vec![1; nodes.len()].into_boxed_slice()
+            } else {
+                Box::default()
+            };
+            checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+            return Ok(SvgReferenceAnalysis {
+                structure,
+                raw_element_occurrences,
+            });
+        }
+    }
+
     let dependencies = build_svg_reference_dependencies_with_checkpoints(nodes, checkpoint)
         .map_err(ReferencePlanningError::Checkpoint)?;
-    plan_svg_reference_dependencies_with_effects(&dependencies, nodes, checkpoint)
+    analyze_svg_reference_dependencies_with_effects::<DETAILED, _>(&dependencies, nodes, checkpoint)
 }
 
 #[cfg(test)]
@@ -1584,6 +1725,10 @@ fn build_svg_reference_dependencies_with_checkpoints<E>(
         }
     }
 
+    #[cfg(test)]
+    record_reference_analysis_work(|work| {
+        work.dependency_nodes += dependencies.len();
+    });
     Ok(ReferenceDependencyGraph {
         dependencies,
         real_nodes,
@@ -1659,25 +1804,26 @@ pub(super) fn plan_svg_reference_dependencies(
     graph: &ReferenceDependencyGraph,
 ) -> std::result::Result<SvgReferencePlan, String> {
     let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
-    match plan_svg_reference_dependencies_with_checkpoints(graph, &mut checkpoint) {
-        Ok(plan) => Ok(plan),
+    match analyze_svg_reference_dependencies_with_effects::<true, _>(graph, &[], &mut checkpoint) {
+        Ok(plan) => Ok(plan.into_detailed_plan()),
         Err(ReferencePlanningError::Invalid(error)) => Err(error),
         Err(ReferencePlanningError::Checkpoint(error)) => match error {},
     }
 }
 
-pub(super) fn plan_svg_reference_dependencies_with_checkpoints<E>(
+pub(super) fn summarize_svg_reference_dependencies_with_checkpoints<E>(
     graph: &ReferenceDependencyGraph,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> ReferencePlanningResult<SvgReferencePlan, E> {
-    plan_svg_reference_dependencies_with_effects(graph, &[], checkpoint)
+) -> ReferencePlanningResult<SvgStructureMetrics, E> {
+    analyze_svg_reference_dependencies_with_effects::<false, _>(graph, &[], checkpoint)
+        .map(|analysis| analysis.structure)
 }
 
-fn plan_svg_reference_dependencies_with_effects<E>(
+fn analyze_svg_reference_dependencies_with_effects<const DETAILED: bool, E>(
     graph: &ReferenceDependencyGraph,
     svg_nodes: &[ReferenceNode],
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> ReferencePlanningResult<SvgReferencePlan, E> {
+) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
     // User element budgets can exceed a native backend's ceiling. Count independently of that
     // ceiling so an observational compatibility failure cannot hide a resource-limit failure.
     let dependencies = &graph.dependencies;
@@ -1685,7 +1831,15 @@ fn plan_svg_reference_dependencies_with_effects<E>(
     let mut states = vec![0_u8; nodes_len];
     let mut expanded_elements = vec![0_usize; nodes_len];
     let mut expanded_depths = vec![0_usize; nodes_len];
-    let mut postorder = Vec::with_capacity(nodes_len);
+    let mut postorder = if DETAILED {
+        Vec::with_capacity(nodes_len)
+    } else {
+        Vec::new()
+    };
+    #[cfg(test)]
+    record_reference_analysis_work(|work| {
+        work.postorder_slots += if DETAILED { nodes_len } else { 0 };
+    });
     let mut stack = vec![(0_usize, false)];
     let mut traversal_iteration = 0usize;
     let mut dependency_iteration = 0usize;
@@ -1715,7 +1869,9 @@ fn plan_svg_reference_dependencies_with_effects<E>(
             expanded_elements[index] = elements;
             expanded_depths[index] = depth;
             states[index] = 2;
-            postorder.push(index);
+            if DETAILED {
+                postorder.push(index);
+            }
             continue;
         }
 
@@ -1752,8 +1908,18 @@ fn plan_svg_reference_dependencies_with_effects<E>(
         }
     }
 
-    let mut raw_element_occurrences = vec![0_usize; nodes_len];
-    raw_element_occurrences[0] = 1;
+    let mut raw_element_occurrences = if DETAILED {
+        vec![0_usize; nodes_len]
+    } else {
+        Vec::new()
+    };
+    #[cfg(test)]
+    record_reference_analysis_work(|work| {
+        work.occurrence_slots += if DETAILED { nodes_len } else { 0 };
+    });
+    if DETAILED {
+        raw_element_occurrences[0] = 1;
+    }
     let application_upper_bound = expanded_elements[0];
     for (index, node) in svg_nodes.iter().enumerate() {
         checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
@@ -1766,8 +1932,10 @@ fn plan_svg_reference_dependencies_with_effects<E>(
             expanded_elements[0] = expanded_elements[0]
                 .saturating_add(expanded_elements[index].saturating_mul(application_upper_bound));
             expanded_depths[0] = expanded_depths[0].max(expanded_depths[index].saturating_add(1));
-            raw_element_occurrences[index] =
-                raw_element_occurrences[index].saturating_add(application_upper_bound);
+            if DETAILED {
+                raw_element_occurrences[index] =
+                    raw_element_occurrences[index].saturating_add(application_upper_bound);
+            }
         }
     }
     let mut occurrence_dependency_iteration = 0usize;
@@ -1778,6 +1946,10 @@ fn plan_svg_reference_dependencies_with_effects<E>(
             checkpoint_loop(occurrence_dependency_iteration, checkpoint)
                 .map_err(ReferencePlanningError::Checkpoint)?;
             occurrence_dependency_iteration = occurrence_dependency_iteration.saturating_add(1);
+            #[cfg(test)]
+            record_reference_analysis_work(|work| {
+                work.occurrence_edges += 1;
+            });
             let added = occurrences.saturating_mul(multiplicity);
             raw_element_occurrences[dependency] =
                 raw_element_occurrences[dependency].saturating_add(added);
@@ -1785,9 +1957,11 @@ fn plan_svg_reference_dependencies_with_effects<E>(
     }
     raw_element_occurrences.truncate(graph.real_nodes);
 
-    Ok(SvgReferencePlan {
-        expanded_elements: expanded_elements[0],
-        max_tree_depth: expanded_depths[0],
+    Ok(SvgReferenceAnalysis {
+        structure: SvgStructureMetrics {
+            elements: expanded_elements[0],
+            max_tree_depth: expanded_depths[0],
+        },
         raw_element_occurrences: raw_element_occurrences.into_boxed_slice(),
     })
 }
@@ -1979,6 +2153,112 @@ mod tests {
             r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?><svg xmlns="http://www.w3.org/2000/svg" xmlns:x="urn:x"><x:item x:id="one"/></svg>"#,
         )
         .unwrap();
+    }
+
+    fn assert_xml_validation_error(svg: &str) {
+        let error = validate_xml(svg).expect_err("forbidden XML 1.0 content must be rejected");
+        assert!(
+            matches!(&error, Error::SvgPostprocess { pass, .. } if pass == XML_VALIDATION_PASS),
+            "{svg:?}: {error:?}"
+        );
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_text_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            assert_xml_validation_error(&format!("<svg><text>A{scalar}B</text></svg>"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_cdata_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            assert_xml_validation_error(&format!("<svg><![CDATA[A{scalar}B]]></svg>"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_attribute_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            for svg in [
+                format!(r#"<svg title="A{scalar}B"/>"#),
+                format!(r#"<svg xmlns:x="urn:A{scalar}B"><x:item/></svg>"#),
+            ] {
+                assert_xml_validation_error(&svg);
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_attribute_character_references() {
+        for entity in ["&#0;", "&#x1f;", "&#xFFFE;", "&#xFFFF;"] {
+            assert_xml_validation_error(&format!(r#"<svg title="A{entity}B"/>"#));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_rejects_forbidden_literal_comment_scalars() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            assert_xml_validation_error(&format!("<svg><!-- A{scalar}B --></svg>"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_keeps_existing_name_and_declaration_scalar_checks() {
+        for scalar in ['\0', '\u{1f}', '\u{fffe}', '\u{ffff}'] {
+            for svg in [
+                format!("<svg><A{scalar}B/></svg>"),
+                format!(r#"<svg A{scalar}B="value"/>"#),
+                format!(r#"<?xml version="1.0{scalar}"?><svg/>"#),
+                format!(r#"<?xml version="1.0" encoding="UTF-8{scalar}"?><svg/>"#),
+            ] {
+                assert_xml_validation_error(&svg);
+            }
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_accepts_legal_scalars_and_single_entity_decoding() {
+        let legal = "\t\n\r café 中文 🙂 \u{85}\u{d7ff}\u{e000}\u{fffd}\u{10000}\u{10ffff}";
+        for svg in [
+            format!("<svg><text>{legal}&amp;&lt;&gt;&quot;&apos;&#9;&#10;&#13;</text></svg>"),
+            format!("<svg><![CDATA[{legal}&amp;<literal>]]></svg>"),
+            format!(r#"<svg title="{legal}&amp;&lt;&gt;&quot;&apos;&#9;&#10;&#13;"/>"#),
+            format!("<svg><!-- {legal}&amp;<literal> --></svg>"),
+            r#"<svg title="&amp;#0;">&amp;#xFFFE;</svg>"#.to_owned(),
+        ] {
+            validate_xml(&svg).unwrap_or_else(|error| panic!("{svg:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn streaming_xml_validation_checks_cancellation_inside_a_long_text_event() {
+        let svg = format!("<svg>{}<rect/></svg>", "A".repeat(4096));
+        let root_admitted = std::cell::Cell::new(false);
+        let mut text_checkpoints = 0usize;
+        let error = validate_well_formed_svg_with_controls(
+            &svg,
+            &mut || {
+                if root_admitted.get() {
+                    text_checkpoints += 1;
+                    if text_checkpoints == 16 {
+                        return Err(Error::Cancelled(merman_core::OperationCancelled {
+                            phase: merman_core::OperationPhase::Postprocess,
+                            reason: merman_core::CancelReason::Requested,
+                        }));
+                    }
+                }
+                Ok(())
+            },
+            &mut |elements, _depth| {
+                assert_eq!(elements, 1, "cancellation must precede the following rect");
+                root_admitted.set(true);
+                Ok(())
+            },
+        )
+        .unwrap_err();
+
+        assert!(matches!(error, Error::Cancelled(_)), "{error:?}");
     }
 
     #[test]
@@ -2294,53 +2574,71 @@ mod tests {
                     "{svg:?}, limit {limit}"
                 );
                 assert_eq!(old_observations, new_observations, "{svg:?}, limit {limit}");
+
+                let mut retained_observations = Vec::new();
+                let mut retained_check = |n, depth| {
+                    retained_observations.push((n, depth));
+                    policy.check_svg_element_count(n).map_err(Into::into)
+                };
+                let retained =
+                    validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut retained_check)
+                        .and_then(|facts| {
+                            check_svg_resource_budget_from_xml_facts_with_controls(
+                                facts,
+                                &mut || Ok(()),
+                                &mut retained_check,
+                            )
+                        });
+                assert_eq!(
+                    format!("{old:?}"),
+                    format!("{retained:?}"),
+                    "retained facts: {svg:?}, limit {limit}"
+                );
+                assert_eq!(
+                    old_observations, retained_observations,
+                    "retained facts: {svg:?}, limit {limit}"
+                );
             }
         }
     }
 
     #[test]
-    fn retained_final_xml_facts_match_terminal_budget_results() {
-        for svg in ordinary_budget_fixtures() {
-            for limit in [1, 2, 5, 32, 100, 10_000, usize::MAX] {
-                let policy = RenderResourcePolicy::unbounded_for_trusted_input()
-                    .with_limit(ResourceLimitId::MaxSvgElements, limit)
-                    .unwrap();
-                let reference = check_budget(&svg, limit);
-                for (max_nodes, max_string_bytes) in [
-                    (
-                        crate::resources::MAX_RESVG_TREE_NODES,
-                        svg.len().saturating_mul(2),
-                    ),
-                    (0, 0),
-                    (2, 0),
-                ] {
-                    let result = collect_ordinary_budget_facts_with_controls(
-                        &svg,
-                        max_nodes,
-                        max_string_bytes,
-                        &mut || Ok(()),
-                        &mut |elements, _depth| {
-                            policy.check_svg_element_count(elements).map_err(Into::into)
-                        },
-                    )
-                    .and_then(|facts| match facts {
-                        Some(facts) => {
-                            let session = crate::environment::RenderEnvironment::deterministic()
-                                .with_resource_policy(policy)
-                                .begin_session()
-                                .unwrap();
-                            facts.check_resource_budget(SvgPostprocessExecution::new(&session))
-                        }
-                        None => check_budget(&svg, limit),
-                    });
-                    assert_eq!(
-                        format!("{reference:?}"),
-                        format!("{result:?}"),
-                        "{svg:?}, limit {limit}, retention {max_nodes}/{max_string_bytes}",
-                    );
-                }
-            }
-        }
+    fn ordinary_reference_summary_does_not_materialize_discarded_occurrences() {
+        let svg = branching_use_svg(8);
+        let mut summary = None;
+        let (result, work) = measure_reference_analysis_work(|| {
+            check_svg_resource_budget_with_controls(&svg, &mut || Ok(()), &mut |elements, depth| {
+                summary = Some((elements, depth));
+                Ok(())
+            })
+        });
+        result.unwrap();
+        let (detailed, detailed_work) = measure_reference_analysis_work(|| {
+            validate_resvg_compatible_svg(&svg, RenderResourcePolicy::unbounded_for_trusted_input())
+        });
+        let detailed = detailed.unwrap();
+
+        assert_eq!(
+            summary,
+            Some((detailed.expanded_elements(), detailed.max_tree_depth()))
+        );
+        assert!(work.dependency_nodes > 0, "expansion still needs the graph");
+        assert_eq!(
+            work.postorder_slots, 0,
+            "ordinary callers discard postorder"
+        );
+        assert_eq!(
+            work.occurrence_slots, 0,
+            "ordinary callers discard occurrences"
+        );
+        assert_eq!(
+            work.occurrence_edges, 0,
+            "ordinary callers need no occurrence walk"
+        );
+        assert!(detailed_work.postorder_slots > 0);
+        assert!(detailed_work.occurrence_slots > 0);
+        assert!(detailed_work.occurrence_edges > 0);
+        assert!(detailed.raw_element_occurrences().iter().any(|&n| n > 1));
     }
 
     #[test]
@@ -2354,21 +2652,25 @@ mod tests {
             .with_resource_policy(policy)
             .begin_session_with_control(control.clone())
             .unwrap();
-        let facts = validate_well_formed_svg_with_budget_facts(
-            &svg,
-            SvgPostprocessExecution::new(&session),
-        )
-        .expect("final pipeline XML checks only the raw element budget")
-        .expect("the small graph fits the retention bound");
+        let (facts, xml_work) = measure_xml_validation_work(|| {
+            validate_svg_xml_facts_with_execution(&svg, SvgPostprocessExecution::new(&session))
+        });
+        let facts = facts.expect("final pipeline XML checks only the raw element budget");
+        assert_eq!(xml_work.calls, 1);
+        assert_eq!(xml_work.svg_bytes, svg.len());
         assert!(
             control
                 .terminal_checkpoint_at(merman_core::OperationPhase::Postprocess)
                 .is_ok()
         );
-        let error = facts
-            .check_resource_budget(SvgPostprocessExecution::new(&session))
-            .unwrap_err();
-        assert!(matches!(error, Error::ResourceLimitExceeded(_)));
+        let (result, xml_work) = measure_xml_validation_work(|| {
+            check_svg_resource_budget_from_xml_facts_with_execution(
+                facts,
+                SvgPostprocessExecution::new(&session),
+            )
+        });
+        assert_eq!(xml_work, XmlValidationWork::default());
+        assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
         let terminal = control
             .terminal_checkpoint_at(merman_core::OperationPhase::Export)
             .unwrap_err();
@@ -2385,17 +2687,116 @@ mod tests {
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session_with_control(control.clone())
             .unwrap();
-        let facts = validate_well_formed_svg_with_budget_facts(
+        let facts = validate_svg_xml_facts_with_execution(
             &branching_use_svg(8),
             SvgPostprocessExecution::new(&session),
         )
-        .unwrap()
         .unwrap();
         control.cancel();
-        assert!(matches!(
-            facts.check_resource_budget(SvgPostprocessExecution::new(&session)),
-            Err(Error::Cancelled(_)),
-        ));
+        let (result, xml_work) = measure_xml_validation_work(|| {
+            check_svg_resource_budget_from_xml_facts_with_execution(
+                facts,
+                SvgPostprocessExecution::new(&session),
+            )
+        });
+        assert_eq!(xml_work, XmlValidationWork::default());
+        assert!(matches!(result, Err(Error::Cancelled(_))));
+    }
+
+    #[test]
+    fn validated_no_expansion_uses_xml_metrics_without_dependency_planning() {
+        let fixtures = [
+            "<svg/>",
+            r##"<svg><defs><linearGradient id="paint"><stop/></linearGradient><marker id="unused"><path d="M0 0L1 1"/></marker></defs><g id="a"><rect fill="url(#paint)"/></g><g id="a"/></svg>"##,
+            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g s:id="same"/><g id="same"/></defs><style>.rect{fill:red}</style><path d="M0 0L1 1" marker-start="none" marker-mid="none" marker-end="none"/></svg>"##,
+        ];
+        for svg in fixtures {
+            let raw =
+                validate_well_formed_svg_with_controls(svg, &mut || Ok(()), &mut |_, _| Ok(()))
+                    .unwrap();
+            let mut summary = None;
+            let (ordinary, ordinary_work) = measure_reference_analysis_work(|| {
+                check_svg_resource_budget_with_controls(
+                    svg,
+                    &mut || Ok(()),
+                    &mut |elements, depth| {
+                        summary = Some((elements, depth));
+                        Ok(())
+                    },
+                )
+            });
+            ordinary.unwrap();
+            assert_eq!(summary, Some((raw.elements, raw.max_tree_depth)), "{svg}");
+            assert_eq!(ordinary_work, ReferenceAnalysisWork::default(), "{svg}");
+
+            let (detailed, detailed_work) = measure_reference_analysis_work(|| {
+                validate_resvg_compatible_svg(
+                    svg,
+                    RenderResourcePolicy::unbounded_for_trusted_input(),
+                )
+            });
+            let detailed = detailed.unwrap();
+            assert_eq!(detailed.expanded_elements(), raw.elements, "{svg}");
+            assert_eq!(detailed.max_tree_depth(), raw.max_tree_depth, "{svg}");
+            assert_eq!(detailed.raw_element_occurrences(), vec![1; raw.elements]);
+            assert_eq!(detailed_work.dependency_nodes, 0, "{svg}");
+            assert_eq!(detailed_work.postorder_slots, 0, "{svg}");
+            assert_eq!(detailed_work.occurrence_edges, 0, "{svg}");
+        }
+    }
+
+    #[test]
+    fn reference_summary_keeps_effect_and_marker_expansion_in_the_shared_planner() {
+        let fixtures = [
+            branching_use_svg(8),
+            r##"<svg><defs><filter id="f"><feGaussianBlur/></filter><mask id="m"><rect/></mask><clipPath id="c"><path/></clipPath></defs><rect/></svg>"##.to_owned(),
+            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g id="shared"/><marker id="shared"><path/></marker><unknown id="shared"/><g s:id="aliased"><rect/></g><filter><feImage href="#aliased"/></filter></defs><path d="M0 0L1 1L2 2" marker-mid="url(#shared)" s:d="M0 0" s:marker-mid="none"/><use href="#shared"/></svg>"##.to_owned(),
+        ];
+        for svg in fixtures {
+            let detailed = validate_resvg_compatible_svg(
+                &svg,
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            )
+            .unwrap();
+            let mut summary = None;
+            let (ordinary, work) = measure_reference_analysis_work(|| {
+                check_svg_resource_budget_with_controls(
+                    &svg,
+                    &mut || Ok(()),
+                    &mut |elements, depth| {
+                        summary = Some((elements, depth));
+                        Ok(())
+                    },
+                )
+            });
+            ordinary.unwrap();
+            assert!(work.dependency_nodes > 0, "{svg}");
+            assert_eq!(
+                summary,
+                Some((detailed.expanded_elements(), detailed.max_tree_depth())),
+                "{svg}"
+            );
+            check_budget(&svg, detailed.expanded_elements()).unwrap();
+            let error = check_budget(&svg, detailed.expanded_elements() - 1).unwrap_err();
+            assert!(error.to_string().contains("max_svg_elements"), "{error}");
+        }
+    }
+
+    #[test]
+    fn no_expansion_summary_preserves_every_xml_cancellation_boundary() {
+        let svg = r##"<svg><style>.rect{fill:red}</style><defs><g id="a"/><g id="a"/></defs><text>🙂 &amp; label</text><rect/></svg>"##;
+        assert_budget_cancellation_at_every_checkpoint(svg);
+        for invalid in [
+            "<svg><rect/></svg>\u{0}",
+            "<svg><rect title=\"&unknown;\"/></svg>",
+            "<svg><rect/></svg><svg/>",
+            "<svg><g><rect/></svg>",
+            "<svg xmlns:a=\"urn:same\" xmlns:b=\"urn:same\"><rect a:key=\"1\" b:key=\"2\"/></svg>",
+        ] {
+            let xml = validate_xml(invalid).unwrap_err();
+            let summary = check_budget(invalid, usize::MAX).unwrap_err();
+            assert_eq!(format!("{xml:?}"), format!("{summary:?}"), "{invalid:?}");
+        }
     }
 
     #[test]
@@ -2603,6 +3004,22 @@ mod tests {
         assert_eq!(plan.expanded_elements(), usize::MAX);
         assert_eq!(plan.raw_element_occurrences(), &[1, usize::MAX, usize::MAX]);
         assert_eq!(plan.max_tree_depth(), 2);
+        let (summary, work) = measure_reference_analysis_work(|| {
+            summarize_svg_reference_dependencies_with_checkpoints(&graph, &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+        });
+        let summary = summary
+            .map_err(|error| match error {
+                ReferencePlanningError::Invalid(message) => message,
+                ReferencePlanningError::Checkpoint(error) => match error {},
+            })
+            .unwrap();
+        assert_eq!(summary.elements, plan.expanded_elements());
+        assert_eq!(summary.max_tree_depth, plan.max_tree_depth());
+        assert_eq!(work.postorder_slots, 0);
+        assert_eq!(work.occurrence_slots, 0);
+        assert_eq!(work.occurrence_edges, 0);
     }
 
     #[test]
@@ -2859,6 +3276,35 @@ mod tests {
                         ReferencePlanningError::Checkpoint(error) => match error {},
                     });
                     assert_eq!(actual, expected, "{effects:?}, {multiplicity}, {cyclic}");
+
+                    let (summary, work) = measure_reference_analysis_work(|| {
+                        analyze_svg_reference_expansion_with_checkpoints::<false, _>(
+                            &nodes,
+                            None,
+                            &mut || Ok::<(), std::convert::Infallible>(()),
+                        )
+                    });
+                    let summary =
+                        summary
+                            .map(|analysis| analysis.structure)
+                            .map_err(|error| match error {
+                                ReferencePlanningError::Invalid(message) => message,
+                                ReferencePlanningError::Checkpoint(error) => match error {},
+                            });
+                    let expected_structure = expected
+                        .as_ref()
+                        .map(|plan| SvgStructureMetrics {
+                            elements: plan.expanded_elements(),
+                            max_tree_depth: plan.max_tree_depth(),
+                        })
+                        .map_err(Clone::clone);
+                    assert_eq!(
+                        summary, expected_structure,
+                        "summary: {effects:?}, {multiplicity}, {cyclic}"
+                    );
+                    assert_eq!(work.postorder_slots, 0);
+                    assert_eq!(work.occurrence_slots, 0);
+                    assert_eq!(work.occurrence_edges, 0);
                 }
             }
         }

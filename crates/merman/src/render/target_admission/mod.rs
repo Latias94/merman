@@ -536,7 +536,7 @@ pub(super) fn document_portability_report(
     }
 }
 
-#[cfg(feature = "svg")]
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 fn inherit_document_portability(
     report: &DocumentPortabilityReport,
     reasons: &mut Vec<TargetAdmissionReason>,

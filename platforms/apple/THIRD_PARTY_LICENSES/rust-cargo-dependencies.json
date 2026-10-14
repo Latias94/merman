@@ -110,7 +110,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "88b0d0baa92a1b62b915e5d9c7c542219a84dcb1f043a42078e994ef35f2b068",
+    "cargo_lock_sha256": "4a09c215b16b10ac775cc6f6d4fbfbfd44366e12566f4898b0aa347b754331af",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "e33e3024a69778d55ee2b06937172f0a0c7ac1e830a685ab31e12609fd9aabe5"
   },
@@ -118,37 +118,37 @@
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-darwin",
-      "package_count": 143,
-      "packages_sha256": "4282895ae8211cb8b51f24fb9f3d1d3bc49ce9730844e0c5f64756b340bc8010"
+      "package_count": 142,
+      "packages_sha256": "b07dabf6d0c638c90ad79c402cd168dabeb4c197ef65ef7ef30c1cbb81cb8e07"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios",
-      "package_count": 143,
-      "packages_sha256": "4282895ae8211cb8b51f24fb9f3d1d3bc49ce9730844e0c5f64756b340bc8010"
+      "package_count": 142,
+      "packages_sha256": "b07dabf6d0c638c90ad79c402cd168dabeb4c197ef65ef7ef30c1cbb81cb8e07"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "aarch64-apple-ios-sim",
-      "package_count": 143,
-      "packages_sha256": "4282895ae8211cb8b51f24fb9f3d1d3bc49ce9730844e0c5f64756b340bc8010"
+      "package_count": 142,
+      "packages_sha256": "b07dabf6d0c638c90ad79c402cd168dabeb4c197ef65ef7ef30c1cbb81cb8e07"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-darwin",
-      "package_count": 144,
-      "packages_sha256": "836c74d2185977753c06b0e84d787a267470d619df06baace7817ff5327ec66d"
+      "package_count": 143,
+      "packages_sha256": "468ec076b53e652b86c312cf05954f11c6704e6a16b14435213344224ca4d079"
     },
     {
       "artifact_profile_id": "apple-uniffi-native",
       "target": "x86_64-apple-ios",
-      "package_count": 144,
-      "packages_sha256": "836c74d2185977753c06b0e84d787a267470d619df06baace7817ff5327ec66d"
+      "package_count": 143,
+      "packages_sha256": "468ec076b53e652b86c312cf05954f11c6704e6a16b14435213344224ca4d079"
     }
   ],
   "dependency_closure": {
-    "package_count": 144,
-    "packages_sha256": "836c74d2185977753c06b0e84d787a267470d619df06baace7817ff5327ec66d"
+    "package_count": 143,
+    "packages_sha256": "468ec076b53e652b86c312cf05954f11c6704e6a16b14435213344224ca4d079"
   },
   "licenses": [
     {
@@ -782,16 +782,6 @@
             "The rust-url developers"
           ],
           "repository": "https://github.com/servo/rust-url/"
-        },
-        {
-          "name": "roxmltree",
-          "version": "0.21.1",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "MIT OR Apache-2.0",
-          "authors": [
-            "Yevhenii Reizner <razrfalcon@gmail.com>"
-          ],
-          "repository": "https://github.com/RazrFalcon/roxmltree"
         },
         {
           "name": "rustix",

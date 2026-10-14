@@ -1,0 +1,37 @@
+{
+  "review_mode": "non-interactive",
+  "plan": "docs/plans/2026-10-14-0053-refactor-native-theme-regressions-plan.md",
+  "plan_sha256": "6fc3b09d912ee2b342b0559f4bed02267b44428b03be6618c7a2490e34a3a96e",
+  "reviewers": {
+    "coherence": {
+      "reviewer": "coherence",
+      "findings": [],
+      "residual_risks": [],
+      "deferred_questions": []
+    },
+    "feasibility": {
+      "reviewer": "feasibility",
+      "findings": [],
+      "residual_risks": [],
+      "deferred_questions": []
+    },
+    "scope": {
+      "reviewer": "scope-guardian",
+      "findings": [],
+      "residual_risks": [],
+      "deferred_questions": []
+    },
+    "adversarial": {
+      "reviewer": "adversarial",
+      "findings": [],
+      "residual_risks": [],
+      "deferred_questions": []
+    }
+  },
+  "fixes_applied": 0,
+  "proposed_fixes_count": 0,
+  "decisions_count": 0,
+  "fyi_count": 0,
+  "cross_model_pass": "not run; project instructions require Codex subagents instead of external coding tools",
+  "resolved_at": "2026-10-13T17:03:42.882010+00:00"
+}

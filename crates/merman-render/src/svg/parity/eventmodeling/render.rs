@@ -59,7 +59,7 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
 
     out.push_str("<style>");
     text_theme_receipt.write_stylesheet(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         super::super::util::css_selector_diagram_id(diagram_id),
     );
     out.push_str("</style><g/>");

@@ -5,7 +5,7 @@
 //! production SVG or reimplement the renderer's DOM/CSS interpretation. Synthetic observations
 //! for unit tests are exposed only through the workspace-only acceptance feature.
 
-use roxmltree::{Document, Node};
+use crate::xml_dom::{Document, Node};
 use sha2::{Digest as _, Sha256};
 
 /// Renderer-owned, family-neutral observations of one finalized SVG artifact.

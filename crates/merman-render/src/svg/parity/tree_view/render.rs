@@ -98,7 +98,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
     let mut tree_view_receipt =
         theme.begin_terminal_receipt(layout.nodes.len(), emitted_icon_count);
     push_tree_view_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         super::super::util::css_selector_diagram_id(diagram_id),
         theme,
         &mut tree_view_receipt,
@@ -124,7 +124,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         effective_config,
         work_meter: options.work_meter(),
     };
-    for (line_index, line) in layout.lines.iter().enumerate() {
+    for line in &layout.lines {
         if line.kind == "horizontal"
             && let Some(node) = layout.nodes.get(next_node)
         {
@@ -139,18 +139,10 @@ pub(crate) fn render_tree_view_diagram_svg_model(
             next_node += 1;
         }
         let emitted_stroke_width_token = theme.terminal_stroke_width_token(line.stroke_width);
-        // Tree View maps both semantic edge paint facets to the line's CSS stroke channel.  This
-        // renderer-owned marker lets the native raster proof bind that final line without
-        // inferring semantics from the presentation class.
-        let line_id = format!(
-            "treeView-edge-{line_index}{}",
-            crate::svg::RENDERER_SEMANTIC_FILL_AND_STROKE_PATH_SUFFIX
-        );
         if let Some(stroke_width_token) = emitted_stroke_width_token {
             let _ = write!(
                 &mut out,
-                r#"<line id="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
-                line_id,
+                r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
                 fmt(line.x1),
                 fmt(line.y1),
                 fmt(line.x2),
@@ -160,8 +152,7 @@ pub(crate) fn render_tree_view_diagram_svg_model(
         } else {
             let _ = write!(
                 &mut out,
-                r#"<line id="{}" x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
-                line_id,
+                r#"<line x1="{}" y1="{}" x2="{}" y2="{}" stroke-width="{}" class="treeView-node-line"></line>"#,
                 fmt(line.x1),
                 fmt(line.y1),
                 fmt(line.x2),
@@ -223,20 +214,9 @@ fn push_tree_view_node(
         )?;
         let current_color_use = icon.current_color_use;
         let icon_svg = icon.svg;
-        out.push_str("<g");
-        if theme.typed_icon_color_css().is_some()
-            && current_color_use == crate::svg::IconCurrentColorUse::Consumed
-        {
-            let _ = write!(
-                out,
-                r#" id="treeView-icon-{}{}""#,
-                node.id,
-                crate::svg::RENDERER_SEMANTIC_NATIVE_PAINT_SUFFIX,
-            );
-        }
         let _ = write!(
             out,
-            r#" class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
+            r#"<g class="treeView-node-icon" transform="translate({}, {})">{}</g>"#,
             fmt(node.x + context.layout.padding_x),
             fmt(node.y + context.layout.padding_y),
             icon_svg

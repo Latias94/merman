@@ -42,12 +42,22 @@ pub(crate) fn apply_foreign_object_fallback<'a>(
     execution: crate::svg::pipeline::SvgPostprocessExecution<'_>,
     structure: SvgStructureMetrics,
 ) -> Result<Cow<'a, str>> {
+    apply_foreign_object_fallback_with_outcome(svg, text_measurer, execution, structure)
+        .map(|(svg, _changed)| svg)
+}
+
+pub(crate) fn apply_foreign_object_fallback_with_outcome<'a>(
+    svg: Cow<'a, str>,
+    text_measurer: &dyn TextMeasurer,
+    execution: crate::svg::pipeline::SvgPostprocessExecution<'_>,
+    structure: SvgStructureMetrics,
+) -> Result<(Cow<'a, str>, bool)> {
     execution.checkpoint()?;
     if find_with_checkpoints(&svg, "<foreignObject", &mut || execution.checkpoint())?.is_none() {
-        return Ok(svg);
+        return Ok((svg, false));
     }
     foreign_object_label_fallback_svg_text_controlled(&svg, text_measurer, execution, structure)
-        .map(Cow::Owned)
+        .map(|svg| (Cow::Owned(svg), true))
 }
 
 #[derive(Debug, Clone, Copy, Default)]

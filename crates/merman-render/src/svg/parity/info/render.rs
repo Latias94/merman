@@ -30,7 +30,7 @@ pub(crate) fn render_info_diagram_svg(
     .write_open(&mut out, root_spec, root_chrome)?;
     out.push_str("<style>");
     let css_write = write_prepared_info_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         typography_theme.css_binding(),
     )?;

@@ -1,5 +1,6 @@
 mod common;
 
+use base64::Engine as _;
 use common::legacy_init_theme_compat_engine;
 use merman_core::{Engine, MermaidConfig, ParseOptions};
 use merman_render::diagram_theme::{
@@ -99,6 +100,90 @@ fn root_view_box(document: &roxmltree::Document<'_>) -> (f64, f64, f64, f64) {
         .collect::<Vec<_>>();
     assert_eq!(values.len(), 4, "viewBox must contain four components");
     (values[0], values[1], values[2], values[3])
+}
+
+fn render_block_geometry(config: serde_json::Value, source: &str) -> (String, serde_json::Value) {
+    let engine = Engine::new().with_site_config(MermaidConfig::from_value(config));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
+        .expect("parse Block geometry")
+        .expect("detect Block geometry");
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let artifact = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .expect("prepare Block geometry");
+    let layout =
+        artifact.layout_json().expect("project Block geometry")["layout"]["BlockDiagram"].clone();
+    let svg = artifact
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Block geometry")
+        .svg()
+        .to_owned();
+    (svg, layout)
+}
+
+fn block_node_rect<'a, 'input>(
+    document: &'a roxmltree::Document<'input>,
+    node_id: &str,
+) -> roxmltree::Node<'a, 'input> {
+    document
+        .descendants()
+        .find(|node| node.attribute("id") == Some(node_id))
+        .expect("Block node")
+        .children()
+        .find(|node| node.has_tag_name("rect"))
+        .expect("Block rectangle terminal")
+}
+
+fn block_shape_geometry<'a>(layout: &'a serde_json::Value, id: &str) -> &'a serde_json::Value {
+    layout["shapeGeometries"]
+        .as_array()
+        .expect("Block shape geometries")
+        .iter()
+        .find(|geometry| geometry["id"] == id)
+        .expect("Block node geometry")
+}
+
+fn block_stylesheet_text(svg: &str) -> String {
+    let document = roxmltree::Document::parse(svg).expect("Block stylesheet XML");
+    document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Block logical stylesheet")
+        .to_owned()
+}
+
+fn numeric_attribute(node: roxmltree::Node<'_, '_>, name: &str) -> f64 {
+    node.attribute(name)
+        .unwrap_or_else(|| panic!("missing {name} attribute"))
+        .parse()
+        .unwrap_or_else(|_| panic!("numeric {name} attribute"))
+}
+
+fn matched_block_node_stroke_width(document: &roxmltree::Document<'_>, id: &str) -> String {
+    let shell = block_node_rect(document, id);
+    assert!(shell.ancestors().any(|node| {
+        node.attribute("class")
+            .is_some_and(|class| class.split_ascii_whitespace().any(|part| part == "node"))
+    }));
+    let selector = format!("#merman .node {}", shell.tag_name().name());
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Block stylesheet");
+    css.split('}')
+        .filter_map(|rule| rule.split_once('{'))
+        .find(|(selectors, _)| selectors.split(',').any(|part| part.trim() == selector))
+        .expect("CSS rule matching the actual Block shell")
+        .1
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .find(|(property, _)| property.trim() == "stroke-width")
+        .expect("matched node stroke-width declaration")
+        .1
+        .trim()
+        .to_owned()
 }
 
 fn parse_translate(raw: &str) -> (f64, f64) {
@@ -1154,9 +1239,8 @@ fn block_inline_and_class_fills_outrank_typed_node_fill_per_node() {
         rendered.svg()
     );
     assert!(
-        rendered
-            .svg()
-            .contains(r#"#block-theme .accent&gt;*{fill:#00bb00!important;}"#),
+        block_stylesheet_text(rendered.svg())
+            .contains(r#"#block-theme .accent>*{fill:#00bb00!important;}"#),
         "assigned class fill must retain source ownership: {}",
         rendered.svg()
     );
@@ -1193,9 +1277,8 @@ fn block_default_class_fill_makes_typed_node_fill_not_applicable() {
         rendered.svg()
     );
     assert!(
-        rendered
-            .svg()
-            .contains(r#"#block-theme .default&gt;*{fill:#bb0000!important;}"#),
+        block_stylesheet_text(rendered.svg())
+            .contains(r#"#block-theme .default>*{fill:#bb0000!important;}"#),
         "default class fill must retain source ownership: {}",
         rendered.svg()
     );
@@ -1361,9 +1444,8 @@ fn block_inline_and_class_strokes_outrank_typed_node_stroke_per_node() {
         rendered.svg()
     );
     assert!(
-        rendered
-            .svg()
-            .contains(r#"#block-theme .accent&gt;*{stroke:#00bb00!important;}"#),
+        block_stylesheet_text(rendered.svg())
+            .contains(r#"#block-theme .accent>*{stroke:#00bb00!important;}"#),
         "assigned class stroke must retain source ownership: {}",
         rendered.svg()
     );
@@ -1400,9 +1482,8 @@ fn block_default_class_stroke_makes_typed_node_stroke_not_applicable() {
         rendered.svg()
     );
     assert!(
-        rendered
-            .svg()
-            .contains(r#"#block-theme .default&gt;*{stroke:#bb0000!important;}"#),
+        block_stylesheet_text(rendered.svg())
+            .contains(r#"#block-theme .default>*{stroke:#bb0000!important;}"#),
         "default class stroke must retain source ownership: {}",
         rendered.svg()
     );
@@ -1556,6 +1637,201 @@ block
 }
 
 #[test]
+fn block_node_stroke_width_matches_its_terminal_css_for_classic_and_neo() {
+    for look in ["classic", "neo"] {
+        for width in [0, 1, 4] {
+            let (svg, _) = render_block_geometry(
+                serde_json::json!({"look": look, "themeVariables": {"strokeWidth": width}}),
+                "block\n A[\"A\"]\n",
+            );
+            let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+            assert_eq!(
+                matched_block_node_stroke_width(&document, "merman-A"),
+                format!("{width}px"),
+                "{look} node terminal must consume the configured stroke width"
+            );
+        }
+    }
+}
+
+#[test]
+fn block_root_viewbox_contains_configured_node_stroke_envelope() {
+    for width in [0.0, 4.0, 24.0] {
+        let (svg, _) = render_block_geometry(
+            serde_json::json!({"themeVariables": {"strokeWidth": width}}),
+            "block\n A[\"A\"]\n",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+        let rect = block_node_rect(&document, "merman-A");
+        let (center_x, center_y) = translated_center(rect.parent().unwrap());
+        let min_x = center_x + numeric_attribute(rect, "x");
+        let min_y = center_y + numeric_attribute(rect, "y");
+        let max_x = min_x + numeric_attribute(rect, "width");
+        let max_y = min_y + numeric_attribute(rect, "height");
+        let (view_x, view_y, view_width, view_height) = root_view_box(&document);
+        let margin = width / 2.0 + 5.0;
+        assert!(
+            view_x <= min_x - margin + 1e-6
+                && view_y <= min_y - margin + 1e-6
+                && view_x + view_width >= max_x + margin - 1e-6
+                && view_y + view_height >= max_y + margin - 1e-6,
+            "stroke {width} envelope plus Mermaid viewport padding must fit: {svg}"
+        );
+    }
+}
+
+#[test]
+fn block_square_padding_uses_look_while_grid_spacing_uses_block_padding() {
+    for look in ["classic", "neo"] {
+        for padding in [8.0, 20.0] {
+            for source in [
+                "block\n A[\"A\"]\n",
+                "block\n columns 2\n A[\"A\"] B[\"Longer\"]\n",
+            ] {
+                let (svg, layout) = render_block_geometry(
+                    serde_json::json!({"look": look, "block": {"padding": padding}}),
+                    source,
+                );
+                let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+                let nodes = layout["nodes"].as_array().expect("layout nodes");
+                let max_label_width = nodes
+                    .iter()
+                    .map(|node| {
+                        let id = node["id"].as_str().unwrap();
+                        let rect = block_node_rect(&document, &format!("merman-{id}"));
+                        let label = rect
+                            .parent()
+                            .unwrap()
+                            .descendants()
+                            .find(|node| node.has_tag_name("foreignObject"))
+                            .expect("Block HTML label");
+                        numeric_attribute(label, "width")
+                    })
+                    .fold(0.0, f64::max);
+                for node in nodes {
+                    let id = node["id"].as_str().unwrap();
+                    let rect = block_node_rect(&document, &format!("merman-{id}"));
+                    let geometry = block_shape_geometry(&layout, id);
+                    let shell_x_padding = if look == "neo" { 32.0 } else { 4.0 * padding };
+                    let shell_y_padding = if look == "neo" { 24.0 } else { 2.0 * padding };
+                    let expected_width = max_label_width + shell_x_padding;
+                    let label = rect
+                        .parent()
+                        .unwrap()
+                        .descendants()
+                        .find(|node| node.has_tag_name("foreignObject"))
+                        .expect("Block HTML label");
+                    let expected_height = numeric_attribute(label, "height") + shell_y_padding;
+                    assert!((numeric_attribute(rect, "width") - expected_width).abs() <= 1e-6);
+                    assert!((numeric_attribute(rect, "height") - expected_height).abs() <= 1e-6);
+                    assert_eq!(geometry["boundary"]["width"].as_f64(), Some(expected_width));
+                    assert_eq!(
+                        geometry["boundary"]["height"].as_f64(),
+                        Some(expected_height)
+                    );
+                    assert_eq!(
+                        geometry["allocated"]["width"].as_f64(),
+                        Some(expected_width)
+                    );
+                    assert_eq!(
+                        geometry["allocated"]["height"].as_f64(),
+                        Some(expected_height)
+                    );
+                }
+                if nodes.len() == 2 {
+                    let a = block_node_rect(&document, "merman-A");
+                    let b = block_node_rect(&document, "merman-B");
+                    let (ax, _) = translated_center(a.parent().unwrap());
+                    let (bx, _) = translated_center(b.parent().unwrap());
+                    let gap = bx
+                        - ax
+                        - numeric_attribute(a, "width") / 2.0
+                        - numeric_attribute(b, "width") / 2.0;
+                    assert!((gap - padding).abs() <= 1e-6, "{look} grid gap: {gap}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn block_round_radius_preserves_mermaid_truthiness_in_svg_and_geometry() {
+    for (radius, expected) in [
+        (None, 5.0),
+        (Some(serde_json::json!(12)), 12.0),
+        (Some(serde_json::json!(0)), 5.0),
+        (Some(serde_json::json!("0")), 0.0),
+        (Some(serde_json::Value::Null), 5.0),
+    ] {
+        let mut config = serde_json::json!({});
+        if let Some(radius) = radius {
+            config["themeVariables"] = serde_json::json!({"radius": radius});
+        }
+        let (svg, layout) = render_block_geometry(config, "block\n A(\"A\")\n");
+        let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+        let rect = block_node_rect(&document, "merman-A");
+        assert_eq!(numeric_attribute(rect, "rx"), expected);
+        assert_eq!(numeric_attribute(rect, "ry"), expected);
+        assert_eq!(
+            block_shape_geometry(&layout, "A")["boundary"]["radius"].as_f64(),
+            Some(expected)
+        );
+    }
+}
+
+#[test]
+fn block_round_diagonal_edge_uses_rectangular_routing_with_any_paint_radius() {
+    for radius in [5, 12] {
+        let (svg, layout) = render_block_geometry(
+            serde_json::json!({"themeVariables": {"radius": radius}}),
+            "block-beta\n columns 2\n A(\"A\") B[\"B\"]\n space C[\"C\"]\n A --- C\n",
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Block SVG");
+        let a = block_node_rect(&document, "merman-A");
+        let layout_edge = layout["edges"]
+            .as_array()
+            .expect("Block layout edges")
+            .iter()
+            .find(|edge| edge["from"] == "A" && edge["to"] == "C")
+            .expect("A to C semantic edge");
+        let data_id = format!(
+            "{}-{}",
+            document.root_element().attribute("id").expect("diagram id"),
+            layout_edge["id"].as_str().expect("semantic edge id")
+        );
+        let edge = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("path")
+                    && node.attribute("data-et") == Some("edge")
+                    && node.attribute("data-id") == Some(data_id.as_str())
+            })
+            .expect("markerless A to C edge");
+        assert!(edge.attribute("marker-start").is_none());
+        assert!(edge.attribute("marker-end").is_none());
+        let points = base64::engine::general_purpose::STANDARD
+            .decode(edge.attribute("data-points").expect("raw edge points"))
+            .expect("base64 raw edge points");
+        let points: Vec<merman_render::model::LayoutPoint> =
+            serde_json::from_slice(&points).expect("raw edge point JSON");
+        let (center_x, center_y) = translated_center(a.parent().unwrap());
+        let dx = points[0].x - center_x;
+        let dy = points[0].y - center_y;
+        let half_width = numeric_attribute(a, "width") / 2.0;
+        let half_height = numeric_attribute(a, "height") / 2.0;
+        assert!(dx.abs() <= half_width + 1e-9 && dy.abs() <= half_height + 1e-9);
+        assert!(
+            (dx.abs() - half_width).abs() <= 1e-9 || (dy.abs() - half_height).abs() <= 1e-9,
+            "radius {radius} must route to the rectangle: endpoint=({dx},{dy}), half size=({half_width},{half_height})"
+        );
+        assert_eq!(
+            block_shape_geometry(&layout, "A")["boundary"]["radius"].as_f64(),
+            Some(f64::from(radius))
+        );
+    }
+}
+
+#[test]
 fn block_svg_uses_mermaid_11_15_dom_ids_and_html_label_shape() {
     let svg = render_block_svg_from_text(
         r#"block
@@ -1687,12 +1963,18 @@ fn block_svg_applies_class_definitions_to_assigned_nodes() {
         svg.contains(r#"class="node front flowchart-label""#),
         "expected the Frontend node to retain its assigned class: {svg}"
     );
+    let document = roxmltree::Document::parse(&svg).expect("Block class stylesheet XML");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Block class stylesheet");
     assert!(
-        svg.contains(r#"#merman .front&gt;*{fill:#696!important;stroke:#333!important;}"#),
+        css.contains(r#"#merman .front>*{fill:#696!important;stroke:#333!important;}"#),
         "expected the front class definition to style Block shapes: {svg}"
     );
     assert!(
-        svg.contains(r#"#merman .back&gt;*{fill:#969!important;stroke:#333!important;}"#),
+        css.contains(r#"#merman .back>*{fill:#969!important;stroke:#333!important;}"#),
         "expected the back class definition to style Block shapes: {svg}"
     );
 }
@@ -1708,9 +1990,15 @@ fn block_svg_xml_escapes_class_definition_values() {
     );
 
     roxmltree::Document::parse(&svg).expect("classDef CSS must remain well-formed XML");
+    let document = roxmltree::Document::parse(&svg).expect("classDef CSS XML");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("classDef CSS");
     assert!(
-        svg.contains(r#"font-family:&quot;A&amp;B&quot;!important;"#),
-        "expected classDef values to be XML escaped inside the style element: {svg}"
+        css.contains(r#"font-family:"A&B"!important;"#),
+        "classDef values must be logical CSS after XML parsing: {css}"
     );
 }
 
@@ -3006,9 +3294,8 @@ fn block_cluster_structural_node_class_owns_actual_shell_paint() {
     let source = format!("{BLOCK_CLUSTER_SOURCE}classDef node fill:#abcdef,stroke:#123456\n");
     let rendered = render_block_with_theme_and_engine(&source, &theme, Engine::new());
     assert!(
-        rendered
-            .svg()
-            .contains(".node&gt;*{fill:#abcdef!important;stroke:#123456!important;}")
+        block_stylesheet_text(rendered.svg())
+            .contains(".node>*{fill:#abcdef!important;stroke:#123456!important;}")
     );
     let document = roxmltree::Document::parse(rendered.svg()).unwrap();
     let cluster = document

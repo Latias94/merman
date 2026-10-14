@@ -311,41 +311,6 @@ fn push_mindmap_shadow_defs(
     out.checkpoint()
 }
 
-struct MindmapCssXmlOutput<'a, S> {
-    out: &'a mut S,
-}
-
-impl<S: SvgOutput> std::fmt::Write for MindmapCssXmlOutput<'_, S> {
-    fn write_str(&mut self, value: &str) -> std::fmt::Result {
-        super::super::util::escape_xml_raw_into(self.out, value);
-        self.out.checkpoint().map_err(|_| std::fmt::Error)
-    }
-}
-
-impl<S: SvgOutput> SvgOutput for MindmapCssXmlOutput<'_, S> {
-    fn push_str(&mut self, value: &str) {
-        super::super::util::escape_xml_raw_into(self.out, value);
-    }
-    fn push(&mut self, value: char) {
-        let mut encoded = [0; 4];
-        self.push_str(value.encode_utf8(&mut encoded));
-    }
-    fn len(&self) -> usize {
-        self.out.len()
-    }
-    fn as_str(&self) -> &str {
-        self.out.as_str()
-    }
-    fn replace_range(&mut self, _range: std::ops::Range<usize>, _replacement: &str) -> Result<()> {
-        Err(Error::InvalidModel {
-            message: "Mindmap CSS XML writer does not replace emitted text".to_owned(),
-        })
-    }
-    fn checkpoint(&mut self) -> Result<()> {
-        self.out.checkpoint()
-    }
-}
-
 struct MindmapCssEmission {
     font_family_css: Box<str>,
 }
@@ -896,7 +861,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str("<style>");
     out.checkpoint()?;
     let css = mindmap_css(
-        &mut MindmapCssXmlOutput { out: &mut out },
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         node_palette,
     )?;

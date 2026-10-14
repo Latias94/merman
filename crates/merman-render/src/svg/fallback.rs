@@ -942,7 +942,7 @@ fn writer_owned_fallback_text_filter<'a, E>(
     // The annotation requests projection, not admission. Require its real HTML application;
     // the downstream exporter still verifies the actual SVG definition and filtered glyphs.
     checkpoint()?;
-    let Ok(document) = roxmltree::Document::parse(inner) else {
+    let Ok(document) = crate::xml_dom::Document::parse(inner) else {
         return Ok(None);
     };
     checkpoint()?;
@@ -1140,7 +1140,7 @@ mod tests {
     use std::cell::RefCell;
 
     fn has_background_rect(svg: &str, color: &str, width: &str, height: &str) -> bool {
-        let document = roxmltree::Document::parse(svg).unwrap();
+        let document = crate::xml_dom::Document::parse(svg).unwrap();
         document.descendants().any(|node| {
             node.has_tag_name("rect")
                 && node.attribute("fill") == Some(color)
@@ -1265,7 +1265,7 @@ mod tests {
                 "<svg><foreignObject width='200' height='24'><div>{fragment}</div></foreignObject></svg>"
             );
             let output = foreign_object_label_fallback_svg_text(&svg);
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let text = document
                 .descendants()
                 .find(|node| node.has_tag_name("text"))
@@ -1283,7 +1283,7 @@ mod tests {
         let svg = "<svg><foreignObject width='400' height='24'><div>Alpha <b>Beta</b> <i>Gamma</i> אבגד</div></foreignObject></svg>";
         let measurer = RecordingMeasurer::default();
         let output = render_fallback(svg, &measurer);
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         let text = document
             .descendants()
             .find(|node| node.has_tag_name("text"))
@@ -1342,7 +1342,7 @@ mod tests {
         }
         let svg = r#"<svg style='font-size:10px'><foreignObject width='80' height='30'><div style="max-width:80px">aa <b>bb</b> cc</div></foreignObject></svg>"#;
         let output = render_fallback(svg, &StyledMeasurer);
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         let rows = document
             .descendants()
             .filter(|node| node.has_tag_name("text"))
@@ -1363,12 +1363,12 @@ mod tests {
         });
         let svg = r#"<svg><foreignObject width='40' height='100'><div style="max-width:40px"><b>aa&#173;bb</b> aa <i>aa</i></div></foreignObject></svg>"#;
         let output = render_fallback(svg, measurer.as_ref());
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         let rows = document
             .descendants()
             .filter(|node| node.has_tag_name("text"))
             .collect::<Vec<_>>();
-        let content = |node: roxmltree::Node<'_, '_>| {
+        let content = |node: crate::xml_dom::Node<'_, '_>| {
             node.descendants()
                 .filter(|child| child.is_text())
                 .filter_map(|child| child.text())
@@ -1399,7 +1399,7 @@ mod tests {
 
         let svg = r#"<svg><foreignObject width='30' height='100'><div style="max-width:30px"><b>aa&#173;bb</b> cc</div></foreignObject></svg>"#;
         let output = render_fallback(svg, measurer.as_ref());
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         let first = document
             .descendants()
             .find(|node| node.has_tag_name("text"))
@@ -1431,7 +1431,7 @@ mod tests {
         }
         let svg = r#"<svg><foreignObject width='35' height='24'><div style="max-width:35px">A<span style='color:red'>V</span> B</div></foreignObject></svg>"#;
         let output = render_fallback(svg, &KerningMeasurer);
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         assert_eq!(
             document
                 .descendants()
@@ -1474,7 +1474,7 @@ mod tests {
                 "<svg><foreignObject width='200' height='24'><div style='{base}'>{fragment}</div></foreignObject></svg>"
             );
             let output = foreign_object_label_fallback_svg_text(&svg);
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let text = document
                 .descendants()
                 .find(|node| node.has_tag_name("text"))
@@ -1504,7 +1504,7 @@ mod tests {
                 r#"<svg><foreignObject width="35" height="24"><div style="max-width:35px"><span style="font-weight:{spelling};font-style:Normal">A</span>V B</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, &KerningMeasurer);
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             assert_eq!(
                 document
                     .descendants()
@@ -1520,7 +1520,7 @@ mod tests {
     fn rich_text_fallback_isolates_generated_tspans_from_svg_only_css() {
         let svg = r#"<svg><style>tspan{font-size:64px;opacity:0;stroke:red}</style><foreignObject width="200" height="24"><div>Alpha <b>Beta</b></div></foreignObject></svg>"#;
         let output = foreign_object_label_fallback_svg_text(svg);
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         assert!(!output.contains(super::FALLBACK_CSS_RESIDUAL_DATA_ATTR));
         let spans = document
             .descendants()
@@ -1589,7 +1589,7 @@ mod tests {
                 r##"<svg><style>tspan{{{declaration}}}</style><foreignObject width="200" height="24" data-merman-fallback-occurrence="test-label" data-merman-fallback-background-fill="#123456"><div class="labelBkg">Alpha <b>Beta</b></div></foreignObject></svg>"##
             );
             let output = foreign_object_label_fallback_svg_text(&source);
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let fallback = document
                 .descendants()
                 .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
@@ -1612,8 +1612,8 @@ mod tests {
     }
 
     fn instance_for_text<'a, 'input>(
-        text: roxmltree::Node<'a, 'input>,
-    ) -> roxmltree::Node<'a, 'input> {
+        text: crate::xml_dom::Node<'a, 'input>,
+    ) -> crate::xml_dom::Node<'a, 'input> {
         if let Some(definition) = text.ancestors().find(|node| {
             node.has_tag_name("g")
                 && node
@@ -1636,7 +1636,7 @@ mod tests {
     fn filtered_foreign_object_keeps_local_coordinates_and_paint_order() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="glow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="100" height="80"><feDropShadow stdDeviation="4"/></filter></defs><g transform="translate(100,200)"><g filter="url(#glow)" transform="translate(7,9)"><foreignObject x="3" y="5" width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject></g><rect id="later-paint" width="10" height="10"/></g><foreignObject x="400" width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">Beta</div></foreignObject></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);
-        let xml = roxmltree::Document::parse(&out).unwrap();
+        let xml = crate::xml_dom::Document::parse(&out).unwrap();
         let alpha = xml
             .descendants()
             .find(|node| node.has_tag_name("text") && node.text() == Some("Alpha"))
@@ -1687,7 +1687,7 @@ mod tests {
                 r##"<svg xmlns="http://www.w3.org/2000/svg"><style>{css}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##
             );
             let out = foreign_object_label_fallback_svg_text(&svg);
-            let document = roxmltree::Document::parse(&out).unwrap();
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
             let text = document
                 .descendants()
                 .find(|node| node.has_tag_name("text"))
@@ -1726,7 +1726,7 @@ mod tests {
                 r##"<svg xmlns="http://www.w3.org/2000/svg"><style>{css}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##
             );
             let out = foreign_object_label_fallback_svg_text(&svg);
-            let document = roxmltree::Document::parse(&out).unwrap();
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
             let text = document
                 .descendants()
                 .find(|node| node.has_tag_name("text"))
@@ -1747,7 +1747,7 @@ mod tests {
         // Keep the HTML void element in the scanner input. Normalize the retained
         // HTML only after fallback conversion, so strict XML can inspect its result.
         let xml = out.replace("<br>", "<br/>");
-        let document = roxmltree::Document::parse(&xml).unwrap();
+        let document = crate::xml_dom::Document::parse(&xml).unwrap();
         let text = document
             .descendants()
             .find(|node| node.has_tag_name("text"))
@@ -1764,7 +1764,7 @@ mod tests {
     fn structural_projection_guards_never_enter_the_style_cascade() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.node:first-child .nodeLabel{font-size:99px}</style><g class="node"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##;
         let out = foreign_object_label_fallback_svg_text(svg);
-        let document = roxmltree::Document::parse(&out).unwrap();
+        let document = crate::xml_dom::Document::parse(&out).unwrap();
         let text = document
             .descendants()
             .find(|node| node.has_tag_name("text"))
@@ -1869,7 +1869,7 @@ mod tests {
     fn foreign_object_text_filter_keeps_background_outside_and_requires_the_real_reference() {
         let source = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel rect{opacity:.5;fill:red}</style><g class="edgeLabel" transform="translate(20,30)"><foreignObject width="80" height="24" style="overflow: visible;" data-merman-fallback-text-filter="url(#glow)"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="background:rgba(255,0,0,0.7)"><span class="edgeLabel" style=";background:transparent"><p style="background:transparent;filter:url(#glow);">Hello</p></span></div></foreignObject></g></svg>"##;
         let out = foreign_object_label_fallback_svg_text(source);
-        let document = roxmltree::Document::parse(&out).unwrap();
+        let document = crate::xml_dom::Document::parse(&out).unwrap();
         let filtered = document
             .descendants()
             .find(|n| n.attribute("filter") == Some("url(#glow)"))
@@ -1915,7 +1915,7 @@ mod tests {
             ),
         ] {
             let out = foreign_object_label_fallback_svg_text(&invalid);
-            let document = roxmltree::Document::parse(&out).unwrap();
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
             assert!(
                 !document
                     .descendants()
@@ -2078,7 +2078,7 @@ mod tests {
                 r#"<svg id="root" xmlns="http://www.w3.org/2000/svg"><style>{css}</style><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Root</div></foreignObject></svg>"#
             );
             let output = foreign_object_label_fallback_svg_text(&svg);
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let fallback = document
                 .descendants()
                 .find(|node| {
@@ -2089,7 +2089,7 @@ mod tests {
             assert_eq!(
                 fallback
                     .descendants()
-                    .filter(roxmltree::Node::is_text)
+                    .filter(crate::xml_dom::Node::is_text)
                     .filter_map(|node| node.text())
                     .collect::<String>(),
                 "Root"
@@ -2992,7 +2992,7 @@ mod tests {
                 metrics.width, metrics.height,
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+            let document = crate::xml_dom::Document::parse(&output).expect("valid fallback SVG");
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| {
@@ -3038,7 +3038,8 @@ mod tests {
                     r#"<svg xmlns="http://www.w3.org/2000/svg" style="font-size:16px"><foreignObject width="{limit}" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:{white_space};width:{limit}px">{label}</div></foreignObject></svg>"#,
                 );
                 let output = render_fallback(&svg, measurer.as_ref());
-                let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+                let document =
+                    crate::xml_dom::Document::parse(&output).expect("valid fallback SVG");
                 let rows: Vec<_> = document
                     .descendants()
                     .filter(|node| node.has_tag_name("text"))
@@ -3068,7 +3069,8 @@ mod tests {
                     r#"<svg xmlns="http://www.w3.org/2000/svg" style="font-size:16px"><foreignObject width="20" height="48" text-anchor="{anchor}"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:pre-wrap;width:20px">{label}</div></foreignObject></svg>"#
                 );
                 let output = render_fallback(&svg, measurer.as_ref());
-                let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+                let document =
+                    crate::xml_dom::Document::parse(&output).expect("valid fallback SVG");
                 let rows: Vec<_> = document
                     .descendants()
                     .filter(|node| node.has_tag_name("text"))
@@ -3105,7 +3107,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="100" height="24"><div style="white-space:break-spaces;width:100px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let row = document
                 .descendants()
                 .find(|node| node.has_tag_name("text"))
@@ -3121,7 +3123,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="200" height="72"><div style="white-space:{mode};width:200px">  a  <br/><br/> b </div></foreignObject></svg>"#
             );
             let output = foreign_object_label_fallback_svg_text(&svg);
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -3141,7 +3143,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="20" height="48" text-anchor="{anchor}"><div style="white-space:normal;width:20px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -3163,7 +3165,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="60" height="48"><div style="white-space:break-spaces;width:60px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -3214,7 +3216,7 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="8000" height="48"><div style="white-space:break-spaces;width:8000px">{label}</div></foreignObject></svg>"#
         );
         let output = render_fallback(&svg, &measurer);
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         assert_eq!(
             document
                 .descendants()
@@ -3248,7 +3250,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="10" height="48"><div style="white-space:{parent};width:10px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -3290,7 +3292,7 @@ mod tests {
             .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="100" height="48"><div style="white-space:pre-wrap;width:100px">a&amp;lt;br&amp;gt;  b</div></foreignObject></svg>"#;
         let output = render_fallback(svg, measurer.as_ref());
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         let rows: Vec<_> = document
             .descendants()
             .filter(|node| node.has_tag_name("text"))
@@ -3347,7 +3349,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="{width}" height="48"><div style="white-space:{parent};width:{width}px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))

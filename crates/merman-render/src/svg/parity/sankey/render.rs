@@ -283,8 +283,11 @@ pub(crate) fn render_sankey_diagram_svg(
         )?;
     out.push_str("<style>");
     out.checkpoint()?;
-    let typography_css_emission =
-        super::css::write_sankey_css(&mut out, diagram_id, typography_theme)?;
+    let typography_css_emission = super::css::write_sankey_css(
+        &mut super::super::output::XmlTextOutput::new(&mut out),
+        diagram_id,
+        typography_theme,
+    )?;
     if let Some(receipt) = &mut typography_receipt {
         receipt.record_css_emission(typography_css_emission);
     }

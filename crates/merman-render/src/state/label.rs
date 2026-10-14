@@ -327,7 +327,7 @@ mod tests {
         assert!(html.contains(
             r#"<img src="x" style="display: flex; flex-direction: column; width: 100%;" />"#
         ));
-        roxmltree::Document::parse(&format!("<root>{html}</root>"))
+        crate::xml_dom::Document::parse(&format!("<root>{html}</root>"))
             .expect("State label fragment must be valid XHTML");
     }
 

@@ -832,12 +832,6 @@ impl MermaidConfig {
         )
     }
 
-    pub(crate) fn has_theme_ownership_provenance(&self) -> bool {
-        // A value constructed from raw JSON owns no authored paths. Compatibility bindings,
-        // including tracking bindings, can still propagate ownership without explicit paths.
-        !self.explicit_config_paths.is_empty() || self.theme_compatibility.is_some()
-    }
-
     pub(crate) fn theme_parse_binding(&self) -> Option<&ThemeParseBinding> {
         match self.theme_compatibility.as_ref() {
             Some(ThemeCompatibilityState::Frozen { binding, .. }) => Some(binding),
@@ -996,6 +990,65 @@ impl MermaidConfig {
                         .flat_map(|field| field.surviving_paths.iter())
                         .any(|candidate| dotted_paths_overlap(candidate, dotted_path))
             )
+    }
+
+    pub(crate) fn theme_variable_has_calculation_owner(&self, variable: &str) -> bool {
+        let source_path = format!("themeVariables.{variable}");
+        if self.explicit_config_owns_path(&source_path) {
+            return true;
+        }
+        // Theme calculation precedes freezing. Read the same surviving physical inputs that
+        // propagation can extend, without changing the renderer's frozen-admission predicate.
+        match self.theme_compatibility.as_ref() {
+            Some(ThemeCompatibilityState::Tracking(ownership)) => {
+                ownership.fields.iter().any(|field| {
+                    field
+                        .paths
+                        .iter()
+                        .any(|path| path.owned && path.path.as_ref() == source_path)
+                })
+            }
+            Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.iter().any(|field| {
+                field
+                    .surviving_paths
+                    .iter()
+                    .any(|path| path.as_ref() == source_path)
+            }),
+            None => false,
+        }
+    }
+
+    pub(crate) fn has_theme_variable_calculation_owners(&self) -> bool {
+        if self.explicit_config_paths.contains("")
+            || self.explicit_config_paths.contains("themeVariables")
+            || self
+                .explicit_config_paths
+                .range::<str, _>((
+                    std::ops::Bound::Included("themeVariables."),
+                    std::ops::Bound::Unbounded,
+                ))
+                .next()
+                .is_some_and(|path| path.starts_with("themeVariables."))
+        {
+            return true;
+        }
+        match self.theme_compatibility.as_ref() {
+            Some(ThemeCompatibilityState::Tracking(ownership)) => {
+                ownership.fields.iter().any(|field| {
+                    field
+                        .paths
+                        .iter()
+                        .any(|path| path.owned && path.path.starts_with("themeVariables."))
+                })
+            }
+            Some(ThemeCompatibilityState::Frozen { fields, .. }) => fields.iter().any(|field| {
+                field
+                    .surviving_paths
+                    .iter()
+                    .any(|path| path.starts_with("themeVariables."))
+            }),
+            None => false,
+        }
     }
 
     pub(crate) fn propagate_theme_variable_ownership(&mut self, source: &str, target: &str) {
@@ -1163,6 +1216,24 @@ impl MermaidConfig {
     }
 
     fn set_value_without_theme_compatibility_shadow(&mut self, dotted_path: &str, value: Value) {
+        // Setters treat even an empty dotted path as a literal key. Metadata has already recorded
+        // the assignment; only an identical value can retain the shared JSON storage.
+        let current = dotted_path
+            .split('.')
+            .try_fold(self.value.as_ref(), |parent, segment| {
+                parent.as_object()?.get(segment)
+            });
+        if current.is_some_and(|current| {
+            if current.is_object() || current.is_array() || value.is_object() || value.is_array() {
+                config_values_equal(current, &value, None)
+                    .expect("comparison without operation control cannot cancel")
+            } else {
+                current == &value
+            }
+        }) {
+            drop_value_nonrecursive(value);
+            return;
+        }
         let root_value = self.value_mut();
         // Be defensive: callers can construct `MermaidConfig` from any JSON value via
         // `from_value`. Mermaid configs are objects; if we see a non-object here, coerce it
@@ -1602,6 +1673,137 @@ mod tests {
     use serde_json::json;
 
     #[test]
+    fn same_value_public_setter_keeps_detector_claims_and_shadows_without_json_copy() {
+        let binding = ThemeParseBinding::try_new(
+            [0x71; 32],
+            MermaidConfig::from_value(json!({
+                "theme": "base",
+                "themeVariables": {"primaryColor": "#123456", "secondaryColor": "#abcdef"},
+            })),
+        )
+        .unwrap();
+        let original = MermaidConfig::from_theme_parse_binding(binding);
+        let mut working = original.clone();
+        let checkpoint = DetectorConfigCheckpoint::new(&working);
+        let (_, work) = measure_config_work(|| {
+            working.set_value("themeVariables.primaryColor", json!("#123456"));
+        });
+        let changes = checkpoint
+            .finish(&mut working, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            changes.explicit_paths(),
+            &[Arc::<str>::from("themeVariables.primaryColor")]
+        );
+        assert!(!changes.value_changed_at("themeVariables.primaryColor"));
+        assert!(working.explicit_config_owns_path("themeVariables.primaryColor"));
+
+        let mut replayed = original.clone();
+        replayed.set_value_preserving_theme_compatibility(
+            "themeVariables.primaryColor",
+            json!("#654321"),
+        );
+        changes
+            .replay(&mut replayed, &OperationControl::new())
+            .unwrap();
+        assert_eq!(
+            replayed.get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert!(replayed.explicit_config_owns_path("themeVariables.primaryColor"));
+        working.freeze_theme_compatibility();
+        let surviving = working.mermaid_compatibility_fields().unwrap();
+        assert!(!surviving.iter().any(|field| {
+            field
+                .surviving_paths()
+                .iter()
+                .any(|path| path.as_ref() == "themeVariables.primaryColor")
+        }));
+        assert!(surviving.iter().any(|field| {
+            field
+                .surviving_paths()
+                .iter()
+                .any(|path| path.as_ref() == "themeVariables.secondaryColor")
+        }));
+        assert_eq!(working.as_value(), original.as_value());
+        assert!(original.has_tracking_theme_compatibility());
+        assert!(Arc::ptr_eq(&working.value, &original.value));
+        assert_eq!(work.json_cow_copies, 0, "{work:?}");
+    }
+
+    #[test]
+    fn same_value_explicit_and_framework_setters_preserve_their_distinct_authority() {
+        let binding = ThemeParseBinding::try_new(
+            [0x72; 32],
+            MermaidConfig::from_value(json!({
+                "theme": "base", "themeVariables": {"primaryColor": "#123456"},
+            })),
+        )
+        .unwrap();
+        let original = MermaidConfig::from_theme_parse_binding(binding);
+        let mut explicit = original.clone();
+        let mut framework = original.clone();
+        let (_, work) = measure_config_work(|| {
+            explicit.set_value_explicit("themeVariables.primaryColor", json!("#123456"));
+            framework.set_value_preserving_theme_compatibility(
+                "themeVariables.primaryColor",
+                json!("#123456"),
+            );
+        });
+        assert!(explicit.explicit_config_owns_path("themeVariables.primaryColor"));
+        assert!(!framework.explicit_config_owns_path("themeVariables.primaryColor"));
+        assert!(explicit.path_was_mutated_after(&original, "themeVariables.primaryColor"));
+        assert!(framework.path_was_mutated_after(&original, "themeVariables.primaryColor"));
+        explicit.freeze_theme_compatibility();
+        framework.freeze_theme_compatibility();
+        assert!(framework.config_path_overrides_typed_default("themeVariables.primaryColor"));
+        assert_eq!(explicit.mermaid_compatibility_residual_count(), 1);
+        assert_eq!(framework.mermaid_compatibility_residual_count(), 2);
+        assert!(Arc::ptr_eq(&explicit.value, &original.value));
+        assert!(Arc::ptr_eq(&framework.value, &original.value));
+        assert_eq!(work.json_cow_copies, 0, "{work:?}");
+    }
+
+    #[test]
+    fn same_value_setter_keeps_literal_empty_keys_and_empty_path_segments() {
+        let original = MermaidConfig::from_value(json!({
+            "": 3, "a": {"": {"b": [1, 2]}}, "dot.key": 7, "dot": {"key": 8},
+        }));
+        let mut working = original.clone();
+        let (_, work) = measure_config_work(|| {
+            working.set_value("", json!(3));
+            working.set_value("a..b", json!([1, 2]));
+            working.set_value("dot.key", json!(8));
+        });
+        assert_eq!(working.as_value(), original.as_value());
+        assert_eq!(working.as_value()["dot.key"], json!(7));
+        assert!(working.path_was_mutated_after(&original, ""));
+        assert!(working.path_was_mutated_after(&original, "a..b"));
+        assert!(Arc::ptr_eq(&working.value, &original.value));
+        assert_eq!(work.json_cow_copies, 0, "{work:?}");
+
+        for root in [json!(3), json!({"a": null}), json!({"a": [1]})] {
+            let original = MermaidConfig::from_value(root);
+            let mut coerced = original.clone();
+            let path = if original.as_value().is_object() {
+                "a.b"
+            } else {
+                ""
+            };
+            let (_, work) = measure_config_work(|| coerced.set_value(path, Value::Null));
+            let expected = if path.is_empty() {
+                json!({"": null})
+            } else {
+                json!({"a": {"b": null}})
+            };
+            assert_eq!(coerced.as_value(), &expected);
+            assert_eq!(work.json_cow_copies, 1, "{work:?}");
+            assert_ne!(coerced.as_value(), original.as_value());
+        }
+    }
+
+    #[test]
     fn detector_checkpoint_distinguishes_old_clone_setters_from_historical_journal() {
         let mut old = MermaidConfig::from_value(json!({"custom": 7}));
         old.set_value("custom", json!(7));
@@ -1768,31 +1970,6 @@ mod tests {
         );
         assert!(actual_target.explicit_config_owns_path("custom"));
         assert!(!actual_target.explicit_config_owns_path("themeVariables.nodeBkg"));
-    }
-
-    #[test]
-    fn theme_ownership_provenance_includes_explicit_and_all_compatibility_states() {
-        let mut raw = MermaidConfig::from_value(json!({
-            "theme": "neo-dark", "themeVariables": {"primaryColor": "#123456"},
-        }));
-        assert!(!raw.has_theme_ownership_provenance());
-        raw.set_value("themeVariables.primaryColor", json!("#123456"));
-        assert!(!raw.has_theme_ownership_provenance());
-        raw.set_value_explicit("themeVariables.primaryColor", json!("#123456"));
-        assert!(raw.has_theme_ownership_provenance());
-
-        for value in [
-            json!({}),
-            json!({"themeVariables": {"primaryColor": "#123456"}}),
-        ] {
-            let binding = ThemeParseBinding::try_new([0x7b; 32], MermaidConfig::from_value(value))
-                .expect("valid compatibility input");
-            let mut bound = MermaidConfig::from_theme_parse_binding(binding);
-            assert!(bound.explicit_config_paths.is_empty());
-            assert!(bound.has_theme_ownership_provenance());
-            bound.freeze_theme_compatibility();
-            assert!(bound.has_theme_ownership_provenance());
-        }
     }
 
     #[test]

@@ -364,7 +364,11 @@ fn render_state_diagram_svg_with_plan(
     // the bounded document so a large public diagram id or class catalog cannot allocate an
     // unbounded temporary stylesheet before `MaxSvgBytes` admission.
     out.push_str("<style>");
-    write_state_css(&mut out, diagram_id, style_plan)?;
+    write_state_css(
+        &mut super::super::output::XmlTextOutput::new(&mut out),
+        diagram_id,
+        style_plan,
+    )?;
     out.push_str("</style>");
     out.checkpoint()?;
 
@@ -1421,10 +1425,10 @@ mod tests {
             )
         };
         let baseline = render(serde_json::json!(false));
-        let baseline_doc = roxmltree::Document::parse(&baseline).unwrap();
+        let baseline_doc = crate::xml_dom::Document::parse(&baseline).unwrap();
         for hops in [serde_json::json!(true), serde_json::json!("gap")] {
             let svg = render(hops);
-            let doc = roxmltree::Document::parse(&svg).unwrap();
+            let doc = crate::xml_dom::Document::parse(&svg).unwrap();
             for expected in baseline_doc
                 .descendants()
                 .filter(|node| node.attribute("data-edge") == Some("true"))
@@ -1468,7 +1472,7 @@ mod tests {
                     "{style}: length={length}"
                 );
             }
-            let label = |document: &roxmltree::Document<'_>| {
+            let label = |document: &crate::xml_dom::Document<'_>| {
                 let group = document
                     .descendants()
                     .find(|node| node.attribute("class") == Some("edgeLabels"))

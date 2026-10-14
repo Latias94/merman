@@ -110,6 +110,22 @@ Alice->>Bob: Hello"##;
 }
 
 #[test]
+fn layout_projection_materializes_scoped_theme_with_source_variables() {
+    let source = r##"%%{init: {"themeVariables": {"primaryColor": "#123456"}}}%%
+sequenceDiagram
+Alice->>Bob: Hello"##;
+    let renderer = Renderer::new().with_engine(Engine::new().with_site_config(config(json!({
+        "theme": "default",
+        "sequence": {"theme": "base"}
+    }))));
+
+    let effective = effective_config(&renderer, source, SvgRequest::default(), None);
+    assert_eq!(effective["theme"], "base");
+    assert_eq!(effective["themeVariables"]["primaryColor"], "#123456");
+    assert_eq!(effective["themeVariables"]["actorBkg"], "#123456");
+}
+
+#[test]
 fn source_config_cannot_override_secure_site_values() {
     let source = r##"%%{init: {"themeVariables": {"lineColor": "#abcdef"}}}%%
 sequenceDiagram

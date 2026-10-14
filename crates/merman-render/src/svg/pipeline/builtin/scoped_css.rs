@@ -403,23 +403,6 @@ mod tests {
 
     #[test]
     fn scoped_css_matches_mermaid_namespace_boundary_rules() {
-        fn normalize_css_whitespace(value: &str) -> String {
-            let mut normalized = String::with_capacity(value.len());
-            let mut pending_space = false;
-            for character in value.chars() {
-                if matches!(character, ' ' | '\n' | '\r' | '\t' | '\u{000C}') {
-                    pending_space = true;
-                    continue;
-                }
-                if pending_space && !normalized.is_empty() {
-                    normalized.push(' ');
-                }
-                pending_space = false;
-                normalized.push(character);
-            }
-            normalized
-        }
-
         let cases = [
             ("& ~ *", "color: red;", "#diagram #diagram ~ *"),
             (
@@ -446,19 +429,52 @@ mod tests {
 
         for (selector, body, expected) in cases {
             let css = format!("{selector}{{{body}}}");
-            let svg = r#"<svg id="diagram"><g/></svg>"#;
             let session = render_session();
-            let out = SvgPipeline::parity()
-                .with_postprocessor(ScopedCssPostprocessor::new(css))
-                .process_to_string(svg, &session)
-                .unwrap();
-            let normalized_output = normalize_css_whitespace(&out);
-            let normalized_expected = normalize_css_whitespace(&format!("{expected} {{{body}}}"));
-            assert!(
-                normalized_output.contains(&normalized_expected),
-                "selector: {selector:?}; output: {out}"
+            let mut out = String::new();
+            rewrite::materialize_css(
+                &css,
+                Some("#diagram"),
+                &mut out,
+                SvgPostprocessExecution::new(&session),
+            )
+            .expect("CSS namespace rewriting admits all CSS whitespace");
+            assert_eq!(
+                out,
+                format!("{expected} {{{body}}}"),
+                "selector: {selector:?}"
             );
         }
+    }
+
+    #[test]
+    fn scoped_css_pipeline_preserves_xml_whitespace_and_rejects_form_feed() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                "& \n\t \r \r\n + *{color: red;}",
+            ))
+            .process_to_string(svg, &session)
+            .expect("XML-compatible CSS whitespace should remain injectable");
+        assert!(out.contains("#diagram #diagram \n\t \r \r\n + * {color: red;}"));
+        crate::xml_dom::Document::parse(&out).expect("injected CSS must remain valid XML");
+
+        let error = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                "& \n\t \r \u{000C} \r\n + *{color: red;}",
+            ))
+            .process_to_string(svg, &session)
+            .expect_err("CSS form feed cannot be emitted as literal XML 1.0 text");
+        assert!(
+            matches!(
+                &error,
+                Error::SvgPostprocess { pass, message }
+                    if pass == "validate-well-formed-svg"
+                        && message.contains("U+000C")
+                        && message.contains("forbidden in XML 1.0")
+            ),
+            "{error}"
+        );
     }
 
     #[test]

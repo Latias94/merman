@@ -50,6 +50,7 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
     pub timing: RenderTiming,
     pub uses_elk_adapter_dom: bool,
     pub edge_paths_class: &'static str,
+    pub capture_text_facts: bool,
     pub text_paint: Option<&'a crate::class::ClassTextPaint>,
     pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub emit: ClassEmitCheckpoint<'a>,
@@ -166,7 +167,7 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
 ) -> crate::Result<ClassEdgeLabelCenters> {
     let mut edge_points_json_buf = String::new();
@@ -510,15 +511,15 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
                 .copied()
                 .and_then(|index| index.checked_sub(1))
                 .unwrap_or(usize::MAX);
-            theme_receipt.record_relation(
+            theme_receipt.record_relation(crate::class::ClassRelationTerminalEvent {
                 relation_index,
-                start_marker_name,
-                end_marker_name,
-                typed_stroke,
-                &terminal_style,
+                start_marker: start_marker_name,
+                end_marker: end_marker_name,
+                emitted_stroke: typed_stroke,
+                terminal_style: &terminal_style,
                 hand_drawn_stroke,
-                typed_stroke_width.is_some(),
-            );
+                typed_width_emitted: typed_stroke_width.is_some(),
+            });
         }
     }
     out.push_str("</g>");
@@ -534,7 +535,7 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt,
+    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
     edge_label_centers: &ClassEdgeLabelCenters,
@@ -697,7 +698,7 @@ fn render_class_edge_label_group(
     center_x: f64,
     center_y: f64,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-    receipt: &mut crate::class::ClassRelationThemeReceipt,
+    receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     relation_index: Option<usize>,
 ) -> (crate::class::ClassTextTerminalFacts, bool) {
     let normalized = if ctx.uses_elk_adapter_dom {
@@ -784,7 +785,7 @@ fn render_class_edge_label_group(
                 escape_attr_display(empty_div_style.as_str())
             );
         }
-        let typography = if trimmed.is_empty() || label.is_none() {
+        let typography = if !ctx.capture_text_facts || trimmed.is_empty() || label.is_none() {
             crate::class::ClassTextTerminalFacts::default()
         } else if crate::math::contains_delimited_math(trimmed) {
             crate::class::ClassTextTerminalFacts::unverified_text(trimmed)
@@ -850,7 +851,7 @@ fn render_class_edge_label_group(
         );
         out.push_str("</g></g>");
     }
-    let typography = if trimmed.is_empty() {
+    let typography = if !ctx.capture_text_facts || trimmed.is_empty() {
         crate::class::ClassTextTerminalFacts::default()
     } else {
         let facts = crate::class::class_svg_label_visible_style_facts(trimmed);

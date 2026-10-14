@@ -398,9 +398,10 @@ fn annotate_folded_stereotype(out: &mut String, start: usize) -> Result<()> {
     // The fragment is our own complete label group, so byte ranges can be applied
     // without reparsing the entire diagram or depending on literal label content.
     let fragment = &out[start..];
-    let document = roxmltree::Document::parse(fragment).map_err(|error| Error::InvalidModel {
-        message: format!("invalid prepared Usecase stereotype label: {error}"),
-    })?;
+    let document =
+        crate::xml_dom::Document::parse(fragment).map_err(|error| Error::InvalidModel {
+            message: format!("invalid prepared Usecase stereotype label: {error}"),
+        })?;
     if let Some(span) = document
         .descendants()
         .find(|node| node.has_tag_name("span") && node.attribute("class") == Some("nodeLabel"))

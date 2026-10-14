@@ -71,7 +71,6 @@ pub(crate) enum RenderProfile {
     Standard,
     HandDrawnSeed,
     GitGraphSeed,
-    SequenceMath,
     Specialist,
 }
 
@@ -766,14 +765,14 @@ impl AddAssign for CompareEvidence {
 
 #[derive(Debug)]
 pub(crate) struct CompareRunFailure {
-    evidence: CompareEvidence,
+    evidence: Box<CompareEvidence>,
     error: Box<XtaskError>,
 }
 
 impl CompareRunFailure {
     fn with_evidence(evidence: CompareEvidence, error: XtaskError) -> Self {
         Self {
-            evidence,
+            evidence: Box::new(evidence),
             error: Box::new(error),
         }
     }
@@ -783,7 +782,7 @@ impl CompareRunFailure {
     }
 
     pub(crate) fn evidence(&self) -> CompareEvidence {
-        self.evidence.clone()
+        self.evidence.as_ref().clone()
     }
 
     pub(crate) fn into_error(self) -> XtaskError {
@@ -875,7 +874,7 @@ pub(crate) fn run_canonical_svg_compare(
     debug_assert_eq!(fact.render_path(), merman::OperationExecutionPath::Renderer);
 
     let engine = match fact.render_profile {
-        RenderProfile::Standard | RenderProfile::SequenceMath => super::svg_compare_engine(),
+        RenderProfile::Standard => super::svg_compare_engine(),
         RenderProfile::HandDrawnSeed => {
             super::svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }))
         }

@@ -626,7 +626,9 @@ pub(crate) fn render_treemap_diagram_svg(
     if let Some(receipt) = typography_theme_receipt.as_mut() {
         receipt.record_css_emission(typography_css_emission);
     }
-    let _ = write!(&mut out, "<style>{}</style>", css);
+    out.push_str("<style>");
+    super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
+    out.push_str("</style>");
     drop(css);
     out.push_str("<g/>");
     out.checkpoint()?;

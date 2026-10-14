@@ -354,13 +354,14 @@ pub(super) fn apply_line_hops_to_edge_geometries(
 pub(super) fn write_swimlane_css<DiagramId>(
     out: &mut impl crate::svg::parity::SvgOutput,
     diagram_id: DiagramId,
+    cluster_border: &str,
 ) where
     DiagramId: crate::svg::parity::SvgDiagramIdValue,
 {
     let id = super::FlowchartCssSelectorDiagramId::new(diagram_id);
     let _ = write!(
         out,
-        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}"#,
+        r#"#{id} [data-look="neo"].cluster rect{{filter:none;}}#{id} .swimlane.cluster:not([data-color-id]) rect{{stroke:{cluster_border}!important;}}"#,
     );
 }
 
@@ -372,7 +373,7 @@ mod tests {
     #[test]
     fn swimlane_css_escapes_the_diagram_id_as_a_css_identifier() {
         let mut css = String::new();
-        write_swimlane_css(&mut css, "seq:prod.v1");
+        write_swimlane_css(&mut css, "seq:prod.v1", "#aaaa33");
 
         assert!(css.contains(r#"#seq\:prod\.v1 [data-look="neo"].cluster"#));
         assert!(!css.contains(r#"#seq:prod.v1 [data-look="neo"].cluster"#));

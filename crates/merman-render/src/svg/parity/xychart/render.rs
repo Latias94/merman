@@ -774,8 +774,11 @@ pub(crate) fn render_xychart_diagram_svg(
 
     out.push_str("<style>");
     out.checkpoint()?;
-    let css_emission =
-        write_prepared_info_css(&mut out, diagram_id, typography_theme.common_css())?;
+    let css_emission = write_prepared_info_css(
+        &mut super::super::output::XmlTextOutput::new(&mut out),
+        diagram_id.semantic_str(),
+        typography_theme.common_css(),
+    )?;
     out.checkpoint()?;
     out.push_str("</style>");
     out.checkpoint()?;

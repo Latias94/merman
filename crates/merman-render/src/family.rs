@@ -2,6 +2,13 @@ mod capability;
 mod direct_static_paint;
 mod evidence_support;
 mod inherited_font_stack;
+#[cfg(any(
+    feature = "diagram-block",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+mod label_background;
 mod preparation;
 #[cfg(any(
     feature = "diagram-treemap",
@@ -33,6 +40,13 @@ pub(crate) use inherited_font_stack::{
     InheritedFontStackOutcome, InheritedFontStackPlan, InheritedTextRunFacts, InheritedTextRunSpec,
     InheritedTextViewportFacts,
 };
+#[cfg(any(
+    feature = "diagram-block",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use label_background::EdgeLabelBackgroundPlan;
 
 use crate::diagram_theme::{
     FamilyThemeMechanismKey, ResolvedDiagramTheme, RootThemePlan, RootThemeReport,
@@ -44,8 +58,8 @@ use crate::math::PreparedMathEvidenceLease;
 use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
-    FlowchartEdgeTraceCollector, OrdinarySvgBudgetFacts, ResvgCompatibleSvg, StandaloneSvgArtifact,
-    SvgDebugOptions, SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution,
+    FlowchartEdgeTraceCollector, ResvgCompatibleSvg, StandaloneSvgArtifact, SvgDebugOptions,
+    SvgPipeline, SvgPipelineBuffer, SvgPipelinePreset, SvgPostprocessExecution,
     SvgPostprocessMetadata, SvgRenderOptions,
 };
 #[cfg(feature = "diagram-wardley")]
@@ -484,8 +498,155 @@ pub(crate) struct FamilyStyleReport {
     residuals: Vec<FamilyStyleResidual>,
 }
 
+/// Borrowed classification shared by temporary admission and the frozen family report.
+struct FamilyStyleView<'a> {
+    family_id: DiagramFamilyId,
+    evaluation: FamilyStyleEvaluation,
+    output_mutated: bool,
+    theme_required: &'a [FamilyThemeMechanismKey],
+    theme_applied: &'a [FamilyThemeMechanismKey],
+    theme_not_applicable: &'a [FamilyThemeMechanismKey],
+    theme_residuals: &'a [FamilyThemeResidual],
+    mermaid_compatibility_residual_count: usize,
+    source_residual_count: usize,
+}
+
+impl FamilyStyleView<'_> {
+    pub fn theme_coverage_complete(&self) -> bool {
+        let required = self
+            .theme_required
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let applied = self
+            .theme_applied
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let residuals = self
+            .theme_residuals
+            .iter()
+            .map(FamilyThemeResidual::key)
+            .collect::<std::collections::BTreeSet<_>>();
+        let not_applicable = self
+            .theme_not_applicable
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>();
+        let accounted = applied
+            .iter()
+            .chain(not_applicable.iter())
+            .chain(residuals.iter())
+            .copied()
+            .collect::<std::collections::BTreeSet<_>>();
+        required.len() == self.theme_required.len()
+            && applied.len() == self.theme_applied.len()
+            && not_applicable.len() == self.theme_not_applicable.len()
+            && residuals.len() == self.theme_residuals.len()
+            && applied.is_disjoint(&residuals)
+            && applied.is_disjoint(&not_applicable)
+            && not_applicable.is_disjoint(&residuals)
+            && accounted == required
+    }
+
+    pub fn verification(&self) -> FamilyStyleVerification {
+        if self.output_mutated {
+            return FamilyStyleVerification::Unverified;
+        }
+        if self.mermaid_compatibility_residual_count != 0 {
+            return FamilyStyleVerification::Unverified;
+        }
+        if self.source_residual_count != 0 {
+            return FamilyStyleVerification::Unverified;
+        }
+        match self.evaluation {
+            FamilyStyleEvaluation::NotApplicable => FamilyStyleVerification::NotApplicable,
+            FamilyStyleEvaluation::Unadapted => FamilyStyleVerification::Unadapted,
+            FamilyStyleEvaluation::Evaluated if !self.theme_coverage_complete() => {
+                FamilyStyleVerification::Incomplete
+            }
+            FamilyStyleEvaluation::Evaluated
+                if self.theme_residuals.is_empty() && self.source_residual_count == 0 =>
+            {
+                FamilyStyleVerification::Verified
+            }
+            FamilyStyleEvaluation::Evaluated => FamilyStyleVerification::Unverified,
+        }
+    }
+
+    fn ensure_portable(&self) -> Result<()> {
+        if self.output_mutated {
+            return Err(Error::UnverifiedFamilyOutputMutation {
+                family_id: self.family_id,
+            });
+        }
+        self.ensure_compatibility_portable()?;
+        match self.verification() {
+            FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => Ok(()),
+            FamilyStyleVerification::Unadapted => Err(Error::UnadaptedFamilyTheme {
+                family_id: self.family_id,
+            }),
+            FamilyStyleVerification::Incomplete => Err(Error::IncompleteFamilyTheme {
+                family_id: self.family_id,
+                required_count: self.theme_required.len(),
+                accounted_count: self.theme_applied.len()
+                    + self.theme_not_applicable.len()
+                    + self.theme_residuals.len(),
+            }),
+            FamilyStyleVerification::Unverified => {
+                if !self.theme_residuals.is_empty() {
+                    return Err(Error::UnverifiedFamilyTheme {
+                        family_id: self.family_id,
+                        residual_count: self.theme_residuals.len(),
+                    });
+                }
+                debug_assert!(self.source_residual_count != 0);
+                Err(Error::UnverifiedFamilyStyle {
+                    family_id: self.family_id,
+                    residual_count: self.source_residual_count,
+                })
+            }
+        }
+    }
+
+    fn ensure_portable_before_terminal_evidence(&self) -> Result<()> {
+        if self.output_mutated {
+            return Err(Error::UnverifiedFamilyOutputMutation {
+                family_id: self.family_id,
+            });
+        }
+        self.ensure_compatibility_portable()?;
+        match self.verification() {
+            FamilyStyleVerification::NotApplicable
+            | FamilyStyleVerification::Verified
+            | FamilyStyleVerification::Incomplete
+            | FamilyStyleVerification::Unadapted => Ok(()),
+            FamilyStyleVerification::Unverified => {
+                if !self.theme_residuals.is_empty() {
+                    return Err(Error::UnverifiedFamilyTheme {
+                        family_id: self.family_id,
+                        residual_count: self.theme_residuals.len(),
+                    });
+                }
+                debug_assert!(self.source_residual_count != 0);
+                Err(Error::UnverifiedFamilyStyle {
+                    family_id: self.family_id,
+                    residual_count: self.source_residual_count,
+                })
+            }
+        }
+    }
+
+    fn ensure_compatibility_portable(&self) -> Result<()> {
+        if self.mermaid_compatibility_residual_count != 0 {
+            return Err(Error::MermaidThemeCompatibility {
+                family_id: self.family_id,
+                residual_count: self.mermaid_compatibility_residual_count,
+            });
+        }
+        Ok(())
+    }
+}
+
 impl FamilyStyleReport {
-    fn freeze(plan: &ResolvedFamilyStylePlan) -> Self {
+    fn from_plan(plan: ResolvedFamilyStylePlan) -> Self {
         let mut residuals = Vec::new();
         let evaluation = match &plan.payload {
             FamilyStylePayload::NotApplicable => FamilyStyleEvaluation::NotApplicable,
@@ -512,13 +673,13 @@ impl FamilyStyleReport {
             family_id: plan.family_id,
             evaluation,
             output_mutated: plan.output_mutated,
-            theme_required: plan.theme_evidence.required.clone(),
-            theme_applied: plan.theme_evidence.applied.clone(),
+            theme_required: plan.theme_evidence.required,
+            theme_applied: plan.theme_evidence.applied,
             native_filter_receipt: plan.native_filter_receipt,
             #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
-            architecture_text_receipt: plan.architecture_text_receipt.clone(),
-            theme_not_applicable: plan.theme_evidence.not_applicable.clone(),
-            theme_residuals: plan.theme_evidence.residuals.clone(),
+            architecture_text_receipt: plan.architecture_text_receipt,
+            theme_not_applicable: plan.theme_evidence.not_applicable,
+            theme_residuals: plan.theme_evidence.residuals,
             mermaid_compatibility_residual_count: plan.mermaid_compatibility_residual_count,
             residuals,
         }
@@ -606,63 +767,26 @@ impl FamilyStyleReport {
         0
     }
 
+    fn view(&self) -> FamilyStyleView<'_> {
+        FamilyStyleView {
+            family_id: self.family_id,
+            evaluation: self.evaluation,
+            output_mutated: self.output_mutated,
+            theme_required: &self.theme_required,
+            theme_applied: &self.theme_applied,
+            theme_not_applicable: &self.theme_not_applicable,
+            theme_residuals: &self.theme_residuals,
+            mermaid_compatibility_residual_count: self.mermaid_compatibility_residual_count,
+            source_residual_count: self.residuals.len(),
+        }
+    }
+
     pub fn theme_coverage_complete(&self) -> bool {
-        let required = self
-            .theme_required
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>();
-        let applied = self
-            .theme_applied
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>();
-        let residuals = self
-            .theme_residuals
-            .iter()
-            .map(FamilyThemeResidual::key)
-            .collect::<std::collections::BTreeSet<_>>();
-        let not_applicable = self
-            .theme_not_applicable
-            .iter()
-            .collect::<std::collections::BTreeSet<_>>();
-        let accounted = applied
-            .iter()
-            .chain(not_applicable.iter())
-            .chain(residuals.iter())
-            .copied()
-            .collect::<std::collections::BTreeSet<_>>();
-        required.len() == self.theme_required.len()
-            && applied.len() == self.theme_applied.len()
-            && not_applicable.len() == self.theme_not_applicable.len()
-            && residuals.len() == self.theme_residuals.len()
-            && applied.is_disjoint(&residuals)
-            && applied.is_disjoint(&not_applicable)
-            && not_applicable.is_disjoint(&residuals)
-            && accounted == required
+        self.view().theme_coverage_complete()
     }
 
     pub fn verification(&self) -> FamilyStyleVerification {
-        if self.output_mutated {
-            return FamilyStyleVerification::Unverified;
-        }
-        if self.mermaid_compatibility_residual_count != 0 {
-            return FamilyStyleVerification::Unverified;
-        }
-        if !self.residuals.is_empty() {
-            return FamilyStyleVerification::Unverified;
-        }
-        match self.evaluation {
-            FamilyStyleEvaluation::NotApplicable => FamilyStyleVerification::NotApplicable,
-            FamilyStyleEvaluation::Unadapted => FamilyStyleVerification::Unadapted,
-            FamilyStyleEvaluation::Evaluated if !self.theme_coverage_complete() => {
-                FamilyStyleVerification::Incomplete
-            }
-            FamilyStyleEvaluation::Evaluated
-                if self.theme_residuals.is_empty() && self.residuals.is_empty() =>
-            {
-                FamilyStyleVerification::Verified
-            }
-            FamilyStyleEvaluation::Evaluated => FamilyStyleVerification::Unverified,
-        }
+        self.view().verification()
     }
 
     #[cfg(any(test, merman_internal_theme_acceptance))]
@@ -671,76 +795,7 @@ impl FamilyStyleReport {
     }
 
     fn ensure_portable(&self) -> Result<()> {
-        if self.output_mutated {
-            return Err(Error::UnverifiedFamilyOutputMutation {
-                family_id: self.family_id,
-            });
-        }
-        self.ensure_compatibility_portable()?;
-        match self.verification() {
-            FamilyStyleVerification::NotApplicable | FamilyStyleVerification::Verified => Ok(()),
-            FamilyStyleVerification::Unadapted => Err(Error::UnadaptedFamilyTheme {
-                family_id: self.family_id,
-            }),
-            FamilyStyleVerification::Incomplete => Err(Error::IncompleteFamilyTheme {
-                family_id: self.family_id,
-                required_count: self.theme_required.len(),
-                accounted_count: self.theme_applied.len()
-                    + self.theme_not_applicable.len()
-                    + self.theme_residuals.len(),
-            }),
-            FamilyStyleVerification::Unverified => {
-                if !self.theme_residuals.is_empty() {
-                    return Err(Error::UnverifiedFamilyTheme {
-                        family_id: self.family_id,
-                        residual_count: self.theme_residuals.len(),
-                    });
-                }
-                debug_assert!(!self.residuals.is_empty());
-                Err(Error::UnverifiedFamilyStyle {
-                    family_id: self.family_id,
-                    residual_count: self.residuals.len(),
-                })
-            }
-        }
-    }
-
-    fn ensure_portable_before_terminal_evidence(&self) -> Result<()> {
-        if self.output_mutated {
-            return Err(Error::UnverifiedFamilyOutputMutation {
-                family_id: self.family_id,
-            });
-        }
-        self.ensure_compatibility_portable()?;
-        match self.verification() {
-            FamilyStyleVerification::NotApplicable
-            | FamilyStyleVerification::Verified
-            | FamilyStyleVerification::Incomplete
-            | FamilyStyleVerification::Unadapted => Ok(()),
-            FamilyStyleVerification::Unverified => {
-                if !self.theme_residuals.is_empty() {
-                    return Err(Error::UnverifiedFamilyTheme {
-                        family_id: self.family_id,
-                        residual_count: self.theme_residuals.len(),
-                    });
-                }
-                debug_assert!(!self.residuals.is_empty());
-                Err(Error::UnverifiedFamilyStyle {
-                    family_id: self.family_id,
-                    residual_count: self.residuals.len(),
-                })
-            }
-        }
-    }
-
-    fn ensure_compatibility_portable(&self) -> Result<()> {
-        if self.mermaid_compatibility_residual_count != 0 {
-            return Err(Error::MermaidThemeCompatibility {
-                family_id: self.family_id,
-                residual_count: self.mermaid_compatibility_residual_count,
-            });
-        }
-        Ok(())
+        self.view().ensure_portable()
     }
 }
 
@@ -1235,12 +1290,47 @@ impl ResolvedFamilyStylePlan {
         self.theme_evidence.mark_output_mutated();
     }
 
+    fn view(&self) -> FamilyStyleView<'_> {
+        let (evaluation, state_residuals): (FamilyStyleEvaluation, &[SourceStyleResidual]) =
+            match &self.payload {
+                FamilyStylePayload::NotApplicable => (FamilyStyleEvaluation::NotApplicable, &[]),
+                FamilyStylePayload::Unadapted => (FamilyStyleEvaluation::Unadapted, &[]),
+                FamilyStylePayload::Evaluated => (FamilyStyleEvaluation::Evaluated, &[]),
+                #[cfg(feature = "diagram-state")]
+                FamilyStylePayload::State(state) => {
+                    (FamilyStyleEvaluation::Evaluated, state.residuals())
+                }
+            };
+        let residuals = state_residuals.iter().chain(&self.source_style_residuals);
+        let source_residual_count = residuals
+            .clone()
+            .enumerate()
+            .filter(|(index, residual)| {
+                !residuals
+                    .clone()
+                    .take(*index)
+                    .any(|earlier| earlier == *residual)
+            })
+            .count();
+        FamilyStyleView {
+            family_id: self.family_id,
+            evaluation,
+            output_mutated: self.output_mutated,
+            theme_required: &self.theme_evidence.required,
+            theme_applied: &self.theme_evidence.applied,
+            theme_not_applicable: &self.theme_evidence.not_applicable,
+            theme_residuals: &self.theme_evidence.residuals,
+            mermaid_compatibility_residual_count: self.mermaid_compatibility_residual_count,
+            source_residual_count,
+        }
+    }
+
     fn ensure_portable(&self, portability: ThemePortabilityRequirement) -> Result<()> {
         if portability != ThemePortabilityRequirement::RequirePortable {
             return Ok(());
         }
 
-        FamilyStyleReport::freeze(self).ensure_portable()
+        self.view().ensure_portable()
     }
 
     fn ensure_portable_before_svg(&self, portability: ThemePortabilityRequirement) -> Result<()> {
@@ -1286,7 +1376,7 @@ impl ResolvedFamilyStylePlan {
             .resolved_theme
             .as_deref()
             .is_some_and(ResolvedDiagramTheme::has_family_mechanism_routes);
-        let report = FamilyStyleReport::freeze(self);
+        let report = self.view();
         if waits_for_svg_evidence {
             report.ensure_portable_before_terminal_evidence()
         } else {
@@ -1494,7 +1584,7 @@ impl FamilyRenderContext {
     }
 
     fn into_session_and_style_report(self) -> (RenderSession, FamilyStyleReport) {
-        let style_report = FamilyStyleReport::freeze(&self.style_plan);
+        let style_report = FamilyStyleReport::from_plan(self.style_plan);
         (self.session, style_report)
     }
 }
@@ -3168,7 +3258,7 @@ impl GanttTimeAxisDiagnostics {
 /// let forged: RenderedFamilySvg = String::from("<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
 /// ```
 pub struct RenderedFamilySvg {
-    svg: String,
+    svg: SvgPipelineBuffer,
     prepared_text_evidence_valid: bool,
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_evidence_valid: bool,
@@ -3257,17 +3347,15 @@ impl RenderedFamilySvg {
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(self, pipeline: &SvgPipeline) -> Result<Self> {
-        Ok(self
-            .apply_pipeline_with_budget_facts(pipeline, true, false)?
-            .0)
+        self.apply_pipeline_with_portability_and_xml_facts(pipeline, true, false)
     }
 
-    fn apply_pipeline_with_budget_facts(
+    fn apply_pipeline_with_portability_and_xml_facts(
         mut self,
         pipeline: &SvgPipeline,
         enforce_portability: bool,
-        retain_budget_facts: bool,
-    ) -> Result<(Self, Option<OrdinarySvgBudgetFacts>)> {
+        retain_xml_facts: bool,
+    ) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata()?;
         self.prepared_text_evidence_valid &=
@@ -3278,24 +3366,13 @@ impl RenderedFamilySvg {
         let supplies_prepared_math = self.prepared_math_evidence_valid
             && (preserves_prepared_math || requires_prepared_math_projection);
         let source_svg = std::mem::take(&mut self.svg);
-        let (processed_svg, budget_facts) = if retain_budget_facts {
-            pipeline.process_owned_with_standalone_budget_facts(
-                source_svg,
-                &output_metadata,
-                &self.session,
-                supplies_prepared_math.then_some(&self.prepared_math_evidence),
-            )?
-        } else {
-            (
-                pipeline.process_owned_to_string_with_metadata_and_math_evidence(
-                    source_svg,
-                    &output_metadata,
-                    &self.session,
-                    supplies_prepared_math.then_some(&self.prepared_math_evidence),
-                )?,
-                None,
-            )
-        };
+        let processed_svg = pipeline.process_owned_buffer_with_metadata_and_math_evidence(
+            source_svg,
+            &output_metadata,
+            &self.session,
+            supplies_prepared_math.then_some(&self.prepared_math_evidence),
+            retain_xml_facts,
+        )?;
         self.svg = processed_svg;
         if !preserves_prepared_math {
             self.prepared_math_evidence_valid = false;
@@ -3323,7 +3400,7 @@ impl RenderedFamilySvg {
             }
         }
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        Ok((self, budget_facts))
+        Ok(self)
     }
 
     /// Finalizes the typed family output for resvg/raster consumption.
@@ -3358,7 +3435,7 @@ impl RenderedFamilySvg {
             PreparedMathEvidenceLease::default()
         };
         let svg = pipeline.process_owned_resvg_compatible_with_metadata_and_evidence(
-            self.svg,
+            self.svg.into_string(),
             &output_metadata,
             &self.session,
             prepared_text_evidence_valid,
@@ -3427,30 +3504,23 @@ impl RenderedFamilySvg {
                     self.finalize_resvg_with_portability(pipeline, enforce_portability)?;
                 Ok(finalized.into_standalone())
             }
-            Some(pipeline) => {
-                let (processed, budget_facts) =
-                    self.apply_pipeline_with_budget_facts(pipeline, enforce_portability, true)?;
-                processed.finalize_exact_standalone(pipeline, budget_facts)
-            }
+            Some(pipeline) => self
+                .apply_pipeline_with_portability_and_xml_facts(pipeline, enforce_portability, true)?
+                .finalize_exact_standalone(pipeline),
             None => {
                 let pipeline = SvgPipeline::parity();
-                self.finalize_exact_standalone(&pipeline, None)
+                self.finalize_exact_standalone(&pipeline)
             }
         }
     }
 
-    fn finalize_exact_standalone(
-        self,
-        pipeline: &SvgPipeline,
-        budget_facts: Option<OrdinarySvgBudgetFacts>,
-    ) -> Result<RenderedStandaloneSvg> {
+    fn finalize_exact_standalone(self, pipeline: &SvgPipeline) -> Result<RenderedStandaloneSvg> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        let artifact = StandaloneSvgArtifact::finalize_exact_with_budget_facts(
+        let artifact = StandaloneSvgArtifact::finalize_exact_buffer(
             self.svg,
             self.prepared_text_evidence_valid,
             pipeline,
             &self.session,
-            budget_facts,
         )?;
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(RenderedStandaloneSvg {
@@ -3485,7 +3555,7 @@ impl RenderedFamilySvg {
             required_capabilities: _,
         } = self;
         FamilyRenderCompletion {
-            output: svg,
+            output: svg.into_string(),
             report: FamilyRenderReport::freeze(root_theme, style_report, session),
         }
     }
@@ -3816,7 +3886,7 @@ impl FamilyRenderArtifact {
         }
 
         Ok(RenderedFamilySvg {
-            svg,
+            svg: SvgPipelineBuffer::new(svg),
             prepared_text_evidence_valid: true,
             prepared_math_evidence,
             prepared_math_evidence_valid: true,

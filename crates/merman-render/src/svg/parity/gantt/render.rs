@@ -205,7 +205,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             task_theme.font_family_css(),
         );
     }
-    out.push_str(&css);
+    super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
     drop(css);
     out.checkpoint()?;
     out.push_str(r#"</style><g/>"#);

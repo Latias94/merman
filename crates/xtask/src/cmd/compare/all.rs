@@ -311,9 +311,11 @@ impl CompareAllFailures {
             .collect::<Vec<_>>()
             .join(", ");
         let remainder = missing.len().saturating_sub(20);
-        let suffix = (remainder > 0)
-            .then(|| format!(", and {remainder} more"))
-            .unwrap_or_default();
+        let suffix = if remainder > 0 {
+            format!(", and {remainder} more")
+        } else {
+            String::new()
+        };
         Some(format!(
             "browser text layout receipt coverage mismatch for the unfiltered compare-all run: expected={} encountered={} missing={} [{preview}{suffix}]; remove receipts for comparisons no longer in the matrix or restore the missing fixture/mode execution",
             expected.len(),

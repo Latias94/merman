@@ -105,7 +105,7 @@ impl RailroadSurfaceReceipt {
         let mut root_document = String::with_capacity(root_svg_open.len().saturating_add(7));
         root_document.push_str(root_svg_open);
         root_document.push_str("></svg>");
-        let Ok(document) = roxmltree::Document::parse(&root_document) else {
+        let Ok(document) = crate::xml_dom::Document::parse(&root_document) else {
             return;
         };
         let root = document.root_element();
@@ -126,23 +126,32 @@ impl RailroadSurfaceReceipt {
             .any(|candidate| candidate == "railroad-diagram");
     }
 
-    pub(crate) fn record_typography_stylesheet(
+    pub(crate) fn record_typography_stylesheet<E>(
         &mut self,
-        stylesheet: &str,
+        serialized_stylesheet: &str,
         expected_font_family: &str,
         expected_font_size: &str,
-    ) {
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<(), E> {
         if self.typography_stylesheet_recorded {
             self.title_fill_stylesheet_verified = false;
             self.text_fill_stylesheet_verified = false;
             self.typography_stylesheet_verified = false;
-            return;
+            return Ok(());
         }
         self.typography_stylesheet_recorded = true;
         let Some(root_svg_id) = self.root_svg_id.as_deref() else {
             self.typography_stylesheet_verified = false;
-            return;
+            return Ok(());
         };
+        // The writer slice contains terminal XML character data, not logical CSS. Decode once
+        // before interpreting declarations so literal entity spellings remain font-name text.
+        let Some(stylesheet) =
+            crate::svg::decode_xml_style_text_with_checkpoints(serialized_stylesheet, checkpoint)?
+        else {
+            return Ok(());
+        };
+        let stylesheet = stylesheet.as_ref();
         let diagram_id_css = crate::svg::escape_css_identifier(root_svg_id);
         let root_rule_matches = self.root_svg_class_verified
             && stylesheet_rule_matches(
@@ -175,7 +184,7 @@ impl RailroadSurfaceReceipt {
                 None,
             )
         });
-        self.title_fill_stylesheet_verified =
+        let title_fill_stylesheet_verified =
             self.expected_title_fill
                 .as_deref()
                 .is_none_or(|expected_fill| {
@@ -185,7 +194,7 @@ impl RailroadSurfaceReceipt {
                         expected_fill,
                     )
                 });
-        self.text_fill_stylesheet_verified = self
+        let text_fill_stylesheet_verified = self
             .expected_rule_name_text_fill
             .as_deref()
             .is_none_or(|expected_fill| {
@@ -223,8 +232,12 @@ impl RailroadSurfaceReceipt {
                     )
                 })
             });
+        checkpoint()?;
+        self.title_fill_stylesheet_verified = title_fill_stylesheet_verified;
+        self.text_fill_stylesheet_verified = text_fill_stylesheet_verified;
         self.typography_stylesheet_verified =
             root_rule_matches && title_typography_rule_matches && descendant_typography_rules_match;
+        Ok(())
     }
 
     pub(crate) fn record_terminal_text(&mut self, text: &str) {
@@ -1089,7 +1102,11 @@ mod tests {
         ] {
             let mut receipt = RailroadSurfaceReceipt::default();
             receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
-            receipt.record_typography_stylesheet(&invalid_css, "monospace", "18");
+            receipt
+                .record_typography_stylesheet(&invalid_css, "monospace", "18", &mut || {
+                    Ok::<(), std::convert::Infallible>(())
+                })
+                .unwrap();
 
             assert!(!receipt.typography_stylesheet_verified());
         }
@@ -1101,9 +1118,57 @@ mod tests {
             VALID_CSS.replace("font-family:monospace", "font-family:\"a;b\",sans-serif");
         let mut receipt = RailroadSurfaceReceipt::default();
         receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
-        receipt.record_typography_stylesheet(&stylesheet, "\"a;b\",sans-serif", "18");
+        receipt
+            .record_typography_stylesheet(&stylesheet, "\"a;b\",sans-serif", "18", &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
 
         assert!(receipt.typography_stylesheet_verified());
+    }
+
+    #[test]
+    fn railroad_typography_receipt_decodes_xml_text_exactly_once() {
+        for (serialized_font, expected_font, verified) in [
+            ("\"A&amp;B\"", "\"A&B\"", true),
+            ("\"A&amp;amp;B\"", "\"A&amp;B\"", true),
+            ("\"A&amp;amp;B\"", "\"A&B\"", false),
+            ("\"A&unknown;B\"", "\"A&unknown;B\"", false),
+        ] {
+            let stylesheet = VALID_CSS.replace(
+                "font-family:monospace",
+                &format!("font-family:{serialized_font}"),
+            );
+            let mut receipt = RailroadSurfaceReceipt::default();
+            receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
+            receipt
+                .record_typography_stylesheet(&stylesheet, expected_font, "18", &mut || {
+                    Ok::<(), std::convert::Infallible>(())
+                })
+                .unwrap();
+
+            assert_eq!(receipt.typography_stylesheet_verified(), verified);
+        }
+    }
+
+    #[test]
+    fn railroad_typography_receipt_does_not_certify_cancelled_xml_decoding() {
+        let stylesheet = VALID_CSS.replace("font-family:monospace", "font-family:\"A&amp;B\"");
+        let mut receipt = RailroadSurfaceReceipt::default();
+        receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
+        let mut checkpoints = 0;
+        let result =
+            receipt.record_typography_stylesheet(&stylesheet, "\"A&B\"", "18", &mut || {
+                checkpoints += 1;
+                if checkpoints == 5 {
+                    Err("cancelled")
+                } else {
+                    Ok(())
+                }
+            });
+
+        assert_eq!(result, Err("cancelled"));
+        assert!(!receipt.typography_stylesheet_verified());
     }
 
     #[test]
@@ -1124,7 +1189,11 @@ mod tests {
         ] {
             let mut receipt = RailroadSurfaceReceipt::default();
             receipt.record_root_svg_open(root_svg_open);
-            receipt.record_typography_stylesheet(&stylesheet, "monospace", "18");
+            receipt
+                .record_typography_stylesheet(&stylesheet, "monospace", "18", &mut || {
+                    Ok::<(), std::convert::Infallible>(())
+                })
+                .unwrap();
 
             assert!(!receipt.typography_stylesheet_verified());
         }
@@ -1135,7 +1204,11 @@ mod tests {
         let plan = typed_railroad_plan();
         let mut receipt = plan.begin_terminal_receipt();
         receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
-        receipt.record_typography_stylesheet(VALID_CSS, "monospace", "18");
+        receipt
+            .record_typography_stylesheet(VALID_CSS, "monospace", "18", &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
         receipt.record_comment_text("comment");
         assert!(plan.record_terminal(receipt));
 
@@ -1153,7 +1226,11 @@ mod tests {
             ".railroad-comment text{fill:black;font-style:italic;font-family:serif;",
         );
         receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
-        receipt.record_typography_stylesheet(&invalid_css, "monospace", "18");
+        receipt
+            .record_typography_stylesheet(&invalid_css, "monospace", "18", &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
         receipt.record_terminal_text("terminal");
         assert!(plan.record_terminal(receipt));
 
@@ -1230,7 +1307,11 @@ mod tests {
             "#rr .railroad-rule-name{font-weight:bold;fill:#123456;",
         );
         receipt.record_root_svg_open(VALID_ROOT_SVG_OPEN);
-        receipt.record_typography_stylesheet(&stylesheet, "monospace", "18");
+        receipt
+            .record_typography_stylesheet(&stylesheet, "monospace", "18", &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .unwrap();
         receipt.record_rule_name_occurrence("#123456");
         assert!(plan.record_terminal(receipt));
 

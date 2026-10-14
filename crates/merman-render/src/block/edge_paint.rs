@@ -377,7 +377,7 @@ impl BlockEdgePaintPlan {
 }
 
 fn path_matches(expected: &BlockEdgeExpectation, diagram_id: &str, fragment: &str) -> bool {
-    let Ok(document) = roxmltree::Document::parse(fragment) else {
+    let Ok(document) = crate::xml_dom::Document::parse(fragment) else {
         return false;
     };
     let path = document.root_element();

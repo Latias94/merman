@@ -178,6 +178,118 @@ fn stylesheet_text(document: &roxmltree::Document<'_>) -> String {
         .to_string()
 }
 
+#[test]
+fn swimlane_neo_non_palette_lane_stroke_has_the_matching_cluster_css_owner() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (variables, expected) in [
+        (json!({}), "#aaaa33"),
+        (
+            json!({"clusterBorder": "#112233", "nodeBorder": "#445566"}),
+            "#112233",
+        ),
+    ] {
+        let rendered = render_swimlane_cluster(
+            SWIMLANE_SOURCE,
+            &theme,
+            MermaidConfig::from_value(json!({
+                "layout": "swimlane", "theme": "default", "look": "neo",
+                "themeVariables": variables
+            })),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("Swimlane SVG");
+        let lane = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("Lane"))
+            .expect("Lane group");
+        assert_eq!(lane.attribute("data-look"), Some("neo"));
+        assert!(lane.attribute("data-color-id").is_none());
+        let css = stylesheet_text(&document);
+        let selector = "#swimlane-cluster-theme .swimlane.cluster:not([data-color-id]) rect";
+        let (_, declarations) = css
+            .split('}')
+            .filter_map(|rule| rule.split_once('{'))
+            .find(|(selectors, _)| selectors.split(',').any(|part| part.trim() == selector))
+            .expect("non-palette lane CSS rule matching both real rectangle terminals");
+        assert!(
+            declarations.split(';').any(|declaration| {
+                declaration
+                    .split_once(':')
+                    .is_some_and(|(property, value)| {
+                        property.trim() == "stroke"
+                            && value.trim() == format!("{expected}!important")
+                    })
+            }),
+            "non-palette lane rule must override the shared Neo node border: {declarations}"
+        );
+        for class_name in ["swimlane-body", "swimlane-title"] {
+            assert_eq!(lane_rect_style(&document, class_name).2, expected);
+        }
+    }
+}
+
+#[test]
+fn swimlane_non_palette_border_rule_preserves_palette_and_typed_stroke_owners() {
+    let theme = swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").unwrap());
+    for selected in ["default", "redux-color"] {
+        let rendered = render_swimlane_cluster(
+            SWIMLANE_SOURCE,
+            &theme,
+            MermaidConfig::from_value(json!({
+                "layout": "swimlane", "look": "neo", "theme": selected
+            })),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("Swimlane SVG");
+        let lane = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("Lane"))
+            .expect("Lane group");
+        assert_eq!(
+            lane.attribute("data-color-id").is_some(),
+            selected == "redux-color"
+        );
+        let css = stylesheet_text(&document);
+        assert!(!css.contains(".swimlane.cluster rect{stroke:"));
+        for class_name in ["swimlane-body", "swimlane-title"] {
+            let (style, _, _) = lane_rect_style(&document, class_name);
+            assert!(
+                style.contains("stroke:#654321 !important"),
+                "{class_name}: {style}"
+            );
+        }
+    }
+}
+
+#[test]
+fn swimlane_non_palette_border_rule_preserves_authored_inline_and_class_stroke() {
+    let theme = swimlane_cluster_stroke_theme(CanvasPaint::solid("#654321").unwrap());
+    for authored in [
+        "style Lane stroke:#22c55e\n",
+        "classDef source stroke:#22c55e\nclass Lane source\n",
+    ] {
+        let rendered = render_swimlane_cluster(
+            &format!("{SWIMLANE_SOURCE}{authored}"),
+            &theme,
+            MermaidConfig::from_value(json!({
+                "layout": "swimlane", "look": "neo", "theme": "default"
+            })),
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("Swimlane SVG");
+        for class_name in ["swimlane-body", "swimlane-title"] {
+            let (style, _, _) = lane_rect_style(&document, class_name);
+            assert!(
+                style.contains("stroke:#22c55e !important"),
+                "{class_name}: {style}"
+            );
+            assert!(
+                !style.contains("#654321"),
+                "authored stroke must own {class_name}"
+            );
+        }
+    }
+}
+
 fn lane_hand_drawn_shell_strokes(document: &roxmltree::Document<'_>) -> Vec<Vec<String>> {
     let lane = document
         .descendants()

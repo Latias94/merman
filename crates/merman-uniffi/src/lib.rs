@@ -2807,20 +2807,16 @@ mod tests {
             generated_header
                 .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
         );
-        for version in [6] {
-            assert!(
-                !generated_header.contains(&format!(
-                    "uniffi_merman_uniffi_fn_method_merman_binding_api_version_v{version}"
-                )),
-                "old probe must be absent before record decoding"
-            );
-            assert!(
-                !generated_header.contains(&format!(
-                    "uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v{version}"
-                )),
-                "old checksum must be absent before record decoding"
-            );
-        }
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6"),
+            "old probe must be absent before record decoding"
+        );
+        assert!(
+            !generated_header
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6"),
+            "old checksum must be absent before record decoding"
+        );
     }
 
     #[cfg(feature = "svg")]

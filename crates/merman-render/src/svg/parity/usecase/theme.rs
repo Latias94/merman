@@ -125,7 +125,7 @@ pub(super) fn write_css(
     binding.neo.write(&mut css, id)?;
     // CSS is XML character data. Preserve declarations while preventing a token from closing style.
     out.push_str("<style>");
-    util::escape_xml_raw_into(out, &css);
+    super::super::output::XmlTextOutput::new(out).push_str(&css);
     out.push_str("</style>");
     Ok(())
 }

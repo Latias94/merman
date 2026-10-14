@@ -166,7 +166,7 @@ pub(crate) fn render_packet_diagram_svg_model(
 
     out.push_str("<style>");
     write_packet_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         typography_theme,
         &mut surface_receipt,

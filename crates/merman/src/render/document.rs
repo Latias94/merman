@@ -502,6 +502,12 @@ fn standalone_svg_evidence(
 ) -> (DocumentPortabilityReport, TargetAdmissionReceipt) {
     let portability = document_portability_report(svg, evidence);
     let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
+    #[cfg(test)]
+    CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
+        if let Some(control) = pending.borrow_mut().take() {
+            control.cancel();
+        }
+    });
     let native_svg = svg.native_export_svg();
     let native_svg_digest = if native_svg == svg.as_str() {
         public_svg_digest
@@ -525,13 +531,23 @@ fn standalone_svg_evidence(
     (portability, admission)
 }
 
+#[cfg(test)]
+thread_local! {
+    static CANCEL_AFTER_ARTIFACT_DIGEST: std::cell::RefCell<Option<merman_core::OperationControl>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
 pub(super) fn finish_standalone_svg_target(
     svg: merman_render::svg::StandaloneSvgArtifact,
     family: merman_render::family::FamilyRenderReport,
     required_capabilities: Vec<merman_render::RenderCapability>,
+    control: &merman_core::OperationControl,
 ) -> Result<SvgOutput, RenderError> {
+    crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
     let evidence = RenderEvidence::from_family(family, required_capabilities);
     let (_, admission) = standalone_svg_evidence(&svg, &evidence);
+    crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
     enforce_portability_requirement(&evidence, &admission)?;
     Ok(SvgOutput {
         svg: svg.into_string(),
@@ -548,6 +564,70 @@ mod tests {
         standalone_target_evidence_digest, target_admission_receipt_digest,
     };
     use super::super::{RenderOutput, RenderRequest, Renderer, SvgRequest, TargetFontSource};
+
+    #[test]
+    fn public_svg_target_observes_cancellation_during_artifact_identity_sealing() {
+        struct ClearPendingCancellation;
+        impl Drop for ClearPendingCancellation {
+            fn drop(&mut self) {
+                super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
+                    pending.borrow_mut().take();
+                });
+            }
+        }
+
+        let control = OperationControl::new();
+        let _clear = ClearPendingCancellation;
+        super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
+            *pending.borrow_mut() = Some(control.clone());
+        });
+
+        let error = Renderer::new()
+            .render(RenderRequest::svg("info", control, SvgRequest::default()))
+            .expect_err("cancellation during exact identity sealing must prevent publication");
+
+        assert!(matches!(
+            error,
+            super::RenderError::Cancelled(cancelled)
+                if cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.phase == merman_core::OperationPhase::Postprocess
+        ));
+    }
+
+    #[test]
+    fn public_document_target_observes_cancellation_during_artifact_identity_sealing() {
+        struct ClearPendingCancellation;
+        impl Drop for ClearPendingCancellation {
+            fn drop(&mut self) {
+                super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
+                    pending.borrow_mut().take();
+                });
+            }
+        }
+
+        let control = OperationControl::new();
+        let _clear = ClearPendingCancellation;
+        super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
+            *pending.borrow_mut() = Some(control.clone());
+        });
+
+        let error = Renderer::new()
+            .render(RenderRequest::document(
+                "info",
+                control,
+                SvgRequest::default(),
+            ))
+            .expect_err(
+                "cancellation during exact document identity sealing must prevent publication",
+            );
+
+        assert!(matches!(
+            error,
+            super::RenderError::Cancelled(cancelled)
+                if cancelled.reason == merman_core::CancelReason::Requested
+                    && cancelled.phase == merman_core::OperationPhase::Postprocess
+        ));
+    }
 
     #[test]
     fn standalone_target_evidence_digest_binds_font_source() {

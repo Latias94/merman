@@ -519,7 +519,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
         theme_color_limit,
     );
     insert_requirement_color_css(&mut css_emission.css, diagram_id, &color_css);
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css_emission.css);
+    out.push_str("<style>");
+    super::super::output::XmlTextOutput::new(&mut out).push_str(&css_emission.css);
+    out.push_str("</style>");
     if let Some(receipt) = relation_receipt.as_mut() {
         out.checkpoint()?;
         receipt.record_css(css_emission.typed_relation_color());
@@ -1852,7 +1854,7 @@ mod tests {
             if html_labels {
                 assert!(svg.contains("<strong>safe</strong>"), "{svg}");
             } else {
-                let document = roxmltree::Document::parse(&svg).expect("valid SVG labels");
+                let document = crate::xml_dom::Document::parse(&svg).expect("valid SVG labels");
                 assert!(
                     !document
                         .descendants()
@@ -1997,7 +1999,7 @@ mod tests {
         assert_eq!(svg.matches(r#"marker-start="url(#"#).count(), 1, "{svg}");
         assert_eq!(svg.matches(r#"marker-end="url(#"#).count(), 1, "{svg}");
 
-        let document = roxmltree::Document::parse(&svg).expect("valid Requirement SVG");
+        let document = crate::xml_dom::Document::parse(&svg).expect("valid Requirement SVG");
         let edge_label_max_widths = document
             .descendants()
             .filter(|node| {
@@ -2041,7 +2043,7 @@ mod tests {
                 &SvgRenderOptions::default(),
             )
             .expect("render prepared source paints");
-            let document = roxmltree::Document::parse(&svg).expect("valid SVG");
+            let document = crate::xml_dom::Document::parse(&svg).expect("valid SVG");
             assert!(
                 document
                     .descendants()
@@ -2220,7 +2222,7 @@ mod tests {
 
         assert_eq!(svg.matches(r#"marker-start="url(#"#).count(), 1, "{svg}");
         assert_eq!(svg.matches(r#"marker-end="url(#"#).count(), 0, "{svg}");
-        let document = roxmltree::Document::parse(&svg).expect("valid Requirement SVG");
+        let document = crate::xml_dom::Document::parse(&svg).expect("valid Requirement SVG");
         let path_for = |id: &str| {
             document
                 .descendants()

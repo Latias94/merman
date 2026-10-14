@@ -279,7 +279,7 @@ pub(crate) fn render_pie_diagram_svg_model_with_paint_plan(
     let title_fill = paint_plan.title_fill_css();
     let text_fill = paint_plan.text_fill_css();
     let css_emission = write_pie_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         paint_plan,
         !layout.slices.is_empty(),

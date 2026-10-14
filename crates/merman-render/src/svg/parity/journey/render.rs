@@ -528,7 +528,9 @@ pub(crate) fn render_journey_diagram_svg_model(
             css.root_typography_emitted,
         );
     }
-    let _ = write!(&mut out, r#"<style>{}</style>"#, css.css);
+    out.push_str("<style>");
+    super::super::output::XmlTextOutput::new(&mut out).push_str(&css.css);
+    out.push_str("</style>");
     out.push_str(r#"<g/>"#);
     let arrowhead_id = scoped_svg_id(diagram_id, "arrowhead");
     let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
@@ -944,7 +946,7 @@ mod tests {
                 write_task_rect(&mut out, &task, "9", fill, stroke),
                 ("9", "9")
             );
-            let document = roxmltree::Document::parse(&out).unwrap();
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
             let rect = document.root_element();
             assert_eq!(rect.attribute("style"), expected);
             assert_eq!(rect.attribute("fill"), Some("A&B"));

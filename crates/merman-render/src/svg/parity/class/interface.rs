@@ -28,7 +28,7 @@ pub(super) struct ClassInterfaceRenderState<'a, O: SvgOutput> {
 }
 
 pub(super) struct ClassInterfaceRenderResult {
-    pub theme_emission: crate::class::ClassNodeTerminalEmission,
+    pub theme_emission: crate::class::ClassNodeTerminalObservation,
     pub typography: crate::class::ClassTextTerminalFacts,
 }
 
@@ -160,17 +160,9 @@ pub(super) fn render_class_interface_node<O: SvgOutput>(
     out.push_str("</g></g>");
     out.checkpoint()?;
     Ok(ClassInterfaceRenderResult {
-        theme_emission: crate::class::ClassNodeTerminalEmission::new(
-            &iface.id,
-            crate::class::ClassNodePaintTerminalEmission::not_applicable(),
-            crate::class::ClassNodePaintTerminalEmission::not_applicable(),
-            crate::class::ClassNodePaintTerminalEmission::new(
-                binding.source_owned,
-                emitted_label_fill,
-                emitted_label_style,
-            )
-            .with_terminal_verified(binding.verified),
-        ),
+        theme_emission: binding
+            .emission
+            .with_terminal_value_check(emitted_label_style == binding.label_style),
         typography: (if math_html.is_some() {
             crate::class::ClassTextTerminalFacts::unverified_text(label_text.as_ref())
         } else {

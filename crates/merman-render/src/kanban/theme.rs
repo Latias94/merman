@@ -128,7 +128,7 @@ impl KanbanTypographyPlan {
         self.font_size_px
     }
 
-    fn typography_requested(&self) -> bool {
+    pub(crate) fn typography_requested(&self) -> bool {
         self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
@@ -820,7 +820,11 @@ impl KanbanTaskTheme {
                 items,
                 decisions,
                 &self.typography,
-                typography_facts(),
+                if self.typography.typography_requested() {
+                    typography_facts()
+                } else {
+                    KanbanTypographyFacts::default()
+                },
                 typography_layout,
             )
         })

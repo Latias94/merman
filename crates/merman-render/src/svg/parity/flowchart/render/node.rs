@@ -7,7 +7,7 @@ pub(in crate::svg::parity::flowchart) mod emission;
 pub(in crate::svg::parity::flowchart) mod geom;
 pub(in crate::svg::parity::flowchart) mod helpers;
 mod label;
-pub(in crate::svg::parity) mod roughjs;
+pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::paths as roughjs;
 pub(in crate::svg::parity::flowchart) mod shapes;
 
 pub(in crate::svg::parity::flowchart::render) struct FlowchartNodeRenderCommon<'a> {

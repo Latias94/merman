@@ -27,10 +27,7 @@ use super::BlockNodeShellKind;
 /// Block edge-label background owner; it shares the proven receipt implementation
 /// with Flowchart while remaining a family-local plan.
 #[derive(Debug)]
-pub(crate) struct BlockLabelBackgroundPlan(
-    crate::flowchart::FlowchartLabelBackgroundPlan,
-    Box<str>,
-);
+pub(crate) struct BlockLabelBackgroundPlan(crate::family::EdgeLabelBackgroundPlan, Box<str>);
 
 impl BlockLabelBackgroundPlan {
     pub(crate) fn resolve(
@@ -39,7 +36,7 @@ impl BlockLabelBackgroundPlan {
         configured: &str,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let inner = crate::flowchart::FlowchartLabelBackgroundPlan::resolve(theme, config, work)?;
+        let inner = crate::family::EdgeLabelBackgroundPlan::resolve(theme, config, work)?;
         let color = Box::from(inner.color(configured));
         Ok(Self(inner, color))
     }
@@ -182,7 +179,7 @@ impl BlockNodeLabelPaintPlan {
             let text = if html_labels {
                 label
             } else {
-                crate::flowchart::flowchart_label_plain_text_for_layout(&label, "text", false)
+                crate::graph_label::flowchart_label_plain_text_for_layout(&label, "text", false)
             };
             let visible = !text.trim().is_empty()
                 && node.label_width.unwrap_or(0.0) > 0.0
@@ -342,7 +339,7 @@ impl BlockNodeLabelPaintPlan {
     }
 
     fn label_matches(&self, expected: &BlockNodeLabelExpectation, fragment: &str) -> bool {
-        let Ok(document) = roxmltree::Document::parse(fragment) else {
+        let Ok(document) = crate::xml_dom::Document::parse(fragment) else {
             return false;
         };
         let mut terminals = document
@@ -1295,7 +1292,7 @@ impl BlockNodePaintThemeReceipt {
         // The checkpoint stops after the shell, before the label. Close only the already
         // emitted node group to parse that fragment, never fabricate shell attributes.
         let closed = format!("{fragment}</g>");
-        let Ok(document) = roxmltree::Document::parse(&closed) else {
+        let Ok(document) = crate::xml_dom::Document::parse(&closed) else {
             self.attributes_match = false;
             return;
         };
@@ -1305,7 +1302,7 @@ impl BlockNodePaintThemeReceipt {
         } else {
             format!("{diagram_id}-{}", expectation.id)
         };
-        let has_class = |node: roxmltree::Node<'_, '_>, class| {
+        let has_class = |node: crate::xml_dom::Node<'_, '_>, class| {
             node.attribute("class")
                 .unwrap_or("")
                 .split_ascii_whitespace()
@@ -1317,14 +1314,14 @@ impl BlockNodePaintThemeReceipt {
             && group.attribute("transform") == Some(expectation.transform.as_str());
         let direct = group
             .children()
-            .filter(roxmltree::Node::is_element)
+            .filter(crate::xml_dom::Node::is_element)
             .collect::<Vec<_>>();
         let mut terminals = Vec::new();
         if direct.len() == 1 && direct[0].has_tag_name("g") {
             let wrapper = direct[0];
             let children = wrapper
                 .children()
-                .filter(roxmltree::Node::is_element)
+                .filter(crate::xml_dom::Node::is_element)
                 .collect::<Vec<_>>();
             if has_class(wrapper, "outer-path") {
                 // RoughJS represents one canonical shell with a fill and outline path.
@@ -1435,7 +1432,7 @@ impl BlockNodePaintThemeReceipt {
     }
 }
 
-fn shell_kind(node: roxmltree::Node<'_, '_>) -> Option<BlockNodeShellKind> {
+fn shell_kind(node: crate::xml_dom::Node<'_, '_>) -> Option<BlockNodeShellKind> {
     match node.tag_name().name() {
         "rect" => Some(BlockNodeShellKind::Rect),
         "circle" => Some(BlockNodeShellKind::Circle),
@@ -1835,6 +1832,9 @@ mod tests {
             let layout = crate::block::layout_block_diagram_typed_with_text_style(
                 model,
                 typography.padding(),
+                crate::block::BlockShapeSettings::resolve(
+                    parsed.metadata().effective_config.as_value(),
+                ),
                 typography.css_binding().html_labels,
                 typography.text_style().clone(),
                 &crate::text::DeterministicTextMeasurer::default(),
@@ -1871,7 +1871,7 @@ mod tests {
                 &crate::svg::SvgDebugOptions::default(),
             )
             .unwrap();
-            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let document = crate::xml_dom::Document::parse(rendered.svg()).unwrap();
             // Read each real shell checkpoint from the emitted SVG. A full observer still
             // accepts the cases that omit paint observation; their local evidence is unchanged.
             let mut receipt =
@@ -1883,7 +1883,10 @@ mod tests {
                     .descendants()
                     .find(|element| element.attribute("id") == Some(id.as_str()))
                     .unwrap();
-                let shell = group.children().find(roxmltree::Node::is_element).unwrap();
+                let shell = group
+                    .children()
+                    .find(crate::xml_dom::Node::is_element)
+                    .unwrap();
                 let fragment = &rendered.svg()[group.range().start..shell.range().end];
                 receipt.observe_checkpointed_node(index, "paint-demand", fragment);
                 fragments.push(fragment);

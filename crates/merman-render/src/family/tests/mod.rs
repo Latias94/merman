@@ -54,6 +54,139 @@ fn session() -> RenderSession {
         .unwrap()
 }
 
+#[test]
+fn consuming_family_context_moves_terminal_theme_inventory_allocations() {
+    let mut context = FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART);
+    let applied = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+    let absent = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
+    let residual = FamilyThemeMechanismKey::Rule {
+        index: 0,
+        target: ThemeTarget::Node,
+    };
+    context.style_plan.payload = FamilyStylePayload::Evaluated;
+    context.style_plan.theme_evidence.required =
+        vec![applied.clone(), absent.clone(), residual.clone()];
+    context.style_plan.theme_evidence.applied = vec![applied];
+    context.style_plan.theme_evidence.not_applicable = vec![absent];
+    context.style_plan.theme_evidence.residuals = vec![FamilyThemeResidual {
+        key: residual,
+        reason: FamilyThemeResidualReason::OutputMutation,
+    }];
+    let mut expected = family_report(
+        FamilyStyleEvaluation::Evaluated,
+        context.style_plan.theme_evidence.required.clone(),
+        context.style_plan.theme_evidence.applied.clone(),
+        context.style_plan.theme_evidence.residuals.clone(),
+    );
+    expected.family_id = DiagramFamilyId::FLOWCHART;
+    expected.theme_not_applicable = context.style_plan.theme_evidence.not_applicable.clone();
+    let allocations = (
+        context.style_plan.theme_evidence.required.as_ptr(),
+        context.style_plan.theme_evidence.applied.as_ptr(),
+        context.style_plan.theme_evidence.not_applicable.as_ptr(),
+        context.style_plan.theme_evidence.residuals.as_ptr(),
+    );
+
+    let (_, report) = context.into_session_and_style_report();
+
+    assert_eq!(
+        report, expected,
+        "the consuming boundary preserves all facts"
+    );
+    assert_eq!(report.theme_required.as_ptr(), allocations.0);
+    assert_eq!(report.theme_applied.as_ptr(), allocations.1);
+    assert_eq!(report.theme_not_applicable.as_ptr(), allocations.2);
+    assert_eq!(report.theme_residuals.as_ptr(), allocations.3);
+}
+
+#[test]
+fn borrowed_and_consumed_style_classification_keep_phase_and_residual_order() {
+    let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
+    let source_residual = |raw| {
+        SourceStyleResidual::invalid(
+            raw,
+            crate::diagram_theme::SourceStyleProvenance::inline(
+                "node",
+                SourceStyleChannel::Label,
+                0,
+            ),
+        )
+    };
+    for scenario in 0..10 {
+        let mut plan =
+            FamilyRenderContext::resolve(session(), DiagramFamilyId::FLOWCHART).style_plan;
+        plan.payload = FamilyStylePayload::Evaluated;
+        plan.theme_evidence.required = vec![key.clone()];
+        plan.theme_evidence.applied = vec![key.clone()];
+        match scenario {
+            0 => plan.payload = FamilyStylePayload::NotApplicable,
+            1 => plan.payload = FamilyStylePayload::Unadapted,
+            2 => plan.theme_evidence.applied.clear(),
+            3 => plan.theme_evidence.required.push(key.clone()),
+            4 => {
+                plan.theme_evidence.applied.clear();
+                plan.theme_evidence.not_applicable.push(key.clone());
+            }
+            5 => {
+                plan.theme_evidence.applied.clear();
+                plan.theme_evidence.residuals.push(FamilyThemeResidual {
+                    key: key.clone(),
+                    reason: FamilyThemeResidualReason::UnsupportedPaint,
+                });
+            }
+            6 => plan.output_mutated = true,
+            7 => plan.mermaid_compatibility_residual_count = 1,
+            8 => {
+                plan.source_style_residuals = vec![
+                    source_residual("first"),
+                    source_residual("first"),
+                    source_residual("second"),
+                ];
+            }
+            9 => {
+                plan.output_mutated = true;
+                plan.mermaid_compatibility_residual_count = 1;
+                plan.source_style_residuals.push(source_residual("first"));
+            }
+            _ => unreachable!(),
+        }
+        let view = plan.view();
+        let classification = (
+            view.verification(),
+            view.theme_coverage_complete(),
+            view.ensure_portable().map_err(|error| error.to_string()),
+            view.ensure_portable_before_terminal_evidence()
+                .map_err(|error| error.to_string()),
+        );
+
+        let report = FamilyStyleReport::from_plan(plan);
+
+        assert_eq!(
+            classification,
+            (
+                report.verification(),
+                report.theme_coverage_complete(),
+                report.ensure_portable().map_err(|error| error.to_string()),
+                report
+                    .view()
+                    .ensure_portable_before_terminal_evidence()
+                    .map_err(|error| error.to_string()),
+            ),
+            "scenario {scenario}"
+        );
+        if scenario == 8 {
+            assert_eq!(
+                report
+                    .residuals
+                    .iter()
+                    .map(FamilyStyleResidual::raw)
+                    .collect::<Vec<_>>(),
+                ["first", "second"]
+            );
+        }
+    }
+}
+
 /// Decodes the `data-points` attribute the SVG emitter writes on every edge `<path>`.
 ///
 /// Deliberately an independent reader: the equivalence assertion below is only meaningful
@@ -101,7 +234,7 @@ fn decode_data_points(svg: &str) -> Vec<(String, Vec<(f64, f64)>)> {
 }
 
 fn decode_edge_label_positions(svg: &str) -> std::collections::HashMap<String, (f64, f64)> {
-    let document = roxmltree::Document::parse(svg).expect("valid flowchart SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("valid flowchart SVG");
     let mut positions = std::collections::HashMap::new();
     for edge_label in document.descendants().filter(|node| {
         node.has_tag_name("g")
@@ -459,9 +592,9 @@ fn flowchart_node_label_font_size_theme_without_catalog(family: DiagramFamilyId)
 }
 
 fn flowchart_node_wrapper<'a, 'input>(
-    document: &'a roxmltree::Document<'input>,
+    document: &'a crate::xml_dom::Document<'input>,
     node_id: &str,
-) -> roxmltree::Node<'a, 'input> {
+) -> crate::xml_dom::Node<'a, 'input> {
     document
         .descendants()
         .find(|node| {
@@ -473,7 +606,7 @@ fn flowchart_node_wrapper<'a, 'input>(
 }
 
 fn flowchart_node_shape_style(svg: &str, node_id: &str) -> String {
-    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let wrapper = flowchart_node_wrapper(&document, node_id);
     wrapper
         .descendants()
@@ -491,7 +624,7 @@ fn flowchart_node_shape_style(svg: &str, node_id: &str) -> String {
 }
 
 fn flowchart_edge_path_style(svg: &str) -> String {
-    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     document
         .descendants()
         .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
@@ -501,7 +634,7 @@ fn flowchart_edge_path_style(svg: &str) -> String {
 }
 
 fn flowchart_edge_marker_id(svg: &str) -> String {
-    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let marker = document
         .descendants()
         .find(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
@@ -515,7 +648,7 @@ fn flowchart_edge_marker_id(svg: &str) -> String {
 }
 
 fn assert_flowchart_point_marker_paint(svg: &str, marker_id: &str, paint: &str) {
-    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let marker = document
         .descendants()
         .find(|node| node.has_tag_name("marker") && node.attribute("id") == Some(marker_id))
@@ -529,7 +662,7 @@ fn assert_flowchart_point_marker_paint(svg: &str, marker_id: &str, paint: &str) 
 }
 
 fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> Option<String> {
-    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let wrapper = flowchart_node_wrapper(&document, node_id);
     wrapper
         .descendants()
@@ -546,7 +679,7 @@ fn flowchart_node_shape_attribute(svg: &str, node_id: &str, attribute: &str) -> 
 }
 
 fn flowchart_node_label_style(svg: &str, node_id: &str) -> String {
-    let document = roxmltree::Document::parse(svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("valid Flowchart SVG");
     let wrapper = flowchart_node_wrapper(&document, node_id);
     wrapper
         .descendants()
@@ -2753,7 +2886,8 @@ fn flowchart_start_node_proves_direct_typed_paint_emission() {
     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     .expect("direct start paint should satisfy strict portability");
 
-    let document = roxmltree::Document::parse(rendered.svg()).expect("rendered SVG must parse");
+    let document =
+        crate::xml_dom::Document::parse(rendered.svg()).expect("rendered SVG must parse");
     let start = document
         .descendants()
         .find(|node| {
@@ -2822,7 +2956,7 @@ note for A "note"
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("terminal Class relation width should satisfy strict portability");
 
-        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Class SVG");
+        let document = crate::xml_dom::Document::parse(rendered.svg()).expect("valid Class SVG");
         let paths = document
             .descendants()
             .filter(|node| node.has_tag_name("path") && node.attribute("data-edge") == Some("true"))
@@ -2913,7 +3047,7 @@ A o-- B
         .expect("source-owned Class relation width should supersede the typed default")
     };
     let view_box = |svg: &str| {
-        roxmltree::Document::parse(svg)
+        crate::xml_dom::Document::parse(svg)
             .expect("valid Class SVG")
             .root_element()
             .attribute("viewBox")
@@ -3133,7 +3267,7 @@ G ..> H
             .expect("begin strict Class paint-bounds session"),
     );
     let view_box = |svg: &str| {
-        let document = roxmltree::Document::parse(svg).expect("valid Class SVG");
+        let document = crate::xml_dom::Document::parse(svg).expect("valid Class SVG");
         document
             .root_element()
             .attribute("viewBox")
@@ -5306,7 +5440,8 @@ fn flowchart_neo_edge_dasharray_is_the_terminal_style_winner() {
     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     .expect("Neo terminal writer should prove typed stroke dasharray");
 
-    let document = roxmltree::Document::parse(rendered.svg()).expect("valid Neo Flowchart SVG");
+    let document =
+        crate::xml_dom::Document::parse(rendered.svg()).expect("valid Neo Flowchart SVG");
     let edge_style = |edge_id: &str| {
         document
             .descendants()
@@ -6485,8 +6620,8 @@ participant Alice
 participant Bob
 Alice->>Bob: Hello
 "##,
-            "#28253D",
-            false,
+            "#22c55e",
+            true,
         ),
     ];
 
@@ -6708,7 +6843,7 @@ fn require_portable_accepts_sequence_note_scalar_paints_after_rect_emission() {
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("Sequence Note paint should be proven by the rect writer");
 
-        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Sequence SVG");
+        let document = crate::xml_dom::Document::parse(rendered.svg()).expect("valid Sequence SVG");
         let css = document
             .descendants()
             .find(|node| node.has_tag_name("style"))
@@ -8201,7 +8336,7 @@ fn state_family_typography_is_shared_by_layout_and_terminal_svg() {
         rendered.svg(),
     );
     assert!(rendered.style_report().theme_residuals().is_empty());
-    roxmltree::Document::parse(rendered.svg())
+    crate::xml_dom::Document::parse(rendered.svg())
         .expect("State typography output must remain well-formed XML");
     assert!(rendered.svg().contains("font-size:26px"));
     assert!(
@@ -9197,7 +9332,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
     };
 
     assert!(!rendered_svg.contains("cyclic-special"), "{}", rendered_svg);
-    let document = roxmltree::Document::parse(&rendered_svg).expect("valid self-loop SVG");
+    let document = crate::xml_dom::Document::parse(&rendered_svg).expect("valid self-loop SVG");
     let logical_path = document.descendants().any(|node| {
         node.has_tag_name("path") && node.attribute("data-id") == Some("self-loop-edge")
     });
@@ -9325,7 +9460,7 @@ linkStyle 0 font-size:12px,font-style:italic
         svg
     };
 
-    let document = roxmltree::Document::parse(&rendered_svg).expect("valid Swimlane SVG");
+    let document = crate::xml_dom::Document::parse(&rendered_svg).expect("valid Swimlane SVG");
     let label_group = document
         .descendants()
         .find(|node| {
@@ -9755,7 +9890,7 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
             "eligible owner {owner:?} must not fall back to render-time preparation"
         );
     }
-    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(&svg).expect("valid Flowchart SVG");
     let visible_text = document
         .descendants()
         .filter_map(|node| node.text().filter(|_| node.is_text()))
@@ -9950,7 +10085,7 @@ D --> P
             "special-shape label {owner:?} must reuse its prepared SVG plan"
         );
     }
-    let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+    let document = crate::xml_dom::Document::parse(&svg).expect("valid Flowchart SVG");
     let visible_text = document
         .descendants()
         .filter_map(|node| node.text().filter(|_| node.is_text()))
@@ -10041,7 +10176,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
         swimlane.svg_label_sidecar().source_plan_count(owner),
         source_plans_before
     );
-    let document = roxmltree::Document::parse(&svg).expect("valid Swimlane SVG");
+    let document = crate::xml_dom::Document::parse(&svg).expect("valid Swimlane SVG");
     let visible_text = document
         .descendants()
         .filter_map(|node| node.text().filter(|_| node.is_text()))
@@ -10307,7 +10442,7 @@ fn constrained_profile_rejects_math_before_invoking_an_opaque_backend() {
 
 #[cfg(feature = "math")]
 fn prepared_math_native_glyph_geometry(svg: &str) -> Vec<bool> {
-    let document = roxmltree::Document::parse(svg).expect("well-formed native math SVG");
+    let document = crate::xml_dom::Document::parse(svg).expect("well-formed native math SVG");
     document
         .descendants()
         .filter(|node| {
@@ -10665,7 +10800,8 @@ fn compiled_sequence_actor_man_math_seals_one_occurrence_across_mirrored_emissio
         2,
         "the mirrored top and bottom actor-man labels must share one prepared occurrence"
     );
-    let document = roxmltree::Document::parse(rendered.svg()).expect("well-formed Sequence SVG");
+    let document =
+        crate::xml_dom::Document::parse(rendered.svg()).expect("well-formed Sequence SVG");
     let fallback_labels = document
         .descendants()
         .filter(|node| node.is_text() && node.text() == Some("$$x$$"))
@@ -10726,8 +10862,9 @@ fn compiled_sequence_multiline_participant_math_expands_each_terminal_actor_box(
         .expect("prepare multiline Sequence participant math")
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render multiline Sequence participant math");
-    let document = roxmltree::Document::parse(rendered.svg()).expect("well-formed Sequence SVG");
-    let parse_length = |node: roxmltree::Node<'_, '_>, name: &str| {
+    let document =
+        crate::xml_dom::Document::parse(rendered.svg()).expect("well-formed Sequence SVG");
+    let parse_length = |node: crate::xml_dom::Node<'_, '_>, name: &str| {
         node.attribute(name)
             .expect("expected geometry attribute")
             .parse::<f64>()

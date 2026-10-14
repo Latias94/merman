@@ -2684,6 +2684,7 @@ dependencies = [
  "kurbo 0.13.1",
  "libm",
  "manatee",
+ "memchr",
  "merman-core",
  "merman-fixture-render-context",
  "merman-layout-elk",

@@ -81,7 +81,8 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     };
     options.work_meter().charge(layout.clusters.len())?;
     let mut relation_theme_receipt = relation_theme.begin_terminal_receipt_with_nodes(
-        Vec::new(),
+        node_expectations,
+        node_visual_plan.has_unique_domain(),
         layout
             .clusters
             .iter()
@@ -122,7 +123,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
     // Mermaid emits a single `<style>` element with diagram-scoped CSS.
     out.push_str("<style>");
     let typography_css_emission = write_class_css(
-        &mut out,
+        &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id.semantic_str(),
         typography_theme,
         relation_theme,
@@ -250,6 +251,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         },
         relation_theme,
         text_paint: typography_theme.edge_paint(),
+        capture_text_facts: typography_theme.requires_terminal_receipt(),
         emit,
     };
 
@@ -399,7 +401,6 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         emit_class_render_timing(&timings, &detail, layout);
     }
     let rooted_svg = root_document.complete(out)?;
-    let relation_theme_receipt = relation_theme_receipt.with_nodes(node_expectations.to_vec());
     if !theme_evidence.record_terminal(relation_theme_receipt) {
         return Err(crate::Error::InvalidModel {
             message: "Class theme receipt did not match the terminal SVG".to_string(),

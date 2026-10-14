@@ -426,16 +426,14 @@ where
             continue;
         }
         if html_labels {
-            // Mermaid (via Stylis) ends up serializing the `>` combinator inside `<style>` as
-            // `&gt;` in the final SVG string (see upstream baselines).
             let _ = write!(
                 &mut *out,
-                r#"#{} .{}&gt;*{{{}}}#{} .{} span{{{}}}"#,
+                r#"#{} .{}>*{{{}}}#{} .{} span{{{}}}"#,
                 id,
-                escape_xml(class),
+                crate::svg::escape_css_identifier(class),
                 style,
                 id,
-                escape_xml(class),
+                crate::svg::escape_css_identifier(class),
                 style
             );
         } else {
@@ -444,7 +442,7 @@ where
                     &mut *out,
                     r#"#{} .{} {}{{{}}}"#,
                     id,
-                    escape_xml(class),
+                    crate::svg::escape_css_identifier(class),
                     css_element,
                     style
                 );
@@ -455,7 +453,7 @@ where
                 &mut *out,
                 r#"#{} .{} tspan{{{}}}"#,
                 id,
-                escape_xml(class),
+                crate::svg::escape_css_identifier(class),
                 text_style
             );
         }
@@ -609,6 +607,42 @@ mod tests {
             !out.as_str().contains("late-class"),
             "classDef emission must not continue after the fixed-prefix checkpoint"
         );
+    }
+
+    #[test]
+    fn flowchart_class_selectors_are_css_encoded_before_terminal_xml_encoding() {
+        let class = "class&<:quoted\"Ω";
+        let class_defs = IndexMap::from([(class.to_owned(), vec!["fill:#123456".to_owned()])]);
+        let mut svg = String::from("<svg><style>");
+        write_flowchart_css(
+            &mut super::super::super::output::XmlTextOutput::new(&mut svg),
+            "selector-scope",
+            "flowchart-v2",
+            "shadow",
+            "shadow-small",
+            "gradient",
+            &crate::flowchart::FlowchartCompatibilityBinding::resolve(&json!({"htmlLabels": true})),
+            "sans-serif",
+            16.0,
+            &class_defs,
+            None,
+        )
+        .unwrap();
+        svg.push_str("</style></svg>");
+        let document = crate::xml_dom::Document::parse(&svg).unwrap();
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap();
+        let escaped = crate::svg::escape_css_identifier(class);
+        assert!(
+            css.contains(&format!("#selector-scope .{escaped}>*{{")),
+            "{css}"
+        );
+        assert!(!css.contains("&amp;"));
+        assert!(!css.contains("&gt;"));
     }
 
     #[test]

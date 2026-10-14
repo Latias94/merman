@@ -1,6 +1,6 @@
 //! RoughJS-compatible path generation helpers (via `roughr`).
 //!
-//! Mermaid uses RoughJS for "hand-drawn" flowchart node rendering, and in a few cases even when
+//! Mermaid uses RoughJS for "hand-drawn" node rendering, and in a few cases even when
 //! roughness is zero. These helpers mirror Mermaid's RoughJS call ordering to keep SVG DOM parity.
 
 use crate::resources::OperationWorkMeter;

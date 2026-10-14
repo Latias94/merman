@@ -809,37 +809,30 @@ impl ThemeProgram {
         Ok(())
     }
 
-    fn resolve_legacy_variables(
+    fn resolve_legacy(
         self,
         explicit: &Map<String, Value>,
     ) -> Result<Map<String, Value>, ColorError> {
-        let calculated = match self.kind {
-            ThemeProgramKind::Default => calculate_default_theme_variables(explicit)?,
+        match self.kind {
+            ThemeProgramKind::Default => {
+                let calculated = calculate_default_theme_variables(explicit)?;
+                Ok(ThemeResolution::new(self.id, explicit, calculated)?.into_resolved_variables())
+            }
             ThemeProgramKind::Staged(_) => {
                 unreachable!("staged themes do not enter legacy theme execution")
             }
-            ThemeProgramKind::Extended => explicit.clone(),
-        };
-        resolve_legacy_theme_variables(self.id, explicit, calculated)
+            ThemeProgramKind::Extended => {
+                Ok(ThemeResolution::new(self.id, explicit, explicit.clone())?
+                    .into_resolved_variables())
+            }
+        }
     }
 
     fn propagate_derived_ownership(
         self,
-        explicit: &Map<String, Value>,
+        explicit_dependency_variables: &[(&str, bool)],
         config: &mut MermaidConfig,
     ) {
-        if !config.has_theme_ownership_provenance() {
-            return;
-        }
-        let explicit_dependency_variables = self
-            .variable_dependencies()
-            .flat_map(|dependency| [dependency.source, dependency.target])
-            .filter_map(|variable| {
-                explicit
-                    .get(variable)
-                    .map(|value| (variable, is_js_truthy(value)))
-            })
-            .collect::<Vec<_>>();
         match self.dependencies {
             ThemeDependencyGraph::DarkenedScale | ThemeDependencyGraph::DarkenedScaleAndGit => {
                 propagate_standard_color_scale_ownership(config);
@@ -855,7 +848,7 @@ impl ThemeProgram {
             for variable in [dependency.source, dependency.target] {
                 calculated_origins.entry(variable).or_insert_with(|| {
                     config
-                        .config_path_overrides_typed_default(&format!("themeVariables.{variable}"))
+                        .theme_variable_has_calculation_owner(variable)
                         .then_some(variable)
                 });
             }
@@ -1205,14 +1198,6 @@ fn merge_theme_variable_defaults(target: &mut Map<String, Value>, defaults: &Map
             _ => {}
         }
     }
-}
-
-fn resolve_legacy_theme_variables(
-    theme: MermaidThemeId,
-    explicit: &Map<String, Value>,
-    calculated: Map<String, Value>,
-) -> Result<Map<String, Value>, ColorError> {
-    Ok(ThemeResolution::new(theme, explicit, calculated)?.into_resolved_variables())
 }
 
 #[cfg(test)]
@@ -1873,12 +1858,24 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), The
     }
 
     program.validate_evaluated_inputs(&explicit)?;
-    let resolved = program.resolve_legacy_variables(&explicit)?;
-    // Resolution reads only local variables. Commit values and ownership together once every
-    // color operation has succeeded, without cloning the unrelated configuration transaction.
+    let resolved = program.resolve_legacy(&explicit)?;
+    // Calculation owns only local variables. Commit values and normalization together after every
+    // fallible calculation succeeds, without staging an unrelated full configuration tree.
     config.retain_normalized_theme_compatibility_variables(&explicit);
+    let has_calculation_owners = config.has_theme_variable_calculation_owners();
     config.commit_legacy_theme_variables(resolved);
-    program.propagate_derived_ownership(&explicit, config);
+    if has_calculation_owners {
+        let explicit_dependency_variables = program
+            .variable_dependencies()
+            .flat_map(|dependency| [dependency.source, dependency.target])
+            .filter_map(|variable| {
+                explicit
+                    .get(variable)
+                    .map(|value| (variable, is_js_truthy(value)))
+            })
+            .collect::<Vec<_>>();
+        program.propagate_derived_ownership(&explicit_dependency_variables, config);
+    }
     Ok(())
 }
 
@@ -1894,45 +1891,6 @@ pub(crate) fn materialize_selected_theme(
     );
     apply_theme_defaults(&mut effective_config)?;
     Ok(effective_config)
-}
-
-#[cfg(test)]
-fn materialize_source_selected_theme(
-    site_config: &MermaidConfig,
-    initialization_config: &MermaidConfig,
-    source_config: &MermaidConfig,
-) -> Result<Option<MermaidConfig>, ThemeResolutionError> {
-    let Some(requested) = source_config.get_str("theme") else {
-        return Ok(None);
-    };
-    if MermaidThemeId::parse(requested).is_err() {
-        return Ok(None);
-    }
-
-    // Mermaid updates ordinary source config from the already materialized site config. A source
-    // directive that selects a registered theme is the one exception: it rebuilds themeVariables
-    // from the raw initialize inputs plus the source inputs, then materializes the selected theme.
-    // Reconstruct from the unmaterialized site config so ownership is derived exactly once for the
-    // newly selected theme instead of carrying derived paths from the previous site theme.
-    let mut effective_config = site_config.clone();
-    effective_config.deep_merge_explicit(source_config.as_value());
-
-    let initial_theme_variables = initialization_config
-        .as_value()
-        .get("themeVariables")
-        .filter(|value| is_js_truthy(value))
-        .map(crate::compatibility_json::clone_value_nonrecursive)
-        .unwrap_or_else(|| Value::Object(Map::new()));
-    let mut raw_theme_variables = MermaidConfig::from_value(initial_theme_variables);
-    if let Some(source_theme_variables) = source_config.as_value().get("themeVariables") {
-        raw_theme_variables.deep_merge(source_theme_variables);
-    }
-    effective_config.set_value_preserving_theme_compatibility(
-        "themeVariables",
-        crate::compatibility_json::clone_value_nonrecursive(raw_theme_variables.as_value()),
-    );
-    apply_theme_defaults(&mut effective_config)?;
-    Ok(Some(effective_config))
 }
 
 fn apply_extended_theme_visible_derivations(
@@ -2799,12 +2757,17 @@ mod tests {
     }
 
     #[test]
-    fn owned_legacy_theme_materialization_config_work() {
-        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
+    fn owned_legacy_theme_materialization_needs_no_json_cow_copy() {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
+            let unrelated = "retained host data ".repeat(8_192);
             let raw = MermaidConfig::from_value(json!({
                 "theme": theme.as_str(),
-                "themeVariables": {"primaryColor": "#123456"},
-                "unrelated": {"nested": [1, 2, 3]},
+                "themeVariables": { "primaryColor": "#123456" },
+                "unrelatedHostData": unrelated,
             }));
             let (materialized, work) = crate::config::measure_config_work(|| {
                 materialize_selected_theme(raw, theme).unwrap()
@@ -2814,8 +2777,8 @@ mod tests {
                 Some("#123456")
             );
             assert_eq!(
-                materialized.as_value()["unrelated"],
-                json!({"nested": [1, 2, 3]})
+                materialized.get_str("unrelatedHostData"),
+                Some(unrelated.as_str())
             );
             assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
             assert_eq!(work.explicit_path_candidates, 0, "{theme}: {work:?}");
@@ -2824,30 +2787,211 @@ mod tests {
     }
 
     #[test]
-    fn shared_legacy_theme_materialization_copies_only_the_shared_input() {
-        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
-            let raw = MermaidConfig::from_value(json!({
+    fn shared_legacy_theme_materialization_detaches_only_at_successful_commit() {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
+            let original = MermaidConfig::from_value(json!({
                 "theme": theme.as_str(),
-                "themeVariables": {"primaryColor": "#123456"},
-                "unrelated": {"nested": [1, 2, 3]},
+                "themeVariables": { "primaryColor": "#123456" },
+                "unrelatedHostData": "retained host data ".repeat(8_192),
             }));
-            let before = raw.clone();
-            let (materialized, work) = crate::config::measure_config_work(|| {
-                materialize_selected_theme(raw, theme).unwrap()
-            });
+            let mut working = original.clone();
+            let (_, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut working).unwrap());
+            assert_eq!(work.json_cow_copies, 1, "{theme}: {work:?}");
             assert_eq!(
-                materialized.get_str("themeVariables.primaryColor"),
-                Some("#123456")
-            );
-            assert_eq!(
-                before.as_value()["themeVariables"],
+                original.as_value()["themeVariables"],
                 json!({"primaryColor": "#123456"})
             );
             assert_eq!(
-                materialized.as_value()["unrelated"],
-                before.as_value()["unrelated"]
+                working.get_str("themeVariables.primaryColor"),
+                Some("#123456")
             );
-            assert_eq!(work.json_cow_copies, 1, "{theme}: {work:?}");
+            assert_eq!(
+                working.as_value()["unrelatedHostData"],
+                original.as_value()["unrelatedHostData"]
+            );
+            assert!(
+                working.as_value()["themeVariables"]
+                    .as_object()
+                    .unwrap()
+                    .len()
+                    > 1
+            );
+        }
+    }
+
+    #[test]
+    fn unowned_legacy_materialization_does_not_construct_derived_owner_queries() {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme.as_str(),
+                "themeVariables": { "primaryColor": "#123456" },
+            }));
+            let (_, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut config).unwrap());
+            assert_eq!(work.explicit_path_candidates, 0, "{theme}: {work:?}");
+            assert_eq!(
+                config.get_str("themeVariables.primaryColor"),
+                Some("#123456")
+            );
+            assert!(!config.config_path_overrides_typed_default("themeVariables.primaryColor"));
+            assert!(!config.config_path_overrides_typed_default("themeVariables.nodeBkg"));
+        }
+    }
+
+    #[test]
+    fn retired_or_non_variable_compatibility_owners_do_not_construct_derived_queries() {
+        for authority in ["theme-only", "shadowed-variable", "normalized-null"] {
+            let input = match authority {
+                "theme-only" => json!({"theme": "redux-color"}),
+                _ => json!({"theme": "redux-color", "themeVariables": {"primaryColor": "#123456"}}),
+            };
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x78; 32],
+                MermaidConfig::from_value(input),
+            )
+            .unwrap();
+            let mut config = MermaidConfig::from_theme_parse_binding(binding);
+            match authority {
+                "shadowed-variable" => {
+                    config.set_value("themeVariables.primaryColor", json!("#123456"))
+                }
+                "normalized-null" => config.set_value_preserving_theme_compatibility(
+                    "themeVariables.primaryColor",
+                    Value::Null,
+                ),
+                _ => {}
+            }
+            let mut expected = MermaidConfig::from_value(config.as_value().clone());
+            apply_theme_defaults(&mut expected).unwrap();
+            let (_, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut config).unwrap());
+            assert_eq!(config.as_value(), expected.as_value(), "{authority}");
+            assert_eq!(work.explicit_path_candidates, 0, "{authority}: {work:?}");
+            config.freeze_theme_compatibility();
+            assert!(
+                !config.config_path_overrides_typed_default("themeVariables.nodeBkg"),
+                "{authority}"
+            );
+            assert_eq!(
+                config.mermaid_compatibility_residual_count(),
+                1,
+                "only theme remains owned for {authority}"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_owner_propagation_keeps_tracking_frozen_and_same_value_authorities() {
+        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
+            let input =
+                json!({"theme": theme.as_str(), "themeVariables": {"textColor": "#123456"}});
+            let mut expected = MermaidConfig::from_value(input.clone());
+            apply_theme_defaults(&mut expected).unwrap();
+            for authority in ["tracking", "frozen", "same-value", "parent"] {
+                let mut config = if matches!(authority, "tracking" | "frozen") {
+                    let binding = crate::config::ThemeParseBinding::try_new(
+                        [0x75; 32],
+                        MermaidConfig::from_value(input.clone()),
+                    )
+                    .unwrap();
+                    MermaidConfig::from_theme_parse_binding(binding)
+                } else {
+                    MermaidConfig::from_value(input.clone())
+                };
+                match authority {
+                    "frozen" => config.freeze_theme_compatibility(),
+                    "same-value" => {
+                        config.set_value_explicit("themeVariables.textColor", json!("#123456"))
+                    }
+                    "parent" => {
+                        config.set_value_explicit("themeVariables", input["themeVariables"].clone())
+                    }
+                    _ => {}
+                }
+                apply_theme_defaults(&mut config).unwrap();
+                config.freeze_theme_compatibility();
+                assert_eq!(
+                    config.as_value(),
+                    expected.as_value(),
+                    "{theme}/{authority}"
+                );
+                assert_eq!(
+                    config.get_str("themeVariables.signalTextColor"),
+                    Some("#123456")
+                );
+                assert!(
+                    config.config_path_overrides_typed_default("themeVariables.signalTextColor"),
+                    "{theme}/{authority}"
+                );
+                if authority != "parent" {
+                    assert!(
+                        !config.config_path_overrides_typed_default("themeVariables.radius"),
+                        "{theme}/{authority}"
+                    );
+                }
+            }
+
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x76; 32],
+                MermaidConfig::from_value(input),
+            )
+            .unwrap();
+            let mut shadowed = MermaidConfig::from_theme_parse_binding(binding);
+            shadowed.set_value("themeVariables.textColor", json!("#123456"));
+            apply_theme_defaults(&mut shadowed).unwrap();
+            assert_eq!(shadowed.as_value(), expected.as_value());
+            assert!(
+                !shadowed.config_path_overrides_typed_default("themeVariables.signalTextColor")
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_compatibility_derived_owners_survive_public_engine_initialization() {
+        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x77; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(), "themeVariables": {"textColor": "#123456"},
+                })),
+            )
+            .unwrap();
+            let parsed = crate::Engine::new()
+                .with_theme_compatibility(binding)
+                .parse_metadata_sync("sequenceDiagram\nA->>B: Hello")
+                .expect("parse initialized compatibility through the public operation");
+            assert_eq!(
+                parsed
+                    .effective_config
+                    .get_str("themeVariables.signalTextColor"),
+                Some("#123456")
+            );
+            assert!(
+                parsed
+                    .effective_config
+                    .config_path_overrides_typed_default("themeVariables.signalTextColor"),
+                "{theme} must retain its actual compatibility-derived owner"
+            );
+            let fields = parsed
+                .effective_config
+                .mermaid_compatibility_fields()
+                .unwrap();
+            assert!(
+                fields.iter().any(|field| field
+                    .surviving_paths()
+                    .iter()
+                    .any(|path| path.as_ref() == "themeVariables.signalTextColor")),
+                "{theme} must freeze the derived physical path into its conceptual input field"
+            );
         }
     }
 
@@ -2907,21 +3051,68 @@ mod tests {
     }
 
     #[test]
+    fn legacy_late_failure_keeps_config_and_compatibility_ownership() {
+        for theme in [MermaidThemeId::NeoDark, MermaidThemeId::ReduxDark] {
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x6a; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(),
+                    "themeVariables": {"nodeBkg": "#123456", "cScale2": "#abcdef"},
+                })),
+            )
+            .expect("valid extended theme compatibility binding");
+            let mut config = MermaidConfig::from_theme_parse_binding(binding);
+            config.set_value_preserving_theme_compatibility(
+                "unrelated",
+                json!({"nested": [1, 2, 3]}),
+            );
+            config.set_value_preserving_theme_compatibility(
+                "themeVariables.cScale2",
+                Value::String("not-a-color".to_string()),
+            );
+            config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+            config.set_value_explicit("themeVariables.background", json!("#012345"));
+
+            let program = *ThemeProgram::resolve(theme);
+            assert_eq!(program.kind, ThemeProgramKind::Extended);
+            let normalized = program.normalize_overrides(theme_variables_map(&config));
+            program
+                .validate_evaluated_inputs(&normalized)
+                .expect("cScale2 fails during calculation, after early input validation");
+
+            let before = config.clone();
+            let mut expected_compatibility = before.clone();
+            expected_compatibility.freeze_theme_compatibility();
+
+            assert_eq!(
+                apply_theme_defaults(&mut config),
+                Err(ThemeResolutionError::Color(ColorError::UnsupportedFormat {
+                    input: "not-a-color".to_string(),
+                })),
+                "{theme}"
+            );
+            assert_eq!(config.as_value(), before.as_value(), "{theme}");
+            assert!(!config.path_was_mutated_after(&before, ""), "{theme}");
+            assert!(config.config_path_overrides_typed_default("themeVariables.background"));
+            assert!(!config.config_path_overrides_typed_default("themeVariables.cScalePeer2"));
+
+            config.freeze_theme_compatibility();
+            assert_eq!(
+                config.mermaid_compatibility_fields(),
+                expected_compatibility.mermaid_compatibility_fields(),
+                "a failed {theme} execution must not retire compatibility ownership"
+            );
+        }
+    }
+
+    #[test]
     fn source_theme_materialization_merges_array_sources_without_object_coercion() {
-        let source = MermaidConfig::from_value(json!({
-            "theme": "base",
-            "themeVariables": [
-                {"primaryColor": "#123456"},
-                {"secondaryColor": "#654321"}
-            ]
-        }));
-        let materialized = materialize_source_selected_theme(
-            &crate::generated::default_site_config(),
-            &MermaidConfig::empty_object(),
-            &source,
-        )
-        .expect("materialize source theme")
-        .expect("registered source theme");
+        let materialized = crate::Engine::new()
+            .parse_metadata_sync(
+                "%%{init: {\"theme\": \"base\", \"themeVariables\": [{\"primaryColor\": \"#123456\"}, {\"secondaryColor\": \"#654321\"}]}}%%\nflowchart TD\nA-->B",
+            )
+            .expect("materialize source theme through the public parse pipeline")
+            .effective_config;
 
         assert_eq!(
             materialized.get_str("themeVariables.primaryColor"),
@@ -3547,8 +3738,11 @@ mod tests {
     }
 
     #[test]
-    fn source_text_color_does_not_rematerialize_signal_color_through_the_parse_pipeline() {
-        for (theme, expected_signal) in [(None, "#28253D"), (Some("default"), "#333")] {
+    fn source_text_color_recalculates_scoped_sequence_but_preserves_unchanged_global_theme() {
+        for (theme, initialized_signal, source_signal, source_owns_signal) in [
+            (None, "#28253D", "#22c55e", true),
+            (Some("default"), "#333", "#333", false),
+        ] {
             let mut site = json!({
                 "secure": [
                     "secure", "securityLevel", "startOnLoad", "maxTextSize",
@@ -3566,7 +3760,7 @@ mod tests {
                 initialized
                     .effective_config
                     .get_str("themeVariables.signalColor"),
-                Some(expected_signal)
+                Some(initialized_signal)
             );
             let metadata = engine
                 .parse_metadata_sync(
@@ -3591,15 +3785,21 @@ Alice->>Bob: Hello
                 metadata
                     .effective_config
                     .get_str("themeVariables.signalColor"),
-                initialized
+                Some(source_signal)
+            );
+            assert_eq!(
+                metadata
                     .effective_config
-                    .get_str("themeVariables.signalColor")
+                    .config_path_overrides_typed_default("themeVariables.signalColor"),
+                source_owns_signal,
+                "source ownership follows actual recalculation of the selected Sequence theme"
             );
             assert!(
-                !metadata
+                metadata
                     .effective_config
-                    .config_path_overrides_typed_default("themeVariables.signalColor")
+                    .explicit_config_owns_path("themeVariables.textColor")
             );
+            assert_eq!(metadata.config.get_str("themeVariables.signalColor"), None);
         }
     }
 
@@ -5485,56 +5685,88 @@ flowchart TD
     }
 
     #[test]
+    fn base_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
+        let binding = crate::config::ThemeParseBinding::try_new(
+            [0x6a; 32],
+            MermaidConfig::from_value(json!({
+                "theme": "base",
+                "themeVariables": {
+                    "nodeBkg": "#123456",
+                    "cScale2": "#abcdef"
+                }
+            })),
+        )
+        .expect("valid Base compatibility binding");
+        let mut config = MermaidConfig::from_theme_parse_binding(binding);
+        config.set_value_preserving_theme_compatibility(
+            "themeVariables.cScale2",
+            Value::String("not-a-color".to_string()),
+        );
+        config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+
+        let before_value = config.as_value().clone();
+        let mut expected_compatibility = config.clone();
+        expected_compatibility.freeze_theme_compatibility();
+
+        assert!(apply_theme_defaults(&mut config).is_err());
+        assert_eq!(config.as_value(), &before_value);
+
+        config.freeze_theme_compatibility();
+        assert_eq!(
+            config.mermaid_compatibility_fields(),
+            expected_compatibility.mermaid_compatibility_fields(),
+            "a failed Base execution must not retire compatibility ownership"
+        );
+    }
+
+    #[test]
     fn legacy_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
-        for theme in [MermaidThemeId::NeoDark, MermaidThemeId::ReduxDark] {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
             let binding = crate::config::ThemeParseBinding::try_new(
-                [0x6a; 32],
+                [0x6b; 32],
                 MermaidConfig::from_value(json!({
                     "theme": theme.as_str(),
-                    "themeVariables": {"nodeBkg": "#123456", "cScale2": "#abcdef"},
+                    "themeVariables": {
+                        "primaryColor": "#123456",
+                        "nodeBkg": "#abcdef",
+                    },
                 })),
             )
-            .expect("valid extended theme compatibility binding");
+            .expect("valid legacy-theme compatibility binding");
             let mut config = MermaidConfig::from_theme_parse_binding(binding);
             config.set_value_preserving_theme_compatibility(
-                "unrelated",
-                json!({"nested": [1, 2, 3]}),
-            );
-            config.set_value_preserving_theme_compatibility(
-                "themeVariables.cScale2",
-                Value::String("not-a-color".to_string()),
+                "themeVariables.primaryColor",
+                json!("not-a-color"),
             );
             config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
-            config.set_value_explicit("themeVariables.background", json!("#012345"));
-
-            let program = *ThemeProgram::resolve(theme);
-            assert_eq!(program.kind, ThemeProgramKind::Extended);
-            let normalized = program.normalize_overrides(theme_variables_map(&config));
-            program
-                .validate_evaluated_inputs(&normalized)
-                .expect("cScale2 fails during calculation, after early input validation");
-
-            let before = config.clone();
-            let mut expected_compatibility = before.clone();
+            config.set_value_explicit("hostOption", json!(true));
+            let before_value = config.as_value().clone();
+            let mut expected_compatibility = config.clone();
             expected_compatibility.freeze_theme_compatibility();
 
-            assert_eq!(
-                apply_theme_defaults(&mut config),
-                Err(ThemeResolutionError::Color(ColorError::UnsupportedFormat {
-                    input: "not-a-color".to_string(),
-                })),
-                "{theme}"
+            let (result, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut config));
+            assert!(
+                result.is_err(),
+                "{theme} must reject the invalid evaluated color"
             );
-            assert_eq!(config.as_value(), before.as_value(), "{theme}");
-            assert!(!config.path_was_mutated_after(&before, ""), "{theme}");
-            assert!(config.config_path_overrides_typed_default("themeVariables.background"));
-            assert!(!config.config_path_overrides_typed_default("themeVariables.cScalePeer2"));
-
+            assert_eq!(config.as_value(), &before_value, "{theme}");
+            assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
+            assert!(config.explicit_config_owns_path("hostOption"));
+            assert!(!config.explicit_config_owns_path("themeVariables.nodeBkg"));
             config.freeze_theme_compatibility();
             assert_eq!(
                 config.mermaid_compatibility_fields(),
                 expected_compatibility.mermaid_compatibility_fields(),
-                "a failed {theme} execution must not retire compatibility ownership"
+                "a failed {theme} execution must not retire compatibility ownership",
+            );
+            assert_eq!(
+                config.theme_parse_binding(),
+                expected_compatibility.theme_parse_binding()
             );
         }
     }

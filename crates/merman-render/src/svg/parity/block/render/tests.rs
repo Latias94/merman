@@ -168,8 +168,14 @@ fn block_prepared_class_css_keeps_shape_and_span_declaration_order() {
         render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
             .expect("render prepared Block class CSS");
     let svg = rendered.as_str();
-    assert!(svg.contains(" .branded&gt;*{fill:#696!important;stroke:#333!important;}"));
-    assert!(svg.contains(" .branded span{fill:#696!important;stroke:#333!important;}"));
+    let document = crate::xml_dom::Document::parse(svg).expect("Block class stylesheet XML");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .expect("Block logical class stylesheet");
+    assert!(css.contains(" .branded>*{fill:#696!important;stroke:#333!important;}"));
+    assert!(css.contains(" .branded span{fill:#696!important;stroke:#333!important;}"));
 }
 
 #[test]
@@ -355,8 +361,11 @@ fn block_important_declarations_stop_at_first_svg_sink_failure() {
         .into_iter()
         .inspect(|_| polls.set(polls.get() + 1));
 
-    let error = write_important_declarations(&mut out, declarations)
-        .expect_err("the rejecting sink must stop Block class declaration emission");
+    let error = write_important_declarations(
+        &mut crate::svg::parity::output::XmlTextOutput::new(&mut out),
+        declarations,
+    )
+    .expect_err("the rejecting sink must stop Block class declaration emission");
 
     assert!(matches!(error, crate::Error::InvalidModel { .. }));
     assert_eq!(polls.get(), 1, "remaining declarations must not be parsed");
@@ -452,7 +461,7 @@ fn block_base_marker_definitions_preserve_historical_bytes() {
         render_block_direct_with_policy(RenderResourcePolicy::unbounded_for_trusted_input())
             .unwrap();
     let svg: &str = &rendered;
-    let document = roxmltree::Document::parse(svg).unwrap();
+    let document = crate::xml_dom::Document::parse(svg).unwrap();
     let markers = document
         .descendants()
         .filter(|node| node.has_tag_name("marker"))

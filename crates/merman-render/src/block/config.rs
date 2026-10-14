@@ -34,6 +34,22 @@ impl<'a> BlockConfigView<'a> {
         }
     }
 
+    pub(crate) fn shape_settings(&self) -> BlockShapeSettings {
+        let radius = self.effective_config.pointer("/themeVariables/radius");
+        let round_radius = radius
+            .filter(|value| match value {
+                Value::Number(number) => number.as_f64().is_some_and(|value| value != 0.0),
+                Value::String(value) => !value.is_empty(),
+                _ => false,
+            })
+            .and_then(crate::config::json_f64)
+            .unwrap_or(5.0);
+        BlockShapeSettings {
+            neo_square: self.effective_config.get("look").and_then(Value::as_str) == Some("neo"),
+            round_radius,
+        }
+    }
+
     fn block_f64(&self, key: &str) -> Option<f64> {
         config_f64(self.block_config, &[key])
     }
@@ -42,6 +58,18 @@ impl<'a> BlockConfigView<'a> {
 pub(crate) struct BlockLayoutSettings {
     pub(crate) padding: f64,
     pub(crate) text_style: TextStyle,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct BlockShapeSettings {
+    pub(crate) neo_square: bool,
+    pub(crate) round_radius: f64,
+}
+
+impl BlockShapeSettings {
+    pub(crate) fn resolve(effective_config: &Value) -> Self {
+        BlockConfigView::new(effective_config).shape_settings()
+    }
 }
 
 #[cfg(test)]

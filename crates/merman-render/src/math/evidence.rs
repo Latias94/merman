@@ -240,7 +240,7 @@ impl PreparedMathTerminalReceipt {
             return Err("prepared-math occurrence is marked native-unavailable".to_owned());
         }
 
-        let document = roxmltree::Document::parse(svg)
+        let document = crate::xml_dom::Document::parse(svg)
             .map_err(|error| format!("prepared-math terminal SVG is malformed: {error}"))?;
         let mut emitted = vec![0usize; evidence.entries().len()];
         for node in document.descendants().filter(|node| node.is_element()) {

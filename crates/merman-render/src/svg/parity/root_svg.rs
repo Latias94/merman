@@ -991,14 +991,15 @@ impl<'a> CanvasPreludePlan<'a> {
         view_box: Option<ViewBox>,
         resources: &RenderResourcePolicy,
     ) -> Result<Self> {
-        let scope = sanitize_svg_id(diagram_id);
-        let mut entries = Vec::with_capacity(plan.canvas().layers().len() + 1);
+        let mut entries = Vec::new();
+        let entry_capacity = plan.canvas().layers().len() + 1;
 
         if plan.canvas().has_explicit_base()
             && supported_canvas_paint(plan.canvas().base())
             && canvas_paint_has_concrete_svg_geometry(plan.canvas().base(), view_box)
         {
             validate_canvas_paint_svg_geometry(plan.canvas().base(), view_box, resources)?;
+            entries.reserve_exact(entry_capacity);
             entries.push(CanvasPreludeEntry::Base {
                 paint: plan.canvas().base(),
             });
@@ -1014,6 +1015,9 @@ impl<'a> CanvasPreludePlan<'a> {
             let (offset_x, offset_y) = layer.offset();
             checked_svg_coordinate(f64::from(offset_x), "canvas layer offset-x", resources)?;
             checked_svg_coordinate(f64::from(offset_y), "canvas layer offset-y", resources)?;
+            if entries.capacity() == 0 {
+                entries.reserve_exact(entry_capacity);
+            }
             entries.push(CanvasPreludeEntry::Layer {
                 index,
                 paint: layer.paint(),
@@ -1023,6 +1027,11 @@ impl<'a> CanvasPreludePlan<'a> {
             });
         }
 
+        let scope = if entries.is_empty() {
+            String::new()
+        } else {
+            sanitize_svg_id(diagram_id)
+        };
         Ok(Self { scope, entries })
     }
 
@@ -2529,7 +2538,7 @@ mod tests {
             .unwrap()
             .apply_root_theme(Some(&plan), &meter)
             .unwrap();
-        let svg = roxmltree::Document::parse(&rooted.svg).unwrap();
+        let svg = crate::xml_dom::Document::parse(&rooted.svg).unwrap();
         let pattern = svg
             .descendants()
             .find(|node| node.has_tag_name("pattern"))
@@ -2659,6 +2668,56 @@ mod tests {
             crate::diagram_theme::RootThemeVerification::NotApplicable
         );
         assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn empty_canvas_prelude_keeps_allocation_free_storage_and_root_obligations() {
+        let plans = [
+            std::sync::Arc::new(RootThemePlan::default()),
+            root_theme_plan(crate::diagram_theme::CanvasSpec::default().with_base(
+                crate::diagram_theme::CanvasPaint::LinearGradient(
+                    crate::diagram_theme::LinearGradient::new(135.0, gradient_stops()).unwrap(),
+                ),
+            )),
+        ];
+        for (index, plan) in plans.iter().enumerate() {
+            let rooted = rooted_svg_for_theme_test();
+            let expected = rooted.svg.clone();
+            let meter = crate::resources::OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let prelude = CanvasPreludePlan::new(
+                plan,
+                rooted.diagram_id.as_str(),
+                rooted.viewport.view_box(),
+                &meter.policy(),
+            )
+            .unwrap();
+            assert!(prelude.entries.is_empty());
+            assert_eq!(
+                prelude.entries.capacity(),
+                0,
+                "unused root entries for {index}"
+            );
+            assert_eq!(
+                prelude.scope.capacity(),
+                0,
+                "unused resource scope for {index}"
+            );
+
+            let (actual, report) = rooted.apply_root_theme(Some(plan), &meter).unwrap();
+
+            assert_eq!(actual.svg, expected);
+            assert_eq!(
+                report.verification(),
+                if index == 0 {
+                    crate::diagram_theme::RootThemeVerification::NotApplicable
+                } else {
+                    crate::diagram_theme::RootThemeVerification::Unverified
+                },
+                "an empty serialized prelude must not erase unconsumed root work"
+            );
+        }
     }
 
     #[test]
@@ -3022,7 +3081,7 @@ mod tests {
             .unwrap();
 
         let rooted = document.complete(out).unwrap();
-        let document = roxmltree::Document::parse(&rooted).unwrap();
+        let document = crate::xml_dom::Document::parse(&rooted).unwrap();
         let root = document.root_element();
         assert_eq!(root.attribute("id"), Some(diagram_id.as_str()));
         assert_eq!(root.attribute("viewBox"), Some("1 2 30 40"));

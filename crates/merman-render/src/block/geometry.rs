@@ -5,6 +5,7 @@
 //! prevents routing from accidentally treating a stretched slot as a circle, polygon, or
 //! cylinder.
 
+use super::BlockShapeSettings;
 use crate::model::{LayoutNode, LayoutPoint};
 use serde::{Deserialize, Serialize};
 
@@ -96,6 +97,7 @@ struct BlockShapeInputs<'a> {
     label_width: f64,
     label_height: f64,
     padding: f64,
+    shape_settings: BlockShapeSettings,
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -112,6 +114,7 @@ impl BlockShapeGeometry {
         directions: &[String],
         padding: f64,
         width_in_columns: i64,
+        shape_settings: BlockShapeSettings,
     ) -> Option<Self> {
         // Mermaid renders a block twice: the first pass measures the label and shape, while the
         // second pass supplies the grid-allocated slot.  Keep the final outline calculation
@@ -123,6 +126,7 @@ impl BlockShapeGeometry {
                 label_width: node.label_width.unwrap_or_default().max(0.0),
                 label_height: node.label_height.unwrap_or_default().max(0.0),
                 padding,
+                shape_settings,
             },
             BlockShapeAllocation {
                 width: node.width,
@@ -149,12 +153,9 @@ impl BlockShapeGeometry {
             y: self.allocated.y,
         };
         match &self.boundary {
-            BlockShapeBoundary::Rectangle {
-                width,
-                height,
-                radius,
-                ..
-            } => intersect_rounded_rect(&center, *width, *height, *radius, *radius, target),
+            BlockShapeBoundary::Rectangle { width, height, .. } => {
+                intersect_rect(&center, *width, *height, target)
+            }
             BlockShapeBoundary::Circle { radius, .. }
             | BlockShapeBoundary::DoubleCircle {
                 outer_radius: radius,
@@ -208,6 +209,7 @@ pub(crate) fn natural_shape_size(
     label_height: f64,
     padding: f64,
     has_label: bool,
+    shape_settings: BlockShapeSettings,
 ) -> Option<(f64, f64)> {
     let boundary = intrinsic_boundary_for(BlockShapeInputs {
         block_type,
@@ -215,6 +217,7 @@ pub(crate) fn natural_shape_size(
         label_width,
         label_height,
         padding,
+        shape_settings,
     })?;
     if matches!(block_type, "composite" | "group") && !has_label {
         return None;
@@ -229,7 +232,7 @@ impl BlockShapeAllocation {
 }
 
 fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoundary> {
-    // Keep these formulas aligned with Mermaid 11.17.2's rendering-util shape modules.  This is
+    // Keep these formulas aligned with Mermaid 12.1.0's rendering-util shape modules. This is
     // deliberately the unpositioned/intrinsic pass; slot-aware adjustments live below.
     let BlockShapeInputs {
         block_type,
@@ -237,16 +240,27 @@ fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoun
         label_width,
         label_height,
         padding,
+        shape_settings,
     } = inputs;
-    // `squareRect` passes `labelPaddingX = padding * 2` and
-    // `labelPaddingY = padding` to `drawRect`, which applies each padding on both
-    // sides.  Rounded blocks use the separate `roundedRect` helper and pass one
+    // `squareRect` uses fixed 16/12 padding for Neo and 2*padding/padding for Classic.
+    // `drawRect` applies each padding on both sides. Rounded blocks use the separate
+    // `roundedRect` helper and pass one
     // padding unit on each axis.  Keep the two intrinsic contracts distinct so
     // the layout measurement and positioned writer agree with Mermaid.
-    let square_width = (label_width + 4.0 * padding).max(1.0);
-    let square_height = (label_height + 2.0 * padding).max(1.0);
+    let square_padding_x = if shape_settings.neo_square {
+        16.0
+    } else {
+        2.0 * padding
+    };
+    let square_padding_y = if shape_settings.neo_square {
+        12.0
+    } else {
+        padding
+    };
+    let square_width = (label_width + 2.0 * square_padding_x).max(1.0);
+    let square_height = (label_height + 2.0 * square_padding_y).max(1.0);
     let round_width = (label_width + 2.0 * padding).max(1.0);
-    let round_height = square_height;
+    let round_height = (label_height + 2.0 * padding).max(1.0);
     let shape_height = (label_height + padding).max(1.0);
     let block_arrow_height = label_height + 2.0 * padding;
     let natural_block_arrow_width = label_width + block_arrow_height + padding;
@@ -381,7 +395,7 @@ fn intrinsic_boundary_for(inputs: BlockShapeInputs<'_>) -> Option<BlockShapeBoun
         "round" => BlockShapeBoundary::Rectangle {
             width: round_width,
             height: round_height,
-            radius: 5.0,
+            radius: shape_settings.round_radius,
             kind: BlockRectangleKind::Basic,
         },
         _ => BlockShapeBoundary::Rectangle {
@@ -408,6 +422,7 @@ fn rendered_boundary_for(
         label_width,
         label_height,
         padding,
+        shape_settings,
     } = inputs;
     let slot_width = allocation.width.max(0.0);
     let slot_height = allocation.height.max(0.0);
@@ -432,7 +447,11 @@ fn rendered_boundary_for(
         "square" | "default" | "round" => BlockShapeBoundary::Rectangle {
             width: slot_width.max(intrinsic_width).max(1.0),
             height: slot_height.max(intrinsic_height).max(1.0),
-            radius: if block_type == "round" { 5.0 } else { 0.0 },
+            radius: if block_type == "round" {
+                shape_settings.round_radius
+            } else {
+                0.0
+            },
             kind: BlockRectangleKind::Basic,
         },
         // circle.ts intentionally ignores node.width/node.height when computing the circle.  A
@@ -1179,12 +1198,9 @@ mod tests {
 
     fn distance_to_boundary(boundary: &BlockShapeBoundary, point: &LayoutPoint) -> f64 {
         match boundary {
-            BlockShapeBoundary::Rectangle {
-                width,
-                height,
-                radius,
-                ..
-            } => rounded_rect_boundary_residual(*width, *height, *radius, *radius, point),
+            BlockShapeBoundary::Rectangle { width, height, .. } => {
+                rounded_rect_boundary_residual(*width, *height, 0.0, 0.0, point)
+            }
             BlockShapeBoundary::Circle { radius, .. }
             | BlockShapeBoundary::DoubleCircle {
                 outer_radius: radius,
@@ -1268,7 +1284,7 @@ mod tests {
     }
 
     #[test]
-    fn every_boundary_representation_uses_its_rendered_outline_for_intersection() {
+    fn every_boundary_representation_uses_its_shape_specific_routing_contract() {
         assert_intersections_reach_boundary(BlockShapeBoundary::Rectangle {
             width: 80.0,
             height: 40.0,
@@ -1334,7 +1350,7 @@ mod tests {
     }
 
     #[test]
-    fn rounded_rectangle_intersection_follows_the_corner_arc() {
+    fn rounded_rectangle_intersection_uses_the_pinned_rectangular_routing_boundary() {
         let geometry = BlockShapeGeometry {
             id: "round".to_string(),
             allocated: BlockAllocatedBounds {
@@ -1352,10 +1368,8 @@ mod tests {
         };
 
         let intersection = geometry.intersect(&LayoutPoint { x: 80.0, y: 40.0 });
-        assert!(intersection.x < 40.0 && intersection.y < 20.0);
-        let corner_residual =
-            ((intersection.x - 35.0) / 5.0).powi(2) + ((intersection.y - 15.0) / 5.0).powi(2);
-        assert!((corner_residual - 1.0).abs() <= 1e-9);
+        assert!((intersection.x - 40.0).abs() <= 1e-9);
+        assert!((intersection.y - 20.0).abs() <= 1e-9);
     }
 
     #[test]
@@ -1388,6 +1402,7 @@ mod tests {
                     label_width: 64.0,
                     label_height: 24.0,
                     padding: 8.0,
+                    shape_settings: BlockShapeSettings::resolve(&serde_json::json!({})),
                 },
                 BlockShapeAllocation {
                     width: 120.0,
@@ -1415,6 +1430,7 @@ mod tests {
                     label_width: 0.0,
                     label_height: 0.0,
                     padding: 8.0,
+                    shape_settings: BlockShapeSettings::resolve(&serde_json::json!({})),
                 },
                 BlockShapeAllocation::default(),
             )
@@ -1426,18 +1442,30 @@ mod tests {
     #[test]
     fn square_and_round_intrinsic_sizes_match_mermaid_padding_contracts() {
         let directions = Vec::new();
+        let classic = BlockShapeSettings::resolve(&serde_json::json!({}));
 
         assert_eq!(
-            natural_shape_size("square", &directions, 64.0, 24.0, 8.0, true),
+            natural_shape_size("square", &directions, 64.0, 24.0, 8.0, true, classic),
             Some((96.0, 40.0))
         );
         assert_eq!(
-            natural_shape_size("round", &directions, 64.0, 24.0, 8.0, true),
+            natural_shape_size("round", &directions, 64.0, 24.0, 8.0, true, classic),
             Some((80.0, 40.0))
         );
         assert_eq!(
-            natural_shape_size("default", &directions, 64.0, 24.0, 8.0, true),
+            natural_shape_size("default", &directions, 64.0, 24.0, 8.0, true, classic),
             Some((96.0, 40.0))
         );
+        let neo = BlockShapeSettings::resolve(&serde_json::json!({"look": "neo"}));
+        for padding in [8.0, 20.0] {
+            assert_eq!(
+                natural_shape_size("square", &directions, 64.0, 24.0, padding, true, neo),
+                Some((96.0, 48.0))
+            );
+            assert_eq!(
+                natural_shape_size("round", &directions, 64.0, 24.0, padding, true, neo),
+                Some((64.0 + 2.0 * padding, 24.0 + 2.0 * padding))
+            );
+        }
     }
 }

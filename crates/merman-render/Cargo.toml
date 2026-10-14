@@ -121,6 +121,7 @@ indexmap = { workspace = true, features = ["serde"] }
 kurbo.workspace = true
 libm.workspace = true
 manatee = { workspace = true, optional = true }
+memchr = "2"
 merman-layout-elk = { workspace = true, optional = true }
 merman-core.workspace = true
 merman-theme-contract.workspace = true
@@ -130,7 +131,6 @@ ratex-parser = { workspace = true, optional = true }
 ratex-svg = { workspace = true, optional = true }
 ratex-types = { workspace = true, optional = true }
 rustc-hash.workspace = true
-roxmltree.workspace = true
 quick-xml.workspace = true
 serde.workspace = true
 serde_json.workspace = true
@@ -144,6 +144,7 @@ unicode-linebreak.workspace = true
 unicode-segmentation.workspace = true
 
 [dev-dependencies]
+roxmltree.workspace = true
 # Browser geometry replays require the exact captured IEEE-754 values.
 serde_json = { workspace = true, features = ["float_roundtrip"] }
 futures = { workspace = true, features = ["executor"] }
