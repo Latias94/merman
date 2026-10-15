@@ -1848,8 +1848,12 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), The
     let explicit = program.normalize_overrides(raw);
 
     if let Some(staged_program) = program.staged_program() {
-        let resolution =
-            staged::Resolution::execute(staged_program, program.prepared_constructor(), &explicit)?;
+        let resolution = staged::Resolution::execute_with_owners(
+            staged_program,
+            program.prepared_constructor(),
+            &explicit,
+            config,
+        )?;
         // Keep the staged path transactional: normalization affects compatibility ownership,
         // so defer that side effect until every evaluated assignment has succeeded.
         config.retain_normalized_theme_compatibility_variables(&explicit);

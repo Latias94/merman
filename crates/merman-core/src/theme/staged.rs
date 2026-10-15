@@ -25,41 +25,327 @@ pub(super) enum StagedProgram {
     Neutral,
 }
 
+/// The interpreter always executes the same assignments. Authority is an optional, separate
+/// data flow: authored leaves are borrowed and become owner identities only when actually read.
 #[derive(Debug, Clone)]
-pub(super) struct ThemeState {
+pub(super) struct ThemeState<'a> {
     pub(super) variables: Map<String, Value>,
-    dependencies: BTreeMap<String, BTreeSet<String>>,
+    authority: Option<AuthorityState<'a>>,
     theme_color_iterations: usize,
 }
 
 pub(super) struct Resolution {
-    state: ThemeState,
+    variables: Map<String, Value>,
+    authority: Option<ResolvedAuthority>,
     #[cfg(test)]
     trace: ResolutionTrace,
+    #[cfg(test)]
+    work: AuthorityWork,
 }
 
 #[cfg(test)]
 pub(super) struct ResolutionTrace {
-    pub(super) constructor_prepared: ThemeState,
-    pub(super) overrides_applied: ThemeState,
-    pub(super) after_update: ThemeState,
-    pub(super) explicit_replay: ThemeState,
-    pub(super) final_resolved: ThemeState,
+    pub(super) constructor_prepared: StateSnapshot,
+    pub(super) overrides_applied: StateSnapshot,
+    pub(super) after_update: StateSnapshot,
+    pub(super) explicit_replay: StateSnapshot,
+    pub(super) final_resolved: StateSnapshot,
+}
+
+#[cfg(test)]
+pub(super) struct StateSnapshot {
+    pub(super) variables: Map<String, Value>,
+    dependencies: BTreeMap<String, BTreeSet<String>>,
+}
+
+#[cfg(test)]
+impl StateSnapshot {
+    pub(super) fn depends_on(&self, target: &str, source: &str) -> bool {
+        self.dependencies
+            .get(target)
+            .is_some_and(|sources| sources.contains(source))
+    }
+}
+
+/// IDs refer to the operation-local source table, never to a value or a theme name.
+/// Keeping the set sorted makes unions deterministic without allocating tree nodes per source.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct Owners(Vec<usize>);
+
+impl Owners {
+    fn extend(&mut self, other: Self) {
+        self.0.extend(other.0);
+        self.0.sort_unstable();
+        self.0.dedup();
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+enum OwnerSource<'a> {
+    Config(&'a MermaidConfig),
+    #[cfg(test)]
+    AllExplicit,
+}
+
+impl OwnerSource<'_> {
+    fn owns(self, path: &str) -> bool {
+        match self {
+            Self::Config(config) => config.theme_variable_has_calculation_owner(path),
+            #[cfg(test)]
+            Self::AllExplicit => true,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+enum ValueAuthority<'a> {
+    /// A replay write restored this authored subtree and blocks older dotted descendants.
+    Authored(&'a Value),
+    /// An empty set still blocks the original authored value after an assignment.
+    Computed(Owners),
+}
+
+#[derive(Debug, Clone, Default)]
+struct SourceTable {
+    // Cache negative reads too: a constructor-owned value need not query host ownership again.
+    seeds: BTreeMap<String, Option<usize>>,
+    paths: Vec<String>,
+}
+
+#[cfg(test)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct AuthorityWork {
+    reads: usize,
+    source_queries: usize,
+    replacement_probes: usize,
+    removed_replacements: usize,
+}
+
+#[derive(Debug, Clone)]
+struct AuthorityState<'a> {
+    explicit: &'a Map<String, Value>,
+    owner_source: OwnerSource<'a>,
+    explicit_applied: bool,
+    // Only overlapping literal roots need a barrier for an otherwise unchanged full replay.
+    // Borrow the keys; ordinary unrelated scalar overrides allocate no barrier or self seed.
+    replay_barriers: BTreeSet<&'a str>,
+    // Only actual interpreter writes are represented. Unread explicit variables have no entry.
+    replacements: BTreeMap<String, ValueAuthority<'a>>,
+    sources: std::cell::RefCell<SourceTable>,
+    #[cfg(test)]
+    work: std::cell::Cell<AuthorityWork>,
+}
+
+struct ResolvedAuthority {
+    paths: Vec<String>,
+    dependencies: BTreeMap<String, Owners>,
+}
+
+impl<'a> AuthorityState<'a> {
+    fn new(explicit: &'a Map<String, Value>, owner_source: OwnerSource<'a>) -> Self {
+        let mut replay_barriers = BTreeSet::new();
+        for key in explicit.keys() {
+            for (index, _) in key.match_indices('.') {
+                let ancestor = &key[..index];
+                if explicit.contains_key(ancestor) {
+                    replay_barriers.insert(ancestor);
+                }
+            }
+        }
+        Self {
+            explicit,
+            owner_source,
+            explicit_applied: false,
+            replay_barriers,
+            replacements: BTreeMap::new(),
+            sources: std::cell::RefCell::new(SourceTable::default()),
+            #[cfg(test)]
+            work: std::cell::Cell::new(AuthorityWork::default()),
+        }
+    }
+
+    /// Find the nearest replacement, including the path itself. A computed ancestor blocks
+    /// authored fallback; replay can restore an authored child without disturbing siblings.
+    fn origin(&self, path: &str) -> Option<(&str, &ValueAuthority<'a>)> {
+        if let Some((root, origin)) = self.replacements.get_key_value(path) {
+            return Some((root, origin));
+        }
+        path.rmatch_indices('.').find_map(|(index, _)| {
+            self.replacements
+                .get_key_value(&path[..index])
+                .map(|(root, origin)| (root.as_str(), origin))
+        })
+    }
+
+    fn read(&self, path: &str) -> Owners {
+        #[cfg(test)]
+        self.record_work(|work| work.reads += 1);
+        if !self.explicit_applied {
+            return Owners::default();
+        }
+        let authored_leaf = match self.origin(path) {
+            Some((root, ValueAuthority::Computed(owners))) => {
+                // A parent object's authority is not authority for an unlisted child.
+                return if root == path {
+                    owners.clone()
+                } else {
+                    Owners::default()
+                };
+            }
+            Some((root, ValueAuthority::Authored(value))) => {
+                authored_value_has_leaf(value, &path[root.len()..])
+            }
+            None => explicit_has_leaf_path(self.explicit, path),
+        };
+        if !authored_leaf {
+            return Owners::default();
+        }
+        let mut sources = self.sources.borrow_mut();
+        if let Some(owner) = sources.seeds.get(path) {
+            return Owners(owner.iter().copied().collect());
+        }
+        #[cfg(test)]
+        self.record_work(|work| work.source_queries += 1);
+        let owner = self.owner_source.owns(path).then(|| {
+            let owner = sources.paths.len();
+            sources.paths.push(path.to_string());
+            owner
+        });
+        sources.seeds.insert(path.to_string(), owner);
+        Owners(owner.into_iter().collect())
+    }
+
+    fn remove_subtree(&mut self, root: &str) {
+        #[cfg(test)]
+        self.record_work(|work| work.replacement_probes += 1);
+        if self.replacements.remove(root).is_some() {
+            #[cfg(test)]
+            self.record_work(|work| work.removed_replacements += 1);
+        }
+        let prefix = format!("{root}.");
+        loop {
+            let descendant = self
+                .replacements
+                .range::<str, _>((
+                    std::ops::Bound::Included(prefix.as_str()),
+                    std::ops::Bound::Unbounded,
+                ))
+                .next()
+                .filter(|(path, _)| path.starts_with(&prefix))
+                .map(|(path, _)| path.clone());
+            let Some(descendant) = descendant else {
+                break;
+            };
+            self.replacements.remove(&descendant);
+            #[cfg(test)]
+            self.record_work(|work| work.removed_replacements += 1);
+        }
+    }
+
+    fn replay(&mut self, root: &str, value: &'a Value) {
+        self.remove_subtree(root);
+        // An unchanged full replay still clears later dotted roots below it. Preserve that
+        // barrier even when no computed write exists: a later empty-object shallow replay makes
+        // no writes and cannot restore the cleared descendant. Unrelated roots need no entry.
+        // Nested replay binds the actual shallow write, including literal dotted-key aliases.
+        let unchanged_root = self
+            .explicit
+            .get(root)
+            .is_some_and(|original| std::ptr::eq(original, value));
+        if !unchanged_root || self.origin(root).is_some() || self.replay_barriers.contains(root) {
+            self.replacements
+                .insert(root.to_string(), ValueAuthority::Authored(value));
+        }
+    }
+
+    fn commit(&mut self, target: &str, owners: Owners, nested: BTreeMap<String, Owners>) {
+        self.remove_subtree(target);
+        self.replacements
+            .insert(target.to_string(), ValueAuthority::Computed(owners));
+        for (path, owners) in nested {
+            self.replacements
+                .insert(format!("{target}.{path}"), ValueAuthority::Computed(owners));
+        }
+    }
+
+    fn finish(self) -> ResolvedAuthority {
+        ResolvedAuthority {
+            paths: self.sources.into_inner().paths,
+            dependencies: self
+                .replacements
+                .into_iter()
+                .filter_map(|(target, origin)| match origin {
+                    ValueAuthority::Computed(owners) if !owners.is_empty() => {
+                        Some((target, owners))
+                    }
+                    ValueAuthority::Authored(_) | ValueAuthority::Computed(_) => None,
+                })
+                .collect(),
+        }
+    }
+
+    #[cfg(test)]
+    fn record_work(&self, record: impl FnOnce(&mut AuthorityWork)) {
+        let mut work = self.work.get();
+        record(&mut work);
+        self.work.set(work);
+    }
+}
+
+/// Overlay writes top-level keys in lexical order. The longest matching literal root is the
+/// last writer and replaces earlier dotted descendants, even when its value is not a leaf.
+fn explicit_has_leaf_path(explicit: &Map<String, Value>, path: &str) -> bool {
+    if let Some(value) = explicit.get(path) {
+        return authored_value_has_leaf(value, "");
+    }
+    for (index, _) in path.rmatch_indices('.') {
+        if let Some(value) = explicit.get(&path[..index]) {
+            return authored_value_has_leaf(value, &path[index..]);
+        }
+    }
+    false
+}
+
+/// Inside one authored value, flattening does not perform intervening subtree replacements.
+/// Try each object-key boundary so literal dots retain the original compatibility behavior.
+fn authored_value_has_leaf(value: &Value, suffix: &str) -> bool {
+    if suffix.is_empty() {
+        return value.as_object().is_none_or(Map::is_empty);
+    }
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    let path = &suffix[1..];
+    if object
+        .get(path)
+        .is_some_and(|value| authored_value_has_leaf(value, ""))
+    {
+        return true;
+    }
+    path.match_indices('.').any(|(index, _)| {
+        object
+            .get(&path[..index])
+            .is_some_and(|value| authored_value_has_leaf(value, &path[index..]))
+    })
 }
 
 #[derive(Debug)]
 struct ComputedValue {
     value: Value,
-    dependencies: Vec<String>,
-    nested_dependencies: BTreeMap<String, Vec<String>>,
+    owners: Owners,
+    nested_owners: BTreeMap<String, Owners>,
 }
 
 impl ComputedValue {
     fn constant(value: impl Into<Value>) -> Self {
         Self {
             value: value.into(),
-            dependencies: Vec::new(),
-            nested_dependencies: BTreeMap::new(),
+            owners: Owners::default(),
+            nested_owners: BTreeMap::new(),
         }
     }
 
@@ -71,47 +357,52 @@ impl ComputedValue {
         Self::constant(Value::Number(value.into()))
     }
 
-    fn with_dependencies(value: Value, dependencies: impl IntoIterator<Item = String>) -> Self {
+    fn with_owners(value: Value, owners: Owners) -> Self {
         Self {
             value,
-            dependencies: dependencies.into_iter().collect(),
-            nested_dependencies: BTreeMap::new(),
+            owners,
+            nested_owners: BTreeMap::new(),
         }
     }
 
-    fn object(
-        value: Map<String, Value>,
-        nested_dependencies: BTreeMap<String, Vec<String>>,
-    ) -> Self {
+    fn inherit(&mut self, stage: &ThemeState<'_>, path: &str) {
+        self.owners.extend(stage.owners(path));
+    }
+
+    fn object(value: Map<String, Value>, nested_owners: BTreeMap<String, Owners>) -> Self {
         Self {
             value: Value::Object(value),
-            dependencies: Vec::new(),
-            nested_dependencies,
+            owners: Owners::default(),
+            nested_owners,
         }
     }
 }
 
-impl ThemeState {
-    fn constructor(variables: Map<String, Value>) -> Self {
+impl<'a> ThemeState<'a> {
+    fn constructor(
+        variables: Map<String, Value>,
+        explicit: &'a Map<String, Value>,
+        owner_source: Option<OwnerSource<'a>>,
+    ) -> Self {
         Self {
             variables,
-            dependencies: BTreeMap::new(),
+            authority: owner_source.map(|source| AuthorityState::new(explicit, source)),
             theme_color_iterations: 0,
         }
     }
 
     fn overlay_explicit(&mut self, explicit: &Map<String, Value>) {
-        for (key, value) in explicit {
-            self.variables.insert(key.clone(), value.clone());
-            self.remove_dependency_subtree(key);
-            for path in explicit_dependency_leaf_paths(key, value) {
-                self.dependencies
-                    .insert(path.clone(), BTreeSet::from([path]));
-            }
+        self.variables.extend(
+            explicit
+                .iter()
+                .map(|(key, value)| (key.clone(), value.clone())),
+        );
+        if let Some(authority) = &mut self.authority {
+            authority.explicit_applied = true;
         }
     }
 
-    fn replay_explicit(&mut self, explicit: &Map<String, Value>) {
+    fn replay_explicit(&mut self, explicit: &'a Map<String, Value>) {
         for (key, value) in explicit {
             if self.variables.get(key).is_some_and(Value::is_object)
                 && let Value::Object(children) = value
@@ -122,28 +413,31 @@ impl ThemeState {
                         .and_then(Value::as_object_mut)
                         .expect("replay target remains an object")
                         .insert(child.clone(), value.clone());
-                    let root = format!("{key}.{child}");
-                    self.remove_dependency_subtree(&root);
-                    for path in explicit_dependency_leaf_paths(&root, value) {
-                        self.dependencies
-                            .insert(path.clone(), BTreeSet::from([path]));
+                    if let Some(authority) = &mut self.authority {
+                        authority.replay(&format!("{key}.{child}"), value);
                     }
                 }
             } else {
                 self.variables.insert(key.clone(), value.clone());
-                self.remove_dependency_subtree(key);
-                for path in explicit_dependency_leaf_paths(key, value) {
-                    self.dependencies
-                        .insert(path.clone(), BTreeSet::from([path]));
+                if let Some(authority) = &mut self.authority {
+                    authority.replay(key, value);
                 }
             }
         }
     }
 
-    fn remove_dependency_subtree(&mut self, root: &str) {
-        let descendant_prefix = format!("{root}.");
-        self.dependencies
-            .retain(|path, _| path != root && !path.starts_with(&descendant_prefix));
+    fn owners(&self, key: &str) -> Owners {
+        self.authority
+            .as_ref()
+            .map_or_else(Owners::default, |authority| authority.read(key))
+    }
+
+    fn computed(&self, value: Value, keys: &[&str]) -> ComputedValue {
+        let mut owners = Owners::default();
+        for key in keys {
+            owners.extend(self.owners(key));
+        }
+        ComputedValue::with_owners(value, owners)
     }
 
     fn computed_from(&self, key: &str) -> Result<ComputedValue, ColorError> {
@@ -152,7 +446,7 @@ impl ThemeState {
             .get(key)
             .cloned()
             .ok_or_else(|| missing_value_error(key))?;
-        Ok(ComputedValue::with_dependencies(value, [key.to_string()]))
+        Ok(self.computed(value, &[key]))
     }
 
     fn truthy_from(&self, key: &str) -> Option<ComputedValue> {
@@ -160,7 +454,7 @@ impl ThemeState {
             .get(key)
             .filter(|value| is_js_truthy(value))
             .cloned()
-            .map(|value| ComputedValue::with_dependencies(value, [key.to_string()]))
+            .map(|value| self.computed(value, &[key]))
     }
 
     fn color(&self, key: &str) -> Result<String, ColorError> {
@@ -170,14 +464,6 @@ impl ThemeState {
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
             .ok_or_else(|| missing_value_error(key))
-    }
-
-    fn expand_dependencies(&self, dependencies: &[String]) -> BTreeSet<String> {
-        dependencies
-            .iter()
-            .filter_map(|dependency| self.dependencies.get(dependency))
-            .flat_map(|sources| sources.iter().cloned())
-            .collect()
     }
 
     /// Execute an unconditional JavaScript assignment.
@@ -192,27 +478,9 @@ impl ThemeState {
     }
 
     fn commit_computed(&mut self, target: &str, computed: ComputedValue) {
-        let ComputedValue {
-            value,
-            dependencies,
-            nested_dependencies,
-        } = computed;
-        let sources = self.expand_dependencies(&dependencies);
-        let nested_sources = nested_dependencies
-            .into_iter()
-            .map(|(path, dependencies)| (path, self.expand_dependencies(&dependencies)))
-            .collect::<Vec<_>>();
-
-        self.variables.insert(target.to_string(), value);
-        self.remove_dependency_subtree(target);
-        if !sources.is_empty() {
-            self.dependencies.insert(target.to_string(), sources);
-        }
-        for (relative_path, sources) in nested_sources {
-            if !sources.is_empty() {
-                self.dependencies
-                    .insert(format!("{target}.{relative_path}"), sources);
-            }
+        self.variables.insert(target.to_string(), computed.value);
+        if let Some(authority) = &mut self.authority {
+            authority.commit(target, computed.owners, computed.nested_owners);
         }
     }
 
@@ -241,13 +509,51 @@ impl ThemeState {
     }
 
     #[cfg(test)]
+    fn snapshot(&self) -> StateSnapshot {
+        // Snapshots are a test projection. Read a clone so observing the trace cannot seed or
+        // increase work in the interpreter being measured by structural regression tests.
+        let dependencies = self
+            .authority
+            .clone()
+            .map_or_else(BTreeMap::new, |authority| {
+                let mut paths = authority
+                    .replacements
+                    .keys()
+                    .cloned()
+                    .collect::<BTreeSet<_>>();
+                for (key, value) in authority.explicit {
+                    paths.extend(explicit_dependency_leaf_paths(key, value));
+                }
+                let mut dependencies = BTreeMap::new();
+                for path in paths {
+                    let owners = authority.read(&path);
+                    let sources = authority.sources.borrow();
+                    if !owners.is_empty() {
+                        dependencies.insert(
+                            path,
+                            owners
+                                .0
+                                .iter()
+                                .map(|owner| sources.paths[*owner].clone())
+                                .collect(),
+                        );
+                    }
+                }
+                dependencies
+            });
+        StateSnapshot {
+            variables: self.variables.clone(),
+            dependencies,
+        }
+    }
+
+    #[cfg(test)]
     pub(super) fn depends_on(&self, target: &str, source: &str) -> bool {
-        self.dependencies
-            .get(target)
-            .is_some_and(|sources| sources.contains(source))
+        self.snapshot().depends_on(target, source)
     }
 }
 
+#[cfg(test)]
 fn explicit_dependency_leaf_paths(root: &str, value: &Value) -> Vec<String> {
     let mut paths = Vec::new();
     let mut stack = vec![(root.to_string(), value)];
@@ -270,18 +576,50 @@ fn explicit_dependency_leaf_paths(root: &str, value: &Value) -> Vec<String> {
 }
 
 impl Resolution {
+    pub(super) fn execute_with_owners(
+        program: StagedProgram,
+        prepared_constructor: &Map<String, Value>,
+        explicit: &Map<String, Value>,
+        config: &MermaidConfig,
+    ) -> Result<Self, ThemeResolutionError> {
+        Self::execute_impl(
+            program,
+            prepared_constructor,
+            explicit,
+            config
+                .has_theme_variable_calculation_owners()
+                .then_some(OwnerSource::Config(config)),
+        )
+    }
+
+    #[cfg(test)]
     pub(super) fn execute(
         program: StagedProgram,
         prepared_constructor: &Map<String, Value>,
         explicit: &Map<String, Value>,
     ) -> Result<Self, ThemeResolutionError> {
-        let mut state = ThemeState::constructor(prepared_constructor.clone());
+        Self::execute_impl(
+            program,
+            prepared_constructor,
+            explicit,
+            Some(OwnerSource::AllExplicit),
+        )
+    }
+
+    fn execute_impl(
+        program: StagedProgram,
+        prepared_constructor: &Map<String, Value>,
+        explicit: &Map<String, Value>,
+        owner_source: Option<OwnerSource<'_>>,
+    ) -> Result<Self, ThemeResolutionError> {
+        let mut state =
+            ThemeState::constructor(prepared_constructor.clone(), explicit, owner_source);
         #[cfg(test)]
-        let constructor_prepared = state.clone();
+        let constructor_prepared = state.snapshot();
 
         state.overlay_explicit(explicit);
         #[cfg(test)]
-        let overrides_applied = state.clone();
+        let overrides_applied = state.snapshot();
         state.theme_color_iterations = theme_color_iteration_count(&state)?;
 
         match program {
@@ -291,26 +629,30 @@ impl Resolution {
             StagedProgram::Neutral => update_neutral(&mut state)?,
         }
         #[cfg(test)]
-        let after_update = state.clone();
+        let after_update = state.snapshot();
 
         state.replay_explicit(explicit);
         #[cfg(test)]
-        let explicit_replay = state.clone();
+        let explicit_replay = state.snapshot();
 
         if program == StagedProgram::Base
             && explicit.contains_key("nodeBorder")
             && !explicit.contains_key("useGradient")
         {
-            state.commit_computed(
-                "useGradient",
-                ComputedValue::with_dependencies(Value::Bool(false), ["nodeBorder".to_string()]),
-            );
+            let computed = state.computed(Value::Bool(false), &["nodeBorder"]);
+            state.commit_computed("useGradient", computed);
         }
         #[cfg(test)]
-        let final_resolved = state.clone();
+        let final_resolved = state.snapshot();
+        #[cfg(test)]
+        let work = state
+            .authority
+            .as_ref()
+            .map_or_else(AuthorityWork::default, |authority| authority.work.get());
 
         Ok(Self {
-            state,
+            variables: state.variables,
+            authority: state.authority.map(AuthorityState::finish),
             #[cfg(test)]
             trace: ResolutionTrace {
                 constructor_prepared,
@@ -319,20 +661,23 @@ impl Resolution {
                 explicit_replay,
                 final_resolved,
             },
+            #[cfg(test)]
+            work,
         })
     }
 
     pub(super) fn materialize_into(self, config: &mut MermaidConfig) {
-        let ThemeState {
-            variables,
-            dependencies,
-            theme_color_iterations: _,
-        } = self.state;
-        config.set_value_preserving_theme_compatibility("themeVariables", Value::Object(variables));
-        for (target, sources) in dependencies {
-            for source in sources {
-                if source != target {
-                    config.propagate_theme_variable_ownership(&source, &target);
+        config.set_value_preserving_theme_compatibility(
+            "themeVariables",
+            Value::Object(self.variables),
+        );
+        if let Some(authority) = self.authority {
+            for (target, owners) in authority.dependencies {
+                for owner in owners.0 {
+                    let source = &authority.paths[owner];
+                    if source != &target {
+                        config.propagate_theme_variable_ownership(source, &target);
+                    }
                 }
             }
         }
@@ -361,9 +706,9 @@ fn transform_color(
         .ok_or_else(|| ColorError::UnsupportedFormat {
             input: computed.value.to_string(),
         })?;
-    Ok(ComputedValue::with_dependencies(
+    Ok(ComputedValue::with_owners(
         Value::String(transform(input)?),
-        computed.dependencies,
+        computed.owners,
     ))
 }
 
@@ -502,19 +847,19 @@ fn inverted(stage: &ThemeState, key: &str) -> Result<ComputedValue, ColorError> 
 }
 
 struct ObjectBuilder<'a> {
-    stage: &'a ThemeState,
+    stage: &'a ThemeState<'a>,
     source_key: &'a str,
     object: Map<String, Value>,
-    dependencies: BTreeMap<String, Vec<String>>,
+    owners: BTreeMap<String, Owners>,
 }
 
 impl<'a> ObjectBuilder<'a> {
-    fn new(stage: &'a ThemeState, source_key: &'a str) -> Self {
+    fn new(stage: &'a ThemeState<'a>, source_key: &'a str) -> Self {
         Self {
             stage,
             source_key,
             object: Map::new(),
-            dependencies: BTreeMap::new(),
+            owners: BTreeMap::new(),
         }
     }
 
@@ -532,24 +877,33 @@ impl<'a> ObjectBuilder<'a> {
             .filter(|value| is_js_truthy(value))
             .cloned();
         let computed = if let Some(value) = current {
-            ComputedValue::with_dependencies(value, [format!("{}.{}", self.source_key, field)])
+            let owners = self
+                .stage
+                .authority
+                .as_ref()
+                .map_or_else(Owners::default, |authority| {
+                    authority.read(&format!("{}.{}", self.source_key, field))
+                });
+            ComputedValue::with_owners(value, owners)
         } else {
             fallback(self.stage)?
         };
         self.object.insert(field.to_string(), computed.value);
-        self.dependencies
-            .insert(field.to_string(), computed.dependencies);
+        if !computed.owners.is_empty() {
+            self.owners.insert(field.to_string(), computed.owners);
+        }
         Ok(())
     }
 
     fn field(&mut self, field: &str, computed: ComputedValue) {
         self.object.insert(field.to_string(), computed.value);
-        self.dependencies
-            .insert(field.to_string(), computed.dependencies);
+        if !computed.owners.is_empty() {
+            self.owners.insert(field.to_string(), computed.owners);
+        }
     }
 
     fn finish(self) -> ComputedValue {
-        ComputedValue::object(self.object, self.dependencies)
+        ComputedValue::object(self.object, self.owners)
     }
 }
 
@@ -619,15 +973,12 @@ fn update_quadrant(stage: &mut ThemeState) -> Result<(), ColorError> {
         } else {
             theme_color::darken(&quadrant, f64::NAN)?
         };
-        let dependencies = if existing_is_truthy {
-            vec!["quadrantPointFill".to_string(), "quadrant1Fill".to_string()]
+        let keys = if existing_is_truthy {
+            &["quadrantPointFill", "quadrant1Fill"][..]
         } else {
-            vec!["quadrant1Fill".to_string()]
+            &["quadrant1Fill"][..]
         };
-        Ok(ComputedValue::with_dependencies(
-            Value::String(value),
-            dependencies,
-        ))
+        Ok(stage.computed(Value::String(value), keys))
     })?;
 
     for target in [
@@ -1003,13 +1354,10 @@ fn update_dark(stage: &mut ThemeState) -> Result<(), ColorError> {
 
     stage.assign_if_falsy("scaleLabelColor", |stage| {
         if stage.variables.get("darkMode").is_some_and(is_js_truthy) {
-            Ok(ComputedValue::with_dependencies(
-                Value::String("black".to_string()),
-                ["darkMode".to_string()],
-            ))
+            Ok(stage.computed(Value::String("black".to_string()), &["darkMode"]))
         } else {
             copy(stage, "labelTextColor").map(|mut computed| {
-                computed.dependencies.push("darkMode".to_string());
+                computed.inherit(stage, "darkMode");
                 computed
             })
         }
@@ -1044,7 +1392,7 @@ fn update_dark(stage: &mut ThemeState) -> Result<(), ColorError> {
         } else {
             copy(stage, "secondaryColor")?
         };
-        computed.dependencies.push("darkMode".to_string());
+        computed.inherit(stage, "darkMode");
         Ok(computed)
     })?;
     update_git_dark(stage)?;
@@ -1364,7 +1712,7 @@ fn update_git_forest(stage: &mut ThemeState) -> Result<(), ColorError> {
             } else {
                 darkened(stage, &target, 25.0)?
             };
-            computed.dependencies.push("darkMode".to_string());
+            computed.inherit(stage, "darkMode");
             Ok(computed)
         })?;
     }
@@ -1437,19 +1785,16 @@ fn update_neutral(stage: &mut ThemeState) -> Result<(), ColorError> {
             } else {
                 darkened(stage, &scale, 10.0)?
             };
-            computed.dependencies.push("darkMode".to_string());
+            computed.inherit(stage, "darkMode");
             Ok(computed)
         })
     })?;
     stage.assign_if_falsy("scaleLabelColor", |stage| {
         if dark_mode {
-            Ok(ComputedValue::with_dependencies(
-                Value::String("black".to_string()),
-                ["darkMode".to_string()],
-            ))
+            Ok(stage.computed(Value::String("black".to_string()), &["darkMode"]))
         } else {
             copy(stage, "labelTextColor").map(|mut computed| {
-                computed.dependencies.push("darkMode".to_string());
+                computed.inherit(stage, "darkMode");
                 computed
             })
         }
@@ -1608,8 +1953,12 @@ mod tests {
 
     #[test]
     fn shallow_replay_preserves_sibling_dependencies_and_replaces_nested_children() {
-        let mut state = ThemeState::constructor(Map::new());
-        state.overlay_explicit(json!({"source": "#123456"}).as_object().unwrap());
+        let empty_replay = json!({"chart": {}});
+        let explicit = json!({"source": "#123456", "chart": {"nested": {"new": 2}}});
+        let explicit = explicit.as_object().unwrap();
+        let mut state =
+            ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
+        state.overlay_explicit(explicit);
         state.commit_computed(
             "chart",
             ComputedValue::object(
@@ -1618,16 +1967,12 @@ mod tests {
                     .unwrap()
                     .clone(),
                 BTreeMap::from([
-                    ("retained".to_string(), vec!["source".to_string()]),
-                    ("nested.old".to_string(), vec!["source".to_string()]),
+                    ("retained".to_string(), state.owners("source")),
+                    ("nested.old".to_string(), state.owners("source")),
                 ]),
             ),
         );
-        state.replay_explicit(
-            json!({"chart": {"nested": {"new": 2}}})
-                .as_object()
-                .unwrap(),
-        );
+        state.replay_explicit(explicit);
         assert_eq!(
             state.variables["chart"],
             json!({"retained": "#123456", "nested": {"new": 2}})
@@ -1635,19 +1980,27 @@ mod tests {
         assert!(state.depends_on("chart.retained", "source"));
         assert!(!state.depends_on("chart.nested.old", "source"));
         assert!(state.depends_on("chart.nested.new", "chart.nested.new"));
-        state.replay_explicit(json!({"chart": {}}).as_object().unwrap());
+        state.replay_explicit(empty_replay.as_object().unwrap());
         assert!(state.depends_on("chart.retained", "source"));
         assert!(!state.depends_on("chart", "chart"));
-        state.replay_explicit(json!({"chart": false}).as_object().unwrap());
-        assert_eq!(state.variables["chart"], json!(false));
-        assert!(!state.depends_on("chart.retained", "source"));
-        assert!(state.depends_on("chart", "chart"));
+        let scalar_explicit = json!({"chart": false});
+        let scalar_explicit = scalar_explicit.as_object().unwrap();
+        let mut scalar_state = ThemeState::constructor(
+            state.variables.clone(),
+            scalar_explicit,
+            Some(OwnerSource::AllExplicit),
+        );
+        scalar_state.overlay_explicit(scalar_explicit);
+        scalar_state.replay_explicit(scalar_explicit);
+        assert_eq!(scalar_state.variables["chart"], json!(false));
+        assert!(!scalar_state.depends_on("chart.retained", "source"));
+        assert!(scalar_state.depends_on("chart", "chart"));
     }
 
     fn iteration_count(value: Value) -> Result<usize, ThemeEvaluationLimitExceeded> {
         let mut variables = Map::new();
         variables.insert("THEME_COLOR_LIMIT".to_string(), value);
-        theme_color_iteration_count(&ThemeState::constructor(variables))
+        theme_color_iteration_count(&ThemeState::constructor(variables, &Map::new(), None))
     }
 
     #[test]
@@ -1677,11 +2030,345 @@ mod tests {
     fn javascript_or_chain_does_not_evaluate_an_unselected_last_operand() {
         let mut variables = Map::new();
         variables.insert("selected".to_string(), json!("value"));
-        let state = ThemeState::constructor(variables);
+        let explicit = variables.clone();
+        let mut state =
+            ThemeState::constructor(variables, &explicit, Some(OwnerSource::AllExplicit));
+        state.overlay_explicit(&explicit);
 
         let computed = first_truthy(&state, &["selected", "missing"]).unwrap();
 
         assert_eq!(computed.value, json!("value"));
-        assert_eq!(computed.dependencies, vec!["selected"]);
+        assert_eq!(computed.owners, state.owners("selected"));
+        assert!(
+            !state
+                .authority
+                .as_ref()
+                .unwrap()
+                .sources
+                .borrow()
+                .seeds
+                .contains_key("missing")
+        );
+    }
+
+    /// Reference only the old authority bookkeeping, not a second theme evaluator. The value
+    /// assignments and their read operands are shared by both sides of this differential test.
+    struct EagerAuthority {
+        dependencies: BTreeMap<String, BTreeSet<String>>,
+    }
+
+    impl EagerAuthority {
+        fn new(explicit: &Map<String, Value>) -> Self {
+            let mut oracle = Self {
+                dependencies: BTreeMap::new(),
+            };
+            for (key, value) in explicit {
+                oracle.authored(key, value);
+            }
+            oracle
+        }
+
+        fn remove_subtree(&mut self, root: &str) {
+            let prefix = format!("{root}.");
+            self.dependencies
+                .retain(|path, _| path != root && !path.starts_with(&prefix));
+        }
+
+        fn authored(&mut self, root: &str, value: &Value) {
+            self.remove_subtree(root);
+            for path in explicit_dependency_leaf_paths(root, value) {
+                self.dependencies
+                    .insert(path.clone(), BTreeSet::from([path]));
+            }
+        }
+
+        fn replay(&mut self, explicit: &Map<String, Value>, before: &Map<String, Value>) {
+            for (key, value) in explicit {
+                if before.get(key).is_some_and(Value::is_object)
+                    && let Value::Object(children) = value
+                {
+                    for (child, value) in children {
+                        self.authored(&format!("{key}.{child}"), value);
+                    }
+                } else {
+                    self.authored(key, value);
+                }
+            }
+        }
+
+        fn commit(&mut self, root: &str, nested: &[(&str, &[&str])]) {
+            let sources = nested
+                .iter()
+                .map(|(path, reads)| {
+                    let sources = reads
+                        .iter()
+                        .filter_map(|read| self.dependencies.get(*read))
+                        .flat_map(|sources| sources.iter().cloned())
+                        .collect::<BTreeSet<_>>();
+                    ((*path).to_string(), sources)
+                })
+                .collect::<Vec<_>>();
+            self.remove_subtree(root);
+            for (path, sources) in sources {
+                if !sources.is_empty() {
+                    let path = if path.is_empty() {
+                        root.to_string()
+                    } else {
+                        format!("{root}.{path}")
+                    };
+                    self.dependencies.insert(path, sources);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lazy_authority_matches_eager_bookkeeping_across_replacement_and_replay() {
+        for authored in [
+            json!(false),
+            json!(0),
+            Value::Null,
+            json!({}),
+            json!("#123456"),
+        ] {
+            let explicit = json!({
+                "source": "#123456", "other": "#123456", "authored": authored,
+                "chart": {"nested": {"new": 2}, "empty": {}, "same": "same"},
+                "chart.literal": 1, "chart.nested": {"shadow": 3},
+                "chart.same": {"shadow": 4}
+            });
+            let explicit = explicit.as_object().unwrap();
+            let mut state =
+                ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
+            state.overlay_explicit(explicit);
+            let mut oracle = EagerAuthority::new(explicit);
+            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
+
+            let computed = state.computed(json!("#123456"), &["source"]);
+            state.commit_computed("authored", computed);
+            oracle.commit("authored", &[("", &["source"])]);
+            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
+
+            let nested = [
+                ("retained", &["source"][..]),
+                ("nested.old", &["authored"][..]),
+            ];
+            let nested_owners = nested
+                .iter()
+                .map(|(path, reads)| {
+                    (
+                        (*path).to_string(),
+                        state.computed(Value::Null, reads).owners,
+                    )
+                })
+                .collect();
+            state.commit_computed(
+                "chart",
+                ComputedValue::object(
+                    json!({"retained": "#123456", "nested": {"old": 1}})
+                        .as_object()
+                        .unwrap()
+                        .clone(),
+                    nested_owners,
+                ),
+            );
+            oracle.commit("chart", &nested);
+            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
+
+            // A same-value constant write must retire the authored owner before its next read.
+            state.commit_computed("source", ComputedValue::string("#123456"));
+            oracle.commit("source", &[]);
+            let computed = state.computed(json!("#123456"), &["source", "other"]);
+            state.commit_computed("combined", computed);
+            oracle.commit("combined", &[("", &["source", "other"])]);
+            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
+
+            let before_replay = state.variables.clone();
+            state.replay_explicit(explicit);
+            oracle.replay(explicit, &before_replay);
+            assert_eq!(state.snapshot().dependencies, oracle.dependencies);
+            assert!(state.depends_on("chart.retained", "source"));
+            assert!(!state.depends_on("chart.nested.old", "source"));
+        }
+    }
+
+    #[test]
+    fn replay_barriers_match_eager_authority_without_computed_writes() {
+        for ancestor in [
+            json!(false),
+            json!(0),
+            Value::Null,
+            json!([]),
+            json!({}),
+            json!({"b": false}),
+        ] {
+            for descendant in [
+                json!(false),
+                Value::Null,
+                json!([]),
+                json!({}),
+                json!({"c": {}}),
+            ] {
+                let explicit = json!({
+                    "a": ancestor, "a-ignored": 1, "a.b": descendant, "a.b.c": {}
+                });
+                let explicit = explicit.as_object().unwrap();
+                let mut state =
+                    ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
+                state.overlay_explicit(explicit);
+                let mut oracle = EagerAuthority::new(explicit);
+                assert_eq!(state.snapshot().dependencies, oracle.dependencies);
+                let before = state.variables.clone();
+                state.replay_explicit(explicit);
+                oracle.replay(explicit, &before);
+                assert_eq!(
+                    state.snapshot().dependencies,
+                    oracle.dependencies,
+                    "{explicit:?}"
+                );
+            }
+        }
+
+        let explicit = json!({"a": false, "a.b": {}});
+        let explicit = explicit.as_object().unwrap();
+        let mut state =
+            ThemeState::constructor(Map::new(), explicit, Some(OwnerSource::AllExplicit));
+        state.overlay_explicit(explicit);
+        assert!(state.depends_on("a.b", "a.b"));
+        state.replay_explicit(explicit);
+        assert!(state.depends_on("a", "a"));
+        assert!(!state.depends_on("a.b", "a.b"));
+    }
+
+    fn staged_programs() -> [(StagedProgram, super::super::MermaidThemeId); 4] {
+        use super::super::MermaidThemeId;
+        [
+            (StagedProgram::Base, MermaidThemeId::Base),
+            (StagedProgram::Dark, MermaidThemeId::Dark),
+            (StagedProgram::Forest, MermaidThemeId::Forest),
+            (StagedProgram::Neutral, MermaidThemeId::Neutral),
+        ]
+    }
+
+    #[test]
+    fn unread_authored_scalars_do_not_seed_authority_at_any_scale() {
+        use super::super::ThemeProgram;
+        for (program, theme) in staged_programs() {
+            let constructor = ThemeProgram::resolve(theme).prepared_constructor();
+            let mut previous: Option<(usize, AuthorityWork)> = None;
+            for count in [0, 64, 256, 1024, 4096] {
+                let explicit = (0..count)
+                    .map(|index| (format!("z{index:08}"), json!(1)))
+                    .collect::<Map<_, _>>();
+                let mut config = MermaidConfig::from_value(json!({}));
+                config.deep_merge_explicit(&json!({"themeVariables": explicit}));
+                assert!(
+                    AuthorityState::new(&explicit, OwnerSource::Config(&config))
+                        .replay_barriers
+                        .is_empty()
+                );
+                let resolved =
+                    Resolution::execute_with_owners(program, constructor, &explicit, &config)
+                        .unwrap();
+                assert_eq!(
+                    resolved.variables.get("z00000000"),
+                    (count > 0).then_some(&json!(1))
+                );
+                if count > 0 {
+                    let authority = resolved.authority.as_ref().unwrap();
+                    assert!(
+                        authority.paths.is_empty(),
+                        "{program:?}/{count}: unread keys are not source identities"
+                    );
+                    assert!(
+                        authority.dependencies.is_empty(),
+                        "{program:?}/{count}: no derived owners exist"
+                    );
+                    assert_eq!(resolved.work.source_queries, 0);
+                    if let Some((previous_count, previous_work)) = previous {
+                        assert_eq!(resolved.work.reads, previous_work.reads);
+                        assert_eq!(
+                            resolved.work.removed_replacements,
+                            previous_work.removed_replacements
+                        );
+                        assert_eq!(
+                            resolved.work.replacement_probes - previous_work.replacement_probes,
+                            count - previous_count
+                        );
+                    }
+                    previous = Some((count, resolved.work));
+                } else {
+                    assert!(
+                        resolved.authority.is_none(),
+                        "an owner-free execution stores no authority state"
+                    );
+                    assert_eq!(resolved.work, AuthorityWork::default());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn equal_values_with_different_owners_keep_distinct_authority() {
+        use super::super::{MermaidThemeId, ThemeProgram};
+        let constructor = ThemeProgram::resolve(MermaidThemeId::Base).prepared_constructor();
+        let explicit = json!({"primaryColor": "#123456", "secondaryColor": "#123456"});
+        let explicit = explicit.as_object().unwrap();
+        let mut resolved_values = Vec::new();
+        for (owned, should_own_main, should_own_activation) in [
+            ("primaryColor", true, false),
+            ("secondaryColor", false, true),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({"themeVariables": explicit}));
+            config.deep_merge_explicit(&json!({"themeVariables": {(owned): "#123456"}}));
+            let resolved = Resolution::execute_with_owners(
+                StagedProgram::Base,
+                constructor,
+                explicit,
+                &config,
+            )
+            .unwrap();
+            resolved_values.push(resolved.variables.clone());
+            resolved.materialize_into(&mut config);
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.mainBkg"),
+                should_own_main
+            );
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.activationBkgColor"),
+                should_own_activation
+            );
+        }
+        assert_eq!(resolved_values[0], resolved_values[1]);
+    }
+
+    #[test]
+    fn ownership_mode_preserves_values_errors_and_color_limit() {
+        use super::super::ThemeProgram;
+        for (program, theme) in staged_programs() {
+            let constructor = ThemeProgram::resolve(theme).prepared_constructor();
+            for overrides in [
+                json!({}),
+                json!({"primaryColor": "#123456", "radar": {"axisColor": null}, "venn1": 0, "darkMode": false}),
+                json!({"primaryColor": "not-a-color", "background": "also-invalid"}),
+                json!({"THEME_COLOR_LIMIT": 64}),
+                json!({"THEME_COLOR_LIMIT": 65}),
+            ] {
+                let explicit = overrides.as_object().unwrap();
+                let owner_free = Resolution::execute_impl(program, constructor, explicit, None);
+                let owner_bearing = Resolution::execute(program, constructor, explicit);
+                match (owner_free, owner_bearing) {
+                    (Ok(left), Ok(right)) => {
+                        assert_eq!(left.variables, right.variables, "{program:?}/{overrides}");
+                        assert!(left.authority.is_none());
+                        assert_eq!(left.work, AuthorityWork::default());
+                    }
+                    (Err(left), Err(right)) => {
+                        assert_eq!(format!("{left:?}"), format!("{right:?}"))
+                    }
+                    _ => panic!("ownership changed execution outcome: {program:?}/{overrides}"),
+                }
+            }
+        }
     }
 }
