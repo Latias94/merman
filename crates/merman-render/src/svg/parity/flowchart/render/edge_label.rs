@@ -24,9 +24,27 @@ fn edge_label_emission_receipt(
         .with_label_fill_reach(typography_applicable, source_typography_verified)
 }
 
+fn edge_label_typography_owner(
+    sidecar: &crate::flowchart::FlowchartSvgLabelSidecar,
+    semantic_edges: &[crate::flowchart::FlowEdge],
+    key: crate::flowchart::FlowchartEdgeKey,
+    edge_id: &str,
+    swimlane: bool,
+) -> Option<crate::flowchart::FlowchartSvgLabelOwner> {
+    let registered_id = if key.self_loop_segment_order().is_some() {
+        // Dagre registers the retained label under the logical edge, while its helper segments
+        // carry their own public SVG ids. The sidecar remains authoritative for admission.
+        semantic_edges.get(key.semantic_index())?.id.as_str()
+    } else {
+        edge_id
+    };
+    sidecar.edge_owner(registered_id, swimlane)
+}
+
 #[allow(clippy::too_many_arguments)]
 fn record_edge_label_emission(
     ctx: &FlowchartRenderCtx<'_>,
+    key: crate::flowchart::FlowchartEdgeKey,
     edge_id: &str,
     visible_text: &str,
     compiled_styles: Option<&FlowchartCompiledStyles>,
@@ -63,8 +81,15 @@ fn record_edge_label_emission(
     );
     ctx.record_base_typography_label_emission(
         crate::flowchart::FlowchartBaseTypographyLabelEmission::new(
-            ctx.svg_label_sidecar
-                .and_then(|sidecar| sidecar.edge_owner(edge_id, ctx.swimlane_direction.is_some())),
+            ctx.svg_label_sidecar.and_then(|sidecar| {
+                edge_label_typography_owner(
+                    sidecar,
+                    &ctx.model.edges,
+                    key,
+                    edge_id,
+                    ctx.swimlane_direction.is_some(),
+                )
+            }),
             receipt.typography_applicable(),
             receipt.typography_verified(),
         )
@@ -475,6 +500,7 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
         )?;
         record_edge_label_emission(
             ctx,
+            key,
             edge.id.as_str(),
             if visible { &label_text_plain } else { "" },
             Some(compiled_label_styles),
@@ -1039,6 +1065,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
                     );
             record_edge_label_emission(
                 ctx,
+                key,
                 edge.id.as_str(),
                 if prepared.is_some() || sanitized_xhtml.is_some() {
                     &label_text_plain
@@ -1215,6 +1242,83 @@ fn weight_terminal_verified(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn retained_helper_label_uses_the_registered_semantic_typography_owner() {
+        use crate::flowchart::{
+            FlowchartEdgeKey, FlowchartLabelMetricsRequest, FlowchartSvgLabelOwner,
+            FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
+        };
+        use merman_core::{Engine, ParseOptions, RenderSemanticModel};
+
+        let parsed = Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA loop@-->|retained loop label| A\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart semantic edges");
+        };
+        let builder = FlowchartSvgLabelSidecarBuilder::default();
+        let config = merman_core::MermaidConfig::default();
+        let style = crate::text::TextStyle::default();
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        builder.measure_for_layout(
+            FlowchartSvgLabelOwner::Edge(0),
+            &model.edges[0].id,
+            FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label: "retained loop label",
+                label_type: "text",
+                style: &style,
+                max_width_px: Some(200.0),
+                wrap_mode: crate::text::WrapMode::SvgLike,
+                config: &config,
+                math_renderer: None,
+            },
+            true,
+            FlowchartSvgWidthMode::Bbox,
+        );
+        let sidecar = builder.finish();
+        let helper_id = "A-cyclic-special-mid";
+        assert!(sidecar.edge_owner(helper_id, false).is_none());
+        assert_eq!(
+            edge_label_typography_owner(
+                &sidecar,
+                &model.edges,
+                FlowchartEdgeKey::self_loop_segment(0, 1),
+                helper_id,
+                false,
+            ),
+            Some(FlowchartSvgLabelOwner::Edge(0)),
+        );
+
+        // A typed key does not invent admission for an unregistered or missing source owner.
+        for (key, swimlane) in [
+            (FlowchartEdgeKey::new(0), false),
+            (FlowchartEdgeKey::self_loop_segment(1, 1), false),
+            (FlowchartEdgeKey::self_loop_segment(0, 1), true),
+        ] {
+            assert!(
+                edge_label_typography_owner(&sidecar, &model.edges, key, helper_id, swimlane)
+                    .is_none()
+            );
+        }
+        let unregistered = FlowchartSvgLabelSidecarBuilder::default().finish();
+        assert!(
+            edge_label_typography_owner(
+                &unregistered,
+                &model.edges,
+                FlowchartEdgeKey::self_loop_segment(0, 1),
+                helper_id,
+                false,
+            )
+            .is_none()
+        );
+    }
 
     fn point(x: f64, y: f64) -> crate::model::LayoutPoint {
         crate::model::LayoutPoint { x, y }

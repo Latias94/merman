@@ -1207,6 +1207,14 @@ impl MermaidConfig {
         self.set_value_without_theme_compatibility_shadow(dotted_path, value);
     }
 
+    pub(crate) fn commit_legacy_theme_variables(&mut self, variables: Map<String, Value>) {
+        // Legacy resolution used to publish normalized inputs before the final variables.
+        // Preserve both framework mutation revisions for detector replay, but publish only the
+        // complete result after every fallible calculation has succeeded.
+        self.record_mutation("themeVariables", false);
+        self.set_value_preserving_theme_compatibility("themeVariables", Value::Object(variables));
+    }
+
     fn set_value_without_theme_compatibility_shadow(&mut self, dotted_path: &str, value: Value) {
         // Setters treat even an empty dotted path as a literal key. Metadata has already recorded
         // the assignment; only an identical value can retain the shared JSON storage.
@@ -1903,6 +1911,65 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(changes.explicit_paths().len(), 1);
+    }
+
+    #[test]
+    fn legacy_theme_commit_preserves_framework_mutation_order_and_detector_replay() {
+        let raw = MermaidConfig::from_value(json!({
+            "themeVariables": {"nodeBkg": null, "primaryColor": "#123456"},
+            "custom": 7,
+        }));
+        let normalized = json!({"primaryColor": "#123456"});
+        let resolved = json!({"primaryColor": "#123456", "nodeBkg": "#123456"});
+        let mut reference = raw.clone();
+        let reference_checkpoint = DetectorConfigCheckpoint::new(&reference);
+        reference.set_value_preserving_theme_compatibility("themeVariables", normalized);
+        reference.set_value_preserving_theme_compatibility("themeVariables", resolved.clone());
+        reference.set_value("custom", json!(7));
+        let reference_changes = reference_checkpoint
+            .finish(&mut reference, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+
+        let mut committed = raw.clone();
+        let committed_checkpoint = DetectorConfigCheckpoint::new(&committed);
+        committed.commit_legacy_theme_variables(resolved.as_object().unwrap().clone());
+        committed.set_value("custom", json!(7));
+        let committed_changes = committed_checkpoint
+            .finish(&mut committed, &OperationControl::new())
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(committed.as_value(), reference.as_value());
+        assert_eq!(committed.mutation_revision, reference.mutation_revision);
+        assert_eq!(
+            committed.mutation_paths["themeVariables"],
+            reference.mutation_paths["themeVariables"]
+        );
+        assert_eq!(
+            committed_changes.explicit_paths(),
+            reference_changes.explicit_paths()
+        );
+        assert_eq!(
+            committed_changes.explicit_paths(),
+            &[Arc::<str>::from("custom")]
+        );
+
+        let mut expected_target = raw.clone();
+        let mut actual_target = raw;
+        reference_changes
+            .replay(&mut expected_target, &OperationControl::new())
+            .unwrap();
+        committed_changes
+            .replay(&mut actual_target, &OperationControl::new())
+            .unwrap();
+        assert_eq!(actual_target.as_value(), expected_target.as_value());
+        assert_eq!(
+            actual_target.explicit_config_paths,
+            expected_target.explicit_config_paths
+        );
+        assert!(actual_target.explicit_config_owns_path("custom"));
+        assert!(!actual_target.explicit_config_owns_path("themeVariables.nodeBkg"));
     }
 
     #[test]

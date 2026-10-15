@@ -16,6 +16,7 @@ const String mermanHostCallbackTextMeasurementProviderId = "host-callback";
 const Set<String> mermanTextMeasurementProviderIds = <String>{
   "deterministic",
   "host-callback",
+  "native-fonts",
 };
 const String mermanHostTextMeasurementConstructorServiceId =
     "host-text-measurement";
@@ -443,6 +444,14 @@ const Map<String, MermanBindingConstructorServiceSpec>
       ),
     ],
   ),
+  "native-font-context": MermanBindingConstructorServiceSpec(
+    id: "native-font-context",
+    requiresSvgPipeline: true,
+    providedTextMeasurementProviderIds: <String>{
+      "native-fonts",
+    },
+    resourceLimits: <MermanBindingConstructorResourceLimitSpec>[],
+  ),
 };
 
 const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
@@ -598,6 +607,7 @@ const Map<String, MermanBindingTransportExposureSpec>
     constructorServiceCandidateIds: <String>{
       "host-text-measurement",
       "icon-registry",
+      "native-font-context",
     },
   ),
   "typst": MermanBindingTransportExposureSpec(

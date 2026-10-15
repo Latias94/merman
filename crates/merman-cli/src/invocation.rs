@@ -402,13 +402,7 @@ pub(crate) struct ResolvedRenderCommon {
     pub(crate) background: Option<String>,
     #[cfg(feature = "svg")]
     pub(crate) css_file: Option<PathBuf>,
-    #[cfg(any(
-        feature = "markdown",
-        feature = "native-fonts",
-        feature = "png",
-        feature = "jpeg",
-        feature = "pdf"
-    ))]
+    #[cfg(feature = "svg")]
     pub(crate) quiet: bool,
     #[cfg(feature = "icons")]
     pub(crate) icons: ResolvedIconSources,
@@ -992,13 +986,6 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
         ));
     }
     validate_mmdc_output_options(format, &args)?;
-    #[cfg(any(
-        feature = "markdown",
-        feature = "native-fonts",
-        feature = "png",
-        feature = "jpeg",
-        feature = "pdf"
-    ))]
     let output_is_stdout = matches!(destination, ResolvedDestination::Stdout);
     let output = resolved_mmdc_output(format, destination, &args)?;
     #[cfg(feature = "parallel-markdown")]
@@ -1019,13 +1006,6 @@ fn normalize_mmdc(args: MmdcArgs, facts: &InvocationFacts) -> Result<ResolvedMmd
                 .unwrap_or_else(|| "white".to_string()),
         ),
         css_file: args.css_file.clone(),
-        #[cfg(any(
-            feature = "markdown",
-            feature = "native-fonts",
-            feature = "png",
-            feature = "jpeg",
-            feature = "pdf"
-        ))]
         quiet: args.quiet || output_is_stdout,
         #[cfg(feature = "icons")]
         icons: ResolvedIconSources {
@@ -1529,13 +1509,7 @@ fn resolve_native_common(
         background_color,
         #[cfg(feature = "svg")]
         css_file,
-        #[cfg(any(
-            feature = "markdown",
-            feature = "native-fonts",
-            feature = "png",
-            feature = "jpeg",
-            feature = "pdf"
-        ))]
+        #[cfg(feature = "svg")]
         quiet,
         #[cfg(feature = "icons")]
         icons,
@@ -1555,13 +1529,7 @@ fn resolve_native_common(
         background: background_color,
         #[cfg(feature = "svg")]
         css_file,
-        #[cfg(any(
-            feature = "markdown",
-            feature = "native-fonts",
-            feature = "png",
-            feature = "jpeg",
-            feature = "pdf"
-        ))]
+        #[cfg(feature = "svg")]
         quiet,
         #[cfg(feature = "icons")]
         icons: ResolvedIconSources {

@@ -239,7 +239,7 @@ fn c4_write_text_by_tspan(out: &mut impl SvgOutput, text: C4TspanText<'_>) -> Re
         );
         out.checkpoint()?;
         for (k, v) in attrs {
-            let _ = write!(out, r#" {k}="{v}""#);
+            let _ = write!(out, r#" {k}="{}""#, escape_attr(v));
             out.checkpoint()?;
         }
         let _ = write!(
@@ -1048,6 +1048,13 @@ pub(crate) fn render_c4_diagram_svg_typed(
             C4PaintItem::Boundary(index) => {
                 let b = &layout.boundaries[index];
                 let meta = boundary_meta.get(b.alias.as_str()).copied();
+                let font_color = typography_theme
+                    .boundary_text_color()
+                    .map(|configured| {
+                        meta.and_then(|meta| meta.font_color.as_deref())
+                            .unwrap_or(configured)
+                    })
+                    .unwrap_or("#444444");
                 let is_node_type = meta.and_then(|m| m.node_type.as_deref()).is_some();
                 let Some((fill_color, stroke_color, boundary_radius_attr)) =
                     cluster_theme.boundary_tokens(&b.alias)
@@ -1116,7 +1123,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                         font_family: boundary_family,
                         font_size: boundary_size,
                         font_weight: boundary_weight,
-                        attrs: &[("fill", "#444444")],
+                        attrs: &[("fill", font_color)],
                     },
                 )?;
                 if let Some(ty) = &b.ty
@@ -1135,7 +1142,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_family: boundary_family,
                             font_size: boundary_type_size,
                             font_weight: boundary_type_weight,
-                            attrs: &[("fill", "#444444")],
+                            attrs: &[("fill", font_color)],
                         },
                     )?;
                 }
@@ -1154,7 +1161,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                             font_family: boundary_family,
                             font_size: descr_size,
                             font_weight: descr_weight,
-                            attrs: &[("fill", "#444444")],
+                            attrs: &[("fill", font_color)],
                         },
                     )?;
                 }
@@ -1167,8 +1174,6 @@ pub(crate) fn render_c4_diagram_svg_typed(
             }
         }
     }
-    let arrowhead_url = scoped_svg_url(diagram_id, "arrowhead");
-    let arrowend_url = scoped_svg_url(diagram_id, "arrowend");
     write_c4_relation_defs(&mut out, diagram_id)?;
 
     out.push_str("<g>");
@@ -1184,6 +1189,31 @@ pub(crate) fn render_c4_diagram_svg_typed(
             })?;
         let text_color = paint.text.as_str();
         let stroke_color = paint.line.as_str();
+        let arrowhead = if paint.themed_markers {
+            format!("arrowhead-{idx}")
+        } else {
+            "arrowhead".to_owned()
+        };
+        let arrowend = if paint.themed_markers {
+            format!("arrowend-{idx}")
+        } else {
+            "arrowend".to_owned()
+        };
+        if paint.themed_markers {
+            let _ = write!(
+                out,
+                r#"<defs><marker id="{}" refX="9" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 0 0 L 10 5 L 0 10 z" fill="{}" stroke="{}"/></marker><marker id="{}" refX="1" refY="5" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" orient="auto"><path d="M 10 0 L 0 5 L 10 10 z" fill="{}" stroke="{}"/></marker></defs>"#,
+                escape_attr_display(scoped_svg_id(diagram_id, &arrowhead)),
+                escape_attr(stroke_color),
+                escape_attr(stroke_color),
+                escape_attr_display(scoped_svg_id(diagram_id, &arrowend)),
+                escape_attr(stroke_color),
+                escape_attr(stroke_color)
+            );
+            out.checkpoint()?;
+        }
+        let arrowhead_url = scoped_svg_url(diagram_id, &arrowhead);
+        let arrowend_url = scoped_svg_url(diagram_id, &arrowend);
         let offset_x = rel.offset_x.unwrap_or(0) as f64;
         let offset_y = rel.offset_y.unwrap_or(0) as f64;
 

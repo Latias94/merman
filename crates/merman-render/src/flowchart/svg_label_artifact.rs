@@ -1091,6 +1091,35 @@ impl FlowchartSvgLabelSidecarBuilder {
             width_mode,
         );
 
+        let measure_wrapped = |source: &FlowchartSvgLabelSource, wrapped_lines: &[Vec<String>]| {
+            if request.label_type == "markdown" {
+                // Plain Markdown shares the prepared SVG rows, but retains its computed-length
+                // measurement and 1/64px width lattice rather than the non-Markdown bbox path.
+                let markdown_lines = wrapped_lines
+                    .iter()
+                    .map(|line| {
+                        line.iter()
+                            .map(|word| {
+                                (word.clone(), crate::text::MermaidMarkdownWordType::Normal)
+                            })
+                            .collect()
+                    })
+                    .collect::<Vec<_>>();
+                crate::text::measure_svg_markdown_word_lines(
+                    request.measurer,
+                    &markdown_lines,
+                    metrics_style,
+                )
+            } else {
+                source.metrics_from_wrapped(
+                    request.measurer,
+                    metrics_style,
+                    wrapped_lines,
+                    width_mode,
+                )
+            }
+        };
+
         let measured_from_existing_source = {
             let pending = self.pending.borrow();
             let source = pending
@@ -1120,12 +1149,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     request.max_width_px,
                     break_long_words,
                 );
-                let metrics = source.source.metrics_from_wrapped(
-                    request.measurer,
-                    metrics_style,
-                    &wrapped_lines,
-                    width_mode,
-                );
+                let metrics = measure_wrapped(&source.source, &wrapped_lines);
                 (wrapped_lines, metrics)
             })
         };
@@ -1139,12 +1163,7 @@ impl FlowchartSvgLabelSidecarBuilder {
                     request.max_width_px,
                     break_long_words,
                 );
-                let metrics = source.source.metrics_from_wrapped(
-                    request.measurer,
-                    metrics_style,
-                    &wrapped_lines,
-                    width_mode,
-                );
+                let metrics = measure_wrapped(&source.source, &wrapped_lines);
                 (Some(source), wrapped_lines, metrics)
             },
             |(wrapped_lines, metrics)| (None, wrapped_lines, metrics),
@@ -2615,6 +2634,84 @@ mod tests {
                     + foreground.value().len()
                     + occurrence_id.as_str().len()
         );
+    }
+
+    #[test]
+    fn plain_swimlane_markdown_preparation_keeps_computed_length_geometry() {
+        struct PhaseSensitiveMeasurer {
+            computed_calls: Cell<usize>,
+        }
+
+        impl TextMeasurer for PhaseSensitiveMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                self.measure_wrapped(text, style, None, WrapMode::SvgLike)
+            }
+
+            fn measure_svg_text_computed_length_px(&self, text: &str, _style: &TextStyle) -> f64 {
+                self.computed_calls.set(self.computed_calls.get() + 1);
+                text.chars().count() as f64 * 6.0 + 0.122
+            }
+
+            fn measure_wrapped(
+                &self,
+                text: &str,
+                style: &TextStyle,
+                _max_width: Option<f64>,
+                _wrap_mode: WrapMode,
+            ) -> TextMetrics {
+                let line_count = text.lines().count().max(1);
+                TextMetrics {
+                    width: 999.0,
+                    height: line_count as f64 * style.font_size,
+                    line_count,
+                }
+            }
+        }
+
+        let measurer = PhaseSensitiveMeasurer {
+            computed_calls: Cell::new(0),
+        };
+        let config = MermaidConfig::default();
+        let style = TextStyle::default();
+        for (raw_label, expected_width, line_count) in [
+            ("Outer lane", 60.125, 1),
+            ("Outer &amp; &lt; lane", 84.125, 1),
+            ("Outer lane\nInner lane", 60.125, 2),
+        ] {
+            let request = || FlowchartLabelMetricsRequest {
+                measurer: &measurer,
+                raw_label,
+                label_type: "markdown",
+                style: &style,
+                max_width_px: Some(600.0),
+                wrap_mode: WrapMode::SvgLike,
+                config: &config,
+                math_renderer: None,
+            };
+            let legacy = flowchart_label_metrics_for_layout(request());
+            assert_eq!(legacy.width, expected_width);
+            assert_eq!(legacy.line_count, line_count);
+
+            let builder = FlowchartSvgLabelSidecarBuilder::default();
+            let owner = FlowchartSvgLabelOwner::SwimlaneGroupTitle(0);
+            // Exercise both creation and reuse of the source rows with an opaque host measurer.
+            for _ in 0..2 {
+                measurer.computed_calls.set(0);
+                let prepared = builder.measure_for_layout(
+                    owner,
+                    "lane",
+                    request(),
+                    true,
+                    FlowchartSvgWidthMode::Bbox,
+                );
+                assert_eq!(prepared.width, legacy.width);
+                assert_eq!(prepared.height, legacy.height);
+                assert_eq!(prepared.line_count, legacy.line_count);
+                assert!(measurer.computed_calls.get() > 0);
+            }
+            let sidecar = builder.finish();
+            assert_eq!(sidecar.source_plan_count(owner), 1);
+        }
     }
 
     fn opaque_roundtrip_trace(

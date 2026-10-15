@@ -17,6 +17,7 @@ use crate::family::{
 #[derive(Debug)]
 pub(crate) struct XyChartTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
+    common_css: crate::svg::PreparedCommonCss,
     role_fonts: BTreeMap<XyChartTextRole, RoleFont>,
     source_sizes: [bool; 6],
     evidence: FamilyThemeEvidence,
@@ -122,11 +123,15 @@ impl XyChartTypographyThemePlan {
                 role_fonts.insert(role, font);
             }
         }
+        let inherited_font_stack =
+            InheritedFontStackPlan::resolve_property_local(theme, effective_config);
+        let common_css = crate::svg::PreparedCommonCss::new(
+            effective_config.as_value(),
+            Some(inherited_font_stack.font_family_css()),
+        );
         Ok(Self {
-            inherited_font_stack: InheritedFontStackPlan::resolve_property_local(
-                theme,
-                effective_config,
-            ),
+            inherited_font_stack,
+            common_css,
             role_fonts,
             source_sizes,
             evidence: FamilyThemeEvidence::from_theme(theme),
@@ -171,6 +176,10 @@ impl XyChartTypographyThemePlan {
                 ThemeTypographyProperty::FontWeight => font.weight_rule == Some(rule),
                 _ => false,
             })
+    }
+
+    pub(crate) fn common_css(&self) -> &crate::svg::PreparedCommonCss {
+        &self.common_css
     }
 
     pub(crate) fn font_family_css(&self) -> &str {

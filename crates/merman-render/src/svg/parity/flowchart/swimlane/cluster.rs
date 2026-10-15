@@ -232,8 +232,7 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
     let color_slot = super::super::agentflow::container_color_slot(ctx, &lane.id).or_else(|| {
         let palette_len = ctx.compatibility.palette.len();
         (subgraph.is_none() && palette_len > 0).then(|| {
-            // helpers.ts appends the synthetic lane with max(existing colorIndex) + 1.
-            // Nested and collapsed visible containers retain their declaration slots.
+            // The synthetic lane follows the highest visible source container color ordinal.
             ctx.model
                 .subgraphs
                 .iter()

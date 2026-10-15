@@ -129,6 +129,12 @@ pub enum TargetAdmissionReason {
     NativeRootCapabilityUnsupported,
     NativeFilterReceiptMismatch,
     PdfNativeFilterNotLocalized,
+    /// Native filter offsets can differ under a local rotation, shear or reflection.
+    NativeDirectionalFilterTransformResidual,
+    /// An inferred PDF viewport can clip painted content without a source clipping decision.
+    PdfImplicitViewportClippingResidual,
+    /// Converted HTML label paint can differ under source CSS. This is not a safety receipt.
+    FallbackCssResidual,
 }
 
 #[cfg(feature = "svg")]
@@ -153,6 +159,9 @@ impl TargetAdmissionReason {
         Self::NativeRootCapabilityUnsupported,
         Self::NativeFilterReceiptMismatch,
         Self::PdfNativeFilterNotLocalized,
+        Self::NativeDirectionalFilterTransformResidual,
+        Self::PdfImplicitViewportClippingResidual,
+        Self::FallbackCssResidual,
     ];
 
     pub const fn id(self) -> &'static str {
@@ -176,6 +185,11 @@ impl TargetAdmissionReason {
             Self::NativeRootCapabilityUnsupported => "native_root_capability_unsupported",
             Self::NativeFilterReceiptMismatch => "native_filter_receipt_mismatch",
             Self::PdfNativeFilterNotLocalized => "pdf_native_filter_not_localized",
+            Self::NativeDirectionalFilterTransformResidual => {
+                "native_directional_filter_transform_residual"
+            }
+            Self::PdfImplicitViewportClippingResidual => "pdf_implicit_viewport_clipping_residual",
+            Self::FallbackCssResidual => "fallback_css_residual",
         }
     }
 }
@@ -574,7 +588,14 @@ pub(super) fn standalone_svg_admission(
 ) -> TargetAdmissionReceipt {
     let mut reasons = Vec::new();
     reasons.extend(document.reasons().iter().copied());
-    let rejected = document.rejected;
+    let mut rejected = document.rejected;
+    if svg
+        .finalization_report()
+        .is_some_and(|report| report.fallback_css_residual())
+    {
+        rejected = true;
+        reasons.push(TargetAdmissionReason::FallbackCssResidual);
+    }
     let unverified =
         svg.terminal_status() == merman_render::svg::StandaloneSvgTerminalStatus::Unverified;
     let mut host_dependent = document.is_host_dependent();
@@ -685,6 +706,14 @@ pub(super) fn native_raster_admission(
         classify_native_export_fonts(report.fonts(), &mut reasons);
     rejected |= fonts_rejected;
     host_dependent |= fonts_host_dependent;
+    if report.directional_filter_transform_residual() {
+        rejected = true;
+        reasons.push(TargetAdmissionReason::NativeDirectionalFilterTransformResidual);
+    }
+    if report.fallback_css_residual() {
+        rejected = true;
+        reasons.push(TargetAdmissionReason::FallbackCssResidual);
+    }
     if report.resource_fingerprint() != expected_resource_fingerprint {
         rejected = true;
         reasons.push(TargetAdmissionReason::ResourceFingerprintMismatch);
@@ -750,6 +779,18 @@ pub(super) fn native_pdf_admission(
         classify_native_export_fonts(report.fonts(), &mut reasons);
     rejected |= fonts_rejected;
     host_dependent |= fonts_host_dependent;
+    if report.directional_filter_transform_residual() {
+        rejected = true;
+        reasons.push(TargetAdmissionReason::NativeDirectionalFilterTransformResidual);
+    }
+    if report.implicit_viewport_clipping_residual() {
+        rejected = true;
+        reasons.push(TargetAdmissionReason::PdfImplicitViewportClippingResidual);
+    }
+    if report.fallback_css_residual() {
+        rejected = true;
+        reasons.push(TargetAdmissionReason::FallbackCssResidual);
+    }
     if report.resource_fingerprint() != expected_resource_fingerprint {
         rejected = true;
         reasons.push(TargetAdmissionReason::ResourceFingerprintMismatch);
@@ -857,6 +898,9 @@ mod tests {
                 TargetAdmissionReason::NativeRootCapabilityUnsupported,
                 TargetAdmissionReason::NativeFilterReceiptMismatch,
                 TargetAdmissionReason::PdfNativeFilterNotLocalized,
+                TargetAdmissionReason::NativeDirectionalFilterTransformResidual,
+                TargetAdmissionReason::PdfImplicitViewportClippingResidual,
+                TargetAdmissionReason::FallbackCssResidual,
             ]
         );
     }

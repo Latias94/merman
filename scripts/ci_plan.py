@@ -147,6 +147,7 @@ _SCRIPT_EXACT_OWNER_RULES = {
     "scripts/verify_theme_acceptance_boundary.py": frozenset({"core", "hygiene"}),
     "scripts/linux_binary_compatibility.py": frozenset({"cli", "hygiene"}),
     "scripts/test_linux_binary_compatibility.py": frozenset({"cli", "hygiene"}),
+
     "scripts/audit_plan.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/artifact_profile_recipe.py": frozenset(
         {

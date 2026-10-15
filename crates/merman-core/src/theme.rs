@@ -1863,7 +1863,7 @@ pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), The
     // fallible calculation succeeds, without staging an unrelated full configuration tree.
     config.retain_normalized_theme_compatibility_variables(&explicit);
     let has_calculation_owners = config.has_theme_variable_calculation_owners();
-    config.set_value_preserving_theme_compatibility("themeVariables", Value::Object(resolved));
+    config.commit_legacy_theme_variables(resolved);
     if has_calculation_owners {
         let explicit_dependency_variables = program
             .variable_dependencies()
@@ -2781,6 +2781,7 @@ mod tests {
                 Some(unrelated.as_str())
             );
             assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
+            assert_eq!(work.explicit_path_candidates, 0, "{theme}: {work:?}");
             assert_eq!(work.selected_theme_materializations, 1, "{theme}: {work:?}");
         }
     }
@@ -2990,6 +2991,116 @@ mod tests {
                     .iter()
                     .any(|path| path.as_ref() == "themeVariables.signalTextColor")),
                 "{theme} must freeze the derived physical path into its conceptual input field"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_theme_ownership_guard_preserves_owned_scale_derivations() {
+        for frozen in [false, true] {
+            let value = json!({
+                "theme": "neo-dark", "themeVariables": {"primaryColor": "#123456"},
+            });
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x7c; 32],
+                MermaidConfig::from_value(value.clone()),
+            )
+            .expect("valid Neo Dark compatibility binding");
+            let mut bound = MermaidConfig::from_theme_parse_binding(binding);
+            if frozen {
+                bound.freeze_theme_compatibility();
+            }
+            let (_, work) = crate::config::measure_config_work(|| {
+                apply_theme_defaults(&mut bound).unwrap();
+            });
+            assert!(
+                work.explicit_path_candidates > 0,
+                "frozen={frozen}: {work:?}"
+            );
+            bound.freeze_theme_compatibility();
+            let fields = bound.mermaid_compatibility_fields().unwrap();
+            assert!(
+                fields.iter().any(|field| {
+                    field
+                        .surviving_paths()
+                        .iter()
+                        .any(|path| path.as_ref() == "themeVariables.cScale0")
+                }),
+                "frozen={frozen}"
+            );
+
+            let mut raw = MermaidConfig::from_value(value);
+            let (_, unowned_work) = crate::config::measure_config_work(|| {
+                apply_theme_defaults(&mut raw).unwrap();
+            });
+            assert_eq!(raw.as_value(), bound.as_value(), "frozen={frozen}");
+            assert_eq!(unowned_work.explicit_path_candidates, 0, "{unowned_work:?}");
+        }
+
+        let mut explicit = MermaidConfig::from_value(json!({"theme": "neo-dark"}));
+        explicit.set_value_explicit("themeVariables.primaryColor", json!("#123456"));
+        let (_, work) = crate::config::measure_config_work(|| {
+            apply_theme_defaults(&mut explicit).unwrap();
+        });
+        assert!(work.explicit_path_candidates > 0, "{work:?}");
+        for target in ["cScale0", "taskBkgColor", "activeTaskBkgColor"] {
+            assert!(
+                explicit.config_path_overrides_typed_default(&format!("themeVariables.{target}"))
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_late_failure_keeps_config_and_compatibility_ownership() {
+        for theme in [MermaidThemeId::NeoDark, MermaidThemeId::ReduxDark] {
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x6a; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(),
+                    "themeVariables": {"nodeBkg": "#123456", "cScale2": "#abcdef"},
+                })),
+            )
+            .expect("valid extended theme compatibility binding");
+            let mut config = MermaidConfig::from_theme_parse_binding(binding);
+            config.set_value_preserving_theme_compatibility(
+                "unrelated",
+                json!({"nested": [1, 2, 3]}),
+            );
+            config.set_value_preserving_theme_compatibility(
+                "themeVariables.cScale2",
+                Value::String("not-a-color".to_string()),
+            );
+            config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+            config.set_value_explicit("themeVariables.background", json!("#012345"));
+
+            let program = *ThemeProgram::resolve(theme);
+            assert_eq!(program.kind, ThemeProgramKind::Extended);
+            let normalized = program.normalize_overrides(theme_variables_map(&config));
+            program
+                .validate_evaluated_inputs(&normalized)
+                .expect("cScale2 fails during calculation, after early input validation");
+
+            let before = config.clone();
+            let mut expected_compatibility = before.clone();
+            expected_compatibility.freeze_theme_compatibility();
+
+            assert_eq!(
+                apply_theme_defaults(&mut config),
+                Err(ThemeResolutionError::Color(ColorError::UnsupportedFormat {
+                    input: "not-a-color".to_string(),
+                })),
+                "{theme}"
+            );
+            assert_eq!(config.as_value(), before.as_value(), "{theme}");
+            assert!(!config.path_was_mutated_after(&before, ""), "{theme}");
+            assert!(config.config_path_overrides_typed_default("themeVariables.background"));
+            assert!(!config.config_path_overrides_typed_default("themeVariables.cScalePeer2"));
+
+            config.freeze_theme_compatibility();
+            assert_eq!(
+                config.mermaid_compatibility_fields(),
+                expected_compatibility.mermaid_compatibility_fields(),
+                "a failed {theme} execution must not retire compatibility ownership"
             );
         }
     }

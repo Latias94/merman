@@ -217,7 +217,14 @@ fn write_stages(
     out.checkpoint()?;
     for stage in &layout.stages {
         if let Some(divider) = stage.divider {
-            write_line(out, divider, None, "#000", Some(1.0), Some("5 5"))?;
+            write_line(
+                out,
+                divider,
+                None,
+                &theme.stage_divider_color,
+                Some(1.0),
+                Some("5 5"),
+            )?;
             let insert_at = out.len() - 2;
             out.replace_range(insert_at..insert_at, r#" opacity="0.8""#)?;
         }
@@ -410,15 +417,15 @@ fn write_source_overlay(
             out,
             Some("wardley-build-overlay"),
             *circle,
-            "#eee",
-            "#000",
+            &theme.build_fill,
+            &theme.build_stroke,
             1.0,
         ),
         WardleySourceOverlayLayout::Buy { circle } => write_circle(
             out,
             Some("wardley-buy-overlay"),
             *circle,
-            "#ccc",
+            &theme.buy_fill,
             &theme.component_stroke,
             1.0,
         ),
@@ -426,7 +433,7 @@ fn write_source_overlay(
             out,
             Some("wardley-outsource-overlay"),
             *circle,
-            "#666",
+            &theme.outsource_fill,
             &theme.component_stroke,
             1.0,
         ),
@@ -439,7 +446,7 @@ fn write_source_overlay(
                 out,
                 Some("wardley-market-overlay"),
                 *outer_circle,
-                "white",
+                &theme.market_fill,
                 &theme.component_stroke,
                 1.0,
             )?;
@@ -458,7 +465,7 @@ fn write_source_overlay(
                     out,
                     Some("wardley-market-dot"),
                     *dot,
-                    "white",
+                    &theme.market_fill,
                     &theme.component_stroke,
                     2.0,
                 )?;
@@ -523,7 +530,7 @@ fn write_nodes(
         }
         let label_fill = match node.class_name.as_deref() {
             Some("evolved") => &theme.evolution_stroke,
-            Some("anchor") => "#000",
+            Some("anchor") => &theme.anchor_label_color,
             _ => &theme.component_label_color,
         };
         write_text(
@@ -553,11 +560,12 @@ fn write_annotations_box(
     if let Some(rect) = annotations_box.rect {
         let _ = write!(
             out,
-            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="white" stroke="{}" stroke-width="1.5" rx="{}" ry="{}"/>"#,
+            r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}" stroke="{}" stroke-width="1.5" rx="{}" ry="{}"/>"#,
             fmt(rect.x),
             fmt(rect.y),
             fmt(rect.width),
             fmt(rect.height),
+            escape_attr_display(&theme.annotation_fill),
             escape_attr_display(&theme.axis_color),
             fmt(rect.corner_radius),
             fmt(rect.corner_radius)
@@ -569,7 +577,7 @@ fn write_annotations_box(
             out,
             line,
             None,
-            &theme.axis_text_color,
+            &theme.annotation_text,
             false,
             crate::wardley::WardleyTextRole::AnnotationBoxLine,
             surface_receipt,
@@ -611,7 +619,7 @@ fn write_annotations(
                     center: point.center,
                     radius: point.radius,
                 },
-                "white",
+                &theme.annotation_fill,
                 &theme.axis_color,
                 1.5,
             )?;
@@ -619,7 +627,7 @@ fn write_annotations(
                 out,
                 &point.label,
                 None,
-                &theme.axis_text_color,
+                &theme.annotation_text,
                 true,
                 crate::wardley::WardleyTextRole::AnnotationPoint,
                 surface_receipt,
@@ -679,7 +687,8 @@ fn write_arrow(
     }
     let _ = write!(
         out,
-        r#" Z" fill="white" stroke="{}" stroke-width="1"/>"#,
+        r#" Z" fill="{}" stroke="{}" stroke-width="1"/>"#,
+        escape_attr_display(&theme.arrow_fill),
         escape_attr_display(&theme.component_stroke)
     );
     out.checkpoint()?;

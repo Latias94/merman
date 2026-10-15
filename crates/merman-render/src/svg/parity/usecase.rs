@@ -236,6 +236,7 @@ fn write_label(
                         measurer,
                         &plan.style,
                         plan.max_width,
+                        false,
                     )
                 }
             }
@@ -652,18 +653,16 @@ pub(crate) fn render_usecase_diagram_svg_model(
             std::borrow::Cow::Borrowed(edge_style.as_str())
         };
         let _ = write!(out, r#" style="{}""#, escape_attr(&edge_style));
-        let animated = relation
-            .is_some_and(|edge| edge.animate || edge.animation.is_some() || plan.source_animated);
         for (end, marker) in [("start", &plan.start_marker), ("end", &plan.end_marker)] {
             if let Some(marker) = marker {
                 let name = marker.strip_prefix("arrow_").unwrap_or(marker);
                 let suffix = if end == "start" { "Start" } else { "End" };
-                let margin = if config_string(cfg, &["look"]).as_deref() == Some("neo") && !animated
-                {
-                    "-margin"
-                } else {
-                    ""
-                };
+                let margin =
+                    if config_string(cfg, &["look"]).as_deref() == Some("neo") && !plan.animated {
+                        "-margin"
+                    } else {
+                        ""
+                    };
                 let _ = write!(
                     out,
                     r#" marker-{end}="url(#{diagram_id}_usecase-{name}{suffix}{margin})""#

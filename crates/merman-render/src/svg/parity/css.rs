@@ -470,20 +470,6 @@ fn emit_mermaid_base_css_root_rule<'a>(
     })
 }
 
-pub(super) fn info_css_into_with_font_family<I>(out: &mut String, diagram_id: I, font_family: &str)
-where
-    I: SvgDiagramIdValue,
-{
-    let values = PreparedCommonCss::new(&serde_json::Value::Null, Some(font_family));
-    values
-        .write_all(
-            out,
-            CssSelectorDiagramId(diagram_id),
-            FragmentDiagramId(diagram_id),
-        )
-        .expect("String-backed Mermaid base CSS emission cannot fail");
-}
-
 pub(super) struct InfoCssParts {
     pub(super) css_prefix: String,
     pub(super) root_rule: String,
@@ -685,6 +671,7 @@ impl PreparedCommonCss {
         emit_prepared_common_root(out, &selector_id, &fragment_id, self)
     }
 
+    #[cfg(test)]
     fn write_all<SelectorId, FragmentId>(
         &self,
         out: &mut impl SvgOutput,
@@ -1124,17 +1111,6 @@ where
     Ok((out, title_emission, typography_emission))
 }
 
-#[cfg(feature = "diagram-xychart")]
-pub(super) fn push_xychart_css<I>(out: &mut String, diagram_id: I, resolved_font_family: &str)
-where
-    I: SvgDiagramIdValue,
-{
-    // XYChart uses the shared Mermaid base stylesheet. Keep the family-owned font winner in the
-    // same CSS emission used by layout measurement so a typed FontStack cannot drift between the
-    // measured text and the final SVG cascade.
-    info_css_into_with_font_family(out, diagram_id, resolved_font_family);
-}
-
 #[cfg(feature = "diagram-gantt")]
 pub(super) fn gantt_css<I>(diagram_id: I, task_theme: &crate::gantt::GanttTaskTheme) -> String
 where
@@ -1148,6 +1124,10 @@ where
         .write_prefix(&mut out, diagram_id)
         .expect("String-backed Gantt base CSS emission cannot fail");
     let font = theme.common.font_family();
+    if let Some(axis_color) = theme.axis_color.as_deref() {
+        // D3 tick lines inherit currentColor from the grid group.
+        let _ = write!(&mut out, "#{id} .grid{{color:{axis_color};}}");
+    }
     let text_color = theme.text_color.as_str();
     let exclude_bkg_color = &theme.exclude_bkg_color;
     let section_bkg_color = &theme.section_bkg_color;

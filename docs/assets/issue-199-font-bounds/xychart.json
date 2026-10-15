@@ -1,0 +1,22 @@
+{
+  "site_config": {
+    "theme": "dark",
+    "fontFamily": "Cousine, monospace",
+    "themeVariables": {
+      "fontFamily": "Cousine, monospace",
+      "xyChart": {
+        "backgroundColor": "#1e1f22",
+        "xAxisTickColor": "#a8adbd",
+        "xAxisLineColor": "#a8adbd",
+        "yAxisTickColor": "#a8adbd",
+        "yAxisLineColor": "#a8adbd"
+      }
+    }
+  },
+  "svg": {
+    "diagram_id": "issue-199-xy-font",
+    "pipeline": "resvg-safe",
+    "root_background_color": "#1e1f22"
+  },
+  "raster": {"scale": 2}
+}

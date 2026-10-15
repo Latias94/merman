@@ -107,12 +107,26 @@ macro_rules! native_sdk_artifact_contract {
             #[cfg(feature = "math")]
             $crate::CapabilityKey::Math,
         ];
-        const CONSTRUCTOR_SERVICES: &[$crate::ConstructorServiceKey] = &[
-            #[cfg(feature = "svg")]
-            $crate::ConstructorServiceKey::HostTextMeasurement,
-            #[cfg(feature = "svg")]
-            $crate::ConstructorServiceKey::IconRegistry,
-        ];
+        const CONSTRUCTOR_SERVICES: &[$crate::ConstructorServiceKey] = match TRANSPORT {
+            $crate::BindingTransportKey::Rust
+                if cfg!(feature = "svg")
+                    && $crate::ConstructorServiceKey::NativeFontContext.is_compiled() =>
+            {
+                &[
+                    #[cfg(feature = "svg")]
+                    $crate::ConstructorServiceKey::HostTextMeasurement,
+                    #[cfg(feature = "svg")]
+                    $crate::ConstructorServiceKey::IconRegistry,
+                    $crate::ConstructorServiceKey::NativeFontContext,
+                ]
+            }
+            _ => &[
+                #[cfg(feature = "svg")]
+                $crate::ConstructorServiceKey::HostTextMeasurement,
+                #[cfg(feature = "svg")]
+                $crate::ConstructorServiceKey::IconRegistry,
+            ],
+        };
         let spec = $crate::ArtifactContractSpec::new($crate::TargetKey::Native, TRANSPORT)
             .with_operations(OPERATIONS)
             .with_supplemental_capabilities(SUPPLEMENTAL_CAPABILITIES)

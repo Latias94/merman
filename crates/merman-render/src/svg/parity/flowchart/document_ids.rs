@@ -418,9 +418,9 @@ mod tests {
         let source_edge = edge("authored".to_owned());
         let edge_order = [
             crate::flowchart::FlowchartEdgeKey::new(0),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(1, 0),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(1, 1),
-            crate::flowchart::FlowchartEdgeKey::self_loop_segment(1, 2),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 0),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 1),
+            crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 2),
         ]
         .map(|key| FlowchartRenderEdgeRef {
             key,
@@ -445,14 +445,14 @@ mod tests {
         );
         assert!(document_ids[0].ends_with("-edge-0"));
         for (order, id) in document_ids[1..].iter().enumerate() {
-            assert!(id.ends_with(&format!("-edge-1-segment-{order}")));
+            assert!(id.ends_with(&format!("-edge-0-segment-{order}")));
         }
         assert!(
             ids.edge(crate::flowchart::FlowchartEdgeKey::new(1))
                 .is_none()
         );
         assert!(
-            ids.edge(crate::flowchart::FlowchartEdgeKey::self_loop_segment(1, 3))
+            ids.edge(crate::flowchart::FlowchartEdgeKey::self_loop_segment(0, 3))
                 .is_none()
         );
     }

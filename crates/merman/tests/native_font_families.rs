@@ -433,3 +433,121 @@ fn fixed_geometry_families_do_not_invent_body_measurement() {
         );
     }
 }
+
+#[cfg(feature = "diagram-mindmap")]
+#[test]
+fn mindmap_icon_label_viewports_contain_the_selected_font_glyphs() {
+    let context = font_context();
+    let source = "---\nconfig:\n  fontFamily: Cousine\n---\nmindmap\nroot\n  child[Square]\n    plain\n    with icon\n    ::icon(mdi mdi-fire)\n";
+    let mut request = SvgRequest {
+        environment: SvgEnvironment::deterministic()
+            .with_native_font_context(context.clone())
+            .unwrap(),
+        pipeline: Some(merman::svg::SvgPipeline::resvg_safe()),
+        ..Default::default()
+    };
+    request.options.diagram_id = Some("mindmap-font-bounds".to_owned());
+    let RenderOutput::Svg(Some(output)) = Renderer::new()
+        .render(RenderRequest::svg(source, OperationControl::new(), request))
+        .expect("Mindmap renders with explicit fonts")
+    else {
+        panic!("expected Mindmap SVG");
+    };
+    assert_native_without_fallback(&output, "mindmap");
+    let document = roxmltree::Document::parse(output.svg()).unwrap();
+    for label in ["root", "Square", "plain", "with icon"] {
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some(label))
+            .unwrap_or_else(|| panic!("missing complete label {label:?}"));
+        let viewport = text
+            .ancestors()
+            .find(|node| node.has_tag_name("svg"))
+            .expect("fallback retains its source label viewport");
+        let width: f64 = viewport.attribute("width").unwrap().parse().unwrap();
+        let height: f64 = viewport.attribute("height").unwrap().parse().unwrap();
+        assert!(
+            viewport
+                .attribute("style")
+                .unwrap()
+                .contains("overflow:hidden")
+        );
+        // Shape the emitted text independently, before its viewport can conceal clipped glyphs.
+        let mut probe = output.svg()[text.range()].to_owned();
+        probe.insert_str("<text".len(), " id=\"mindmap-font-probe\"");
+        let probe = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512">{probe}</svg>"#
+        );
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        let tree = usvg::Tree::from_str(&probe, &options).unwrap();
+        let bounds = tree
+            .node_by_id("mindmap-font-probe")
+            .expect("selected font must actually paint the label")
+            .abs_bounding_box();
+        assert!(
+            bounds.x() >= -0.01
+                && bounds.y() >= -0.01
+                && f64::from(bounds.right()) <= width + 0.01
+                && f64::from(bounds.bottom()) <= height + 0.01,
+            "{label:?}: drawn glyphs {bounds:?} must fit label viewport {width}x{height}"
+        );
+    }
+}
+
+#[test]
+fn rich_text_fallback_shapes_selected_faces_without_svg_only_style_interference() {
+    let context = font_context();
+    let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="400" height="60"><style>tspan { font-size:64px; opacity:0; stroke:red; }</style><foreignObject width="400" height="60"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:Cousine;font-size:16px">Alpha <b>Beta</b> <i>Gamma</i></div></foreignObject></svg>"#;
+    let fallback = merman::svg::foreign_object_label_fallback_svg_text(
+        source,
+        &merman::svg::DeterministicTextMeasurer::default(),
+    );
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let tree = usvg::Tree::from_str(&fallback, &options).expect("fallback SVG parses");
+    fn inspect(
+        group: &usvg::Group,
+        faces: &mut std::collections::BTreeSet<String>,
+        tree: &usvg::Tree,
+    ) {
+        for node in group.children() {
+            match node {
+                usvg::Node::Group(group) => inspect(group, faces, tree),
+                usvg::Node::Text(text) => {
+                    assert!(
+                        !text.flattened().children().is_empty(),
+                        "text must remain visible"
+                    );
+                    for chunk in text.chunks() {
+                        for span in chunk.spans() {
+                            assert_eq!(span.font_size().get(), 16.0);
+                        }
+                    }
+                    for span in text.layouted() {
+                        for glyph in &span.positioned_glyphs {
+                            faces.insert(
+                                tree.fontdb()
+                                    .face(glyph.font)
+                                    .unwrap()
+                                    .post_script_name
+                                    .clone(),
+                            );
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    let mut faces = std::collections::BTreeSet::new();
+    inspect(tree.root(), &mut faces, &tree);
+    assert_eq!(
+        faces,
+        ["Cousine-Regular", "Cousine-Bold", "Cousine-Italic"]
+            .map(str::to_owned)
+            .into_iter()
+            .collect(),
+        "the actual backend must shape each retained HTML emphasis face"
+    );
+}

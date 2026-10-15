@@ -269,6 +269,9 @@ mod tests {
             session.work_meter(),
         )
         .expect("prepared fixed-layout nodes");
+        let theme_evidence = crate::flowchart::FlowchartThemeEvidenceRecorder::default();
+        let effect_evidence = crate::diagram_theme::SvgShadowEvidenceRecorder::default();
+        let expected_effect_applications = std::cell::Cell::new(0);
         let mut painted_edges = Vec::new();
         render_flowchart_svg_model(
             FlowchartSvgModelRequest {
@@ -283,9 +286,9 @@ mod tests {
                 diagram_type: metadata.diagram_type.as_str(),
                 diagram_title: None,
                 svg_label_sidecar: &sidecar,
-                theme_evidence: &Default::default(),
-                effect_evidence: &Default::default(),
-                expected_effect_applications: &Default::default(),
+                theme_evidence: &theme_evidence,
+                effect_evidence: &effect_evidence,
+                expected_effect_applications: &expected_effect_applications,
                 edge_style_plan: &edge_style_plan,
                 edge_theme: &edge_theme,
             },

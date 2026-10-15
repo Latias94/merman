@@ -80,14 +80,23 @@ The 2026-10-13 review of issues
 [#199](https://github.com/Latias94/merman/issues/199) and
 [#200](https://github.com/Latias94/merman/issues/200) identifies additional product contracts:
 
-| Issue | Current source evidence | Repair and regression boundary |
+The following table records the findings before the product follow-up repair.
+
+| Issue | Source evidence before repair | Repair and regression boundary |
 | --- | --- | --- |
 | #197: C4 presentation labels | The presentation compiler maps C4 element fills/borders; `c4/render.rs` still defaults element text to white and relationship text/lines to fixed gray | Carry text/line roles into C4 defaults, preserving explicit authored element/relationship colors; test light/dark bindings output and readable labels |
 | #198: ZenUML presentation theme | `zenuml_css()` receives only the diagram ID and emits fixed colors/fonts; fragment section paint also contains explicit colors | A presentation-aware external-family adapter must cover frames, participants, messages and fragments, while preserving the selected plugin's plain Mermaid behavior |
 | #199: cross-family presentation omissions | Wardley anchors/dividers are fixed black; Gantt tick/domain `currentColor` lacks a themed `color`; XYChart calls config-independent base CSS; the Mindmap gray background comes from the shared fallback cascade's `labelBkg` default | Test renderer and fallback role propagation, explicit style precedence, root-scoped typography and SVG/PNG equivalence across the four families |
 | #200: exported label transforms | The current CLI reproduces the rotated Swimlane title in parity SVG and horizontal text in `resvg-safe`; the shared fallback accumulates only translations before hoisting text to the root | Preserve complete affine transforms for text and background, including list order, nested ancestors and local coordinates exactly once; test the actual Swimlane input and PNG, plus rotation pivots, scale, matrix and metadata preservation |
 
-These are P2 product/theme and export defects that remain outside the release alignment repair.
-The shared export transform failure should be addressed first. A Swimlane-only rotation adjustment
-or a global color replacement would miss the common contract. Presentation fixes must retain
-ordinary Mermaid reference output and explicit DSL styling.
+The 2026-10-14 product follow-up repairs these four contracts separately from the release alignment.
+Presentation compilation now carries family-owned text, line, background, and typography defaults;
+explicit configuration and DSL styles retain priority. Partial themes infer text only for the
+background they actually replace. The public binding regressions cover light/dark output, icon-label
+foreground/background pairs, annotation surfaces, family font measurement, and empty presentation.
+
+The shared export fallback now keeps its instances under the source SVG ancestors and references
+isolated native label definitions. This preserves affine order, paint context, and source node CSS
+isolation across diagram families. The exact issue #200 Swimlane source, transform-list cases, and
+PNG pixel probes cover the repaired seam. Browser-dependent glyph bounds and `objectBoundingBox`
+paint remain a documented residual in [the output contract](../rendering/SVG_OUTPUT_PIPELINE.md).

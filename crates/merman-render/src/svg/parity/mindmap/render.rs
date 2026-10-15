@@ -532,6 +532,17 @@ fn mindmap_css(
         }
     }
 
+    if let Some(background) = binding.label_background.as_deref() {
+        let _ = write!(
+            out,
+            "#{diagram_id} .labelBkg{{background-color:{background};}}"
+        );
+    }
+    if let Some(text) = binding.label_text.as_deref() {
+        let _ = write!(out, "#{diagram_id} .labelBkg span{{color:{text};}}");
+    }
+    out.checkpoint()?;
+
     binding
         .common
         .write_root_with_font_emission(out, diagram_id, fragment_id)?;
@@ -571,9 +582,9 @@ fn mindmap_css(
 fn write_mindmap_edge_label(
     out: &mut impl SvgOutput,
     edge_id: &str,
-    use_html_labels: bool,
+    config: &merman_core::MermaidConfig,
 ) -> Result<()> {
-    if !use_html_labels {
+    if !crate::config::config_effective_html_labels(config.as_value()) {
         let _ = write!(
             out,
             r#"<g class="edgeLabel"><g class="label" data-id="{}" transform="translate(0, 0)">"#,
@@ -582,7 +593,7 @@ fn write_mindmap_edge_label(
         out.checkpoint()?;
         crate::svg::parity::label::write_svg_text_centered_from_create_text_source(out, "", false);
         out.checkpoint()?;
-        // insertEdgeLabel moves only createText's returned text; its background stays a sibling.
+        // createText's empty background group remains a sibling of the moved text label.
         out.push_str(r#"</g></g><g><rect class="background" style="stroke: none"/></g>"#);
         return out.checkpoint();
     }
@@ -612,7 +623,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     }
 
     let max_node_width_px = crate::mindmap::mindmap_max_node_width_px(config.as_value());
-    let use_html_labels = crate::config::config_effective_html_labels(config.as_value());
     let text_style = crate::mindmap::mindmap_text_style_with_font_family(
         config.as_value(),
         node_palette.font_family_css(),
@@ -632,6 +642,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         out: &mut impl SvgOutput,
         spec: MindmapLabelSpec<'_>,
         config: &merman_core::MermaidConfig,
+        _font_family_css: &str,
         options: &SvgExecution<'_>,
         text_style: &TextStyle,
     ) -> Result<()> {
@@ -1105,7 +1116,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
     for e in &model.edges {
-        write_mindmap_edge_label(&mut out, &e.id, use_html_labels)?;
+        write_mindmap_edge_label(&mut out, &e.id, config)?;
     }
     out.push_str("</g>");
     out.checkpoint()?;
@@ -1231,6 +1242,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1261,6 +1273,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1291,6 +1304,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1317,6 +1331,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1348,6 +1363,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1389,6 +1405,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1427,6 +1444,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1452,6 +1470,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                         max_node_width_px,
                     },
                     config,
+                    node_palette.font_family_css(),
                     options,
                     &text_style,
                 )?;
@@ -1636,18 +1655,19 @@ mod tests {
 
     #[test]
     fn mindmap_edge_label_stops_after_the_first_svg_sink_failure() {
-        for use_html_labels in [false, true] {
-            let mut out = RejectAfterFirstWrite::default();
+        let mut out = RejectAfterFirstWrite::default();
+        let error = write_mindmap_edge_label(
+            &mut out,
+            "edge-0",
+            &merman_core::MermaidConfig::empty_object(),
+        )
+        .expect_err("the rejecting sink must stop Mindmap edge-label emission");
 
-            let error = write_mindmap_edge_label(&mut out, "edge-0", use_html_labels)
-                .expect_err("the rejecting sink must stop Mindmap edge-label emission");
-
-            assert!(matches!(error, crate::Error::InvalidModel { .. }));
-            assert_eq!(
-                out.write_attempts, 1,
-                "Mindmap edge-label emission must stop at the first failed sink checkpoint"
-            );
-        }
+        assert!(matches!(error, crate::Error::InvalidModel { .. }));
+        assert_eq!(
+            out.write_attempts, 1,
+            "Mindmap edge-label emission must stop at the first failed sink checkpoint"
+        );
     }
 
     #[test]

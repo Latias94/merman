@@ -233,6 +233,21 @@ embed fonts; viewers need the same fonts. Raw SVG conversion uses supplied fonts
 for painting only and cannot relayout existing geometry. See
 [font support and limitations](../../docs/FEATURES.md#optional-cli-fonts).
 
+Deterministic layout can size a fixed HTML label viewport more narrowly than the
+font used by PNG/PDF painting. For example, Mindmap labels can clip even when the
+outer node has padding. Use explicit fonts and native measurement to keep the
+layout and export metrics together; changing `fontFamily` alone does not do this.
+Supply every face needed by bold, italic, and mixed labels. A successful native
+export with unresolved fonts or glyphs reports a warning with the actual missing
+resolution state and `.notdef` glyph count; `--quiet` suppresses that diagnostic.
+Best-effort export remains permissive, while strict portability admission retains
+its existing rejection policy.
+
+Known native backend differences also produce specific warnings: directional filter offsets
+under rotation, shear or reflection; CSS effects on converted HTML labels; and implicit PDF
+viewports that may clip painted content. These fidelity diagnostics preserve default output.
+Use explicit SVG dimensions or a `viewBox` to control PDF clipping. `--quiet` suppresses warnings.
+
 ## Command Dialects And Root Compatibility
 
 Root-level render flags no longer belong to the advertised command tree. Keeping native and compatibility arguments in separate parsers gives each workflow its own defaults, validation, help, completion output, input rules, and publication guarantees without breaking existing root-level `mmdc` scripts.

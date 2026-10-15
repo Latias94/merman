@@ -568,10 +568,18 @@ pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_centered_with_styl
     style: &crate::text::TextStyle,
     max_width_px: Option<f64>,
 ) {
-    write_svg_text_markdown_wrapped_impl(out, markdown, css, measurer, style, max_width_px, true);
+    write_svg_text_markdown_wrapped_from_create_text_source_with_style(
+        out,
+        markdown,
+        css,
+        measurer,
+        style,
+        max_width_px,
+        true,
+    );
 }
 
-fn write_svg_text_markdown_wrapped_impl(
+pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source_with_style(
     out: &mut impl crate::svg::parity::SvgOutput,
     markdown: &str,
     css: &str,
@@ -593,25 +601,6 @@ fn write_svg_text_markdown_wrapped_impl(
         centered,
         true,
         SvgTextEntityMode::CreateTextSource,
-    );
-}
-
-pub(in crate::svg::parity) fn write_svg_text_markdown_wrapped_from_create_text_source_with_style(
-    out: &mut impl crate::svg::parity::SvgOutput,
-    markdown: &str,
-    style: &str,
-    measurer: &dyn crate::text::TextMeasurer,
-    text_style: &crate::text::TextStyle,
-    max_width_px: Option<f64>,
-) {
-    write_svg_text_markdown_wrapped_impl(
-        out,
-        markdown,
-        style,
-        measurer,
-        text_style,
-        max_width_px,
-        false,
     );
 }
 

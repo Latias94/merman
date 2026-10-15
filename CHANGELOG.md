@@ -6,6 +6,25 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## Unreleased
 
+- Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes.
+  PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero.
+  PNG/JPEG/PDF continue best-effort output for known backend shadow and CSS limitations, recording
+  diagnostics in export reports and CLI warnings; explicit portable-output requirements remain strict.
+- Rust binding engines can share an explicit operation-local font context across measurement and
+  native painting with the opt-in `native-fonts` feature. CLI exports report unresolved fonts and
+  missing glyphs. The [font fitting evidence](docs/assets/issue-199-font-bounds/README.md) explains
+  the deterministic and native measurement choices for [#199](https://github.com/Latias94/merman/issues/199).
+- Family-owned Mermaid configuration now reaches C4 text, boundaries and relationships;
+  ZenUML colors and typography; Wardley anchors and dividers; Gantt axes; XY Chart styles and
+  font measurement; and Mindmap icon-label backgrounds. Site and source overrides retain their
+  precedence. Compiled theme paint and text rules keep their independent owners; the retired
+  presentation API is not restored. Fixes
+  [#197](https://github.com/Latias94/merman/issues/197),
+  [#198](https://github.com/Latias94/merman/issues/198), and
+  [#199](https://github.com/Latias94/merman/issues/199).
+- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated
+  Swimlane titles in PNG, JPEG, and PDF exports.
+  [#200](https://github.com/Latias94/merman/issues/200)
 - Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`,
   center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions,
   including HandDrawn circle paths with resource checks before generation;

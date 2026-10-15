@@ -1564,3 +1564,64 @@ fn c4_hand_drawn_person_body_shares_the_classic_body_coordinate_domain() {
     assert!((translate_y(transforms[1]) - (-shape.height / 2.0 + radius)).abs() < 1e-6);
     assert!(translate_y(transforms[0]) > translate_y(transforms[1]));
 }
+
+const PRESENTATION_C4: &str = r#"C4Context
+title Theme coverage
+Boundary(boundary, "Boundary title", "Boundary type") {
+  Person(person, "Person", "Person description")
+  System(system, "System", "System description")
+  Deployment_Node(node, "Node title", "Node type", "Boundary description") {
+    System(child, "Child")
+  }
+}
+System_Ext(external, "External", "External description")
+BiRel(person, system, "Uses", "HTTPS")
+Rel(system, external, "Calls")
+"#;
+#[test]
+fn c4_dynamic_text_colors_remain_single_xml_attributes_for_site_and_source_values() {
+    let site_color = r#"red" data-probe="site&raw"#;
+    let authored_color = "blue' data-probe='source&raw";
+    let source = format!(
+        r#"{PRESENTATION_C4}
+UpdateRelStyle(system, external, $textColor="{authored_color}")
+"#
+    );
+    let engine = Engine::new().with_site_config(merman_core::MermaidConfig::from_value(
+        serde_json::json!({"c4": {
+            "boundary_font_color": site_color,
+            "relationship_text_color": site_color
+        }}),
+    ));
+    let parsed = engine
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    let svg = family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned();
+    let document =
+        roxmltree::Document::parse(&svg).expect("dynamic color values must not break XML");
+    for (content, expected) in [
+        ("Boundary title", site_color),
+        ("Boundary description", site_color),
+        ("Uses", site_color),
+        ("[HTTPS]", site_color),
+        ("Calls", authored_color),
+    ] {
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && svg_text_content(*node) == content)
+            .unwrap();
+        assert_eq!(text.attribute("fill"), Some(expected), "{content}");
+    }
+    assert!(
+        document
+            .descendants()
+            .all(|node| node.attribute("data-probe").is_none())
+    );
+}

@@ -291,8 +291,6 @@ mod xychart;
 mod zenuml;
 #[cfg(feature = "diagram-gantt")]
 use css::gantt_css;
-#[cfg(feature = "diagram-xychart")]
-use css::push_xychart_css;
 #[cfg(feature = "diagram-pie")]
 use css::write_pie_css;
 #[cfg_attr(

@@ -810,7 +810,7 @@ A[Plain source]"##,
     }
 
     #[test]
-    fn readable_svg_options_can_drop_native_duplicate_fallbacks() {
+    fn readable_duplicate_cleanup_preserves_independent_equal_text_labels() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
 <text class="task">Make tea</text>
 <g transform="translate(0,0)">
@@ -834,7 +834,7 @@ A[Plain source]"##,
             cleanup_out
                 .matches(r#"data-merman-foreignobject="fallback""#)
                 .count(),
-            1,
+            2,
             "{cleanup_out}"
         );
         assert!(cleanup_out.contains("Only fallback"));
@@ -843,7 +843,7 @@ A[Plain source]"##,
     }
 
     #[test]
-    fn resvg_safe_svg_options_can_drop_native_duplicate_fallbacks() {
+    fn resvg_safe_duplicate_cleanup_preserves_independent_label_owners() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
 <text class="task">Make tea</text>
 <g transform="translate(0,0)">
@@ -880,15 +880,26 @@ A[Plain source]"##,
             cleanup_out
                 .matches(r#"data-merman-foreignobject="fallback""#)
                 .count(),
-            1,
+            2,
             "{cleanup_out}"
         );
         let document = roxmltree::Document::parse(&cleanup_out).expect("valid SVG");
         let fallback_group = document
             .descendants()
-            .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
-            .expect("the unique nonduplicate fallback must remain");
-        let rows: Vec<_> = fallback_group
+            .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+            .nth(1)
+            .expect("the second independent fallback must remain");
+        let definition_id = fallback_group
+            .children()
+            .find(|node| node.has_tag_name("use"))
+            .and_then(|node| node.attribute("href"))
+            .and_then(|href| href.strip_prefix('#'))
+            .expect("fallback must reference its label definition");
+        let definition = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some(definition_id))
+            .expect("fallback definition must exist");
+        let rows: Vec<_> = definition
             .descendants()
             .filter(|node| node.has_tag_name("text"))
             .map(|node| {

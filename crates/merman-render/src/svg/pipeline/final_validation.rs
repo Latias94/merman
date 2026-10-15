@@ -31,6 +31,8 @@ const XML_VALIDATION_PASS: &str = "validate-well-formed-svg";
 pub(super) struct TerminalValidationWork {
     pub calls: usize,
     pub svg_bytes: usize,
+    pub xml_walks: usize,
+    pub xml_bytes: usize,
 }
 
 #[cfg(test)]
@@ -175,6 +177,7 @@ pub(crate) fn validate_well_formed_svg_with_execution(
 }
 
 #[cfg(test)]
+#[cfg(test)]
 pub(crate) fn validate_well_formed_svg_with_checkpoint(
     svg: &str,
     limits: RenderResourcePolicy,
@@ -203,6 +206,14 @@ fn visit_well_formed_svg_with_controls<const REFERENCES: bool>(
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
     observe_element: &mut dyn FnMut(ValidatedElement, usize) -> Result<()>,
 ) -> Result<SvgStructureMetrics> {
+    #[cfg(test)]
+    TERMINAL_VALIDATION_WORK.with(|counter| {
+        counter.set(counter.get().map(|mut work| {
+            work.xml_walks += 1;
+            work.xml_bytes += svg.len();
+            work
+        }));
+    });
     #[cfg(test)]
     XML_VALIDATION_WORK.with(|counter| {
         counter.set(counter.get().map(|mut work| {
@@ -796,6 +807,14 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     mut checkpoint: &mut dyn FnMut() -> Result<()>,
     check_structure: &mut dyn FnMut(usize, usize) -> Result<()>,
 ) -> Result<TerminalSvgValidation> {
+    #[cfg(test)]
+    TERMINAL_VALIDATION_WORK.with(|counter| {
+        counter.set(counter.get().map(|mut work| {
+            work.xml_walks += 1;
+            work.xml_bytes += svg.len();
+            work
+        }));
+    });
     let mut reader = NsReader::from_str(svg);
     let mut depth = 0usize;
     let mut root_seen = false;
@@ -805,6 +824,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     let mut reference_stack = Vec::new();
     let mut resource_closure = SvgResourceClosureBuilder::default();
     let mut text_content = SvgTextContentTracker::default();
+    let mut fallback_css_residual = false;
 
     loop {
         checkpoint()?;
@@ -833,6 +853,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                         validation_error("terminal SVG text elements cannot be tracked")
                     })?;
                 let opens_style = validated.is_style;
+                fallback_css_residual |= validated.fallback_css_residual;
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -863,6 +884,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     checkpoint,
                 )?;
                 let empty_style = validated.is_style;
+                fallback_css_residual |= validated.fallback_css_residual;
                 append_reference_node(
                     &mut reference_nodes,
                     reference_stack.last().copied(),
@@ -1001,6 +1023,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
         resource_closure,
         text_elements,
         font_seal,
+        fallback_css_residual,
     })
 }
 
@@ -1014,6 +1037,7 @@ pub(crate) struct TerminalSvgValidation {
     pub(super) resource_closure: SvgResourceClosure,
     pub(super) text_elements: usize,
     pub(super) font_seal: SvgFontSeal,
+    pub(super) fallback_css_residual: bool,
 }
 
 impl std::ops::Deref for TerminalSvgValidation {
@@ -1034,6 +1058,7 @@ fn reject_additional_root(is_root: bool, root_seen: bool, root_closed: bool) -> 
 }
 
 struct ValidatedElement {
+    fallback_css_residual: bool,
     is_style: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
@@ -1135,6 +1160,7 @@ fn validate_element_after_xml(
     let mut reference_attributes = ReferenceAttributes::new(element_name, is_svg_element);
     let mut root_width_seen = false;
     let mut root_height_seen = false;
+    let mut fallback_css_residual = false;
     // The caller already validated this immutable element, including lexical and expanded
     // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
     for attribute in element.attributes().with_checks(false) {
@@ -1164,6 +1190,15 @@ fn validate_element_after_xml(
         }
         let semantic_name = local_name.as_ref();
         checkpoint()?;
+        if is_svg_element
+            && is_unbound_attribute
+            && qualified_name == "data-merman-fallback-css-residual"
+            && value == "true"
+        {
+            // An authored marker can only request a warning or stricter fidelity rejection.
+            // It cannot grant compatibility, font, or resource evidence.
+            fallback_css_residual = true;
+        }
         if is_unbound_attribute && qualified_name == "data-merman-typed-fonts" {
             return Err(validation_error(
                 "embedded theme font resources are not supported",
@@ -1224,7 +1259,8 @@ fn validate_element_after_xml(
     if let Some(error) = reference_attributes.marker_error.take() {
         return Err(error);
     }
-    let validated = reference_attributes.finish();
+    let mut validated = reference_attributes.finish();
+    validated.fallback_css_residual = fallback_css_residual;
     if let Some(id) = &validated.parsed_id {
         resource_closure.observe_fragment_id(id);
     }
@@ -1393,6 +1429,7 @@ impl<'a> ReferenceAttributes<'a> {
             });
         }
         ValidatedElement {
+            fallback_css_residual: false,
             is_style: self.is_svg_element && self.element_name.eq_ignore_ascii_case("style"),
             is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
             may_repeat_per_element: self.is_svg_element
@@ -2483,9 +2520,8 @@ mod tests {
         })
     }
 
-    #[test]
-    fn single_traversal_matches_two_pass_results_and_budget_observations() {
-        let fixtures = [
+    fn ordinary_budget_fixtures() -> Vec<String> {
+        vec![
             "<svg/>".to_owned(),
             nested_group_svg(64),
             branching_use_svg(8),
@@ -2508,8 +2544,12 @@ mod tests {
             "<svg><g/>text ]]> tail</svg>".to_owned(),
             "<svg><g/><![CDATA[text]]></svg>trailing".to_owned(),
             String::new(),
-        ];
-        for svg in fixtures {
+        ]
+    }
+
+    #[test]
+    fn single_traversal_matches_two_pass_results_and_budget_observations() {
+        for svg in ordinary_budget_fixtures() {
             for limit in [1, 2, 5, 32, 100, 10_000, usize::MAX] {
                 let policy = RenderResourcePolicy::unbounded_for_trusted_input()
                     .with_limit(ResourceLimitId::MaxSvgElements, limit)
@@ -2599,6 +2639,68 @@ mod tests {
         assert!(detailed_work.occurrence_slots > 0);
         assert!(detailed_work.occurrence_edges > 0);
         assert!(detailed.raw_element_occurrences().iter().any(|&n| n > 1));
+    }
+
+    #[test]
+    fn retained_xml_facts_defer_expansion_and_preserve_sticky_termination() {
+        let svg = branching_use_svg(8);
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgElements, 100)
+            .unwrap();
+        let control = merman_core::OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let (facts, xml_work) = measure_xml_validation_work(|| {
+            validate_svg_xml_facts_with_execution(&svg, SvgPostprocessExecution::new(&session))
+        });
+        let facts = facts.expect("final pipeline XML checks only the raw element budget");
+        assert_eq!(xml_work.calls, 1);
+        assert_eq!(xml_work.svg_bytes, svg.len());
+        assert!(
+            control
+                .terminal_checkpoint_at(merman_core::OperationPhase::Postprocess)
+                .is_ok()
+        );
+        let (result, xml_work) = measure_xml_validation_work(|| {
+            check_svg_resource_budget_from_xml_facts_with_execution(
+                facts,
+                SvgPostprocessExecution::new(&session),
+            )
+        });
+        assert_eq!(xml_work, XmlValidationWork::default());
+        assert!(matches!(result, Err(Error::ResourceLimitExceeded(_))));
+        let terminal = control
+            .terminal_checkpoint_at(merman_core::OperationPhase::Export)
+            .unwrap_err();
+        control.cancel();
+        assert_eq!(
+            control.terminal_checkpoint_at(merman_core::OperationPhase::Emit),
+            Err(terminal)
+        );
+    }
+
+    #[test]
+    fn retained_xml_facts_observe_cancellation_before_terminal_planning() {
+        let control = merman_core::OperationControl::new();
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session_with_control(control.clone())
+            .unwrap();
+        let facts = validate_svg_xml_facts_with_execution(
+            &branching_use_svg(8),
+            SvgPostprocessExecution::new(&session),
+        )
+        .unwrap();
+        control.cancel();
+        let (result, xml_work) = measure_xml_validation_work(|| {
+            check_svg_resource_budget_from_xml_facts_with_execution(
+                facts,
+                SvgPostprocessExecution::new(&session),
+            )
+        });
+        assert_eq!(xml_work, XmlValidationWork::default());
+        assert!(matches!(result, Err(Error::Cancelled(_))));
     }
 
     #[test]

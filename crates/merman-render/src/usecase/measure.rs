@@ -653,7 +653,9 @@ pub(super) fn measure(
         };
         edges.push(UsecaseEdgePlan {
             source_style: shape_style(&css),
-            source_animated,
+            // Mermaid's marker margin decision observes compiled class animation, excluding
+            // inline path styles. Prepare that decision alongside the edge's other source facts.
+            animated: edge.animate || edge.animation.is_some() || source_animated,
             original_id: None,
             self_loop_node: None,
             dagre_recursive: false,
@@ -694,7 +696,7 @@ pub(super) fn measure(
         work.charge_adapter(1)?;
         edges.push(UsecaseEdgePlan {
             source_style: String::new(),
-            source_animated: false,
+            animated: false,
             original_id: None,
             self_loop_node: None,
             dagre_recursive: false,

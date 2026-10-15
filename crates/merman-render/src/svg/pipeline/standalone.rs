@@ -169,6 +169,7 @@ impl StandaloneSvgArtifact {
         #[cfg(merman_internal_theme_acceptance)]
         let artifact_receipt =
             crate::svg_artifact_receipts::SvgArtifactReceipt::observe_finalized_svg(&svg);
+        session.checkpoint(OperationPhase::Postprocess)?;
         Ok(Self {
             inner: StandaloneSvgArtifactKind::Standalone(StandaloneSvg {
                 svg,
@@ -306,6 +307,247 @@ mod tests {
             panic!("expected max_svg_elements resource failure, got {error}");
         };
         assert_eq!(limit.limit, "max_svg_elements");
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    fn rendered_flowchart(session: RenderSession) -> crate::family::RenderedFamilySvg {
+        let parsed = merman_core::Engine::new()
+            .parse_diagram_for_render_model_sync(
+                "flowchart LR\nA[Alpha] --> B[Beta]\n",
+                merman_core::ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap();
+        crate::family::prepare(parsed, &crate::LayoutOptions::default(), session)
+            .unwrap()
+            .render_svg(
+                &crate::svg::SvgRenderOptions::default(),
+                &crate::svg::SvgDebugOptions::default(),
+            )
+            .unwrap()
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn explicit_standalone_pipeline_reuses_the_final_xml_walk() {
+        for pipeline in [SvgPipeline::parity(), SvgPipeline::readable()] {
+            let session = session_with_max_svg_elements(10_000);
+            let rendered = rendered_flowchart(session_with_max_svg_elements(10_000));
+            let metadata = super::super::SvgPostprocessMetadata::from_svg(rendered.svg())
+                .with_family_id(rendered.family_id())
+                .with_diagram_type(rendered.metadata().diagram_type.clone())
+                .with_optional_diagram_title(rendered.metadata().title.clone());
+            let source_svg = rendered.svg().to_owned();
+            let (reference, reference_work) =
+                final_validation::measure_terminal_validation_work(|| {
+                    let svg = pipeline
+                        .process_owned_to_string_with_metadata(source_svg, &metadata, &session)
+                        .unwrap();
+                    StandaloneSvgArtifact::finalize_exact(svg, true, &pipeline, &session).unwrap()
+                });
+            let (completion, reused_work) =
+                final_validation::measure_terminal_validation_work(|| {
+                    rendered
+                        .finalize_standalone(Some(&pipeline))
+                        .unwrap()
+                        .into_completion()
+                });
+
+            assert_eq!(completion.output(), &reference);
+            assert_eq!(reference_work.xml_walks, 3);
+            let expected_reused_walks = match pipeline.preset() {
+                SvgPipelinePreset::Parity => 1,
+                SvgPipelinePreset::Readable => 2,
+                SvgPipelinePreset::ResvgSafe => unreachable!(),
+            };
+            assert_eq!(reused_work.xml_walks, expected_reused_walks);
+            assert_eq!(
+                reference_work.xml_bytes - reused_work.xml_bytes,
+                reference.as_str().len() * (3 - expected_reused_walks),
+            );
+            assert_eq!(
+                reference.terminal_status(),
+                StandaloneSvgTerminalStatus::Unverified
+            );
+            assert!(reference.finalization_report().is_none());
+        }
+    }
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn standalone_walk_reuse_preserves_opaque_processor_evidence_invalidation() {
+        use std::borrow::Cow;
+
+        struct BorrowedOutput(Option<&'static str>);
+        impl super::super::SvgPostprocessor for BorrowedOutput {
+            fn name(&self) -> &'static str {
+                "borrowed-output"
+            }
+
+            fn process<'a>(
+                &self,
+                svg: Cow<'a, str>,
+                _ctx: &super::super::SvgPostprocessContext<'_>,
+            ) -> crate::Result<Cow<'a, str>> {
+                Ok(match self.0 {
+                    Some(output) => Cow::Borrowed(output),
+                    None => svg,
+                })
+            }
+        }
+
+        let replacement = r##"<svg><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
+        let rendered = rendered_flowchart(session_with_max_svg_elements(10_000));
+        let pipeline = SvgPipeline::parity().with_postprocessor(BorrowedOutput(Some(replacement)));
+        let (completion, work) = final_validation::measure_terminal_validation_work(|| {
+            rendered
+                .finalize_standalone(Some(&pipeline))
+                .unwrap()
+                .into_completion()
+        });
+        assert_eq!(completion.output().as_str(), replacement);
+        assert!(!completion.output().prepared_text_evidence_valid());
+        assert_eq!(work.xml_walks, 4);
+
+        let rendered = rendered_flowchart(session_with_max_svg_elements(10_000));
+        let same_bytes = rendered.svg().to_owned();
+        let pipeline = SvgPipeline::parity().with_postprocessor(BorrowedOutput(None));
+        let artifact = rendered
+            .finalize_standalone(Some(&pipeline))
+            .unwrap()
+            .into_completion();
+        assert_eq!(artifact.output().as_str(), same_bytes);
+        assert!(!artifact.output().prepared_text_evidence_valid());
+    }
+
+    #[test]
+    fn late_shrinking_processor_does_not_admit_intermediate_reference_expansion() {
+        use std::borrow::Cow;
+
+        struct Shrink;
+        impl super::super::SvgPostprocessor for Shrink {
+            fn name(&self) -> &'static str {
+                "shrink"
+            }
+
+            fn process<'a>(
+                &self,
+                _svg: Cow<'a, str>,
+                _ctx: &super::super::SvgPostprocessContext<'_>,
+            ) -> crate::Result<Cow<'a, str>> {
+                Ok(Cow::Borrowed("<svg/>"))
+            }
+        }
+
+        let long_id = "long-id-".repeat(10_000);
+        let svg = format!(
+            r##"<svg><defs><g id="{long_id}"><path/></g></defs><use href="#{long_id}"/><use href="#{long_id}"/></svg>"##
+        );
+        let pipeline = SvgPipeline::parity().with_postprocessor(Shrink);
+        let session = session_with_max_svg_elements(6);
+        let metadata = super::super::SvgPostprocessMetadata::from_svg(&svg);
+        let svg = pipeline
+            .process_owned_buffer_with_metadata_and_math_evidence(
+                SvgPipelineBuffer::new(svg),
+                &metadata,
+                &session,
+                None,
+                true,
+            )
+            .expect("only the final XML observation retains references");
+        let artifact =
+            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session).unwrap();
+        assert_eq!(artifact.as_str(), "<svg/>");
+        assert_eq!(
+            artifact.terminal_status(),
+            StandaloneSvgTerminalStatus::Unverified
+        );
+    }
+
+    #[test]
+    fn standalone_other_profiles_keep_their_own_validation_scopes() {
+        let svg = "<svg/>";
+        let session = session_with_max_svg_elements(100);
+        let (artifact, work) = final_validation::measure_terminal_validation_work(|| {
+            StandaloneSvgArtifact::finalize_exact(
+                svg.to_owned(),
+                true,
+                &SvgPipeline::parity(),
+                &session,
+            )
+            .unwrap()
+        });
+        assert_eq!(work.xml_walks, 1);
+        assert_eq!(
+            artifact.terminal_status(),
+            StandaloneSvgTerminalStatus::Unverified
+        );
+
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session()
+            .unwrap();
+        let pipeline = SvgPipeline::parity();
+        let (artifact, work) = final_validation::measure_terminal_validation_work(|| {
+            let svg = pipeline
+                .process_owned_buffer_with_metadata_and_math_evidence(
+                    SvgPipelineBuffer::new(svg.to_owned()),
+                    &super::super::SvgPostprocessMetadata::from_svg(svg),
+                    &session,
+                    None,
+                    true,
+                )
+                .unwrap();
+            assert!(
+                svg.xml_facts.is_some(),
+                "exact XML facts are reused without certifying native compatibility"
+            );
+            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session).unwrap()
+        });
+        assert_eq!(work.xml_walks, 2);
+        assert_eq!(
+            artifact.terminal_status(),
+            StandaloneSvgTerminalStatus::Compatible
+        );
+
+        let session = session_with_max_svg_elements(100);
+        let (artifact, work) = final_validation::measure_terminal_validation_work(|| {
+            StandaloneSvgArtifact::from_resvg_compatible(
+                SvgPipeline::resvg_safe()
+                    .process_resvg_compatible(svg, &session)
+                    .unwrap(),
+            )
+        });
+        assert_eq!(work.xml_walks, 3);
+        assert_eq!(
+            artifact.terminal_status(),
+            StandaloneSvgTerminalStatus::Compatible
+        );
+    }
+
+    #[test]
+    fn explicit_pipeline_retained_facts_keep_expanded_budget_at_terminal_admission() {
+        let svg = r##"<svg><defs><g id="leaf"><path/></g></defs><use href="#leaf"/><use href="#leaf"/></svg>"##;
+        let session = session_with_max_svg_elements(6);
+        let pipeline = SvgPipeline::parity();
+        let svg = pipeline
+            .process_owned_buffer_with_metadata_and_math_evidence(
+                SvgPipelineBuffer::new(svg.to_owned()),
+                &super::super::SvgPostprocessMetadata::from_svg(svg),
+                &session,
+                None,
+                true,
+            )
+            .expect("pipeline validation admits the six raw elements");
+        assert!(svg.xml_facts.is_some());
+        let (result, work) = resource_closure::measure_resource_fingerprint_work(|| {
+            StandaloneSvgArtifact::finalize_exact_buffer(svg, true, &pipeline, &session)
+        });
+        assert_max_svg_elements(result.unwrap_err());
+        assert_eq!(
+            work.calls, 1,
+            "expanded admission follows terminal fingerprinting"
+        );
     }
 
     #[cfg(feature = "diagram-flowchart")]

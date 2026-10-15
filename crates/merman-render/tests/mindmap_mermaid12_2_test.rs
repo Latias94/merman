@@ -496,10 +496,16 @@ fn mindmap_mermaid_12_2_neo_html_labels_follow_theme_palette_colors() {
         );
         let (svg, _) = render(&source, "mindmap-12-2-neo");
         assert!(svg.contains("<span class=\"nodeLabel markdown-node-label\"><p>Root</p></span>"));
-        assert!(svg.contains(&format!(
+        let document = roxmltree::Document::parse(&svg).expect("valid escaped Mindmap CSS XML");
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Mindmap stylesheet");
+        assert!(css.contains(&format!(
             "#mindmap-12-2-neo [data-look=\"neo\"].mindmap-node.section-root .text-inner-tspan,#mindmap-12-2-neo [data-look=\"neo\"].mindmap-node.section-root span{{fill:{root_color};color:{root_color};}}"
         )), "theme={theme}: {svg}");
-        assert!(svg.contains(&format!(
+        assert!(css.contains(&format!(
             "#mindmap-12-2-neo [data-look=\"neo\"].mindmap-node.section-0 text,#mindmap-12-2-neo [data-look=\"neo\"].mindmap-node.section-0 span{{fill:{child_color};color:{child_color};}}"
         )), "theme={theme}: {svg}");
     }

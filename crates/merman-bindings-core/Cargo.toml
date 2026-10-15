@@ -106,6 +106,7 @@ native-runtime = [
 analysis = ["dep:merman-analysis"]
 ascii = ["merman/ascii"]
 svg = ["dep:merman-theme-contract", "merman/svg"]
+native-fonts = ["svg", "merman/native-fonts"]
 png = ["svg", "merman/png"]
 jpeg = ["svg", "merman/jpeg"]
 pdf = ["svg", "merman/pdf"]

@@ -86,7 +86,7 @@ pub(crate) struct UsecaseNodePlan {
 pub(crate) struct UsecaseEdgePlan {
     pub id: String,
     pub source_style: String,
-    pub source_animated: bool,
+    pub animated: bool,
     pub original_id: Option<String>,
     pub self_loop_node: Option<String>,
     pub dagre_recursive: bool,

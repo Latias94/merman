@@ -320,3 +320,210 @@ fn zenuml_qualified_and_ordinal_title_fill_do_not_claim_frame_title() {
         assert_eq!(evidence.theme_residual_count(), 1);
     }
 }
+
+const ZENUML_PAINT: &str = r#"zenuml
+title Theme coverage
+group Business { @Actor <<Client>> Alice @Database Bob }
+@Starter(Alice)
+// Important comment
+Bob.call() {
+  if(ready) {
+    Bob.self()
+  } else {
+    Alice->Bob: Retry
+  }
+  return result
+}
+== Phase two ==
+while(active) {
+  Alice->Bob: Continue
+}
+new Service
+Bob-->Alice: Reply
+"#;
+
+fn render_zenuml_source_config(source: &str, config: serde_json::Value) -> String {
+    let parsed = Engine::new()
+        .with_site_config(merman_core::MermaidConfig::from_value(config))
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let session = RenderEnvironment::deterministic().begin_session().unwrap();
+    family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .unwrap()
+        .svg()
+        .to_owned()
+}
+
+fn source_css_rule<'a>(svg: &'a str, class: &str) -> &'a str {
+    let prefix = format!("#zenuml .{class}");
+    svg.split_once(&prefix)
+        .unwrap_or_else(|| panic!("missing {class} rule"))
+        .1
+        .split_once('{')
+        .unwrap()
+        .1
+        .split_once('}')
+        .unwrap()
+        .0
+}
+
+#[test]
+fn zenuml_source_font_sizes_reserve_participant_and_fragment_title_rows() {
+    for size in [14.0, 18.0, 24.0] {
+        let svg = render_zenuml_source_config(
+            ZENUML_PAINT,
+            serde_json::json!({
+                "themeVariables":{"zenuml":{"fontFamily":"Inter, sans-serif", "fontSize":format!("{size}px")}}
+            }),
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert!(
+            source_css_rule(&svg, "participant-label").contains(&format!("font-size:{size}px"))
+        );
+        let scale = size / 16.0;
+        let participant = document
+            .descendants()
+            .find(|node| {
+                node.attribute("data-participant") == Some("Alice") && node.has_tag_name("g")
+            })
+            .unwrap();
+        let rect = participant
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .unwrap();
+        let height = rect.attribute("height").unwrap().parse::<f64>().unwrap();
+        assert!(
+            height >= 2.0 * size,
+            "two participant rows must fit at {size}px"
+        );
+        let stereotype = participant
+            .children()
+            .find(|node| node.attribute("class") == Some("stereotype-label"))
+            .unwrap();
+        let label = participant
+            .children()
+            .find(|node| node.attribute("class") == Some("participant-label"))
+            .unwrap();
+        assert_eq!(stereotype.text(), Some("«Client»"));
+        assert_eq!(label.text(), Some("Alice"));
+        let separation = label.attribute("y").unwrap().parse::<f64>().unwrap()
+            - stereotype.attribute("y").unwrap().parse::<f64>().unwrap();
+        assert!((separation - size).abs() < 1e-9);
+        let rect_top = rect.attribute("y").unwrap().parse::<f64>().unwrap();
+        assert!(
+            stereotype.attribute("y").unwrap().parse::<f64>().unwrap() - size / 2.0 >= rect_top
+        );
+        assert!(
+            label.attribute("y").unwrap().parse::<f64>().unwrap() + size / 2.0 <= rect_top + height
+        );
+        for header in document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("fragment-header"))
+        {
+            assert_eq!(
+                header.attribute("height").unwrap().parse::<f64>().unwrap(),
+                25.0 * scale
+            );
+            assert!(25.0 * scale > 14.0 * scale);
+        }
+    }
+}
+
+#[test]
+fn zenuml_small_source_font_keeps_icons_inside_their_reserved_rows() {
+    let source = format!("{ZENUML_PAINT}\nBob->Bob: Async self\nAlice->Bob: Final\n");
+    let svg = render_zenuml_source_config(
+        &source,
+        serde_json::json!({
+            "themeVariables":{"zenuml":{"fontSize":"8px"}}
+        }),
+    );
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let coordinate = |node: roxmltree::Node<'_, '_>, attribute| {
+        node.attribute(attribute).unwrap().parse::<f64>().unwrap()
+    };
+    for fragment in document.descendants().filter(|node| {
+        node.attribute("class")
+            .is_some_and(|classes| classes.starts_with("fragment fragment-"))
+    }) {
+        let header = fragment
+            .children()
+            .find(|node| node.attribute("class") == Some("fragment-header"))
+            .unwrap();
+        let icon = fragment
+            .children()
+            .find(|node| node.attribute("class") == Some("fragment-icon"))
+            .unwrap();
+        let label = fragment
+            .children()
+            .find(|node| node.attribute("class") == Some("fragment-label"))
+            .unwrap();
+        assert_eq!(coordinate(icon, "width"), 10.0);
+        assert_eq!(coordinate(icon, "height"), 12.0);
+        assert!(
+            coordinate(icon, "y") + coordinate(icon, "height")
+                <= coordinate(header, "y") + coordinate(header, "height")
+        );
+        assert!(coordinate(icon, "x") + coordinate(icon, "width") < coordinate(label, "x"));
+    }
+    let final_message = document
+        .descendants()
+        .find(|node| {
+            node.attribute("class") == Some("message")
+                && node.children().any(|text| {
+                    text.attribute("class") == Some("message-label") && text.text() == Some("Final")
+                })
+        })
+        .unwrap();
+    let next_line = final_message
+        .children()
+        .find(|node| node.attribute("class") == Some("message-line"))
+        .unwrap();
+    for call in document
+        .descendants()
+        .filter(|node| node.attribute("class") == Some("message self-call"))
+    {
+        let icon = call
+            .children()
+            .find(|node| node.has_tag_name("svg"))
+            .unwrap();
+        assert_eq!(coordinate(icon, "width"), 15.0);
+        assert_eq!(coordinate(icon, "height"), 12.0);
+        assert_eq!(icon.attribute("viewBox"), Some("0 0 30 24"));
+        assert!(coordinate(icon, "y") + coordinate(icon, "height") < coordinate(next_line, "y1"));
+    }
+    for participant in document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("participant"))
+    {
+        if let Some(icon) = participant
+            .children()
+            .find(|node| node.attribute("class") == Some("participant-icon"))
+        {
+            let rect = participant
+                .children()
+                .find(|node| node.attribute("class") == Some("participant-box"))
+                .unwrap();
+            let transform = icon.attribute("transform").unwrap();
+            let translation = transform
+                .split_once("translate(")
+                .unwrap()
+                .1
+                .split_once(')')
+                .unwrap()
+                .0;
+            let icon_y = translation
+                .split(',')
+                .nth(1)
+                .unwrap()
+                .trim()
+                .parse::<f64>()
+                .unwrap();
+            assert!(icon_y >= coordinate(rect, "y"));
+            assert!(icon_y + 12.0 <= coordinate(rect, "y") + coordinate(rect, "height"));
+        }
+    }
+}

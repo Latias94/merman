@@ -309,7 +309,7 @@ fn routed_context(context: &NativeFontContext) -> (RenderSession, Arc<RecordingN
         .with_text_measurement_policy(TextMeasurementPolicy::host_display(
             identity,
             host.clone(),
-            [TextMeasurementPhase::Wrap],
+            [TextMeasurementPhase::Wrap, TextMeasurementPhase::SvgBBox],
         ))
         .begin_session()
         .unwrap();
@@ -430,11 +430,35 @@ fn native_html_fallback_routes_literal_markup_preserved_spaces_and_soft_hyphens(
         drawn_lines(tree.root(), &mut lines);
         assert_eq!(lines, expected_lines, "HTML={html:?}, width={width}");
         let calls = host.calls.lock().unwrap();
-        assert!(calls.iter().any(|(_, _, text)| text == candidate));
+        assert!(calls.iter().any(|(_, operation, text)| *operation
+            == TextMeasurementOperation::CanvasMeasureTextWidth
+            && text == candidate));
         assert!(calls.iter().all(|(phase, operation, _)| {
-            *phase == TextMeasurementPhase::Wrap
-                && *operation == TextMeasurementOperation::CanvasMeasureTextWidth
+            match operation {
+                TextMeasurementOperation::CanvasMeasureTextWidth => {
+                    *phase == TextMeasurementPhase::Wrap
+                }
+                TextMeasurementOperation::RawBBoxWidth
+                | TextMeasurementOperation::RawBBoxHeight => {
+                    *phase == TextMeasurementPhase::SvgBBox
+                }
+                _ => false,
+            }
         }));
+        for operation in [
+            TextMeasurementOperation::RawBBoxWidth,
+            TextMeasurementOperation::RawBBoxHeight,
+        ] {
+            let rows = calls
+                .iter()
+                .filter(|(_, actual, _)| *actual == operation)
+                .map(|(_, _, text)| text.as_str())
+                .collect::<Vec<_>>();
+            assert_eq!(
+                rows, expected_lines,
+                "emitted SVG rows must be measured without reinterpreting HTML"
+            );
+        }
         if expected_lines == ["alpha-", "beta"] {
             assert!(
                 calls.iter().any(|(_, _, text)| text == "alpha-"),

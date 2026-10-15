@@ -2015,4 +2015,41 @@ mod tests {
         assert_eq!(dimensions.width, 42.0);
         assert_eq!(dimensions.height, 14.0);
     }
+
+    #[test]
+    fn xychart_measures_title_axes_and_legend_with_the_configured_font() {
+        use std::sync::Mutex;
+        struct RecordingFont(Mutex<Vec<String>>);
+        impl TextMeasurer for RecordingFont {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                assert_eq!(style.font_family.as_deref(), Some("Inter,sans-serif"));
+                self.0.lock().unwrap().push(text.to_owned());
+                UserUnitMeasurer.measure(text, style)
+            }
+        }
+        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+            "xychart\ntitle Chart\nx-axis Categories [One, Two, Three]\ny-axis Amount 0 --> 40\nline Series [10, 30, 20]",
+            merman_core::ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let merman_core::RenderSemanticModel::XyChart(model) = parsed.model() else {
+            panic!("expected XYChart render model");
+        };
+        let measurer = RecordingFont(Mutex::new(Vec::new()));
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "fontFamily":"Inter, sans-serif", "xyChart":{"showLegend":true},
+        }));
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::interactive(),
+        );
+        let series = XyChartSeriesPaintPlan::resolve(None, &config, model, &work_meter).unwrap();
+        let typography = XyChartTypographyThemePlan::resolve(None, &config, &work_meter).unwrap();
+        layout_xychart_diagram_typed(model, None, &series, &typography, &measurer).unwrap();
+        let text = measurer.0.lock().unwrap();
+        for expected in ["Chart", "Categories", "Amount", "One", "Series"] {
+            assert!(
+                text.iter().any(|text| text == expected),
+                "missing measurement: {expected}"
+            );
+        }
+    }
 }

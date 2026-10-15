@@ -5,6 +5,21 @@ contract. Use a matching runtime artifact that exposes theme authoring and catal
 a package version alone does not establish channel availability or feature support. Examples
 assume an initialized SVG-capable runtime.
 
+## Family configuration and compiled rules
+
+Mermaid compatibility configuration remains a separate input from compiled style rules.
+Explicit family values can be supplied through `site_config`, source frontmatter/directives,
+or the recipe's `spec.mermaid` compatibility fields. They retain their source precedence.
+C4 element, boundary and relationship colors, `themeVariables.zenuml` colors and typography,
+Wardley anchor/annotation colors, Gantt axis color, and Mindmap label backgrounds use their
+family owners. Measurement and SVG paint consume the same prepared font values.
+
+This does not extend compiled-theme admission to every family target. In particular, ZenUML's
+compiled theme adapter supports `Title.fill`; generic text and typography rules remain
+unsupported and are reported as such. Choose the corresponding Mermaid family configuration
+when configuring those source-owned values. Background and text rules have separate owners;
+a background-only compiled rule does not infer or recolor labels on another surface.
+
 ## Edit and share in the Playground
 
 Open **Theme → Custom theme…**. Edit the versioned JSON recipe, import a `.json` file,

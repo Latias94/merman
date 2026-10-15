@@ -129,13 +129,6 @@ fn execute_graphical_with_pipeline(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
-    #[cfg(not(any(
-        feature = "native-fonts",
-        feature = "png",
-        feature = "jpeg",
-        feature = "pdf"
-    )))]
-    let _ = stderr;
     #[cfg(feature = "native-fonts")]
     let font_context = prepared
         .font_context
@@ -201,6 +194,13 @@ fn execute_graphical_with_pipeline(
             }
             match (graphical_output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
+                    report_fallback_css_residual(
+                        prepared.quiet,
+                        svg.admission()
+                            .reasons()
+                            .contains(&merman::TargetAdmissionReason::FallbackCssResidual),
+                        stderr,
+                    );
                     let (svg, _evidence) = svg.into_parts();
                     #[cfg(feature = "markdown")]
                     let metadata = svg_metadata(&svg);
@@ -232,6 +232,14 @@ fn execute_graphical_with_pipeline(
                     )?;
                     prepared.admission.ensure_actual_weight(actual_weight)?;
                     report_raster_plan(prepared.quiet, report.raster(), stderr);
+                    report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+                    report_native_export_quality(
+                        prepared.quiet,
+                        report.directional_filter_transform_residual(),
+                        false,
+                        report.fallback_css_residual(),
+                        stderr,
+                    );
                     let output = export.encode()?;
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
@@ -262,6 +270,14 @@ fn execute_graphical_with_pipeline(
                     )?;
                     prepared.admission.ensure_actual_weight(actual_weight)?;
                     report_raster_plan(prepared.quiet, report.raster(), stderr);
+                    report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+                    report_native_export_quality(
+                        prepared.quiet,
+                        report.directional_filter_transform_residual(),
+                        false,
+                        report.fallback_css_residual(),
+                        stderr,
+                    );
                     let output = export.encode()?;
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
@@ -291,6 +307,14 @@ fn execute_graphical_with_pipeline(
                     )?;
                     prepared.admission.ensure_actual_weight(actual_weight)?;
                     report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
+                    report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+                    report_native_export_quality(
+                        prepared.quiet,
+                        report.directional_filter_transform_residual(),
+                        report.implicit_viewport_clipping_residual(),
+                        report.fallback_css_residual(),
+                        stderr,
+                    );
                     let output = export.encode()?;
                     Ok(ExecutedArtifact {
                         bytes: output.into_bytes(),
@@ -352,6 +376,14 @@ fn execute_raw_svg(
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_raster_plan(prepared.quiet, report.raster(), stderr);
+            report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+            report_native_export_quality(
+                prepared.quiet,
+                report.directional_filter_transform_residual(),
+                false,
+                report.fallback_css_residual(),
+                stderr,
+            );
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_png()
@@ -377,6 +409,14 @@ fn execute_raw_svg(
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_raster_plan(prepared.quiet, report.raster(), stderr);
+            report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+            report_native_export_quality(
+                prepared.quiet,
+                report.directional_filter_transform_residual(),
+                false,
+                report.fallback_css_residual(),
+                stderr,
+            );
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_jpeg()
@@ -398,6 +438,14 @@ fn execute_raw_svg(
                 super::admission::actual_pdf_weight(report.filters(), report.embedded_images())?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
             report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
+            report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+            report_native_export_quality(
+                prepared.quiet,
+                report.directional_filter_transform_residual(),
+                report.implicit_viewport_clipping_residual(),
+                report.fallback_css_residual(),
+                stderr,
+            );
             Ok(ExecutedArtifact {
                 bytes: prepared_pdf.encode().map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
@@ -407,6 +455,50 @@ fn execute_raw_svg(
                 desc: metadata.1,
             })
         }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn report_native_export_quality(
+    quiet: bool,
+    directional_filter_transform_residual: bool,
+    implicit_viewport_clipping_residual: bool,
+    fallback_css_residual: bool,
+    stderr: &SharedWriter,
+) {
+    let diagnostics = crate::diagnostics::DiagnosticSink::new(quiet, stderr);
+    if directional_filter_transform_residual {
+        diagnostics.info("warning: native_directional_filter_transform_residual: directional filter offsets may differ under rotation, shear or reflection; best-effort rendering may differ");
+    }
+    if implicit_viewport_clipping_residual {
+        diagnostics.info("warning: pdf_implicit_viewport_clipping_residual: the derived PDF viewport may clip painted content; specify an explicit SVG viewport to control clipping");
+    }
+    report_fallback_css_residual(quiet, fallback_css_residual, stderr);
+}
+
+#[cfg(feature = "svg")]
+fn report_fallback_css_residual(quiet: bool, residual: bool, stderr: &SharedWriter) {
+    if residual {
+        crate::diagnostics::DiagnosticSink::new(quiet, stderr).info("warning: fallback_css_residual: backend CSS may differ for converted HTML labels; best-effort rendering may differ");
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn report_export_font_resolution(
+    quiet: bool,
+    fonts: merman::svg::export::ExportFontPlan,
+    stderr: &SharedWriter,
+) {
+    if fonts.unresolved_font_request()
+        || fonts.unresolved_glyph_fallback()
+        || fonts.notdef_glyph_count() != 0
+    {
+        crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(format!(
+            "warning: native export font resolution is incomplete: unresolved font request={}; unresolved glyph fallback={}; .notdef glyphs={}; provide fonts covering the output text",
+            fonts.unresolved_font_request(),
+            fonts.unresolved_glyph_fallback(),
+            fonts.notdef_glyph_count(),
+        ));
     }
 }
 

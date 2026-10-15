@@ -75,12 +75,6 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) pipeline: SvgPipeline,
     pub(super) output: PreparedGraphicalOutput,
     pub(super) admission: BackendAdmission,
-    #[cfg(any(
-        feature = "native-fonts",
-        feature = "png",
-        feature = "jpeg",
-        feature = "pdf"
-    ))]
     pub(super) quiet: bool,
     #[cfg(feature = "native-fonts")]
     pub(super) font_context: Option<merman::svg::export::NativeFontContext>,
@@ -636,12 +630,6 @@ pub(crate) fn prepare_graphical_output(
             pipeline,
             output,
             admission,
-            #[cfg(any(
-                feature = "native-fonts",
-                feature = "png",
-                feature = "jpeg",
-                feature = "pdf"
-            ))]
             quiet: common.quiet,
             #[cfg(feature = "native-fonts")]
             font_context,
@@ -801,12 +789,6 @@ fn prepare_rustdoc_renderer(
         pipeline,
         output: PreparedGraphicalOutput::Svg,
         admission: BackendAdmission::for_svg(resources)?,
-        #[cfg(any(
-            feature = "native-fonts",
-            feature = "png",
-            feature = "jpeg",
-            feature = "pdf"
-        ))]
         quiet: true,
         #[cfg(feature = "native-fonts")]
         font_context: None,

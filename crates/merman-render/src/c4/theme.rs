@@ -66,21 +66,22 @@ struct C4BoundaryTerminalExpectation {
 }
 
 impl C4BoundaryTerminalExpectation {
-    fn baseline(boundary: &C4BoundaryRenderModel) -> Self {
-        // The pinned C4 renderer has no site-level boundary paint path. Mermaid-owned boundary
-        // paint is therefore the per-boundary source state materialized by UpdateElementStyle.
+    fn baseline(boundary: &C4BoundaryRenderModel, config: &merman_core::MermaidConfig) -> Self {
+        // Authored element styles keep precedence over explicit site-level boundary colors.
         Self {
             alias: boundary.alias.clone().into_boxed_str(),
             fill: C4BoundaryPaintExpectation::mermaid(
                 boundary
                     .bg_color
                     .as_deref()
+                    .or_else(|| config.get_str("c4.boundary_bg_color"))
                     .unwrap_or(MERMAID_BOUNDARY_FILL),
             ),
             stroke: C4BoundaryPaintExpectation::mermaid(
                 boundary
                     .border_color
                     .as_deref()
+                    .or_else(|| config.get_str("c4.boundary_border_color"))
                     .unwrap_or(MERMAID_BOUNDARY_STROKE),
             ),
             radius_token: baseline_radius_token(),
@@ -109,6 +110,7 @@ impl C4ClusterThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         boundaries: &[C4BoundaryRenderModel],
+        config: &merman_core::MermaidConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let explicit_boundaries = boundaries
@@ -117,7 +119,7 @@ impl C4ClusterThemePlan {
             .collect::<Vec<_>>();
         let explicit_boundary_count = explicit_boundaries.len();
         let Some(theme) = theme else {
-            return Ok(Self::baseline(boundaries));
+            return Ok(Self::baseline(boundaries, config));
         };
 
         let static_style = theme.style_with_work_meter(
@@ -167,7 +169,9 @@ impl C4ClusterThemePlan {
         let mut terminal_expectations = BTreeMap::new();
         let source_owned_fill = explicit_boundaries
             .iter()
-            .map(|boundary| boundary.bg_color.is_some())
+            .map(|boundary| {
+                boundary.bg_color.is_some() || config.get_str("c4.boundary_bg_color").is_some()
+            })
             .collect::<Vec<_>>();
 
         for (boundary_index, boundary) in explicit_boundaries.iter().enumerate() {
@@ -194,9 +198,12 @@ impl C4ClusterThemePlan {
                 winner_rules.get(&ResolvedStyleProperty::Radius).copied()
                     == direct_static_radius_rule;
 
-            let mut expectation = C4BoundaryTerminalExpectation::baseline(boundary);
+            let mut expectation = C4BoundaryTerminalExpectation::baseline(boundary, config);
             let (fill, source_owned_fill) = paint_expectation(
-                boundary.bg_color.as_deref(),
+                boundary
+                    .bg_color
+                    .as_deref()
+                    .or_else(|| config.get_str("c4.boundary_bg_color")),
                 MERMAID_BOUNDARY_FILL,
                 static_fill_candidate.as_ref(),
                 winner_rules.get(&ResolvedStyleProperty::Fill).copied(),
@@ -210,7 +217,10 @@ impl C4ClusterThemePlan {
             }
 
             let (stroke, source_owned_stroke) = paint_expectation(
-                boundary.border_color.as_deref(),
+                boundary
+                    .border_color
+                    .as_deref()
+                    .or_else(|| config.get_str("c4.boundary_border_color")),
                 MERMAID_BOUNDARY_STROKE,
                 static_stroke_candidate.as_ref(),
                 winner_rules.get(&ResolvedStyleProperty::Stroke).copied(),
@@ -387,11 +397,14 @@ impl C4ClusterThemePlan {
         })
     }
 
-    pub(crate) fn baseline(boundaries: &[C4BoundaryRenderModel]) -> Self {
+    pub(crate) fn baseline(
+        boundaries: &[C4BoundaryRenderModel],
+        config: &merman_core::MermaidConfig,
+    ) -> Self {
         let boundaries = boundaries
             .iter()
             .filter(|boundary| boundary.alias != "global")
-            .map(C4BoundaryTerminalExpectation::baseline)
+            .map(|boundary| C4BoundaryTerminalExpectation::baseline(boundary, config))
             .map(|expectation| (expectation.alias.clone(), expectation))
             .collect::<BTreeMap<_, _>>();
         Self {

@@ -19,6 +19,8 @@ pub(crate) struct MindmapCssBinding {
     pub(crate) common: crate::svg::PreparedCommonCss,
     pub(crate) sections: Vec<MindmapSectionCss>,
     pub(crate) neutral_label: String,
+    pub(crate) label_background: Option<String>,
+    pub(crate) label_text: Option<String>,
     pub(crate) theme: Box<str>,
     pub(crate) look: Box<str>,
     pub(crate) root_fill: String,
@@ -96,6 +98,14 @@ impl MindmapCssBinding {
             common: crate::svg::PreparedCommonCss::new(raw, Some(plan.font_family_css())),
             sections,
             neutral_label: token("cScaleLabel1", "black"),
+            label_background: crate::config::config_string(
+                raw,
+                &["themeVariables", "mindmap", "labelBackgroundColor"],
+            ),
+            label_text: crate::config::config_string(
+                raw,
+                &["themeVariables", "mindmap", "labelTextColor"],
+            ),
             theme: theme.into(),
             look: crate::config::mermaid_config_diagram_look(config)
                 .as_str()

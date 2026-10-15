@@ -15,7 +15,8 @@ pub(crate) use builtin::util::{
     SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
     escape_xml_attr_with_checkpoints, escape_xml_text_with_checkpoints,
     extract_exact_double_quoted_attr_with_checkpoints, find_tag_end_with_checkpoints,
-    find_with_checkpoints, rfind_with_checkpoints, start_tag_name, trim_with_checkpoints,
+    find_with_checkpoints, next_svg_quoted_attr_with_checkpoints, rfind_with_checkpoints,
+    start_tag_name, trim_with_checkpoints,
 };
 pub use builtin::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
@@ -234,6 +235,7 @@ pub struct SvgFinalizationReport {
     resource_closure: SvgResourceClosure,
     text_element_count: usize,
     font_seal: SvgFontSeal,
+    fallback_css_residual: bool,
 }
 
 impl SvgFinalizationReport {
@@ -263,6 +265,13 @@ impl SvgFinalizationReport {
         self.text_element_count
     }
 
+    /// Returns whether readable HTML projection encountered CSS whose native rendering may differ.
+    ///
+    /// This diagnostic only lowers fidelity admission; it does not establish resource or font safety.
+    pub const fn fallback_css_residual(&self) -> bool {
+        self.fallback_css_residual
+    }
+
     pub(crate) const fn font_seal(&self) -> &SvgFontSeal {
         &self.font_seal
     }
@@ -284,6 +293,7 @@ impl SvgFinalizationReport {
             resource_closure: terminal.resource_closure,
             text_element_count: terminal.text_elements,
             font_seal: terminal.font_seal,
+            fallback_css_residual: terminal.fallback_css_residual,
         }
     }
 }
@@ -330,6 +340,7 @@ impl ResvgCompatibleSvg {
             font_catalog.fingerprint().as_bytes(),
             &font_source_policy,
         );
+        execution.checkpoint()?;
         Ok(Self {
             svg,
             prepared_text_evidence_valid,
@@ -925,10 +936,19 @@ impl SvgPipeline {
             )
         } else {
             if self.preset != SvgPipelinePreset::ResvgSafe && xml_facts.is_none() {
-                final_validation::validate_well_formed_svg_with_execution(
-                    finalized.as_ref(),
-                    execution,
-                )?;
+                if retain_xml_facts {
+                    // Builtin mutation invalidates the old generation, but the consuming
+                    // renderer boundary can retain fresh facts from this terminal XML walk.
+                    xml_facts = Some(final_validation::validate_svg_xml_facts_with_execution(
+                        finalized.as_ref(),
+                        execution,
+                    )?);
+                } else {
+                    final_validation::validate_well_formed_svg_with_execution(
+                        finalized.as_ref(),
+                        execution,
+                    )?;
+                }
             }
             None
         };
@@ -1155,6 +1175,47 @@ mod tests {
         assert_eq!(work.svg_bytes, sealed.as_str().len());
     }
 
+    #[test]
+    fn finalization_report_moves_terminal_owned_allocations() {
+        let session = render_session();
+        let svg =
+            r##"<svg><defs><path id="shape"/></defs><use href="#shape"/><text>label</text></svg>"##;
+        let terminal = final_validation::validate_resvg_compatible_svg_with_execution(
+            svg,
+            SvgPostprocessExecution::new(&session),
+        )
+        .unwrap();
+        let occurrences = terminal.reference_plan.raw_element_occurrences().as_ptr();
+        let available_ids = terminal.resource_closure.available_fragment_ids().as_ptr();
+        let referenced_ids = terminal.resource_closure.referenced_fragment_ids().as_ptr();
+        let available_id = terminal.resource_closure.available_fragment_ids()[0].as_ptr();
+        let referenced_id = terminal.resource_closure.referenced_fragment_ids()[0].as_ptr();
+        let report = SvgFinalizationReport::from_pipeline(&SvgPipeline::resvg_safe(), terminal);
+
+        assert_eq!(
+            report.reference_plan().raw_element_occurrences().as_ptr(),
+            occurrences
+        );
+        assert_eq!(
+            report.resource_closure().available_fragment_ids().as_ptr(),
+            available_ids
+        );
+        assert_eq!(
+            report.resource_closure().referenced_fragment_ids().as_ptr(),
+            referenced_ids
+        );
+        assert_eq!(
+            report.resource_closure().available_fragment_ids()[0].as_ptr(),
+            available_id
+        );
+        assert_eq!(
+            report.resource_closure().referenced_fragment_ids()[0].as_ptr(),
+            referenced_id
+        );
+        assert_eq!(report.text_element_count(), 1);
+        assert!(!report.font_seal().is_complete());
+    }
+
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn family_resvg_seal_fingerprints_final_svg_once() {
@@ -1256,6 +1317,32 @@ mod tests {
             sealed.finalization_report().resource_closure()
         );
         assert_eq!(work.calls, 1);
+    }
+
+    #[test]
+    fn fallback_css_diagnostics_are_sealed_without_granting_resource_admission() {
+        let session = render_session();
+        for (marker, expected) in [("true", true), ("false", false)] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><g data-merman-fallback-css-residual="{marker}"><path d="M0 0h1v1z"/></g></svg>"#
+            );
+            let (sealed, work) = final_validation::measure_terminal_validation_work(|| {
+                SvgPipeline::resvg_safe()
+                    .process_resvg_compatible(&svg, &session)
+                    .unwrap()
+            });
+            assert_eq!(
+                sealed.finalization_report().fallback_css_residual(),
+                expected
+            );
+            assert_eq!(work.calls, 1);
+        }
+        let invalid = r##"<svg xmlns="http://www.w3.org/2000/svg"><use data-merman-fallback-css-residual="true" href="#missing"/></svg>"##;
+        assert!(
+            SvgPipeline::resvg_safe()
+                .process_resvg_compatible(invalid, &session)
+                .is_err()
+        );
     }
 
     #[test]
@@ -1369,7 +1456,7 @@ mod tests {
     }
 
     #[test]
-    fn standalone_opaque_equal_output_and_readable_mutation_discard_xml_facts() {
+    fn standalone_opaque_output_discards_and_builtin_mutation_refreshes_xml_facts() {
         const SVG: &str = r#"<svg xmlns="http://www.w3.org/2000/svg"><path/></svg>"#;
         struct BorrowedIdentity;
         impl SvgPostprocessor for BorrowedIdentity {
@@ -1384,16 +1471,18 @@ mod tests {
                 Ok(Cow::Borrowed(SVG))
             }
         }
-        for (pipeline, svg, expected_xml_passes) in [
+        for (pipeline, svg, retain_terminal_facts, expected_xml_passes) in [
             (
                 SvgPipeline::parity().with_postprocessor(BorrowedIdentity),
                 SVG,
+                false,
                 4,
             ),
             (
                 SvgPipeline::readable(),
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">label</div></foreignObject></svg>"#,
-                3,
+                true,
+                2,
             ),
         ] {
             let session = render_session();
@@ -1408,7 +1497,7 @@ mod tests {
                         true,
                     )
                     .unwrap();
-                assert!(processed.xml_facts.is_none());
+                assert_eq!(processed.xml_facts.is_some(), retain_terminal_facts);
                 StandaloneSvgArtifact::finalize_exact_buffer(processed, true, &pipeline, &session)
                     .unwrap()
             });

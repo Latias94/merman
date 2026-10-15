@@ -483,3 +483,30 @@ fn treemap_css_honors_mermaid_11_15_style_options() {
     assert!(css.contains("#tm .treemapValue{fill:#666666;font-size:11px;}"));
     assert!(css.contains("#tm .treemapTitle{fill:#777777;font-size:15px;}"));
 }
+
+#[cfg(feature = "diagram-xychart")]
+#[test]
+fn xychart_common_css_keeps_source_colors_with_its_resolved_font_stack() {
+    let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+        "fontFamily": "Inter, sans-serif",
+        "themeVariables": { "textColor": "#123456", "lineColor": "#abcdef" }
+    }));
+    let meter = crate::resources::OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::interactive(),
+    );
+    let typography =
+        crate::xychart::XyChartTypographyThemePlan::resolve(None, &config, &meter).unwrap();
+    let mut css = String::new();
+    let emission = write_prepared_info_css(&mut css, "chart", typography.common_css()).unwrap();
+    assert_eq!(emission.root_font_family_css(), "Inter,sans-serif");
+    assert_css_properties(
+        &css,
+        "#chart",
+        &[("font-family", "Inter,sans-serif"), ("fill", "#123456")],
+    );
+    assert_css_properties(
+        &css,
+        "#chart .marker",
+        &[("fill", "#abcdef"), ("stroke", "#abcdef")],
+    );
+}

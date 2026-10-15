@@ -11,6 +11,7 @@ import subprocess
 import tempfile
 import textwrap
 import tomllib
+
 import unittest
 from pathlib import Path
 
@@ -801,6 +802,7 @@ jobs:
         for job in (local, preflight):
             self.assertIn("scripts/linux_binary_compatibility.py", job)
             self.assertLess(job.index("dist build"), job.index("linux_binary_compatibility.py"))
+
 
     def test_cli_registry_validation_does_not_gate_binary_publication(self) -> None:
         release = read(WORKFLOW_ROOT / "release.yml")
