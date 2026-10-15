@@ -17,6 +17,22 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 15 scalar/ownership experiments](native_svg_scalar_experiments_windows_2026-10-15.md)
+retain a reviewed exact UTF-8 character candidate with confirmation pending: 3,317 renderer tests
+pass, all 152 SVG identities match, and the native executable decreases by 7,168 bytes. Private
+function results justify the experiment but do not establish public SVG latency. Repeated external
+compiler activity prevents end-to-end sampling from starting. Reference-name filtering remains a
+separate inconclusive diagnostic; do not combine it with the candidate. Structured writer facts
+remain a feasibility boundary, not a production shortcut.
+
+The [October 15 terminal follow-up](native_svg_terminal_followup_windows_2026-10-15.md)
+rules out lost existing XML facts on default Journey and keeps explicit-pipeline stripping
+separate from ordinary finalization. A checkpoint-dispatch specialization passes semantic
+checks but adds 210,944 native executable bytes without dependable latency evidence; it is
+not retained. Do not reverse the deliberate WASM body-sharing decision from callback counts
+alone. Continue with actual event-derived facts only if terminal prefix errors, resource
+admission and mutation invalidation remain complete.
+
 The [October 15 Windows data-flow refactor](native_theme_refactor_windows_2026-10-15.md)
 removes the reachable quadratic staged-provenance scan and reduces terminal allocation.
 Class medium terminal allocation drops from 1,699 to 746 operations and peak growth from
