@@ -1178,7 +1178,7 @@ fn is_root_size_property(property: &str) -> bool {
     )
 }
 
-fn root_dimension_limit(limits: RenderResourcePolicy) -> f64 {
+fn root_dimension_limit(limits: &RenderResourcePolicy) -> f64 {
     limits
         .value(ResourceLimitId::MaxSvgBytes)
         .map(|bytes| bytes / SVG_BYTES_PER_ROOT_PIXEL)
