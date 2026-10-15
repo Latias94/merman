@@ -44,7 +44,9 @@ Current consumers:
 
 This overview does not move fixtures or weaken evidence by itself. The historical Mermaid 11.17.2
 admission process and the rules for future baseline additions are recorded in
-`docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`.
+`docs/alignment/UNSUPPORTED_FAMILY_ADMISSION_RUBRIC.md`. That record does not establish acceptance
+of the current Mermaid 11.17.2 baseline; current admission is verified by the executable inventories
+and checks listed above.
 
 No normal verification command parses this document. See [`README.md`](README.md) for the
 alignment authority map.

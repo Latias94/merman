@@ -1,15 +1,20 @@
-use super::css::StyleDeclarationScanner;
 use super::html::HtmlTextFragment;
-use crate::svg::pipeline::{
-    SvgTagScanner, checkpoint_loop, end_tag_name, find_tag_end_with_checkpoints,
-    find_with_checkpoints, start_tag_name, trim_with_checkpoints,
+use crate::mermaid_style::{
+    is_supported_css_color_value, is_supported_css_font_style_value,
+    is_supported_css_font_weight_value, parse_style_declaration,
+    visit_style_declaration_boundaries_with_checkpoints,
 };
-use crate::text::{HtmlWhiteSpace, TextStyle};
+use crate::svg::pipeline::{
+    SvgTagScanner, checkpoint_loop, decode_xml_style_text_with_checkpoints, end_tag_name,
+    find_tag_end_with_checkpoints, find_with_checkpoints, start_tag_name, trim_with_checkpoints,
+};
+use crate::text::{
+    HtmlWhiteSpace, TextStyle, style_requests_bold_font_weight, style_requests_italic_font_style,
+};
 use cssparser::{
     AtRuleParser, BasicParseErrorKind, CowRcStr, ParseError, Parser, ParserState,
-    QualifiedRuleParser, StyleSheetParser, Token,
+    QualifiedRuleParser, StyleSheetParser, Token, parse_important,
 };
-use merman_core::theme_color::ThemeColor;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -63,7 +68,7 @@ struct SourceAttribute {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) struct Declaration {
     pub(super) property: String,
-    pub(super) value: String,
+    pub(super) value: Arc<str>,
     pub(super) important: bool,
     pub(super) order: usize,
 }
@@ -71,15 +76,16 @@ pub(super) struct Declaration {
 #[derive(Clone, Debug, PartialEq)]
 pub(super) struct ResolvedStyle {
     pub(super) font_size: f64,
-    pub(super) font_family: String,
-    pub(super) font_weight: Option<String>,
-    pub(super) font_style: Option<String>,
+    pub(super) font_family: Arc<str>,
+    pub(super) font_weight: Option<Arc<str>>,
+    pub(super) font_style: Option<Arc<str>>,
     pub(super) white_space: HtmlWhiteSpace,
     line_height: LineHeight,
-    pub(super) fill: String,
-    color: Option<String>,
-    pub(super) background_color: Option<String>,
+    pub(super) fill: Arc<str>,
+    color: Option<Arc<str>>,
+    pub(super) background_color: Option<Arc<str>>,
     background_color_specified: bool,
+    paint: Arc<[(String, Arc<str>)]>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -99,30 +105,31 @@ impl LineHeight {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct ResolvedFallbackTypography {
     pub(super) font_size: f64,
-    pub(super) font_family: String,
-    pub(super) font_weight: Option<String>,
-    pub(super) font_style: Option<String>,
+    pub(super) font_family: Arc<str>,
+    pub(super) font_weight: Option<Arc<str>>,
+    pub(super) font_style: Option<Arc<str>>,
     pub(super) line_height: f64,
-    pub(super) fill: String,
-    pub(super) label_background: Option<String>,
+    pub(super) fill: Arc<str>,
+    pub(super) label_background: Option<Arc<str>>,
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct ResolvedForeignObject {
     pub(super) typography: ResolvedFallbackTypography,
     pub(super) fragments: Vec<HtmlTextFragment>,
+    pub(super) paint: Arc<[(String, Arc<str>)]>,
 }
 
 impl ResolvedFallbackTypography {
     pub(super) fn text_style(&self) -> TextStyle {
         TextStyle {
-            font_family: Some(self.font_family.clone()),
+            font_family: Some(self.font_family.to_string()),
             font_size: self.font_size,
-            font_weight: self.font_weight.clone(),
-            font_style: self.font_style.clone(),
+            font_weight: self.font_weight.as_deref().map(str::to_owned),
+            font_style: self.font_style.as_deref().map(str::to_owned),
         }
     }
 }
@@ -152,6 +159,7 @@ enum AttributeMatcher {
     Exists,
     Exact(String),
     ContainsToken(String),
+    Suffix(String),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -171,6 +179,9 @@ struct Branch {
 
 #[derive(Clone, Debug)]
 struct Rule {
+    // Conservative necessary conditions used only to reject uncertain projections.
+    projection_only: bool,
+    projection_uncertain: bool,
     branch: Branch,
     declarations: Arc<[Declaration]>,
     declaration_match_weight: usize,
@@ -191,6 +202,7 @@ struct SelectorBudget {
     admission_exhausted: bool,
     postings_exhausted: bool,
     matching_exhausted: bool,
+    projection_unbounded: bool,
 }
 
 fn checked_charge<E>(
@@ -545,16 +557,20 @@ impl CascadeIndex {
             }
             let Some(close_tag) = close_tag else { break };
             let css = &svg[content_start..close_tag.start()];
-            if !budget.charge_stylesheet_bytes(css.len(), selector_limit)?
-                || !parse_stylesheet(
-                    css,
-                    &mut rules,
-                    &mut source_order,
-                    &mut budget,
-                    checkpoint,
-                    selector_limit,
-                )?
-            {
+            if !budget.charge_stylesheet_bytes(css.len(), selector_limit)? {
+                break;
+            }
+            let Some(logical_css) = decode_xml_style_text_with_checkpoints(css, checkpoint)? else {
+                continue;
+            };
+            if !parse_stylesheet(
+                &logical_css,
+                &mut rules,
+                &mut source_order,
+                &mut budget,
+                checkpoint,
+                selector_limit,
+            )? {
                 break;
             }
         }
@@ -593,11 +609,20 @@ impl CascadeIndex {
             "fill",
             "color",
             "background-color",
+            "opacity",
+            "display",
+            "visibility",
+            "clip-path",
+            "mask",
+            "filter",
+            "overflow",
+            "transform",
+            "transform-origin",
         ] {
             if let Some(value) = attribute_value(&attributes, property) {
                 presentation.push(Declaration {
                     property: property.to_string(),
-                    value: value.to_string(),
+                    value: value.into(),
                     important: false,
                     order: 0,
                 });
@@ -622,17 +647,12 @@ impl CascadeIndex {
         })
     }
 
-    pub(super) fn resolve_path<E>(
+    fn candidate_rules_for_path<E>(
         &mut self,
         path: &[SourceElement],
-        inherited: Option<&ResolvedStyle>,
-        root_font_size: f64,
-        checkpoint: &mut impl FnMut() -> Result<(), E>,
         selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
-    ) -> Result<ResolvedStyle, E> {
+    ) -> Result<Vec<usize>, E> {
         let element = path.last().expect("source path is non-empty");
-        let parent = inherited.cloned().unwrap_or_else(default_style);
-        let mut specified: HashMap<String, Specified> = HashMap::new();
         let may_collect_candidates = self
             .budget
             .check_ancestry_depth(path.len(), selector_limit)?
@@ -671,10 +691,315 @@ impl CascadeIndex {
         if !self.budget.charge_match_work(match_work, selector_limit)? {
             candidate_rule_indices.clear();
         }
+        Ok(candidate_rule_indices)
+    }
+
+    /// Reject projection when new SVG-only selectors can change the generated terminals.
+    /// This reuses the bounded source matcher; it does not interpret additional CSS properties.
+    /// The writer's HTML glyph filter cannot stand in for unprojected effects on its
+    /// original HTML ancestors, or for a stylesheet overriding the paragraph itself.
+    pub(super) fn permits_html_text_filter<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        foreign_object: &str,
+        inner: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let mut path = ancestors.to_vec();
+        let mut scanner = SvgTagScanner::new(inner);
+        let mut first = Some(foreign_object);
+        loop {
+            let (raw, namespace) = if let Some(tag) = first.take() {
+                (tag, Namespace::Svg)
+            } else if let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+                (tag.raw(), Namespace::Xhtml)
+            } else {
+                break;
+            };
+            if end_tag_name(raw).is_some() {
+                path.pop();
+                continue;
+            }
+            if start_tag_name(raw).is_none() {
+                continue;
+            }
+            let element = Self::source_element(raw, namespace, checkpoint)?;
+            if namespace == Namespace::Svg
+                && (element
+                    .attributes
+                    .get("style")
+                    .and_then(Option::as_deref)
+                    .is_some_and(|style| style.trim() != "overflow: visible;")
+                    || ["filter", "transform", "opacity", "x", "y"]
+                        .iter()
+                        .any(|name| element.attributes.contains_key(*name)))
+            {
+                return Ok(false);
+            }
+            path.push(element);
+            for index in self.candidate_rules_for_path(&path, selector_limit)? {
+                let rule = &self.rules[index];
+                if matches_branch(&rule.branch, &path, checkpoint)?
+                    && (rule.projection_only
+                        || rule.projection_uncertain
+                        || rule.declarations.iter().any(|declaration| {
+                            match declaration.property.as_str() {
+                                "color" | "fill" | "font-family" | "font-size" | "font-weight"
+                                | "font-style" | "text-anchor" | "text-align" | "line-height" => {
+                                    false
+                                }
+                                "background" | "background-color" => declaration.important,
+                                "margin" => {
+                                    declaration.value.as_ref() != "0" || declaration.important
+                                }
+                                _ => true,
+                            }
+                        }))
+                {
+                    return Ok(false);
+                }
+            }
+            if self.budget.matching_exhausted {
+                return Ok(false);
+            }
+            if raw.trim_end().ends_with("/>") {
+                path.pop();
+            }
+        }
+        Ok(true)
+    }
+
+    // An unparsed declaration or conservative selector guard may also affect the original HTML
+    // through inheritance. Check that source path before projecting any filtered fallback.
+    pub(super) fn permits_source_projection<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        foreign_object: &str,
+        inner: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        let mut path = Vec::new();
+        for element in ancestors {
+            path.push(element.clone());
+            if !self.source_projection_path_is_bounded(&path, checkpoint, selector_limit)? {
+                return Ok(false);
+            }
+        }
+        path.push(Self::source_element(
+            foreign_object,
+            Namespace::Svg,
+            checkpoint,
+        )?);
+        if !self.source_projection_path_is_bounded(&path, checkpoint, selector_limit)? {
+            return Ok(false);
+        }
+        let base_depth = path.len();
+        let mut scanner = SvgTagScanner::new(inner);
+        while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+            if let Some(name) = end_tag_name(tag.raw()) {
+                if path.len() > base_depth
+                    && path
+                        .last()
+                        .is_some_and(|element| element.local_name.eq_ignore_ascii_case(name))
+                {
+                    path.pop();
+                }
+            } else if start_tag_name(tag.raw()).is_some() {
+                path.push(Self::source_element(
+                    tag.raw(),
+                    Namespace::Xhtml,
+                    checkpoint,
+                )?);
+                if !self.source_projection_path_is_bounded(&path, checkpoint, selector_limit)? {
+                    return Ok(false);
+                }
+                if tag.is_self_closing()
+                    || is_void_html_element(&path.last().expect("element was pushed").local_name)
+                {
+                    path.pop();
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn source_projection_path_is_bounded<E>(
+        &mut self,
+        path: &[SourceElement],
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        for index in self.candidate_rules_for_path(path, selector_limit)? {
+            let rule = &self.rules[index];
+            if (rule.projection_only || rule.projection_uncertain)
+                && matches_branch(&rule.branch, path, checkpoint)?
+            {
+                return Ok(false);
+            }
+        }
+        Ok(!self.budget.matching_exhausted)
+    }
+
+    pub(super) fn permits_in_place_fallback<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        fragment: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        if self.budget.projection_unbounded
+            || self.budget.admission_exhausted
+            || self.budget.postings_exhausted
+        {
+            return Ok(false);
+        }
+        let mut path = ancestors.to_vec();
+        let mut scanner = SvgTagScanner::new(fragment);
+        while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+            if end_tag_name(tag.raw()).is_some() {
+                path.pop();
+                continue;
+            }
+            if start_tag_name(tag.raw()).is_none() {
+                continue;
+            }
+            path.push(Self::source_element(tag.raw(), Namespace::Svg, checkpoint)?);
+            let candidates = self.candidate_rules_for_path(&path, selector_limit)?;
+            if self.budget.matching_exhausted {
+                return Ok(false);
+            }
+            for index in candidates {
+                let rule = &self.rules[index];
+                if matches_branch(&rule.branch, &path, checkpoint)?
+                    && (rule.projection_only
+                        || rule.projection_uncertain
+                        || rule.declarations.iter().any(|declaration| {
+                            // Only explicitly emitted paint/typography overrides are isolated.
+                            // Parent rules and important declarations remain outside this projection.
+                            let element = path.last().expect("projected element");
+                            if element.local_name == "text" {
+                                !projection_overrides(declaration)
+                            } else if element.local_name == "tspan" {
+                                !derived_inline_overrides(element, declaration)
+                            } else if element.local_name == "svg"
+                                && matches!(
+                                    declaration.property.as_str(),
+                                    "font-family" | "font-size"
+                                )
+                                && element.inline.iter().any(|inline| {
+                                    inline.property == declaration.property && !inline.important
+                                })
+                            {
+                                // The generated viewport resets these inherited properties;
+                                // emitted text also carries absolute, resolved typography.
+                                declaration.important
+                            } else if element.local_name == "rect"
+                                && element
+                                    .inline
+                                    .iter()
+                                    .any(|d| d.property == "opacity" && d.value.as_ref() == "1")
+                                && element
+                                    .inline
+                                    .iter()
+                                    .any(|d| d.property == "stroke" && d.value.as_ref() == "none")
+                                && element.inline.iter().any(|d| d.property == "fill")
+                            {
+                                declaration.important
+                                    || !matches!(
+                                        declaration.property.as_str(),
+                                        "fill" | "stroke" | "opacity" | "background-color"
+                                    )
+                            } else {
+                                true
+                            }
+                        }))
+                {
+                    return Ok(false);
+                }
+            }
+            if tag.is_self_closing() {
+                path.pop();
+            }
+        }
+        Ok(true)
+    }
+
+    pub(super) fn inline_text_css_residual<E>(
+        &mut self,
+        ancestors: &[SourceElement],
+        fragment: &str,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<bool, E> {
+        if self.budget.projection_unbounded
+            || self.budget.admission_exhausted
+            || self.budget.postings_exhausted
+        {
+            return Ok(true);
+        }
+        let mut path = ancestors.to_vec();
+        let mut scanner = SvgTagScanner::new(fragment);
+        while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+            if end_tag_name(tag.raw()).is_some() {
+                path.pop();
+                continue;
+            }
+            let Some(name) = start_tag_name(tag.raw()) else {
+                continue;
+            };
+            path.push(Self::source_element(tag.raw(), Namespace::Svg, checkpoint)?);
+            if name == "tspan" {
+                let candidates = self.candidate_rules_for_path(&path, selector_limit)?;
+                if self.budget.matching_exhausted {
+                    return Ok(true);
+                }
+                for index in candidates {
+                    let rule = &self.rules[index];
+                    if matches_branch(&rule.branch, &path, checkpoint)?
+                        && (rule.projection_only
+                            || rule.projection_uncertain
+                            || rule.declarations.iter().any(|declaration| {
+                                declaration.important
+                                    || !path.last().is_some_and(|element| {
+                                        derived_inline_overrides(element, declaration)
+                                    })
+                            }))
+                    {
+                        return Ok(true);
+                    }
+                }
+            }
+            if tag.is_self_closing() {
+                path.pop();
+            }
+        }
+        Ok(false)
+    }
+
+    pub(super) fn resolve_path<E>(
+        &mut self,
+        path: &[SourceElement],
+        inherited: Option<&ResolvedStyle>,
+        root_font_size: f64,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+        selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    ) -> Result<ResolvedStyle, E> {
+        let element = path.last().expect("source path is non-empty");
+        let parent = inherited.cloned().unwrap_or_else(default_style);
+        let parent_text_style = TextStyle {
+            font_family: None,
+            font_size: parent.font_size,
+            font_weight: parent.font_weight.as_deref().map(str::to_owned),
+            font_style: parent.font_style.as_deref().map(str::to_owned),
+        };
+        let mut specified: HashMap<String, Specified> = HashMap::new();
+        let candidate_rule_indices = self.candidate_rules_for_path(path, selector_limit)?;
         for (candidate_index, rule_index) in candidate_rule_indices.into_iter().enumerate() {
             checkpoint_loop(candidate_index, checkpoint)?;
             let rule = &self.rules[rule_index];
-            if !matches_branch(&rule.branch, path, checkpoint)? {
+            if rule.projection_only || !matches_branch(&rule.branch, path, checkpoint)? {
                 continue;
             }
             for declaration in rule.declarations.iter() {
@@ -719,7 +1044,7 @@ impl CascadeIndex {
         }
 
         let font_size = resolve_font_size(
-            specified.get("font-size").map(|value| value.value.as_str()),
+            specified.get("font-size").map(|value| value.value.as_ref()),
             parent.font_size,
             root_font_size,
             specified
@@ -727,29 +1052,40 @@ impl CascadeIndex {
                 .is_some_and(|value| value.presentation),
         )
         .unwrap_or(parent.font_size);
-        let font_family = resolve_inherited_text_value(
-            specified
-                .get("font-family")
-                .map(|value| value.value.as_str()),
+        let mut font_family = resolve_inherited_text_value(
+            specified.get("font-family").map(|value| &value.value),
             &parent.font_family,
             DEFAULT_FONT_FAMILY,
         );
-        let font_weight = resolve_optional_text_value(
-            specified
-                .get("font-weight")
-                .map(|value| value.value.as_str()),
-            parent.font_weight.as_deref(),
+        let mut font_weight = resolve_optional_text_value(
+            specified.get("font-weight").map(|value| &value.value),
+            parent.font_weight.as_ref(),
         );
-        let font_style = resolve_optional_text_value(
-            specified
-                .get("font-style")
-                .map(|value| value.value.as_str()),
-            parent.font_style.as_deref(),
+        let mut font_style = resolve_optional_text_value(
+            specified.get("font-style").map(|value| &value.value),
+            parent.font_style.as_ref(),
         );
+        if element.namespace == Namespace::Xhtml {
+            if element.local_name == "code" && !specified.contains_key("font-family") {
+                font_family = "monospace".into();
+            }
+            if matches!(element.local_name.as_str(), "b" | "strong")
+                && !specified.contains_key("font-weight")
+                && !style_requests_bold_font_weight(&parent_text_style)
+            {
+                font_weight = Some("700".into());
+            }
+            if matches!(element.local_name.as_str(), "i" | "em")
+                && !specified.contains_key("font-style")
+                && !style_requests_italic_font_style(&parent_text_style)
+            {
+                font_style = Some("italic".into());
+            }
+        }
         let line_height = resolve_line_height(
             specified
                 .get("line-height")
-                .map(|value| value.value.as_str()),
+                .map(|value| value.value.as_ref()),
             font_size,
             &parent.line_height,
             root_font_size,
@@ -757,29 +1093,27 @@ impl CascadeIndex {
         let white_space = resolve_white_space(
             specified
                 .get("white-space")
-                .map(|value| value.value.as_str()),
+                .map(|value| value.value.as_ref()),
             parent.white_space,
         );
         let fill = resolve_inherited_text_value(
-            specified.get("fill").map(|value| value.value.as_str()),
+            specified.get("fill").map(|value| &value.value),
             &parent.fill,
             DEFAULT_FILL,
         );
         let color = resolve_optional_color(
-            specified.get("color").map(|value| value.value.as_str()),
-            parent.color.as_deref(),
+            specified.get("color").map(|value| &value.value),
+            parent.color.as_ref(),
         );
         let mut background_color = resolve_background(
-            specified
-                .get("background-color")
-                .map(|value| value.value.as_str()),
-            parent.background_color.as_deref(),
+            specified.get("background-color").map(|value| &value.value),
+            parent.background_color.as_ref(),
         );
         if background_color
             .as_deref()
             .is_some_and(|value| value.eq_ignore_ascii_case("currentcolor"))
         {
-            background_color = Some(color.as_deref().unwrap_or(DEFAULT_COLOR).to_string());
+            background_color = Some(color.clone().unwrap_or_else(|| DEFAULT_COLOR.into()));
         }
         let background_color_specified = specified.contains_key("background-color");
         checkpoint()?;
@@ -794,6 +1128,15 @@ impl CascadeIndex {
             color,
             background_color,
             background_color_specified,
+            paint: PAINT_PROPERTIES
+                .iter()
+                .filter_map(|property| {
+                    specified
+                        .get(*property)
+                        .map(|value| ((*property).to_string(), value.value.clone()))
+                })
+                .collect::<Vec<_>>()
+                .into(),
         })
     }
 
@@ -847,6 +1190,7 @@ impl CascadeIndex {
             .last()
             .cloned()
             .unwrap_or_else(default_style);
+        let paint = base_style.paint.clone();
         let mut observed = TextTypographyObserver::default();
         let mut fragments = Vec::new();
         let mut cursor = 0usize;
@@ -859,6 +1203,13 @@ impl CascadeIndex {
             if !text.is_empty() {
                 fragments.push(HtmlTextFragment::Text {
                     text: text.to_string(),
+                    typography: fallback_typography(
+                        computed_styles
+                            .last()
+                            .cloned()
+                            .unwrap_or_else(default_style),
+                        None,
+                    ),
                     boundary_white_space: text_fragment_boundary_white_space(
                         &mut previous_text_node_path,
                         &node_path,
@@ -945,6 +1296,13 @@ impl CascadeIndex {
         if !text.is_empty() {
             fragments.push(HtmlTextFragment::Text {
                 text: text.to_string(),
+                typography: fallback_typography(
+                    computed_styles
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(default_style),
+                    None,
+                ),
                 boundary_white_space: text_fragment_boundary_white_space(
                     &mut previous_text_node_path,
                     &node_path,
@@ -975,10 +1333,12 @@ impl CascadeIndex {
                 if let HtmlTextFragment::Text {
                     white_space,
                     boundary_white_space,
+                    typography,
                     ..
                 } = fragment
                 {
                     *white_space = HtmlWhiteSpace::default();
+                    *typography = default_fallback_typography();
                     if let Some((_, boundary_white_space)) = boundary_white_space {
                         *boundary_white_space = HtmlWhiteSpace::default();
                     }
@@ -988,6 +1348,7 @@ impl CascadeIndex {
             return Ok(ResolvedForeignObject {
                 typography: default_fallback_typography(),
                 fragments,
+                paint,
             });
         }
         let style = if observed.differing_styles {
@@ -1011,22 +1372,30 @@ impl CascadeIndex {
             label_background_marker |= element.classes.contains("labelBkg");
             if background_style.background_color_specified {
                 background_color_specified = true;
-                match &background_style.background_color {
-                    Some(color) if !color.eq_ignore_ascii_case("transparent") => {
+                match background_style.background_color.as_ref() {
+                    Some(color)
+                        if !merman_core::theme_color::ThemeColor::parse(color).is_ok_and(
+                            |value| {
+                                value.channel(merman_core::theme_color::ColorChannel::Alpha) == 0.0
+                            },
+                        ) =>
+                    {
                         label_background = Some(color.clone());
                     }
-                    // Specified transparent/initial/unset values clear an earlier owner.
-                    Some(_) | None => label_background = None,
+                    // Transparent descendants paint no background; they do not erase
+                    // an ancestor's background. This is not an inherited property.
+                    Some(_) | None => {}
                 }
             }
         }
         if label_background.is_none() && label_background_marker && !background_color_specified {
-            label_background = Some("rgba(232, 232, 232, 0.5)".to_string());
+            label_background = Some("rgba(232, 232, 232, 0.5)".into());
         }
         checkpoint()?;
         Ok(ResolvedForeignObject {
             typography: fallback_typography(style, label_background),
             fragments,
+            paint,
         })
     }
 }
@@ -1287,7 +1656,7 @@ struct Priority {
 #[derive(Clone, Debug)]
 struct Specified {
     priority: Priority,
-    value: String,
+    value: Arc<str>,
     presentation: bool,
 }
 
@@ -1325,15 +1694,16 @@ fn select_specified(
 fn default_style() -> ResolvedStyle {
     ResolvedStyle {
         font_size: DEFAULT_FONT_SIZE,
-        font_family: DEFAULT_FONT_FAMILY.to_string(),
+        font_family: DEFAULT_FONT_FAMILY.into(),
         font_weight: None,
         font_style: None,
         white_space: HtmlWhiteSpace::default(),
         line_height: LineHeight::Normal,
-        fill: DEFAULT_FILL.to_string(),
+        fill: DEFAULT_FILL.into(),
         color: None,
         background_color: None,
         background_color_specified: false,
+        paint: Arc::default(),
     }
 }
 
@@ -1343,9 +1713,9 @@ fn default_fallback_typography() -> ResolvedFallbackTypography {
 
 fn fallback_typography(
     style: ResolvedStyle,
-    label_background: Option<String>,
+    label_background: Option<Arc<str>>,
 ) -> ResolvedFallbackTypography {
-    let fill = effective_html_text_paint(&style).to_string();
+    let fill = style.color.clone().unwrap_or_else(|| style.fill.clone());
     let line_height = style.line_height.pixels(style.font_size);
     ResolvedFallbackTypography {
         font_size: style.font_size,
@@ -1357,6 +1727,18 @@ fn fallback_typography(
         label_background,
     }
 }
+
+pub(super) const PAINT_PROPERTIES: [&str; 9] = [
+    "opacity",
+    "display",
+    "visibility",
+    "clip-path",
+    "mask",
+    "filter",
+    "overflow",
+    "transform",
+    "transform-origin",
+];
 
 fn is_supported_property(property: &str) -> bool {
     matches!(
@@ -1370,6 +1752,15 @@ fn is_supported_property(property: &str) -> bool {
             | "fill"
             | "color"
             | "background-color"
+            | "opacity"
+            | "display"
+            | "visibility"
+            | "clip-path"
+            | "mask"
+            | "filter"
+            | "overflow"
+            | "transform"
+            | "transform-origin"
     )
 }
 
@@ -1420,8 +1811,29 @@ fn is_admitted_value(property: &str, value: &str, presentation: bool) -> bool {
                     .iter()
                     .any(|unit| parse_css_number_with_unit(&lower, unit).is_some())
         }
-        "font-weight" => is_admitted_font_weight(&lower),
-        "font-style" => matches!(lower.as_str(), "normal" | "italic" | "oblique"),
+        "opacity" => lower
+            .strip_suffix('%')
+            .unwrap_or(&lower)
+            .parse::<f64>()
+            .ok()
+            .is_some_and(f64::is_finite),
+        "display" => matches!(
+            lower.as_str(),
+            "none" | "inline" | "block" | "contents" | "inline-block"
+        ),
+        "visibility" => matches!(lower.as_str(), "visible" | "hidden" | "collapse"),
+        "overflow" => matches!(
+            lower.as_str(),
+            "visible" | "hidden" | "clip" | "scroll" | "auto"
+        ),
+        "clip-path" | "mask" | "filter" => {
+            lower == "none" || svgtypes::FuncIRI::from_str(value).is_ok()
+        }
+        "transform" | "transform-origin" => !value
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '{' | '}' | ';')),
+        "font-weight" => is_supported_css_font_weight_value(&lower),
+        "font-style" => is_supported_css_font_style_value(&lower),
         "fill" => is_admitted_paint(&lower),
         "color" | "background-color" => lower != "none" && is_admitted_paint(&lower),
         "font-family" => is_admitted_font_family(value),
@@ -1442,14 +1854,6 @@ fn parse_css_number_with_unit(value: &str, unit: &str) -> Option<f64> {
     number.parse::<f64>().ok().and_then(bounded_positive)
 }
 
-fn is_admitted_font_weight(value: &str) -> bool {
-    matches!(value, "normal" | "bold" | "bolder" | "lighter")
-        || value
-            .parse::<u16>()
-            .ok()
-            .is_some_and(|weight| (1..=1000).contains(&weight))
-}
-
 fn is_admitted_font_family(value: &str) -> bool {
     !value
         .chars()
@@ -1460,28 +1864,23 @@ fn is_admitted_paint(value: &str) -> bool {
     if matches!(value, "none" | "transparent" | "currentcolor") {
         return true;
     }
-    if value.starts_with('#') {
-        return value
-            .strip_prefix('#')
-            .is_some_and(|hex| cssparser::color::parse_hash_color(hex.as_bytes()).is_ok());
-    }
-    if cssparser::color::parse_named_color(value).is_ok() {
-        return true;
-    }
     let Some(open) = value.find('(') else {
-        return false;
+        return is_supported_css_color_value(value);
     };
-    let name = &value[..open];
-    matches!(name, "rgb" | "rgba" | "hsl" | "hsla")
-        && has_consistent_color_function_separators(value, name, open)
-        && ThemeColor::parse(value).is_ok()
+    let function = &value[..open];
+    matches!(function, "rgb" | "rgba" | "hsl" | "hsla")
+        && has_admitted_color_function_shape(value, function, open)
+        && is_supported_css_color_value(value)
 }
 
-fn has_consistent_color_function_separators(value: &str, name: &str, open: usize) -> bool {
-    let Some(without_close) = value.strip_suffix(')') else {
-        return false;
-    };
-    let Some(body) = without_close.get(open + 1..) else {
+/// Preserve the fallback renderer's intentionally narrow static-color contract.
+/// The shared color parser accepts modern CSS forms, while this writer rejects mixed comma/space
+/// separators because it preserves the admitted spelling verbatim in generated SVG.
+fn has_admitted_color_function_shape(value: &str, function: &str, open: usize) -> bool {
+    let Some(body) = value
+        .strip_suffix(')')
+        .and_then(|value| value.get(open + 1..))
+    else {
         return false;
     };
     if !body.contains(',') {
@@ -1491,7 +1890,7 @@ fn has_consistent_color_function_separators(value: &str, name: &str, open: usize
         return false;
     }
 
-    let rgb_like = matches!(name, "rgb" | "rgba");
+    let rgb_like = matches!(function, "rgb" | "rgba");
     let mut component_count = 0usize;
     let mut rgb_channels_are_percent = None;
     for component in body.split(',') {
@@ -1516,7 +1915,10 @@ struct ParsedQualifiedRule {
     body: String,
 }
 
-struct FallbackStylesheetParser;
+#[derive(Default)]
+struct FallbackStylesheetParser {
+    unbounded_at_rule: bool,
+}
 
 fn consume_css_parser_tokens(input: &mut Parser<'_>) -> Result<(), ParseError<()>> {
     loop {
@@ -1565,11 +1967,11 @@ impl<'i> AtRuleParser<'i> for FallbackStylesheetParser {
 
     fn parse_prelude(
         &mut self,
-        _name: CowRcStr<'i>,
+        name: CowRcStr<'i>,
         input: &mut Parser<'i>,
     ) -> Result<Self::Prelude, ParseError<Self::Error>> {
         consume_css_parser_tokens(input)?;
-        Ok(String::new())
+        Ok(name.to_ascii_lowercase())
     }
 
     fn rule_without_block(
@@ -1577,16 +1979,19 @@ impl<'i> AtRuleParser<'i> for FallbackStylesheetParser {
         _prelude: Self::Prelude,
         _start: &ParserState,
     ) -> Result<Self::AtRule, ()> {
+        self.unbounded_at_rule = true;
         Ok(None)
     }
 
     fn parse_block(
         &mut self,
-        _prelude: Self::Prelude,
+        prelude: Self::Prelude,
         _start: &ParserState,
         input: &mut Parser<'i>,
     ) -> Result<Self::AtRule, ParseError<Self::Error>> {
         consume_css_parser_tokens(input)?;
+        // Native static rendering ignores keyframes; conditional/nested selectors are opaque.
+        self.unbounded_at_rule |= !matches!(prelude.as_str(), "keyframes" | "-webkit-keyframes");
         Ok(None)
     }
 }
@@ -1604,7 +2009,7 @@ fn parse_stylesheet<E>(
     let css = css.strip_suffix("]]>").unwrap_or(css);
     let css = strip_css_comments(css, checkpoint)?;
     let mut parser = Parser::new(&css);
-    let mut rule_parser = FallbackStylesheetParser;
+    let mut rule_parser = FallbackStylesheetParser::default();
     let mut rule_index = 0usize;
     for parsed in StyleSheetParser::new(&mut parser, &mut rule_parser) {
         checkpoint_loop(rule_index, checkpoint)?;
@@ -1627,8 +2032,12 @@ fn parse_stylesheet<E>(
         if let Some((actual, maximum)) = parsed_declarations.limit_exceeded {
             return budget.reject_admission(actual, maximum, selector_limit);
         }
+        let projection_uncertain = parsed_declarations.unparsed;
+        // Escaped CSS identifiers remain outside the fallback selector subset. They may still
+        // target projected SVG, even when the simple branch parser cannot classify their syntax.
+        budget.projection_unbounded |= projection_uncertain && selector.contains('\\');
         let declarations = parsed_declarations.declarations;
-        if declarations.is_empty() {
+        if declarations.is_empty() && !projection_uncertain {
             continue;
         }
         if !budget.charge_declarations(declarations.len(), selector_limit)? {
@@ -1653,14 +2062,37 @@ fn parse_stylesheet<E>(
                     if !budget.charge_components(branch.component_count, selector_limit)? {
                         return Ok(false);
                     }
-                    parsed_branches.push(branch);
+                    parsed_branches.push((branch, false));
                 }
                 // A branch can be ordinary CSS syntax but outside the
                 // deliberately small fallback matcher subset. Keeping
                 // admitted siblings is safe because we never widen the
                 // unadmitted branch into a class-only match.
-                BranchParse::ValidButUnadmitted => {}
-                BranchParse::Invalid => invalid = true,
+                BranchParse::ValidButUnadmitted => {
+                    if projection_uncertain
+                        || declarations
+                            .iter()
+                            .any(|declaration| !declaration.property.starts_with("--"))
+                    {
+                        if let Some(guard) = projection_guard(branch, checkpoint)? {
+                            if !budget.charge_components(guard.component_count, selector_limit)? {
+                                return Ok(false);
+                            }
+                            parsed_branches.push((guard, true));
+                        } else {
+                            budget.projection_unbounded = true;
+                        }
+                    }
+                }
+                BranchParse::Invalid => {
+                    // Invalid in the bounded matcher need not mean invalid to a browser.
+                    // A declaration that can affect projected SVG still blocks local fallback.
+                    budget.projection_unbounded |= projection_uncertain
+                        || declarations
+                            .iter()
+                            .any(|declaration| !declaration.property.starts_with("--"));
+                    invalid = true;
+                }
                 BranchParse::LimitExceeded(actual) => {
                     return budget.reject_admission(
                         actual,
@@ -1669,6 +2101,13 @@ fn parse_stylesheet<E>(
                     );
                 }
             }
+        }
+        if invalid
+            && parsed_branches
+                .iter()
+                .any(|(_, projection_only)| *projection_only)
+        {
+            budget.projection_unbounded = true;
         }
         if !invalid {
             if !budget.charge_rules(parsed_branches.len(), selector_limit)? {
@@ -1684,8 +2123,10 @@ fn parse_stylesheet<E>(
                     )
                 });
             let declarations: Arc<[Declaration]> = declarations.into();
-            for branch in parsed_branches {
+            for (branch, projection_only) in parsed_branches {
                 rules.push(Rule {
+                    projection_only,
+                    projection_uncertain,
                     branch,
                     declarations: declarations.clone(),
                     declaration_match_weight,
@@ -1695,6 +2136,7 @@ fn parse_stylesheet<E>(
             *source_order = source_order.saturating_add(1);
         }
     }
+    budget.projection_unbounded |= rule_parser.unbounded_at_rule;
     checkpoint()?;
     Ok(true)
 }
@@ -2222,6 +2664,94 @@ fn parse_branch<E>(
     }))
 }
 
+// Removing these structural restrictions yields necessary conditions, never a style match.
+// Keep the guard in the same bounded index, and reject projection when it can match a generated
+// terminal. Other pseudo classes, pseudo elements, escapes and selector-list functions stay closed.
+fn projection_guard<E>(
+    selector: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<Branch>, E> {
+    if selector.contains('\\') {
+        return Ok(None);
+    }
+    let mut parser = Parser::new(selector);
+    let mut retained = parser.position();
+    let mut necessary = String::new();
+    while !parser.is_exhausted() {
+        checkpoint()?;
+        let start = parser.position();
+        let Ok(token) = parser.next_including_whitespace_and_comments() else {
+            return Ok(None);
+        };
+        if matches!(token, Token::SquareBracketBlock) {
+            // Consume the block now so the next token's start cannot point inside an attribute.
+            if parser
+                .parse_nested_block(consume_css_parser_tokens)
+                .is_err()
+            {
+                return Ok(None);
+            }
+            continue;
+        }
+        if !matches!(token, Token::Colon) {
+            continue;
+        }
+        necessary.push_str(parser.slice(retained..start));
+        // A pseudo-only compound needs a universal guard, not an accidentally joined ancestor.
+        if necessary.is_empty()
+            || necessary.ends_with(char::is_whitespace)
+            || necessary.ends_with('>')
+        {
+            necessary.push('*');
+        }
+        match parser.next_including_whitespace_and_comments().cloned() {
+            Ok(Token::Ident(name))
+                if matches!(
+                    name.as_ref(),
+                    "first-of-type"
+                        | "last-of-type"
+                        | "only-of-type"
+                        | "first-child"
+                        | "last-child"
+                        | "only-child"
+                ) => {}
+            Ok(Token::Function(name))
+                if matches!(name.as_ref(), "not" | "nth-of-type" | "nth-child") =>
+            {
+                let argument: Result<String, ParseError<()>> = parser.parse_nested_block(|input| {
+                    let start = input.position();
+                    consume_css_parser_tokens(input)?;
+                    Ok(input.slice_from(start).trim().to_string())
+                });
+                let Ok(argument) = argument else {
+                    return Ok(None);
+                };
+                if name == "not" {
+                    let BranchParse::Admitted(argument) = parse_branch(&argument, checkpoint)?
+                    else {
+                        return Ok(None);
+                    };
+                    if argument.compounds.len() != 1 {
+                        return Ok(None);
+                    }
+                } else if argument.parse::<i32>().is_err()
+                    && !matches!(argument.as_str(), "odd" | "even")
+                {
+                    return Ok(None);
+                }
+            }
+            _ => return Ok(None),
+        }
+        retained = parser.position();
+    }
+    necessary.push_str(parser.slice_from(retained));
+    let BranchParse::Admitted(mut guard) = parse_branch(&necessary, checkpoint)? else {
+        return Ok(None);
+    };
+    guard.selector_weight = selector.len().max(1);
+    Ok(Some(guard))
+}
+
 fn flush_selector_token(
     token: &mut String,
     compounds: &mut Vec<String>,
@@ -2420,6 +2950,12 @@ fn parse_attribute_selector<E>(
                     matcher: AttributeMatcher::ContainsToken(value),
                 })
             }
+            Token::SuffixMatch if modifier.is_none() => {
+                AttributeParse::Admitted(AttributeSelector {
+                    name,
+                    matcher: AttributeMatcher::Suffix(value),
+                })
+            }
             Token::Delim('=')
             | Token::IncludeMatch
             | Token::DashMatch
@@ -2516,12 +3052,42 @@ fn attribute_selector_matches(selector: &AttributeSelector, element: &SourceElem
         AttributeMatcher::ContainsToken(expected) => value
             .as_deref()
             .is_some_and(|value| value.split_whitespace().any(|token| token == expected)),
+        AttributeMatcher::Suffix(expected) => {
+            !expected.is_empty()
+                && value
+                    .as_deref()
+                    .is_some_and(|value| value.ends_with(expected))
+        }
     }
 }
 
 struct ParsedDeclarations {
+    unparsed: bool,
     declarations: Vec<Declaration>,
     limit_exceeded: Option<(usize, usize)>,
+}
+
+fn projection_overrides(declaration: &Declaration) -> bool {
+    !declaration.important
+        && matches!(
+            declaration.property.as_str(),
+            "text-anchor"
+                | "font-size"
+                | "font-family"
+                | "font-weight"
+                | "font-style"
+                | "line-height"
+                | "color"
+                | "fill"
+                | "stroke"
+        )
+}
+
+fn derived_inline_overrides(element: &SourceElement, declaration: &Declaration) -> bool {
+    element
+        .inline
+        .iter()
+        .any(|inline| inline.property == declaration.property && inline.important)
 }
 
 fn parse_declarations<E>(
@@ -2531,86 +3097,71 @@ fn parse_declarations<E>(
     Ok(parse_declarations_with_limit(style, usize::MAX, checkpoint)?.declarations)
 }
 
+// The source-style parser intentionally rejects URLs. Fallback projection must additionally
+// preserve already-rendered SVG references, restricted to these same-document paint properties.
+fn parse_fragment_paint_declaration(raw: &str, order: usize) -> Option<Declaration> {
+    let raw = raw.trim().strip_suffix(';').unwrap_or(raw.trim()).trim();
+    let mut parser = Parser::new(raw);
+    let property = parser.expect_ident_cloned().ok()?.to_ascii_lowercase();
+    if !matches!(property.as_str(), "clip-path" | "mask" | "filter") {
+        return None;
+    }
+    parser.expect_colon().ok()?;
+    let value_start = parser.position();
+    let target = parser.expect_url().ok()?;
+    if !target.starts_with('#') || target.len() == 1 {
+        return None;
+    }
+    let value = parser.slice(value_start..parser.position()).trim();
+    svgtypes::FuncIRI::from_str(value).ok()?;
+    let important = parser.try_parse(parse_important).is_ok();
+    parser.expect_exhausted().ok()?;
+    Some(Declaration {
+        property,
+        value: value.into(),
+        important,
+        order,
+    })
+}
+
 fn parse_declarations_with_limit<E>(
     style: &str,
     maximum: usize,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<ParsedDeclarations, E> {
     let mut declarations = Vec::new();
-    let mut scanner = StyleDeclarationScanner::new(style);
+    let mut unparsed = false;
     let mut order = 0usize;
-    while let Some(raw) = scanner.next_with_checkpoints(checkpoint)? {
-        checkpoint_loop(order, checkpoint)?;
-        let Some(colon) = find_css_declaration_colon(raw, checkpoint)? else {
-            order = order.saturating_add(1);
-            continue;
-        };
-        let property = raw[..colon].trim();
-        let (value, important) = split_trailing_important(&raw[colon + 1..]);
-        if property.is_empty() || value.is_empty() {
-            order = order.saturating_add(1);
-            continue;
-        }
-        if declarations.len() >= maximum {
-            return Ok(ParsedDeclarations {
-                declarations,
-                limit_exceeded: Some((maximum.saturating_add(1), maximum)),
-            });
-        }
-        declarations.push(Declaration {
-            property: property.to_ascii_lowercase(),
-            value: value.to_string(),
-            important,
-            order,
-        });
+    let mut limit_exceeded = None;
+    visit_style_declaration_boundaries_with_checkpoints(style, checkpoint, |boundary| {
+        let current_order = order;
         order = order.saturating_add(1);
-    }
-    checkpoint()?;
-    Ok(ParsedDeclarations {
-        declarations,
-        limit_exceeded: None,
-    })
-}
-
-fn find_css_declaration_colon<E>(
-    declaration: &str,
-    checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<Option<usize>, E> {
-    let mut quote = None;
-    let mut paren_depth = 0usize;
-    for (iteration, (offset, character)) in declaration.char_indices().enumerate() {
-        checkpoint_loop(iteration, checkpoint)?;
-        if let Some(current_quote) = quote {
-            if character == current_quote {
-                quote = None;
+        let declaration = if let Some(parsed) = parse_style_declaration(boundary.raw()) {
+            Declaration {
+                property: parsed.property().to_owned(),
+                value: parsed.value().into(),
+                important: parsed.important(),
+                order: current_order,
             }
-            continue;
+        } else if let Some(parsed) = parse_fragment_paint_declaration(boundary.raw(), current_order)
+        {
+            parsed
+        } else {
+            unparsed |= !boundary.raw().trim().is_empty();
+            return Ok(true);
+        };
+        if declarations.len() >= maximum {
+            limit_exceeded = Some((maximum.saturating_add(1), maximum));
+            return Ok(false);
         }
-        match character {
-            '\'' | '"' => quote = Some(character),
-            '(' => paren_depth = paren_depth.saturating_add(1),
-            ')' => paren_depth = paren_depth.saturating_sub(1),
-            ':' if paren_depth == 0 => return Ok(Some(offset)),
-            _ => {}
-        }
-    }
-    checkpoint()?;
-    Ok(None)
-}
-
-fn split_trailing_important(value: &str) -> (&str, bool) {
-    let value = value.trim();
-    let Some(marker) = value.rfind('!') else {
-        return (value, false);
-    };
-    if value[marker + '!'.len_utf8()..]
-        .trim()
-        .eq_ignore_ascii_case("important")
-    {
-        (value[..marker].trim(), true)
-    } else {
-        (value, false)
-    }
+        declarations.push(declaration);
+        Ok(true)
+    })?;
+    Ok(ParsedDeclarations {
+        unparsed,
+        declarations,
+        limit_exceeded,
+    })
 }
 
 fn resolve_font_size(
@@ -2655,25 +3206,36 @@ fn resolve_font_size(
     }
 }
 
-fn resolve_inherited_text_value(value: Option<&str>, parent: &str, initial: &str) -> String {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return parent.to_string();
+fn resolve_inherited_text_value(
+    value: Option<&Arc<str>>,
+    parent: &Arc<str>,
+    initial: &str,
+) -> Arc<str> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return Arc::clone(parent);
     };
-    match value.to_ascii_lowercase().as_str() {
-        "inherit" | "unset" => parent.to_string(),
-        "initial" => initial.to_string(),
-        _ => value.to_string(),
+    if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") {
+        Arc::clone(parent)
+    } else if value.eq_ignore_ascii_case("initial") {
+        initial.into()
+    } else {
+        Arc::clone(value)
     }
 }
 
-fn resolve_optional_text_value(value: Option<&str>, parent: Option<&str>) -> Option<String> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return parent.map(str::to_owned);
+fn resolve_optional_text_value(
+    value: Option<&Arc<str>>,
+    parent: Option<&Arc<str>>,
+) -> Option<Arc<str>> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return parent.cloned();
     };
-    match value.to_ascii_lowercase().as_str() {
-        "inherit" | "unset" => parent.map(str::to_owned),
-        "initial" => None,
-        _ => Some(value.to_string()),
+    if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") {
+        parent.cloned()
+    } else if value.eq_ignore_ascii_case("initial") {
+        None
+    } else {
+        Some(Arc::clone(value))
     }
 }
 
@@ -2686,15 +3248,18 @@ fn resolve_white_space(value: Option<&str>, parent: HtmlWhiteSpace) -> HtmlWhite
     }
 }
 
-fn resolve_optional_color(value: Option<&str>, parent: Option<&str>) -> Option<String> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return parent.map(str::to_owned);
+fn resolve_optional_color(value: Option<&Arc<str>>, parent: Option<&Arc<str>>) -> Option<Arc<str>> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return parent.cloned();
     };
-    match value.to_ascii_lowercase().as_str() {
-        "inherit" | "unset" => parent.map(str::to_owned),
-        "initial" => Some(DEFAULT_COLOR.to_string()),
-        "currentcolor" => Some(parent.unwrap_or(DEFAULT_COLOR).to_string()),
-        _ => Some(value.to_string()),
+    if value.eq_ignore_ascii_case("inherit") || value.eq_ignore_ascii_case("unset") {
+        parent.cloned()
+    } else if value.eq_ignore_ascii_case("initial") {
+        Some(DEFAULT_COLOR.into())
+    } else if value.eq_ignore_ascii_case("currentcolor") {
+        Some(parent.cloned().unwrap_or_else(|| DEFAULT_COLOR.into()))
+    } else {
+        Some(Arc::clone(value))
     }
 }
 
@@ -2746,12 +3311,14 @@ fn resolve_line_height(
     inherited.clone()
 }
 
-fn resolve_background(value: Option<&str>, parent: Option<&str>) -> Option<String> {
-    let value = value.map(str::trim).filter(|value| !value.is_empty())?;
-    match value.to_ascii_lowercase().as_str() {
-        "initial" | "unset" => None,
-        "inherit" => parent.map(str::to_owned),
-        _ => Some(value.to_string()),
+fn resolve_background(value: Option<&Arc<str>>, parent: Option<&Arc<str>>) -> Option<Arc<str>> {
+    let value = value.filter(|value| !value.is_empty())?;
+    if value.eq_ignore_ascii_case("initial") || value.eq_ignore_ascii_case("unset") {
+        None
+    } else if value.eq_ignore_ascii_case("inherit") {
+        parent.cloned()
+    } else {
+        Some(Arc::clone(value))
     }
 }
 
@@ -2774,6 +3341,173 @@ fn bounded_positive(value: f64) -> Option<f64> {
 mod tests {
     use super::*;
     use std::convert::Infallible;
+
+    #[test]
+    fn fallback_viewport_resets_only_its_emitted_typography() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        for (declarations, permitted) in [
+            ("font-family:Arial;font-size:16px", true),
+            ("font-size:99px!important", false),
+            ("font-family:Arial!important", false),
+            ("width:1px", false),
+            ("overflow:hidden", false),
+        ] {
+            let source = format!("<svg><style>#diagram svg{{{declarations}}}</style></svg>");
+            let mut cascade =
+                CascadeIndex::new(&source, &mut checkpoint, &mut selector_limit).unwrap();
+            let root =
+                CascadeIndex::source_element("<svg id='diagram'>", Namespace::Svg, &mut checkpoint)
+                    .unwrap();
+            assert_eq!(
+                cascade
+                    .permits_in_place_fallback(
+                        &[root],
+                        "<svg width='120' height='24' style='font-family:Cousine;font-size:16px'><text style='font-family:Cousine;font-size:16px'>Label</text></svg>",
+                        &mut checkpoint,
+                        &mut selector_limit,
+                    )
+                    .unwrap(),
+                permitted,
+                "{declarations}"
+            );
+        }
+    }
+
+    #[test]
+    fn derived_tspan_styles_preserve_authored_cascade_for_best_effort_exports() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        let mut cascade = CascadeIndex::new(
+            "<svg><style>tspan{font-size:64px;opacity:0;stroke:red}</style></svg>",
+            &mut checkpoint,
+            &mut selector_limit,
+        )
+        .unwrap();
+        let fragment = "<g><text><tspan style='font-size:16px!important;opacity:1!important;stroke:none!important'>Alpha</tspan></text></g>";
+        assert!(
+            cascade
+                .permits_in_place_fallback(&[], fragment, &mut checkpoint, &mut selector_limit)
+                .unwrap()
+        );
+        let mut important = CascadeIndex::new(
+            "<svg><style>tspan{font-size:64px!important}</style></svg>",
+            &mut checkpoint,
+            &mut selector_limit,
+        )
+        .unwrap();
+        assert!(
+            important
+                .inline_text_css_residual(&[], fragment, &mut checkpoint, &mut selector_limit)
+                .unwrap(),
+            "keep the authored inline cascade even when the backend reports an important-style residual"
+        );
+        assert!(
+            !cascade
+                .inline_text_css_residual(&[], fragment, &mut checkpoint, &mut selector_limit)
+                .unwrap()
+        );
+        let unsafe_fragment = fragment.replace("opacity:1!important", "opacity:1");
+        assert!(
+            !cascade
+                .permits_in_place_fallback(
+                    &[],
+                    &unsafe_fragment,
+                    &mut checkpoint,
+                    &mut selector_limit
+                )
+                .unwrap()
+        );
+    }
+
+    #[test]
+    fn marker_id_suffix_rules_do_not_reject_unrelated_rich_text() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        let mut cascade = CascadeIndex::new("<svg><style>defs [id$='-barbEnd']{stroke-width:2px}[id$='-dependencyStart']{fill:red}</style></svg>", &mut checkpoint, &mut selector_limit).unwrap();
+        assert!(!cascade.budget.projection_unbounded);
+        assert!(!cascade.inline_text_css_residual(&[], "<defs><g id='label-definition'><text><tspan style='fill:black!important'>Alpha</tspan></text></g></defs>", &mut checkpoint, &mut selector_limit).unwrap());
+        for (id, expected) in [
+            ("diagram-barbEnd", true),
+            ("diagram-label", false),
+            ("", false),
+        ] {
+            let element = CascadeIndex::source_element(
+                &format!("<path id='{id}'/>"),
+                Namespace::Svg,
+                &mut checkpoint,
+            )
+            .unwrap();
+            let selector = AttributeSelector {
+                name: "id".to_string(),
+                matcher: AttributeMatcher::Suffix("-barbEnd".to_string()),
+            };
+            assert_eq!(attribute_selector_matches(&selector, &element), expected);
+        }
+    }
+
+    #[test]
+    fn fallback_paint_fragments_preserve_importance_and_reject_external_urls() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let local = parse_declarations_with_limit(
+            "clip-path:url(#clip)!important;mask:url('#mask');filter:url(#shadow);fill:blue",
+            MAX_SELECTOR_DECLARATIONS_PER_RULE,
+            &mut checkpoint,
+        )
+        .unwrap();
+        assert!(!local.unparsed);
+        assert_eq!(local.declarations.len(), 4);
+        assert_eq!(local.declarations[0].property, "clip-path");
+        assert_eq!(local.declarations[0].value.as_ref(), "url(#clip)");
+        assert!(local.declarations[0].important);
+        assert_eq!(local.declarations[1].value.as_ref(), "url('#mask')");
+        assert!(!local.declarations[1].important);
+        assert_eq!(local.declarations[2].value.as_ref(), "url(#shadow)");
+        for external in [
+            "clip-path:url(https://example.test/paint.svg#clip)",
+            "mask:url('../paint.svg#mask')!important",
+            "filter:url(data:image/svg+xml;base64,AAAA)",
+            "filter:url(#)",
+            "filter:url(#shadow) trailing",
+            "fill:url(#paint)",
+        ] {
+            let rejected = parse_declarations_with_limit(
+                external,
+                MAX_SELECTOR_DECLARATIONS_PER_RULE,
+                &mut checkpoint,
+            )
+            .unwrap();
+            assert!(rejected.unparsed, "{external}");
+            assert!(rejected.declarations.is_empty(), "{external}");
+        }
+    }
+
+    #[test]
+    fn duplicate_id_selector_with_parsed_typography_blocks_local_projection() {
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        for declaration in ["font-size:99px!important", "--custom-size:99px"] {
+            let source =
+                format!("<svg><style>#ancestor#ancestor text{{{declaration}}}</style></svg>");
+            let mut cascade =
+                CascadeIndex::new(&source, &mut checkpoint, &mut selector_limit).unwrap();
+            let ancestor =
+                CascadeIndex::source_element("<g id='ancestor'/>", Namespace::Svg, &mut checkpoint)
+                    .unwrap();
+            assert_eq!(
+                cascade
+                    .permits_in_place_fallback(
+                        &[ancestor],
+                        "<text>Label</text>",
+                        &mut checkpoint,
+                        &mut selector_limit
+                    )
+                    .unwrap(),
+                declaration.starts_with("--"),
+                "ordinary declarations outside the matcher must protect projection"
+            );
+        }
+    }
 
     #[test]
     fn text_fragment_boundaries_use_the_nearest_common_ancestor_white_space() {
@@ -2812,6 +3546,51 @@ mod tests {
                 (HtmlWhiteSpace::Normal, Some((2, HtmlWhiteSpace::Nowrap))),
             ]
         );
+    }
+
+    #[test]
+    fn rich_text_leaves_share_inherited_and_rule_owned_font_payloads() {
+        let family = "Shared family ".repeat(256);
+        let html = format!(
+            "<div style='font-family:{family}'>{}</div>",
+            "<span>Alpha</span><b>Beta</b>".repeat(128)
+        );
+        let mut checkpoint = || Ok::<(), Infallible>(());
+        let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+        for (stylesheet, html) in [
+            ("<svg/>".to_string(), html),
+            (
+                format!("<svg><style>span,b{{font-family:{family}}}</style></svg>"),
+                format!("<div>{}</div>", "<span>Alpha</span><b>Beta</b>".repeat(128)),
+            ),
+        ] {
+            let mut cascade =
+                CascadeIndex::new(&stylesheet, &mut checkpoint, &mut selector_limit).unwrap();
+            let resolved = cascade
+                .resolve_foreign_object(
+                    &[],
+                    "<foreignObject/>",
+                    &html,
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+            let families = resolved
+                .fragments
+                .iter()
+                .filter_map(|fragment| match fragment {
+                    HtmlTextFragment::Text { typography, .. } => Some(&typography.font_family),
+                    HtmlTextFragment::HardBreak => None,
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(families.len(), 256);
+            assert!(
+                families
+                    .iter()
+                    .all(|family| Arc::ptr_eq(families[0], family)),
+                "one source font payload must serve every styled leaf"
+            );
+        }
     }
 
     #[test]

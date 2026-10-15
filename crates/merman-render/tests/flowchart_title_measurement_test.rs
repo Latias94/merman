@@ -62,8 +62,8 @@ fn render(environment: RenderEnvironment, backend: &str) -> (String, TextMeasure
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .unwrap();
-    let (svg, _, _, session) = rendered.into_parts();
-    (svg, session.text_measurement_report())
+    let (svg, report) = rendered.into_completion().into_output_and_report();
+    (svg, report.session_report().measurement().clone())
 }
 
 fn title_anchor_and_viewbox(svg: &str) -> (f64, Vec<f64>) {

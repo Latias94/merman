@@ -69,7 +69,7 @@ validates:
 - flat runtime-catalog schema `1`;
 - Android transport API version `2`;
 - non-empty native package metadata;
-- Options JSON schema `2` and both binding payload schemas;
+- Options JSON schema `3` and both binding payload schemas;
 - the generated default-native Android capability/output/operation/metadata identity and capability
   implication closure;
 - output media/resource policies, constructor-service ownership, and resource profile relations;
@@ -96,7 +96,7 @@ Read the validated catalog with `Merman.runtimeCatalogJson()`:
   "schema_version": 1,
   "transport_api_version": 2,
   "package_version": "<loaded artifact version>",
-  "options_schema_versions": [2],
+  "options_schema_versions": [3],
   "payload_schemas": [
     { "id": "binding-result", "version": 1 },
     { "id": "operation-metadata", "version": 1 }

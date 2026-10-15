@@ -168,11 +168,99 @@ graph TD;A-->B;"##;
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#123456")
+        // Forest initializes mainBkg independently; overriding primaryColor does not replace it.
+        Some("#cde498")
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.fontFamily"),
         Some("\"trebuchet ms\", verdana, arial, sans-serif")
+    );
+}
+
+#[test]
+fn default_scoped_theme_calculates_with_source_variables() {
+    let metadata = Engine::new()
+        .parse_metadata_sync(
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("materialize the default scoped theme with source variables");
+
+    assert_eq!(
+        metadata.effective_config.get_str("theme"),
+        Some("redux-color")
+    );
+    assert_eq!(
+        metadata.effective_config.get_str("themeVariables.nodeBkg"),
+        Some("#123456")
+    );
+    assert_eq!(metadata.config.get_str("theme"), None);
+    assert_eq!(metadata.config.get_str("themeVariables.nodeBkg"), None);
+    assert!(
+        metadata
+            .effective_config
+            .explicit_config_owns_path("themeVariables.primaryColor")
+    );
+}
+
+#[test]
+fn host_scoped_theme_calculates_with_source_variables() {
+    let metadata = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({
+            "theme": "default",
+            "flowchart": {"theme": "base"}
+        })))
+        .parse_metadata_sync(
+            "%%{init: {\"themeVariables\": {\"primaryColor\": \"#123456\"}}}%%\nflowchart TD\nA-->B",
+        )
+        .expect("materialize the host scoped theme with source variables");
+
+    assert_eq!(metadata.effective_config.get_str("theme"), Some("base"));
+    for key in ["mainBkg", "nodeBkg", "actorBkg"] {
+        assert_eq!(
+            metadata
+                .effective_config
+                .get_str(&format!("themeVariables.{key}")),
+            Some("#123456"),
+            "the scoped theme must calculate {key} from raw source primaryColor"
+        );
+    }
+}
+
+#[test]
+fn source_color_validation_follows_actual_theme_rematerialization() {
+    let source = "%%{init: {\"themeVariables\": {\"primaryColor\": \"not-a-color\"}}}%%\nflowchart TD\nA-->B";
+    for (name, engine) in [
+        ("default scoped theme", Engine::new()),
+        (
+            "host scoped theme",
+            Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                "theme": "default",
+                "flowchart": {"theme": "base"}
+            }))),
+        ),
+    ] {
+        assert!(
+            matches!(
+                engine.parse_metadata_sync(source),
+                Err(crate::Error::ThemeColor(_))
+            ),
+            "{name} must validate source colors during recalculation"
+        );
+    }
+
+    let metadata = Engine::new()
+        .with_site_config(MermaidConfig::from_value(json!({"theme": "base"})))
+        .parse_metadata_sync(source)
+        .expect("an ordinary source update retains initialized derivations");
+    assert_eq!(
+        metadata
+            .effective_config
+            .get_str("themeVariables.primaryColor"),
+        Some("not-a-color")
+    );
+    assert_eq!(
+        metadata.effective_config.get_str("themeVariables.mainBkg"),
+        Some("#fff4dd")
     );
 }
 
@@ -218,7 +306,7 @@ graph TD;A-->B;"##;
     );
     assert_eq!(
         res.effective_config.get_str("themeVariables.mainBkg"),
-        Some("#123456")
+        Some("#cde498")
     );
 }
 
@@ -1384,6 +1472,7 @@ fn custom_semantic_parser_projects_an_explicit_json_render_boundary() {
         .unwrap();
 
     assert_eq!(parsed.metadata().diagram_type, "customDiagram");
+    assert_eq!(parsed.family_id(), None);
     let RenderSemanticModel::CustomJson(model) = parsed.model() else {
         panic!("custom semantic parsers must produce an explicit CustomJson render boundary");
     };
@@ -1751,6 +1840,7 @@ fn explicit_custom_render_overlay_wins_over_semantic_and_builtin_renderers() {
         panic!("explicit custom render overlay should select an explicit CustomJson model");
     };
     assert_eq!(model.model_name(), "custom-flowchart-model");
+    assert_eq!(parsed.family_id(), None);
     assert_eq!(
         model.provenance(),
         CustomJsonProvenance::RenderRegistryOverlay

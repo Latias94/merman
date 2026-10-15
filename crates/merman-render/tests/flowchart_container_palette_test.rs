@@ -61,16 +61,14 @@ fn flowchart_container_palette_follows_preorder_across_collapsed_and_reordered_r
         let svg = render(&source, "redux-color", "classic");
         let document = roxmltree::Document::parse(&svg).expect("valid SVG");
         for (id, slot) in expected {
-            let scoped = format!("merman-{id}");
             let node = document
                 .descendants()
-                .find(|node| node.attribute("id") == Some(scoped.as_str()))
+                .find(|node| node.attribute("data-id") == Some(id))
                 .unwrap_or_else(|| panic!("missing {id}"));
             assert_eq!(node.attribute("data-color-id"), Some(slot), "{id}");
         }
         for node in document.descendants().filter(|node| {
-            node.attribute("id")
-                .is_some_and(|id| id.starts_with("merman-flowchart-"))
+            node.attribute("data-et") == Some("node") && node.attribute("data-id") != Some("ChildA")
         }) {
             assert_eq!(
                 node.attribute("data-color-id"),
@@ -106,7 +104,7 @@ fn flowchart_palette_styles_cover_collapsed_rough_shapes_without_overriding_auth
     let document = roxmltree::Document::parse(&svg).expect("valid SVG");
     let container = document
         .descendants()
-        .find(|node| node.attribute("id") == Some("merman-Outer"))
+        .find(|node| node.attribute("data-id") == Some("Outer"))
         .unwrap();
     assert_eq!(container.attribute("data-color-id"), Some("color-0"));
     assert!(

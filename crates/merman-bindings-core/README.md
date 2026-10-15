@@ -22,6 +22,8 @@ closure. Feature names describe compile-time inputs; the generated runtime catal
 recipe, and bundled notices describe the resulting artifact.
 
 - `svg` enables SVG rendering through the main Merman facade.
+- `native-fonts` enables the Rust-only, constructor-owned native font context. It does not
+  enable ambient system-font discovery or add font paths to binding JSON.
 - `analysis` enables diagnostics analysis, validation JSON, document facts, and lint rule catalog helpers.
 - `ascii` enables ASCII/Unicode text rendering.
 - `layout-cytoscape` and `layout-elk` enable their named SVG layout engines.
@@ -78,9 +80,43 @@ let engine = BindingEngine::from_options_and_services(options_json, services)?;
 # Ok::<(), merman_bindings_core::BindingError>(())
 ```
 
-This example requires the `svg` feature. An explicit `environment.text_measurement` selector conflicts with the constructor service in both base options and request overlays. Construction only installs the callback; it never invokes it. Foreign callback lifetime, close admission, and out-of-lock destruction remain transport responsibilities.
+This example requires the `svg` feature. An explicit `environment.text_measurement` selector, including `null`, conflicts with the constructor service in both base options and request overlays. Construction only installs the callback; it never invokes it. Foreign callback lifetime, close admission, and out-of-lock destruction remain transport responsibilities.
+
+Rust hosts built with `native-fonts` can install an already loaded, explicitly authorized font
+context instead. The same operation-local context then measures labels, creates SVG text
+fallbacks, and paints enabled PNG, JPEG, or PDF targets through the main Merman facade:
+
+```rust
+use merman::svg::export::NativeFontContext;
+use merman_bindings_core::{BindingEngine, BindingEngineServices};
+
+fn engine(fonts: NativeFontContext) -> Result<BindingEngine, merman_bindings_core::BindingError> {
+    let services = BindingEngineServices::new().with_native_font_context(fonts);
+    BindingEngine::from_options_and_services(
+        br#"{"svg":{"pipeline":"resvg-safe"}}"#,
+        services,
+    )
+}
+```
+
+Load font sources and choose their limits before constructing these services. Each request shares
+the admitted font data but creates fresh measurement caches, failure state, and operation control;
+the reusable engine never retains a previous request's cancellation or resource outcome. A native
+font context conflicts with `with_host_text_measurer` in either setter order and with an explicit
+`environment.text_measurement` selector, including `null`, in base options or overlays. SVG fonts
+are not embedded, so an external SVG viewer still needs the selected font. The `native-font-context`
+service and its `native-fonts` measurement provider are exposed only by the Rust transport; C,
+UniFFI, Android, Node, Web, and Typst do not acquire a native font context through this API.
 
 ## SVG Output Contract
+
+Successful native output can carry a `rejected` target-admission status in
+`theme_execution_evidence`: this classifies strict portability, not operation success.
+Default best-effort rendering still returns bytes. Reasons such as
+`native_directional_filter_transform_residual`, `fallback_css_residual`, and
+`pdf_implicit_viewport_clipping_residual` identify known fidelity limits. An explicit
+portable-output requirement rejects them. Invalid geometry, resource exhaustion and
+cancellation retain their operation errors.
 
 `render_svg` and the cached engine `render_svg` entry point return SVG bytes. With empty options, that SVG is the Mermaid-parity contract. Hosts that pass SVG to strict SVG renderers or rasterizers should request the export contract with:
 
@@ -88,7 +124,17 @@ This example requires the `svg` feature. An explicit `environment.text_measureme
 { "svg": { "pipeline": "resvg-safe" } }
 ```
 
-Editor previews can supply a semantic host theme under `presentation.theme`, select an optional first-party product profile under `presentation.profile`, or enable `drop_native_duplicate_fallbacks` when duplicate native/fallback labels are visible in the host surface. Raw Mermaid overrides remain top-level `site_config`, while SVG pipeline and postprocessing choices remain under `svg`.
+Editor previews can select one experimental compiled diagram theme through top-level `theme`, using
+exactly one `preset` or complete typed `spec`. The binding compiler maps that value to the same
+`DiagramThemeSpec` / `ThemePreset` model used by Rust and installs the resulting immutable
+`DiagramTheme` on the renderer. Raw Mermaid overrides remain top-level `site_config`, while layout,
+environment, and SVG postprocessing choices retain their independent owners. The removed
+`presentation` and `host_theme` groups are rejected rather than treated as compatibility aliases.
+Theme compilation reports requirements; it does not by itself prove the unfinished cross-family,
+cross-output portability matrix.
+
+Hosts can enable `drop_native_duplicate_fallbacks` for generated labels tied to native SVG switch
+fallbacks. Independent labels with equal text are preserved.
 
 Hosts that inline SVG in a browser and want fallback text while retaining the original `<foreignObject>` nodes can use `"readable"` instead. PNG, JPEG, and PDF are available through the same generic binding operation route when their output capability is compiled; their format-specific resource limits remain part of the selected resource policy.
 

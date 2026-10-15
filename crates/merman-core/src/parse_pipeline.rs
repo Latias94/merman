@@ -1,3 +1,4 @@
+use crate::config::{AppearanceDecision, MaterializationPlan};
 use crate::operation::OperationPhase;
 use crate::preprocess::{
     DirectiveRecoveryMode, PreprocessCaptureOutcome, PreprocessedSource, SourceConfigEvidence,
@@ -78,6 +79,124 @@ pub(crate) struct ParsePipeline<'a> {
     text: &'a str,
     options: ParseOptions,
     source: ParseSource<'a>,
+}
+
+/// Owns the configuration through detection, appearance selection, and paint input freezing.
+/// Snapshots remain local to the phases that need their values or mutation provenance.
+struct OperationConfigBuilder {
+    effective: MermaidConfig,
+    source: MermaidConfig,
+    detector_checkpoint: Option<crate::config::DetectorConfigCheckpoint>,
+}
+
+impl OperationConfigBuilder {
+    fn new(
+        engine: &Engine,
+        overrides: &MermaidConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<Self>> {
+        let mut effective = match engine.default_effective_config() {
+            Ok(config) => config,
+            Err(error) => return Ok(Err(error)),
+        };
+        let source = if overrides.is_empty_object() {
+            MermaidConfig::empty_object()
+        } else {
+            let source = effective.source_filtered_overrides(overrides, control)?;
+            effective.deep_merge_explicit(source.as_value());
+            source
+        };
+        Ok(Ok(Self {
+            effective,
+            source,
+            detector_checkpoint: None,
+        }))
+    }
+
+    fn finalize(
+        self,
+        engine: &Engine,
+        diagram_type: &str,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<MermaidConfig>> {
+        let Self {
+            mut effective,
+            source,
+            detector_checkpoint,
+        } = self;
+        let detector_changes = match detector_checkpoint {
+            Some(checkpoint) => checkpoint.finish(&mut effective, control)?,
+            None => None,
+        };
+        control.checkpoint()?;
+        let defaults = crate::generated::upstream_default_config();
+        let decision = AppearanceDecision::resolve(
+            diagram_type,
+            &source,
+            &engine.site_config_overrides,
+            engine.theme_compatibility_config.as_ref(),
+            &defaults,
+        );
+        match decision.materialization_plan(
+            effective.get_str("theme"),
+            engine.site_config.get_str("theme"),
+        ) {
+            MaterializationPlan::InheritInitialized => decision.apply_to(&mut effective),
+            MaterializationPlan::Materialize { selected } => {
+                // Detection must observe initialized config. Keep that result only when its
+                // assignments actually need replay onto a newly materialized theme.
+                effective =
+                    match Self::materialize_operation_theme(engine, &decision, &source, selected) {
+                        Ok(config) => config,
+                        Err(error) => return Ok(Err(error.into())),
+                    };
+                if let Some(changes) = &detector_changes {
+                    changes.replay(&mut effective, control)?;
+                }
+                // Detector writes cannot replace authored appearance. Scoped-key presence is
+                // checked again because replay can create or remove a scoped setting.
+                decision.apply_to(&mut effective);
+            }
+        }
+        // The explicit keyword is the only detector-level layout selection retained in Mermaid 12.
+        if diagram_type == "flowchart-elk" {
+            effective.set_value_explicit("layout", serde_json::Value::String("elk".to_owned()));
+        }
+        if let Some(family) = family::operation_family_id(diagram_type, &effective) {
+            effective.freeze_family_paint_inputs(
+                family.as_str(),
+                &engine.initialization_inputs,
+                &source,
+                detector_changes.as_ref(),
+                control,
+            )?;
+        }
+        effective.freeze_theme_compatibility();
+        effective.seal_detector_mutations();
+        Ok(Ok(effective))
+    }
+
+    fn materialize_operation_theme(
+        engine: &Engine,
+        decision: &AppearanceDecision<'_>,
+        source_config: &MermaidConfig,
+        selected: theme::MermaidThemeId,
+    ) -> std::result::Result<MermaidConfig, theme::ThemeResolutionError> {
+        let mut raw_config = engine.site_config.clone();
+        // Every actual theme recalculation consumes raw initialization and allowed source inputs.
+        // The inherited path instead keeps ordinary updates to initialized derivations.
+        let initial_variables = engine
+            .initialization_inputs
+            .as_value()
+            .get("themeVariables")
+            .filter(|value| theme::is_js_truthy(value))
+            .map(crate::compatibility_json::clone_value_nonrecursive)
+            .unwrap_or_else(|| serde_json::json!({}));
+        raw_config.set_value_preserving_theme_compatibility("themeVariables", initial_variables);
+        raw_config.deep_merge_explicit(source_config.as_value());
+        decision.apply_to(&mut raw_config);
+        theme::materialize_selected_theme(raw_config, selected)
+    }
 }
 
 struct PreparedPreprocessCapture {
@@ -1137,63 +1256,30 @@ impl<'a> ParsePipeline<'a> {
             return Ok(Err(Error::MalformedFrontMatter));
         }
 
-        let has_config_overrides = !pre.config.is_empty_object();
-        let (mut effective_config, source_config) =
-            self.effective_config_before_detect(&pre.config, control)?;
-        let cached_effective_config = (!has_config_overrides).then(|| effective_config.clone());
+        let mut config = match OperationConfigBuilder::new(self.engine, &pre.config, control)? {
+            Ok(config) => config,
+            Err(error) => return Ok(Err(error)),
+        };
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
-            None => match self.engine.registry.detect_type_precleaned_controlled(
-                pre.code(),
-                &mut effective_config,
-                control,
-            )? {
-                Ok(diagram_type) => diagram_type.to_owned(),
-                Err(error) => return Ok(Err(error)),
-            },
+            None => {
+                config.detector_checkpoint = Some(crate::config::DetectorConfigCheckpoint::new(
+                    &config.effective,
+                ));
+                match self.engine.registry.detect_type_precleaned_controlled(
+                    pre.code(),
+                    &mut config.effective,
+                    control,
+                )? {
+                    Ok(diagram_type) => diagram_type.to_owned(),
+                    Err(error) => return Ok(Err(error)),
+                }
+            }
         };
-        control.checkpoint()?;
-        crate::config::resolve_appearance(
-            &diagram_type,
-            &source_config,
-            &self.engine.site_config_delta,
-            &crate::generated::upstream_default_config(),
-            &mut effective_config,
-        );
-        // The explicit keyword is the only detector-level layout selection retained in
-        // Mermaid 12. Apply it after appearance resolution for known-type entrypoints too.
-        if diagram_type == "flowchart-elk" {
-            effective_config.set_value("layout", serde_json::Value::String("elk".to_owned()));
-        }
-        if effective_config.get_str("theme") == Some("null") {
-            // The sentinel disables theme selection. Upstream retains the initialized
-            // variables and merges source overrides without running another theme program.
-            let mut initialized = match self.engine.default_effective_config() {
-                Ok(config) => config,
-                Err(error) => return Ok(Err(error)),
-            };
-            initialized.deep_merge(source_config.as_value());
-            if let Some(variables) = initialized.as_value().get("themeVariables") {
-                effective_config.set_value(
-                    "themeVariables",
-                    crate::config::clone_value_nonrecursive(variables),
-                );
-            }
-        } else if has_config_overrides {
-            if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
-                return Ok(Err(error.into()));
-            }
-        } else if cached_effective_config
-            .as_ref()
-            .is_some_and(|cached| effective_config.ptr_eq(cached))
-        {
-            effective_config = match self.engine.default_effective_config() {
-                Ok(config) => config,
-                Err(error) => return Ok(Err(error)),
-            };
-        } else if let Err(error) = theme::apply_theme_defaults(&mut effective_config) {
-            return Ok(Err(error.into()));
-        }
+        let effective_config = match config.finalize(self.engine, &diagram_type, control)? {
+            Ok(config) => config,
+            Err(error) => return Ok(Err(error)),
+        };
 
         control.checkpoint()?;
         let title = sanitized_title(pre.title.as_deref(), &effective_config);
@@ -1320,21 +1406,6 @@ impl<'a> ParsePipeline<'a> {
     ) -> Result<R> {
         let context = self.engine.begin_operation()?;
         runtime::with_operation_context(&context, || f(&context))
-    }
-
-    fn effective_config_before_detect(
-        &self,
-        overrides: &MermaidConfig,
-        control: &OperationControl,
-    ) -> OperationControlResult<(MermaidConfig, MermaidConfig)> {
-        if overrides.is_empty_object() {
-            return Ok((self.engine.site_config.clone(), overrides.clone()));
-        }
-
-        let mut effective_config = self.engine.site_config.clone();
-        let effective_overrides = effective_config.source_filtered_overrides(overrides, control)?;
-        effective_config.deep_merge(effective_overrides.as_value());
-        Ok((effective_config, effective_overrides))
     }
 }
 
@@ -1483,6 +1554,74 @@ mod editor_parse_source_map_tests {
             meta.diagram_type.clone(),
             "custom parser failed after expiring its deadline",
         )))
+    }
+
+    #[test]
+    fn operation_selects_appearance_once_with_or_without_rematerialization() {
+        let engine = Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+            "theme": "dark", "themeVariables": { "primaryColor": "#123456" },
+        })));
+        for (source, materializations, expected_theme) in [
+            ("flowchart TD\nA-->B", 0, "dark"),
+            (
+                "---\nconfig:\n  theme: base\n---\nflowchart TD\nA-->B",
+                1,
+                "base",
+            ),
+            (
+                "---\nconfig:\n  theme: 'null'\n---\nflowchart TD\nA-->B",
+                0,
+                "null",
+            ),
+        ] {
+            let (metadata, work) =
+                crate::config::measure_config_work(|| engine.parse_metadata_sync(source).unwrap());
+            assert_eq!(
+                metadata.effective_config.get_str("theme"),
+                Some(expected_theme)
+            );
+            assert_eq!(work.appearance_selections, 1, "{work:?}");
+            assert_eq!(
+                work.selected_theme_materializations, materializations,
+                "{work:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rematerialization_replays_detector_values_before_reapplying_authored_appearance() {
+        fn detector(_source: &str, config: &mut MermaidConfig) -> bool {
+            config.set_value("flowchart.nodeSpacing", serde_json::json!(71));
+            config.set_value("flowchart.theme", serde_json::json!("forest"));
+            config.set_value("themeVariables.primaryColor", serde_json::json!("#abcdef"));
+            true
+        }
+        let mut engine =
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "theme": "dark",
+            })));
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine.registry_mut().add_fn("flowchart-v2", detector);
+        let (metadata, work) = crate::config::measure_config_work(|| {
+            engine
+                .parse_metadata_sync("---\nconfig:\n  theme: base\n---\nprobe")
+                .unwrap()
+        });
+        let config = metadata.effective_config;
+        assert_eq!(
+            config.as_value()["flowchart"]["nodeSpacing"],
+            serde_json::json!(71)
+        );
+        assert_eq!(
+            config.get_str("themeVariables.primaryColor"),
+            Some("#abcdef")
+        );
+        assert_eq!(config.get_str("theme"), Some("base"));
+        assert_eq!(config.get_str("flowchart.theme"), Some("base"));
+        assert!(config.explicit_config_owns_path("flowchart.nodeSpacing"));
+        assert!(config.explicit_config_owns_path("themeVariables.primaryColor"));
+        assert_eq!(work.appearance_selections, 1, "{work:?}");
+        assert_eq!(work.selected_theme_materializations, 1, "{work:?}");
     }
 
     #[test]

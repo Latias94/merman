@@ -142,3 +142,4 @@ required-features = ["svg"]
 
 [dev-dependencies]
 roxmltree.workspace = true
+tempfile = "3.27.0"

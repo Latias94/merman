@@ -1,5 +1,5 @@
 use super::{SvgPostprocessExecution, SvgPostprocessMetadata, checkpoint_loop};
-use crate::family::RenderFamilyKind;
+use crate::DiagramFamilyId;
 use crate::{Error, Result};
 use std::borrow::Cow;
 
@@ -12,11 +12,11 @@ pub(super) fn normalize_renderer_ids<'a>(
     metadata: &SvgPostprocessMetadata,
     execution: SvgPostprocessExecution<'_>,
 ) -> Result<Cow<'a, str>> {
-    if metadata.family_kind() != Some(RenderFamilyKind::Mindmap) {
+    if metadata.family_id() != Some(DiagramFamilyId::MINDMAP) {
         return Ok(svg);
     }
     execution.checkpoint()?;
-    let document = roxmltree::Document::parse(&svg)
+    let document = crate::xml_dom::Document::parse(&svg)
         .map_err(|error| Error::svg_postprocess("normalize-embedding-ids", error.to_string()))?;
     let mut removed = Vec::new();
     for (index, node) in document.descendants().enumerate() {
@@ -85,7 +85,7 @@ mod tests {
             .begin_session()
             .unwrap();
         let metadata =
-            SvgPostprocessMetadata::from_svg(MINDMAP).with_family_kind(RenderFamilyKind::Mindmap);
+            SvgPostprocessMetadata::from_svg(MINDMAP).with_family_id(DiagramFamilyId::MINDMAP);
         let raw = SvgPipeline::parity()
             .process_with_metadata(MINDMAP, &metadata, &session)
             .unwrap();
@@ -99,7 +99,7 @@ mod tests {
             let output = pipeline
                 .process_with_metadata(MINDMAP, &metadata, &session)
                 .unwrap();
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let target = document
                 .descendants()
                 .filter(|node| node.attribute("id") == Some("embed-node"))
@@ -116,7 +116,7 @@ mod tests {
             .begin_session()
             .unwrap();
         let inferred = SvgPostprocessMetadata::from_svg(MINDMAP).with_diagram_type("mindmap");
-        let certified = inferred.clone().with_family_kind(RenderFamilyKind::Mindmap);
+        let certified = inferred.clone().with_family_id(DiagramFamilyId::MINDMAP);
         for (source, metadata) in [
             (MINDMAP.to_string(), inferred),
             (
@@ -143,7 +143,7 @@ mod tests {
             .begin_session()
             .unwrap();
         let metadata =
-            SvgPostprocessMetadata::from_svg(&source).with_family_kind(RenderFamilyKind::Mindmap);
+            SvgPostprocessMetadata::from_svg(&source).with_family_id(DiagramFamilyId::MINDMAP);
         let error = SvgPipeline::parity()
             .with_browser_inline_contract("embed")
             .process_with_metadata(&source, &metadata, &session)

@@ -54,7 +54,7 @@ impl TypedSvgRenderer {
         self
     }
 
-    fn render_svg_result(&self, source: &str) -> Result<Option<String>, RenderError> {
+    fn render_svg_result(&self, source: &str) -> Result<Option<String>, Box<RenderError>> {
         self.render_svg_with_request(source, self.request.clone())
     }
 
@@ -62,13 +62,13 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         pipeline: SvgPipeline,
-    ) -> Result<Option<String>, RenderError> {
+    ) -> Result<Option<String>, Box<RenderError>> {
         let mut request = self.request.clone();
         request.pipeline = Some(pipeline);
         self.render_svg_with_request(source, request)
     }
 
-    fn render_resvg_safe_result(&self, source: &str) -> Result<Option<String>, RenderError> {
+    fn render_resvg_safe_result(&self, source: &str) -> Result<Option<String>, Box<RenderError>> {
         self.render_svg_with_pipeline_result(source, SvgPipeline::resvg_safe())
     }
 
@@ -76,7 +76,7 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         request: SvgRequest,
-    ) -> Result<Option<String>, RenderError> {
+    ) -> Result<Option<String>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::svg(source, OperationControl::new(), request)
                 .with_parse_options(self.parse_options)
@@ -93,7 +93,7 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         options: &merman::svg::export::RasterOptions,
-    ) -> Result<Option<Vec<u8>>, RenderError> {
+    ) -> Result<Option<Vec<u8>>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::png(
                 source,
@@ -109,7 +109,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Png(output) = output else {
             unreachable!("PNG request must return PNG output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
@@ -117,7 +117,7 @@ impl TypedSvgRenderer {
         &self,
         source: &str,
         options: &merman::svg::export::RasterOptions,
-    ) -> Result<Option<Vec<u8>>, RenderError> {
+    ) -> Result<Option<Vec<u8>>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::jpeg(
                 source,
@@ -133,11 +133,11 @@ impl TypedSvgRenderer {
         let RenderOutput::Jpeg(output) = output else {
             unreachable!("JPEG request must return JPEG output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 
     #[cfg(all(feature = "png", feature = "jpeg", feature = "pdf"))]
-    fn render_pdf_result(&self, source: &str) -> Result<Option<Vec<u8>>, RenderError> {
+    fn render_pdf_result(&self, source: &str) -> Result<Option<Vec<u8>>, Box<RenderError>> {
         let output = self.renderer.render(
             RenderRequest::pdf(
                 source,
@@ -153,7 +153,7 @@ impl TypedSvgRenderer {
         let RenderOutput::Pdf(output) = output else {
             unreachable!("PDF request must return PDF output")
         };
-        Ok(output.map(|output| output.bytes))
+        Ok(output.map(|output| output.into_bytes()))
     }
 }
 
@@ -360,6 +360,13 @@ fn resvg_safe_pipeline_removes_loose_html_label_foreign_object() {
 fn resvg_safe_pipeline_strips_trusted_theme_css_raster_hazards() {
     let source = "flowchart TD\n    A[Start] --> B[Done]";
     let renderer = TypedSvgRenderer::new()
+        .with_environment(SvgEnvironment::deterministic().with_theme_admission_policy(
+            merman::svg::ThemeAdmissionPolicy::permissive().with_trusted_lanes(
+                merman::svg::TrustedThemeLanes::from_allowed([
+                    merman::svg::TrustedThemeLane::RawThemeCss,
+                ]),
+            ),
+        ))
         .with_site_config(MermaidConfig::from_value(serde_json::json!({
             "themeCSS": ".node rect { animation: pulse 1s infinite; } @keyframes pulse { to { opacity: 0.5; } } :root { --bad: 1; }"
         })))
@@ -730,7 +737,7 @@ fn custom_raster_size_limit_caps_actual_png_dimensions() {
     let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 30000 20000"><rect width="30000" height="20000" fill="black"/></svg>"#;
     let options = RasterOptions::default()
         .with_size_limit(RasterSizeLimit::new(Some(128), Some(128), Some(16_384)))
-        .with_background("white");
+        .with_matte("white");
 
     let svg = finalize_raster_input(svg);
     let plan = svg_raster_plan(&svg, &options).unwrap();

@@ -1,0 +1,9 @@
+classDiagram
+    class Account {
+        +String name
+        +activate()
+    }
+    class GenericAccount~T~ {
+        <<service>>
+        +T value
+    }

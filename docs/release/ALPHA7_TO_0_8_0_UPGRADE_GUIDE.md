@@ -20,6 +20,12 @@ change. Coupled Rust crates, generated wrappers, and native/WASM artifacts must 
 one matching Merman build. The independent Tree-sitter package keeps its own baseline and release
 process; the parent Mermaid upgrade does not promote its grammar or query contract.
 
+The current source also includes the compiled theme contract and its bounded resource policy. The
+theme API, Options JSON schema 3, binding projections, CLI theme authoring, and preset qualification
+are described in the [theme migration reference](ALPHA7_TO_0_8_0_THEME_MIGRATION.md). These are
+source-level changes under validation, not evidence that the unreleased package channels have
+published or that every theme/artifact/family cell is qualified.
+
 ## CLI Rustdoc remains available
 
 The `0.8.0` source default and official CLI archives retain `merman-cli rustdoc build/check`,

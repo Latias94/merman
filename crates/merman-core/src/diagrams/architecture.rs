@@ -764,7 +764,8 @@ pub(crate) fn render_model_to_compat_json_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value>> {
     control.checkpoint()?;
-    let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
+    let mut config =
+        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
         && let Some(obj) = config.as_object_mut()
     {

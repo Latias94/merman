@@ -219,7 +219,7 @@ after"#;
     }
 
     #[test]
-    fn checked_in_api7_swift_rejects_older_version_probes() {
+    fn checked_in_api7_swift_rejects_published_api6_probe() {
         let generated = std::fs::read_to_string(
             workspace_root().join("platforms/apple/Sources/Merman/Generated/Merman.swift"),
         )
@@ -230,9 +230,15 @@ after"#;
         assert!(!generated.contains("bindingApiVersionV6"));
         assert!(generated.contains("requestedLayoutProfile"));
         assert!(generated.contains("compactAttempted"));
+        assert!(generated.contains("detailsJson"));
+        assert!(generated.contains("themeCatalogJson"));
         assert!(
             generated
                 .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7()")
+        );
+        assert!(
+            !generated
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6()")
         );
         assert!(
             !generated

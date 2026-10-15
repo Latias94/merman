@@ -1,4 +1,4 @@
-use crate::config::{config_f64_css_px, config_string};
+use crate::config::config_f64_css_px;
 use crate::graph_label::{FlowchartLabelMetricsRequest, flowchart_label_metrics_for_layout};
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::math::MathRenderer;
@@ -10,8 +10,16 @@ use merman_core::MermaidConfig;
 use serde_json::Value;
 use std::sync::Arc;
 
+mod css_binding;
 mod registered;
+pub(crate) use css_binding::MindmapCssBinding;
+mod theme;
 mod tidy_tree;
+
+pub(crate) use theme::{
+    MINDMAP_SECTION_COUNT, MindmapEdgeStrokeSource, MindmapNodeFillSource, MindmapNodePalettePlan,
+    MindmapNodePaletteTerminalDecision, MindmapWriterThemeToken,
+};
 
 pub(crate) fn mindmap_max_node_width_px(effective_config: &Value) -> f64 {
     config_f64_css_px(effective_config, &["mindmap", "maxNodeWidth"])
@@ -107,21 +115,26 @@ type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 type MindmapNodeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderNode;
 type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge;
 
-pub(crate) fn mindmap_text_style(effective_config: &Value) -> TextStyle {
-    // Both label modes inherit the global font family.
-    let font_family = config_string(effective_config, &["themeVariables", "fontFamily"])
-        .or_else(|| config_string(effective_config, &["fontFamily"]))
-        .or_else(|| Some("\"trebuchet ms\", verdana, arial, sans-serif".to_string()));
-    // Mermaid mindmap uses HTML `<foreignObject>` labels. Mermaid CLI baselines show that the
-    // HTML label contents do not reliably inherit SVG-root `font-size` rules; measurement matches
-    // a 16px default even when users override `themeVariables.fontSize`.
+#[cfg(test)]
+fn mindmap_text_style(effective_config: &Value) -> TextStyle {
+    mindmap_text_style_with_font_family(
+        effective_config,
+        &crate::config::config_font_family_css(effective_config),
+    )
+}
+
+pub(crate) fn mindmap_text_style_with_font_family(
+    effective_config: &Value,
+    font_family_css: &str,
+) -> TextStyle {
+    // HTML labels retain their 16px measurement baseline; SVG labels inherit root CSS size.
     let font_size = if crate::config::config_effective_html_labels(effective_config) {
         16.0
     } else {
         crate::config::config_theme_font_size_css_or_root_number_px(effective_config, 16.0).max(1.0)
     };
     TextStyle {
-        font_family,
+        font_family: Some(font_family_css.to_owned()),
         font_size,
         font_weight: None,
         font_style: None,
@@ -400,6 +413,7 @@ fn mindmap_layout_adapter_work(
 pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     model: &MindmapModel,
     config: &MermaidConfig,
+    font_family_css: &str,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
@@ -412,6 +426,7 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     layout_mindmap_diagram_model(
         model,
         config,
+        font_family_css,
         text_measurer,
         math_renderer,
         &mut work_control,
@@ -421,9 +436,14 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     )
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Layout inputs and operation controls remain explicit at this family boundary"
+)]
 fn layout_mindmap_diagram_model(
     model: &MindmapModel,
     config: &MermaidConfig,
+    font_family_css: &str,
     text_measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     _work_control: &mut OperationLayoutWorkControl,
@@ -431,7 +451,7 @@ fn layout_mindmap_diagram_model(
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
 ) -> Result<MindmapDiagramLayout> {
     let effective_config = config.as_value();
-    let text_style = mindmap_text_style(effective_config);
+    let text_style = mindmap_text_style_with_font_family(effective_config, font_family_css);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
@@ -622,6 +642,48 @@ fn layout_mindmap_diagram_model(
 
 #[cfg(all(test, feature = "diagram-mindmap"))]
 mod tests {
+    #[test]
+    fn mindmap_declined_math_measurement_keeps_markdown_fallback() {
+        let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    child[\"**Bold** $$x$$\"]",
+            merman_core::ParseOptions::strict(),
+        ).unwrap().unwrap();
+        let merman_core::RenderSemanticModel::Mindmap(model) = parsed.model() else {
+            panic!("Mindmap render model");
+        };
+        let padding = model.nodes[1].padding;
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .with_math_renderer(std::sync::Arc::new(crate::math::NoopMathRenderer))
+            .begin_session()
+            .unwrap();
+        let artifact =
+            crate::family::prepare(parsed, &crate::LayoutOptions::default(), session).unwrap();
+        let layout = artifact.layout_json().unwrap();
+        let nodes = layout["layout"]["MindmapDiagram"]["nodes"]
+            .as_array()
+            .unwrap();
+        assert_eq!(nodes.len(), 2);
+        let child = nodes
+            .iter()
+            .find(|node| node["id"] == "1")
+            .expect("Markdown child node");
+        let style = super::mindmap_text_style(&serde_json::json!({}));
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let html = crate::text::mermaid_markdown_to_html_label_fragment("**Bold** $$x$$", true);
+        let expected = crate::text::measure_html_with_inline_styles(
+            &measurer,
+            &html,
+            &style,
+            Some(200.0),
+            crate::text::WrapMode::HtmlLike,
+        );
+        assert_eq!(
+            child["width"].as_f64(),
+            Some(expected.width + 2.0 * padding)
+        );
+        assert_eq!(child["height"].as_f64(), Some(expected.height + padding));
+    }
+
     struct FixedMeasurer;
 
     impl crate::text::TextMeasurer for FixedMeasurer {
@@ -877,6 +939,19 @@ mod tests {
         let style = super::mindmap_text_style(&config);
         assert_eq!(style.font_family.as_deref(), Some("Theme font"));
         assert_eq!(style.font_size, 24.0);
+        let typed_style =
+            super::mindmap_text_style_with_font_family(&config, "Typed font,monospace");
+        assert_eq!(
+            typed_style.font_family.as_deref(),
+            Some("Typed font,monospace")
+        );
+        assert_eq!(typed_style.font_size, 24.0);
+        let html_style = super::mindmap_text_style_with_font_family(
+            &serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "24px"}}),
+            "Typed font,monospace",
+        );
+        assert_eq!(html_style.font_family, typed_style.font_family);
+        assert_eq!(html_style.font_size, 16.0);
         assert_eq!(
             super::mindmap_text_style(&serde_json::json!({ "htmlLabels": false, "fontSize": 18 }))
                 .font_size,

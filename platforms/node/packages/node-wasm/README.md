@@ -45,3 +45,24 @@ browser `Document` or owner-document admission APIs; use `@mermanjs/web*` for br
 The native package is the recommended choice when a supported platform binary is available. Use
 this package when a deployment target cannot load the native package or when a single portable
 Node artifact is more useful than native startup and throughput.
+
+## Compiled themes (unreleased)
+
+The current source interface uses Options JSON 3; published alpha.6 packages use Options 2.
+Experimental compiled-theme operations require a matching artifact that exposes them; a package
+version alone does not establish their availability. Select a preset through the closed `theme` group:
+
+```js
+const catalog = JSON.parse(engine.metadataJson("theme-catalog"));
+const themedSvg = await engine.renderSvg("flowchart LR\nA --> B", {
+  optionsJson: JSON.stringify({ version: 3, theme: { preset: "spotless" } }),
+});
+```
+
+Catalog `available` means that the recipe can compile under the current resource policy.
+Presets remain alpha; availability and unknown profile/admission IDs never grant Portable
+support. Use `executeOperation()` or `executeOperationSync()` with operation IDs
+`materialize-theme-json`, `describe-theme-support-json`, or `export-theme-preset-json` for
+shared definition JSON, support queries and preset export. Materialization returns a complete
+spec that can be passed as `theme: { spec }`; no intermediate file is required. Replace old
+`presentation.theme` inputs and `presentation-catalog` metadata calls when upgrading.

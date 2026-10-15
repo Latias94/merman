@@ -1,7 +1,7 @@
 # ADR 0076: Capability-Driven Feature And Package Surfaces
 
 - Status: accepted; native prebuilt SKU policy superseded by ADR-0079; Rustdoc integration
-  ownership amended by ADR-0082; default feature closure amended by ADR-0085 and ADR-0088;
+  ownership amended by ADR-0087; default feature closure amended by ADR-0085 and ADR-0088;
   diagram selectors and artifact schema superseded by [ADR-0091](0091-selectable-diagram-families.md).
   Original schema references and admission wording below record the earlier decision.
 - Date: 2026-07-22
@@ -102,7 +102,7 @@ Negative profiles, one-feature-per-diagram designs, and incidental dependency na
 Named reusable layout engines are valid because users select their Mermaid behavior directly;
 `math` deliberately hides the current RaTeX implementation.
 
-ADR-0082 supersedes only the assumption that the `merman-rustdoc` integration crate is the sole
+ADR-0087 supersedes only the assumption that the `merman-rustdoc` integration crate is the sole
 Rustdoc product boundary. It adds independently owned checked generation through the CLI. ADR-0085
 supersedes only the membership of the facade and Rustdoc `complete-svg` aggregate and the default
 CLI's ELK inclusion; this ADR's capability vocabulary, positive-feature rules, and artifact-profile

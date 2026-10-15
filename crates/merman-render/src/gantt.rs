@@ -11,6 +11,11 @@ use std::fmt::Write as _;
 
 use merman_core::diagrams::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 
+mod task_bar;
+mod theme;
+use task_bar::GanttTaskBarState;
+pub(crate) use theme::{GanttTaskTheme, GanttTaskThemeReceipt};
+
 // Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
 const MS_PER_DAY: i64 = 86_400_000;
@@ -948,10 +953,16 @@ pub(crate) fn layout_gantt_diagram_typed(
     model: &GanttDiagramRenderModel,
     diagram_title: Option<&str>,
     config: &serde_json::Value,
+    task_theme: &GanttTaskTheme,
     text_measurer: &dyn TextMeasurer,
     container_width: f64,
     local_time_zone: &merman_core::time::LocalTimeZone,
 ) -> Result<GanttDiagramLayout> {
+    if task_theme.task_count() != model.tasks.len() {
+        return Err(crate::Error::InvalidModel {
+            message: "Gantt task theme count did not match the semantic model".to_string(),
+        });
+    }
     let mut m = model.clone();
     let title = m.title.as_deref().or(diagram_title).map(str::to_owned);
 
@@ -963,8 +974,8 @@ pub(crate) fn layout_gantt_diagram_typed(
     let right_padding = cfg_f64(gantt_cfg, &["rightPadding"]).unwrap_or(75.0);
     let grid_line_start_padding = cfg_f64(gantt_cfg, &["gridLineStartPadding"]).unwrap_or(35.0);
     let title_top_margin = cfg_f64(gantt_cfg, &["titleTopMargin"]).unwrap_or(25.0);
-    let font_size = cfg_f64(gantt_cfg, &["fontSize"]).unwrap_or(11.0);
-    let section_font_size = cfg_f64(gantt_cfg, &["sectionFontSize"]).unwrap_or(11.0);
+    let font_size = task_theme.css_binding().task_font_size;
+    let section_font_size = task_theme.css_binding().section_font_size;
     let number_section_styles = cfg_i64(gantt_cfg, &["numberSectionStyles"]).unwrap_or(4);
 
     let cfg_display_mode = gantt_cfg
@@ -1058,8 +1069,14 @@ pub(crate) fn layout_gantt_diagram_typed(
         && (!m.excludes.is_empty() || !m.includes.is_empty())
         && span_ms <= max_exclude_span_ms;
 
-    // Sort by start time for rendering.
-    m.tasks.sort_by_key(|a| a.start_ms);
+    // Sort by start time for rendering while retaining the source semantic occurrence. Theme
+    // selectors are resolved against source order, so a render-order index is not interchangeable
+    // with the semantic occurrence index.
+    let mut indexed_tasks = std::mem::take(&mut m.tasks)
+        .into_iter()
+        .enumerate()
+        .collect::<Vec<_>>();
+    indexed_tasks.sort_by_key(|(_, task)| task.start_ms);
 
     // Exclude day ranges.
     let mut excludes_layout: Vec<GanttExcludeRangeLayout> = Vec::new();
@@ -1127,7 +1144,7 @@ pub(crate) fn layout_gantt_diagram_typed(
     // `startTime`). This means the row insertion order is *not* necessarily ascending by `order`
     // (e.g. forward references can cause `order=0` to have the latest start date).
     let mut row_orders: Vec<i64> = Vec::new();
-    for t in &m.tasks {
+    for (_, t) in &indexed_tasks {
         if t.vert {
             continue;
         }
@@ -1138,11 +1155,10 @@ pub(crate) fn layout_gantt_diagram_typed(
 
     let mut rows: Vec<GanttRowLayout> = Vec::new();
     for order in &row_orders {
-        let ttype = m
-            .tasks
+        let ttype = indexed_tasks
             .iter()
-            .find(|t| t.order == *order)
-            .map(|t| t.task_type.clone())
+            .find(|(_, t)| t.order == *order)
+            .map(|(_, t)| t.task_type.clone())
             .unwrap_or_default();
 
         let sec_num = gantt_section_class_suffix(&ttype, &categories, number_section_styles);
@@ -1161,14 +1177,9 @@ pub(crate) fn layout_gantt_diagram_typed(
     // Tasks (bars + labels).
     // Mermaid gantt task labels inherit the diagram font family (defaulting to
     // `"trebuchet ms", verdana, arial, sans-serif`), not the axis group's `sans-serif`.
-    // Use the effective Mermaid font family here so `getBBox().width`-derived `width-*` class
-    // values match upstream SVG baselines.
-    let task_font_family = gantt_cfg
-        .get("fontFamily")
-        .and_then(|v| v.as_str())
-        .or_else(|| config.get("fontFamily").and_then(|v| v.as_str()))
-        .unwrap_or("\"trebuchet ms\", verdana, arial, sans-serif")
-        .to_string();
+    // The family-local theme plan owns this value so measurement and terminal CSS share one
+    // resolved winner.
+    let task_font_family = task_theme.font_family_css().to_string();
     let text_style = TextStyle {
         font_family: Some(task_font_family.clone()),
         font_size,
@@ -1177,7 +1188,10 @@ pub(crate) fn layout_gantt_diagram_typed(
     };
 
     let mut tasks: Vec<GanttTaskLayout> = Vec::new();
-    for t in &m.tasks {
+    for (semantic_task_index, t) in &indexed_tasks {
+        let task_radius = task_theme
+            .radius_px(*semantic_task_index)
+            .expect("Gantt task theme count was validated before layout");
         let start_x = scale_time(t.start_ms, min_ms, max_ms, range);
         let end_x = scale_time(t.end_ms, min_ms, max_ms, range);
         let render_end_x = scale_time(t.render_end_ms.unwrap_or(t.end_ms), min_ms, max_ms, range);
@@ -1207,25 +1221,8 @@ pub(crate) fn layout_gantt_diagram_typed(
 
         let sec_num = gantt_section_class_suffix(&t.task_type, &categories, number_section_styles);
 
-        let mut task_class = String::new();
-        if t.active {
-            if t.crit {
-                task_class.push_str(" activeCrit");
-            } else {
-                task_class.push_str(" active");
-            }
-        } else if t.done {
-            if t.crit {
-                task_class.push_str(" doneCrit");
-            } else {
-                task_class.push_str(" done");
-            }
-        } else if t.crit {
-            task_class.push_str(" crit");
-        }
-        if task_class.is_empty() {
-            task_class.push_str(" task");
-        }
+        let task_state_class = GanttTaskBarState::from_task(t).bar_class_prefix();
+        let mut task_class = format!(" {task_state_class}");
         if t.milestone {
             task_class = format!(" milestone{task_class}");
         }
@@ -1244,8 +1241,8 @@ pub(crate) fn layout_gantt_diagram_typed(
             y: bar_y,
             width: bar_width,
             height: bar_height_actual,
-            rx: 3.0,
-            ry: 3.0,
+            rx: task_radius,
+            ry: task_radius,
             class: format!("task{task_class}"),
         };
 
@@ -1411,6 +1408,16 @@ pub(crate) fn layout_gantt_diagram_typed(
         max_y: height,
     });
 
+    if task_theme.needs_layout_binding()
+        && !task_theme
+            .bind_layout_occurrences(indexed_tasks.into_iter().map(|(index, _)| index).collect())
+    {
+        return Err(crate::Error::InvalidModel {
+            message: "Gantt task theme could not bind semantic occurrences to layout order"
+                .to_string(),
+        });
+    }
+
     Ok(GanttDiagramLayout {
         bounds,
         width,
@@ -1493,10 +1500,12 @@ mod tests {
         });
 
         let utc = merman_core::time::LocalTimeZone::utc();
+        let task_theme = super::GanttTaskTheme::baseline(&model.tasks);
         let layout = layout_gantt_diagram_typed(
             &model,
             None,
             &serde_json::json!({}),
+            &task_theme,
             &DeterministicTextMeasurer::default(),
             800.0,
             &utc,

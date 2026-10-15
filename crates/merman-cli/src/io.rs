@@ -304,7 +304,7 @@ pub(crate) fn read_named_text_file_controlled(
         .map_err(controlled_auxiliary_input_error)
 }
 
-#[cfg(feature = "icons")]
+#[cfg(feature = "svg")]
 pub(crate) fn read_named_bytes_file_controlled(
     path: impl AsRef<Path>,
     label: &str,

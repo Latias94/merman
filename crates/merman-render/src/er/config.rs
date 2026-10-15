@@ -29,8 +29,23 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(super) fn layout_settings(&self, direction: &str) -> ErLayoutSettings {
-        let label_style = self.text_style();
+    #[cfg(test)]
+    pub(super) fn layout_settings_with_font_family(
+        &self,
+        direction: &str,
+        font_family_override: Option<&str>,
+    ) -> ErLayoutSettings {
+        self.layout_settings_with_resolved_typography(direction, font_family_override, None)
+    }
+
+    pub(super) fn layout_settings_with_resolved_typography(
+        &self,
+        direction: &str,
+        font_family_override: Option<&str>,
+        font_size_override: Option<f64>,
+    ) -> ErLayoutSettings {
+        let label_style =
+            self.text_style_with_resolved_typography(font_family_override, font_size_override);
         let attr_style = TextStyle {
             font_family: label_style.font_family.clone(),
             font_size: label_style.font_size.max(1.0),
@@ -64,9 +79,25 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings(&self) -> ErRenderSettings {
-        let font_family = self.font_family_css();
-        let font_size = self.font_size().max(1.0);
+    #[cfg(test)]
+    pub(crate) fn render_settings_with_font_family(
+        &self,
+        font_family_override: Option<&str>,
+    ) -> ErRenderSettings {
+        self.render_settings_with_resolved_typography(font_family_override, None)
+    }
+
+    pub(crate) fn render_settings_with_resolved_typography(
+        &self,
+        font_family_override: Option<&str>,
+        font_size_override: Option<f64>,
+    ) -> ErRenderSettings {
+        let font_family = font_family_override
+            .map(str::to_owned)
+            .unwrap_or_else(|| self.font_family_css());
+        let font_size = font_size_override
+            .unwrap_or_else(|| self.font_size())
+            .max(1.0);
         ErRenderSettings {
             is_elk_layout: self.is_elk_layout(),
             diagram_look: config_diagram_look(self.effective_config)
@@ -103,7 +134,7 @@ impl<'a> ErConfigView<'a> {
     pub(crate) fn entity_measurement_settings(&self) -> ErEntityMeasurementSettings {
         ErEntityMeasurementSettings {
             html_labels_raw: self.root_bool("htmlLabels").unwrap_or(false),
-            wrap_mode: self.entity_html_label_wrap_mode(),
+            label_wrap_mode: self.entity_html_label_wrap_mode(),
             diagram_padding: self
                 .er_f64("diagramPadding")
                 .unwrap_or(DEFAULT_DIAGRAM_PADDING),
@@ -121,10 +152,28 @@ impl<'a> ErConfigView<'a> {
         }
     }
 
-    pub(crate) fn text_style(&self) -> TextStyle {
+    #[cfg(test)]
+    pub(crate) fn text_style_with_font_family(
+        &self,
+        font_family_override: Option<&str>,
+    ) -> TextStyle {
+        self.text_style_with_resolved_typography(font_family_override, None)
+    }
+
+    pub(crate) fn text_style_with_resolved_typography(
+        &self,
+        font_family_override: Option<&str>,
+        font_size_override: Option<f64>,
+    ) -> TextStyle {
         TextStyle {
-            font_family: Some(self.font_family_css()),
-            font_size: self.font_size(),
+            font_family: Some(
+                font_family_override
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| self.font_family_css()),
+            ),
+            font_size: font_size_override
+                .unwrap_or_else(|| self.font_size())
+                .max(1.0),
             font_weight: None,
             font_style: None,
         }
@@ -144,7 +193,10 @@ impl<'a> ErConfigView<'a> {
             .unwrap_or(true)
     }
 
-    fn entity_html_label_wrap_mode(&self) -> WrapMode {
+    pub(crate) fn entity_html_label_wrap_mode(&self) -> WrapMode {
+        // Mermaid's ER box painter reads the root config directly. This deliberately does
+        // not use `getEffectiveHtmlLabels`: `flowchart.htmlLabels` controls relationship
+        // labels, but does not override ER entity, attribute, or subgraph labels.
         if self.root_bool("htmlLabels").unwrap_or(true) {
             WrapMode::HtmlLike
         } else {
@@ -217,16 +269,17 @@ pub(super) struct ErLayoutSettings {
     pub(super) entity_measurement: ErEntityMeasurementSettings,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ErEntityMeasurementSettings {
     pub(crate) html_labels_raw: bool,
-    pub(crate) wrap_mode: WrapMode,
+    pub(crate) label_wrap_mode: WrapMode,
     pub(crate) diagram_padding: f64,
     pub(crate) entity_padding: f64,
     pub(crate) min_entity_width: f64,
     pub(crate) wrapping_width_px: i64,
 }
 
+#[derive(Debug)]
 pub(crate) struct ErRenderSettings {
     pub(crate) is_elk_layout: bool,
     pub(crate) diagram_look: String,
@@ -284,7 +337,7 @@ mod tests {
             }
         });
 
-        let settings = ErConfigView::new(&cfg).layout_settings("LR");
+        let settings = ErConfigView::new(&cfg).layout_settings_with_font_family("LR", None);
 
         assert!(!ErConfigView::new(&cfg).is_elk_layout());
         assert_eq!(settings.graph.rankdir, RankDir::LR);
@@ -300,6 +353,37 @@ mod tests {
         assert_eq!(settings.attr_style.font_size, 22.0);
         assert_eq!(settings.relationship_label_style.font_size, 14.0);
         assert!(!settings.relationship_html_labels);
+    }
+
+    #[test]
+    fn er_resolved_font_size_preserves_root_fallback_and_relationship_role_owner() {
+        let config = json!({
+            "fontSize": 10,
+            "er": {
+                "fontSize": 30
+            }
+        });
+        let view = ErConfigView::new(&config);
+
+        let configured = view.layout_settings_with_resolved_typography("TB", None, None);
+        assert_eq!(configured.label_style.font_size, 10.0);
+        assert_eq!(configured.attr_style.font_size, 10.0);
+        assert_eq!(configured.relationship_label_style.font_size, 14.0);
+
+        let typed = view.layout_settings_with_resolved_typography("TB", None, Some(24.0));
+        assert_eq!(typed.label_style.font_size, 24.0);
+        assert_eq!(typed.attr_style.font_size, 24.0);
+        assert_eq!(typed.relationship_label_style.font_size, 14.0);
+
+        let er_fallback = ErConfigView::new(&json!({
+            "er": {
+                "fontSize": 30
+            }
+        }))
+        .layout_settings_with_resolved_typography("TB", None, None);
+        assert_eq!(er_fallback.label_style.font_size, 30.0);
+        assert_eq!(er_fallback.attr_style.font_size, 30.0);
+        assert_eq!(er_fallback.relationship_label_style.font_size, 14.0);
     }
 
     #[test]
@@ -349,7 +433,7 @@ mod tests {
         let settings = ErConfigView::new(&cfg).entity_measurement_settings();
 
         assert!(!settings.html_labels_raw);
-        assert_eq!(settings.wrap_mode, WrapMode::HtmlLike);
+        assert_eq!(settings.label_wrap_mode, WrapMode::HtmlLike);
         assert_eq!(settings.diagram_padding, 21.0);
         assert_eq!(settings.entity_padding, 17.0);
         assert_eq!(settings.min_entity_width, 120.0);
@@ -371,7 +455,7 @@ mod tests {
             }
         });
 
-        let settings = ErConfigView::new(&cfg).render_settings();
+        let settings = ErConfigView::new(&cfg).render_settings_with_font_family(None);
 
         assert_eq!(settings.is_elk_layout, cfg!(feature = "layout-elk"));
         assert_eq!(settings.diagram_look, "handDrawn");
@@ -381,13 +465,25 @@ mod tests {
         assert_eq!(settings.insert_title_top_margin, 12.0);
         assert!(!settings.use_max_width);
         assert!(!settings.relationship_html_labels);
+
+        let flowchart_fallback = ErConfigView::new(&json!({
+            "flowchart": { "htmlLabels": false }
+        }))
+        .render_settings_with_font_family(None);
+        assert_eq!(
+            flowchart_fallback.entity_html_label_wrap_mode,
+            WrapMode::HtmlLike
+        );
         assert_eq!(settings.entity_html_label_wrap_mode, WrapMode::SvgLike);
-        assert_eq!(settings.entity_measurement.wrap_mode, WrapMode::SvgLike);
+        assert_eq!(
+            settings.entity_measurement.label_wrap_mode,
+            WrapMode::SvgLike
+        );
 
         let root_fallback = ErConfigView::new(&json!({
             "titleTopMargin": 33
         }))
-        .render_settings();
+        .render_settings_with_font_family(None);
         assert_eq!(root_fallback.title_top_margin, 33.0);
         assert_eq!(
             root_fallback.insert_title_top_margin,

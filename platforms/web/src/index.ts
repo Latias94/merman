@@ -1,6 +1,5 @@
 export {
   BINDING_STATUS_CODE_NAMES,
-  BUNDLED_THEME_PRESETS,
   DIAGRAMMATIC_ASCII_DIAGRAMS,
   SYSTEM_ADAPTER_IDS,
   TEXT_MEASUREMENT_PROVIDER_IDS,
@@ -14,11 +13,10 @@ export {
   isAsciiDiagramType,
   isBindingErrorPayload,
   isBindingStatusCodeName,
-  isBundledThemePresetName,
   isDiagramType,
   isThemeName,
-  normalizeBundledThemePresetName,
   normalizeThemeName,
+  tryAsKnownDiagramType,
 } from "./public-catalog.js";
 export type * from "./public-catalog.js";
 export type * from "./public-types.js";
@@ -66,11 +64,12 @@ export {
   initMerman,
   isMermanInitialized,
   packageVersion,
-  presentationCatalog,
   runtimeCatalog,
   supportedDiagrams,
   supportedThemes,
+  themeCatalog,
   transportApiVersion,
+  WEB_TRANSPORT_API_VERSION,
   withResourceOptions,
 } from "./runtime-core.js";
 export {
@@ -91,15 +90,20 @@ export {
 } from "./runtime-ascii.js";
 export {
   createBrowserTextMeasurementSession,
+  describeThemeSupport,
+  exportThemePreset,
   edgeGeometryJson,
   edgeGeometryJsonWithTextMeasurer,
   edgeGeometryObject,
   layoutJson,
   layoutJsonWithTextMeasurer,
   layoutObject,
+  materializeTheme,
   parseJson,
   parseObject,
   renderSvg,
+  renderSvgResult,
+  renderSvgResultWithTextMeasurer,
   renderSvgElement,
   renderSvgToElement,
   renderSvgWithTextMeasurer,

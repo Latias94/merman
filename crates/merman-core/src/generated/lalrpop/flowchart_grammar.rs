@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.1"
-// sha3: a5463d5921cef5914624d45988e7c267e5b2ee2e23ec6f1dbc974dd2bcfe433e
+// sha3: fde118c36750a97112a2d5bb551d74ae2e6d671a7b867a08665e7e950546549b
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
   FlowNodeProvenance, FlowNodeSyntax, LabeledText, LinkStyleStmt, LinkToken, Node, NodeLabelToken,
@@ -503,6 +503,7 @@ mod __parse__FlowchartAst {
     fn __expected_tokens_from_states<
         '__0,
         '__1,
+        '__2,
     >(
         __states: &[i8],
         _: core::marker::PhantomData<()>,
@@ -516,14 +517,15 @@ mod __parse__FlowchartAst {
             }
         }).collect()
     }
-    struct __StateMachine<'__0, '__1>
+    struct __StateMachine<'__0, '__1, '__2>
     where
     {
         statements: &'__0 mut StatementArena,
         control: &'__1 crate::OperationControl,
+        edge_budget: &'__2 std::cell::Cell<usize>,
         __phantom: core::marker::PhantomData<()>,
     }
-    impl<'__0, '__1> __state_machine::ParserDefinition for __StateMachine<'__0, '__1>
+    impl<'__0, '__1, '__2> __state_machine::ParserDefinition for __StateMachine<'__0, '__1, '__2>
     where
     {
         type Location = usize;
@@ -607,6 +609,7 @@ mod __parse__FlowchartAst {
             __reduce(
                 self.statements,
                 self.control,
+                self.edge_budget,
                 action,
                 start_location,
                 states,
@@ -712,10 +715,11 @@ mod __parse__FlowchartAst {
     fn __simulate_reduce<
         '__0,
         '__1,
+        '__2,
     >(
         __reduce_index: i8,
         _: core::marker::PhantomData<()>,
-    ) -> __state_machine::SimulatedReduce<__StateMachine<'__0, '__1>>
+    ) -> __state_machine::SimulatedReduce<__StateMachine<'__0, '__1, '__2>>
     {
         match __reduce_index {
             0 => {
@@ -1132,6 +1136,7 @@ mod __parse__FlowchartAst {
             &self,
             statements: &mut StatementArena,
             control: &crate::OperationControl,
+            edge_budget: &std::cell::Cell<usize>,
             __tokens0: __TOKENS,
         ) -> Result<FlowchartAst, __lalrpop_util::ParseError<usize, Tok, crate::diagrams::flowchart::LexError>>
         {
@@ -1141,6 +1146,7 @@ mod __parse__FlowchartAst {
                 __StateMachine {
                     statements,
                     control,
+                    edge_budget,
                     __phantom: core::marker::PhantomData::<()>,
                 },
                 __tokens,
@@ -1150,6 +1156,7 @@ mod __parse__FlowchartAst {
     fn __accepts<
         '__0,
         '__1,
+        '__2,
     >(
         __error_state: Option<i8>,
         __states: &[i8],
@@ -1185,6 +1192,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __action: i8,
         __lookahead_start: Option<&usize>,
         __states: &mut alloc::vec::Vec<i8>,
@@ -1194,10 +1202,10 @@ mod __parse__FlowchartAst {
     {
         let (__pop_states, __nonterminal) = match __action {
             0 => {
-                __reduce0(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce0(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             1 => {
-                __reduce1(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce1(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             2 => {
                 // Chain = NodeGroup, EdgeSeg+ => ActionFn(23);
@@ -1206,7 +1214,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant21(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym1.2.clone();
-                let __nt = match super::__action23::<>(statements, control, __sym0, __sym1) {
+                let __nt = match super::__action23::<>(statements, control, edge_budget, __sym0, __sym1) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1214,140 +1222,140 @@ mod __parse__FlowchartAst {
                 (2, 2)
             }
             3 => {
-                __reduce3(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce3(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             4 => {
-                __reduce4(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce4(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             5 => {
-                __reduce5(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce5(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             6 => {
-                __reduce6(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce6(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             7 => {
-                __reduce7(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce7(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             8 => {
-                __reduce8(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce8(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             9 => {
-                __reduce9(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce9(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             10 => {
-                __reduce10(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce10(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             11 => {
-                __reduce11(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce11(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             12 => {
-                __reduce12(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce12(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             13 => {
-                __reduce13(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce13(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             14 => {
-                __reduce14(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce14(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             15 => {
-                __reduce15(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce15(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             16 => {
-                __reduce16(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce16(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             17 => {
-                __reduce17(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce17(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             18 => {
-                __reduce18(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce18(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             19 => {
-                __reduce19(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce19(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             20 => {
-                __reduce20(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce20(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             21 => {
-                __reduce21(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce21(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             22 => {
-                __reduce22(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce22(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             23 => {
-                __reduce23(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce23(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             24 => {
-                __reduce24(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce24(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             25 => {
-                __reduce25(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce25(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             26 => {
-                __reduce26(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce26(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             27 => {
-                __reduce27(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce27(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             28 => {
-                __reduce28(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce28(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             29 => {
-                __reduce29(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce29(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             30 => {
-                __reduce30(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce30(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             31 => {
-                __reduce31(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce31(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             32 => {
-                __reduce32(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce32(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             33 => {
-                __reduce33(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce33(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             34 => {
-                __reduce34(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce34(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             35 => {
-                __reduce35(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce35(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             36 => {
-                __reduce36(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce36(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             37 => {
-                __reduce37(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce37(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             38 => {
-                __reduce38(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce38(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             39 => {
-                __reduce39(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce39(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             40 => {
-                __reduce40(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce40(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             41 => {
-                __reduce41(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce41(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             42 => {
-                __reduce42(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce42(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             43 => {
-                __reduce43(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce43(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             44 => {
-                __reduce44(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce44(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             45 => {
-                __reduce45(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce45(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             46 => {
                 // Statement = Chain => ActionFn(12);
                 let __sym0 = __pop_Variant13(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action12::<>(statements, control, __sym0) {
+                let __nt = match super::__action12::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1361,7 +1369,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant1(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym1.2.clone();
-                let __nt = match super::__action74::<>(statements, control, __sym0, __sym1) {
+                let __nt = match super::__action74::<>(statements, control, edge_budget, __sym0, __sym1) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1373,7 +1381,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant21(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action14::<>(statements, control, __sym0) {
+                let __nt = match super::__action14::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1385,7 +1393,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant22(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action15::<>(statements, control, __sym0) {
+                let __nt = match super::__action15::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1397,7 +1405,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant27(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action16::<>(statements, control, __sym0) {
+                let __nt = match super::__action16::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1409,7 +1417,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant2(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action17::<>(statements, control, __sym0) {
+                let __nt = match super::__action17::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1421,7 +1429,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant7(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action18::<>(statements, control, __sym0) {
+                let __nt = match super::__action18::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1433,7 +1441,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant8(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action19::<>(statements, control, __sym0) {
+                let __nt = match super::__action19::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1445,7 +1453,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant9(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action20::<>(statements, control, __sym0) {
+                let __nt = match super::__action20::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1457,7 +1465,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant10(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action21::<>(statements, control, __sym0) {
+                let __nt = match super::__action21::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1469,7 +1477,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant11(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = match super::__action22::<>(statements, control, __sym0) {
+                let __nt = match super::__action22::<>(statements, control, edge_budget, __sym0) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1485,7 +1493,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant0(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym3.2.clone();
-                let __nt = match super::__action8::<>(statements, control, __sym0, __sym1, __sym2, __sym3) {
+                let __nt = match super::__action8::<>(statements, control, edge_budget, __sym0, __sym1, __sym2, __sym3) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1493,10 +1501,10 @@ mod __parse__FlowchartAst {
                 (4, 22)
             }
             58 => {
-                __reduce58(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce58(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             59 => {
-                __reduce59(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce59(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             60 => {
                 // Statements = Statement, StatementRest => ActionFn(7);
@@ -1505,7 +1513,7 @@ mod __parse__FlowchartAst {
                 let __sym0 = __pop_Variant25(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym1.2.clone();
-                let __nt = match super::__action7::<>(statements, control, __sym0, __sym1) {
+                let __nt = match super::__action7::<>(statements, control, edge_budget, __sym0, __sym1) {
                     Ok(v) => v,
                     Err(e) => return Some(Err(e)),
                 };
@@ -1513,23 +1521,23 @@ mod __parse__FlowchartAst {
                 (2, 23)
             }
             61 => {
-                __reduce61(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce61(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             62 => {
-                __reduce62(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce62(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             63 => {
-                __reduce63(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce63(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             64 => {
-                __reduce64(statements, control, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
+                __reduce64(statements, control, edge_budget, __lookahead_start, __symbols, core::marker::PhantomData::<()>)
             }
             65 => {
                 // __FlowchartAst = FlowchartAst => ActionFn(0);
                 let __sym0 = __pop_Variant19(__symbols);
                 let __start = __sym0.0.clone();
                 let __end = __sym0.2.clone();
-                let __nt = super::__action0::<>(statements, control, __sym0);
+                let __nt = super::__action0::<>(statements, control, edge_budget, __sym0);
                 return Some(Ok(__nt));
             }
             _ => panic!("invalid action code {__action}")
@@ -1839,6 +1847,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1847,7 +1856,7 @@ mod __parse__FlowchartAst {
         // @L =  => ActionFn(54);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action54::<>(statements, control, &__start, &__end);
+        let __nt = super::__action54::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (0, 0)
     }
@@ -1855,6 +1864,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1863,7 +1873,7 @@ mod __parse__FlowchartAst {
         // @R =  => ActionFn(51);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action51::<>(statements, control, &__start, &__end);
+        let __nt = super::__action51::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant12(__nt), __end));
         (0, 1)
     }
@@ -1871,6 +1881,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1882,7 +1893,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action35::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action35::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant14(__nt), __end));
         (2, 3)
     }
@@ -1890,6 +1901,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1898,7 +1910,7 @@ mod __parse__FlowchartAst {
         // ClassOpt =  => ActionFn(36);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action36::<>(statements, control, &__start, &__end);
+        let __nt = super::__action36::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant14(__nt), __end));
         (0, 3)
     }
@@ -1906,6 +1918,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1915,7 +1928,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action52::<>(statements, control, __sym0);
+        let __nt = super::__action52::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (1, 4)
     }
@@ -1923,6 +1936,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1931,7 +1945,7 @@ mod __parse__FlowchartAst {
         // Direction? =  => ActionFn(53);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action53::<>(statements, control, &__start, &__end);
+        let __nt = super::__action53::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (0, 4)
     }
@@ -1939,6 +1953,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1948,7 +1963,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action45::<>(statements, control, __sym0);
+        let __nt = super::__action45::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (1, 5)
     }
@@ -1956,6 +1971,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1964,7 +1980,7 @@ mod __parse__FlowchartAst {
         // EdgeId? =  => ActionFn(46);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action46::<>(statements, control, &__start, &__end);
+        let __nt = super::__action46::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (0, 5)
     }
@@ -1972,6 +1988,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1981,7 +1998,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant5(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action43::<>(statements, control, __sym0);
+        let __nt = super::__action43::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant16(__nt), __end));
         (1, 6)
     }
@@ -1989,6 +2006,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -1997,7 +2015,7 @@ mod __parse__FlowchartAst {
         // EdgeLabel? =  => ActionFn(44);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action44::<>(statements, control, &__start, &__end);
+        let __nt = super::__action44::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant16(__nt), __end));
         (0, 6)
     }
@@ -2005,6 +2023,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2018,7 +2037,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action85::<>(statements, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action85::<>(statements, control, edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (4, 7)
     }
@@ -2026,6 +2045,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2038,7 +2058,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action86::<>(statements, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action86::<>(statements, control, edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (3, 7)
     }
@@ -2046,6 +2066,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2058,7 +2079,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action87::<>(statements, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action87::<>(statements, control, edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (3, 7)
     }
@@ -2066,6 +2087,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2077,7 +2099,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant4(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action88::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action88::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant17(__nt), __end));
         (2, 7)
     }
@@ -2085,6 +2107,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2094,7 +2117,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant17(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action49::<>(statements, control, __sym0);
+        let __nt = super::__action49::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant18(__nt), __end));
         (1, 8)
     }
@@ -2102,6 +2125,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2113,7 +2137,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant18(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action50::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action50::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant18(__nt), __end));
         (2, 8)
     }
@@ -2121,6 +2145,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2134,7 +2159,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant24(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action1::<>(statements, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action1::<>(statements, control, edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant19(__nt), __end));
         (4, 9)
     }
@@ -2142,6 +2167,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2153,7 +2179,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action75::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action75::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
@@ -2161,6 +2187,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2170,7 +2197,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action76::<>(statements, control, __sym0);
+        let __nt = super::__action76::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
@@ -2178,6 +2205,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2189,7 +2217,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action77::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action77::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
@@ -2197,6 +2225,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2206,7 +2235,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action78::<>(statements, control, __sym0);
+        let __nt = super::__action78::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
@@ -2214,6 +2243,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2225,7 +2255,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action79::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action79::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
@@ -2233,6 +2263,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2242,7 +2273,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action80::<>(statements, control, __sym0);
+        let __nt = super::__action80::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
@@ -2250,6 +2281,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2261,7 +2293,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action81::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action81::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (2, 10)
     }
@@ -2269,6 +2301,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2278,7 +2311,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action82::<>(statements, control, __sym0);
+        let __nt = super::__action82::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant20(__nt), __end));
         (1, 10)
     }
@@ -2286,6 +2319,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2295,7 +2329,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action89::<>(statements, control, __sym0);
+        let __nt = super::__action89::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
         (1, 11)
     }
@@ -2303,6 +2337,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2314,7 +2349,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action90::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action90::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
         (2, 11)
     }
@@ -2322,6 +2357,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2333,7 +2369,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action28::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action28::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant21(__nt), __end));
         (2, 12)
     }
@@ -2341,6 +2377,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2352,7 +2389,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action29::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action29::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (2, 13)
     }
@@ -2360,6 +2397,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2368,7 +2406,7 @@ mod __parse__FlowchartAst {
         // NodeGroupRest* =  => ActionFn(41);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action41::<>(statements, control, &__start, &__end);
+        let __nt = super::__action41::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (0, 14)
     }
@@ -2376,6 +2414,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2385,7 +2424,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant23(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action42::<>(statements, control, __sym0);
+        let __nt = super::__action42::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (1, 14)
     }
@@ -2393,6 +2432,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2402,7 +2442,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant22(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action39::<>(statements, control, __sym0);
+        let __nt = super::__action39::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (1, 15)
     }
@@ -2410,6 +2450,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2421,7 +2462,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant23(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action40::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action40::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant23(__nt), __end));
         (2, 15)
     }
@@ -2429,6 +2470,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2442,7 +2484,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action91::<>(statements, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action91::<>(statements, control, edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (4, 16)
     }
@@ -2450,6 +2492,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2462,7 +2505,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action92::<>(statements, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action92::<>(statements, control, edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (3, 16)
     }
@@ -2470,6 +2513,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2481,7 +2525,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action70::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action70::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (2, 16)
     }
@@ -2489,6 +2533,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2502,7 +2547,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action93::<>(statements, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action93::<>(statements, control, edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (4, 17)
     }
@@ -2510,6 +2555,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2522,7 +2568,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action94::<>(statements, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action94::<>(statements, control, edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (3, 17)
     }
@@ -2530,6 +2576,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2542,7 +2589,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym2.2.clone();
-        let __nt = super::__action72::<>(statements, control, __sym0, __sym1, __sym2);
+        let __nt = super::__action72::<>(statements, control, edge_budget, __sym0, __sym1, __sym2);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (3, 17)
     }
@@ -2550,6 +2597,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2561,7 +2609,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action73::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action73::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant22(__nt), __end));
         (2, 17)
     }
@@ -2569,6 +2617,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2577,7 +2626,7 @@ mod __parse__FlowchartAst {
         // Seps =  => ActionFn(10);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action10::<>(statements, control, &__start, &__end);
+        let __nt = super::__action10::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant24(__nt), __end));
         (0, 18)
     }
@@ -2585,6 +2634,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2596,7 +2646,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action11::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action11::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant24(__nt), __end));
         (2, 18)
     }
@@ -2604,6 +2654,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2615,7 +2666,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym1.2.clone();
-        let __nt = super::__action24::<>(statements, control, __sym0, __sym1);
+        let __nt = super::__action24::<>(statements, control, edge_budget, __sym0, __sym1);
         __symbols.push((__start, __Symbol::Variant24(__nt), __end));
         (2, 19)
     }
@@ -2623,6 +2674,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2632,7 +2684,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant1(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action37::<>(statements, control, __sym0);
+        let __nt = super::__action37::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (1, 20)
     }
@@ -2640,6 +2692,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2648,7 +2701,7 @@ mod __parse__FlowchartAst {
         // ShapeData? =  => ActionFn(38);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action38::<>(statements, control, &__start, &__end);
+        let __nt = super::__action38::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant15(__nt), __end));
         (0, 20)
     }
@@ -2656,6 +2709,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2665,7 +2719,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant24(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action9::<>(statements, control, __sym0);
+        let __nt = super::__action9::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant26(__nt), __end));
         (1, 22)
     }
@@ -2673,6 +2727,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2681,7 +2736,7 @@ mod __parse__FlowchartAst {
         // Statements =  => ActionFn(6);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action6::<>(statements, control, &__start, &__end);
+        let __nt = super::__action6::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant26(__nt), __end));
         (0, 23)
     }
@@ -2689,6 +2744,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2703,7 +2759,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym4.2.clone();
-        let __nt = super::__action95::<>(statements, control, __sym0, __sym1, __sym2, __sym3, __sym4);
+        let __nt = super::__action95::<>(statements, control, edge_budget, __sym0, __sym1, __sym2, __sym3, __sym4);
         __symbols.push((__start, __Symbol::Variant27(__nt), __end));
         (5, 24)
     }
@@ -2711,6 +2767,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2724,7 +2781,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant0(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym3.2.clone();
-        let __nt = super::__action96::<>(statements, control, __sym0, __sym1, __sym2, __sym3);
+        let __nt = super::__action96::<>(statements, control, edge_budget, __sym0, __sym1, __sym2, __sym3);
         __symbols.push((__start, __Symbol::Variant27(__nt), __end));
         (4, 24)
     }
@@ -2732,6 +2789,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2741,7 +2799,7 @@ mod __parse__FlowchartAst {
         let __sym0 = __pop_Variant6(__symbols);
         let __start = __sym0.0.clone();
         let __end = __sym0.2.clone();
-        let __nt = super::__action47::<>(statements, control, __sym0);
+        let __nt = super::__action47::<>(statements, control, edge_budget, __sym0);
         __symbols.push((__start, __Symbol::Variant28(__nt), __end));
         (1, 25)
     }
@@ -2749,6 +2807,7 @@ mod __parse__FlowchartAst {
     >(
         statements: &mut StatementArena,
         control: &crate::OperationControl,
+        edge_budget: &std::cell::Cell<usize>,
         __lookahead_start: Option<&usize>,
         __symbols: &mut alloc::vec::Vec<(usize,__Symbol<>,usize)>,
         _: core::marker::PhantomData<()>,
@@ -2757,7 +2816,7 @@ mod __parse__FlowchartAst {
         // SubgraphHeader? =  => ActionFn(48);
         let __start = __lookahead_start.cloned().or_else(|| __symbols.last().map(|s| s.2)).unwrap_or_default();
         let __end = __start;
-        let __nt = super::__action48::<>(statements, control, &__start, &__end);
+        let __nt = super::__action48::<>(statements, control, edge_budget, &__start, &__end);
         __symbols.push((__start, __Symbol::Variant28(__nt), __end));
         (0, 25)
     }
@@ -2771,6 +2830,7 @@ fn __action0<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, FlowchartAst, usize),
 ) -> FlowchartAst
 {
@@ -2783,6 +2843,7 @@ fn __action1<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, _lead, _): (usize, (), usize),
     (_, h, _): (usize, (String, Option<String>, SourceSpan), usize),
     (_, _s, _): (usize, (), usize),
@@ -2801,6 +2862,7 @@ fn __action2<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2816,6 +2878,7 @@ fn __action3<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2831,6 +2894,7 @@ fn __action4<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2846,6 +2910,7 @@ fn __action5<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, _, _): (usize, Tok, usize),
     (_, d, _): (usize, Option<String>, usize),
@@ -2861,6 +2926,7 @@ fn __action6<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> StatementList
@@ -2874,6 +2940,7 @@ fn __action7<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, s, _): (usize, StatementId, usize),
     (_, rest, _): (usize, StatementList, usize),
 ) -> Result<StatementList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
@@ -2887,6 +2954,7 @@ fn __action8<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, _sep, _): (usize, Tok, usize),
     (_, _seps, _): (usize, (), usize),
     (_, s, _): (usize, StatementId, usize),
@@ -2902,6 +2970,7 @@ fn __action9<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, (), usize),
 ) -> StatementList
 {
@@ -2914,6 +2983,7 @@ fn __action10<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 )
@@ -2926,6 +2996,7 @@ fn __action11<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, Tok, usize),
     (_, __1, _): (usize, (), usize),
 )
@@ -2938,6 +3009,7 @@ fn __action12<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, (Vec<Vec<Node>>, Vec<Vec<Edge>>), usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -2950,6 +3022,7 @@ fn __action13<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -2969,6 +3042,7 @@ fn __action14<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, g, _): (usize, Vec<Node>, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -2981,6 +3055,7 @@ fn __action15<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, n, _): (usize, Node, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -2993,6 +3068,7 @@ fn __action16<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, sg, _): (usize, SubgraphBlock, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -3005,6 +3081,7 @@ fn __action17<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, d, _): (usize, DirectionStatementToken, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -3017,6 +3094,7 @@ fn __action18<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, s, _): (usize, StyleStmt, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -3029,6 +3107,7 @@ fn __action19<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, ClassDefStmt, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -3041,6 +3120,7 @@ fn __action20<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, ClassAssignStmt, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -3053,6 +3133,7 @@ fn __action21<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, c, _): (usize, ClickStmt, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -3065,6 +3146,7 @@ fn __action22<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, ls, _): (usize, LinkStyleStmt, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
@@ -3077,6 +3159,7 @@ fn __action23<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, start, _): (usize, Vec<Node>, usize),
     (_, segs, _): (usize, alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>, usize),
 ) -> Result<(Vec<Vec<Node>>, Vec<Vec<Edge>>),__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
@@ -3087,7 +3170,30 @@ fn __action23<
 
     let mut prev_group = start;
     for (eid, link, label, next_group) in segs {
-      let mut segment_edges: Vec<Edge> = Vec::new();
+      let expansion_span = prev_group
+        .first()
+        .and_then(|node| node.id_span)
+        .or_else(|| next_group.first().and_then(|node| node.id_span));
+      let requested_edges = prev_group.len().checked_mul(next_group.len()).ok_or_else(|| {
+        crate::diagrams::flowchart::flowchart_edge_limit_error(
+          "Flowchart edge limit exceeded: edge-group expansion exceeds the maxEdges budget",
+          expansion_span,
+        )
+      })?;
+      let remaining_edges = edge_budget.get();
+      if requested_edges > remaining_edges {
+        return Err(lalrpop_util::ParseError::User {
+          error: crate::diagrams::flowchart::flowchart_edge_limit_error(
+            format!(
+              "Flowchart edge limit exceeded: this edge group would create {requested_edges} edges, but only {remaining_edges} of the maxEdges budget remain",
+            ),
+            expansion_span,
+          ),
+        });
+      }
+      edge_budget.set(remaining_edges - requested_edges);
+
+      let mut segment_edges: Vec<Edge> = Vec::with_capacity(requested_edges);
       for from in &prev_group {
         for to in &next_group {
           statements.construction_checkpoint(control)?;
@@ -3135,6 +3241,7 @@ fn __action24<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, Tok, usize),
     (_, __1, _): (usize, (), usize),
 )
@@ -3147,6 +3254,7 @@ fn __action25<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, _, _): (usize, Tok, usize),
     (_, h, _): (usize, Option<SubgraphHeader>, usize),
     (_, _s, _): (usize, (), usize),
@@ -3163,6 +3271,7 @@ fn __action26<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, eid, _): (usize, Option<String>, usize),
     (_, a, _): (usize, ArrowToken, usize),
     (_, l, _): (usize, Option<LabeledText>, usize),
@@ -3178,6 +3287,7 @@ fn __action27<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, first, _): (usize, Node, usize),
     (_, rest, _): (usize, alloc::vec::Vec<Node>, usize),
 ) -> Vec<Node>
@@ -3195,6 +3305,7 @@ fn __action28<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, first, _): (usize, Node, usize),
     (_, rest, _): (usize, alloc::vec::Vec<Node>, usize),
 ) -> Vec<Node>
@@ -3212,6 +3323,7 @@ fn __action29<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, _, _): (usize, Tok, usize),
     (_, n, _): (usize, Node, usize),
 ) -> Node
@@ -3225,6 +3337,7 @@ fn __action30<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3270,6 +3383,7 @@ fn __action31<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3312,6 +3426,7 @@ fn __action32<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3357,6 +3472,7 @@ fn __action33<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3396,6 +3512,7 @@ fn __action34<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, l, _): (usize, usize, usize),
     (_, id, _): (usize, String, usize),
     (_, r, _): (usize, usize, usize),
@@ -3438,6 +3555,7 @@ fn __action35<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, _, _): (usize, Tok, usize),
     (_, c, _): (usize, String, usize),
 ) -> Vec<String>
@@ -3451,6 +3569,7 @@ fn __action36<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Vec<String>
@@ -3464,6 +3583,7 @@ fn __action37<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, String, usize),
 ) -> Option<String>
 {
@@ -3476,6 +3596,7 @@ fn __action38<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<String>
@@ -3489,6 +3610,7 @@ fn __action39<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, Node, usize),
 ) -> alloc::vec::Vec<Node>
 {
@@ -3501,6 +3623,7 @@ fn __action40<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, v, _): (usize, alloc::vec::Vec<Node>, usize),
     (_, e, _): (usize, Node, usize),
 ) -> alloc::vec::Vec<Node>
@@ -3514,6 +3637,7 @@ fn __action41<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> alloc::vec::Vec<Node>
@@ -3527,6 +3651,7 @@ fn __action42<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, v, _): (usize, alloc::vec::Vec<Node>, usize),
 ) -> alloc::vec::Vec<Node>
 {
@@ -3539,6 +3664,7 @@ fn __action43<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, LabeledText, usize),
 ) -> Option<LabeledText>
 {
@@ -3551,6 +3677,7 @@ fn __action44<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<LabeledText>
@@ -3564,6 +3691,7 @@ fn __action45<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, String, usize),
 ) -> Option<String>
 {
@@ -3576,6 +3704,7 @@ fn __action46<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<String>
@@ -3589,6 +3718,7 @@ fn __action47<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, SubgraphHeader, usize),
 ) -> Option<SubgraphHeader>
 {
@@ -3601,6 +3731,7 @@ fn __action48<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<SubgraphHeader>
@@ -3614,6 +3745,7 @@ fn __action49<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>), usize),
 ) -> alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>
 {
@@ -3626,6 +3758,7 @@ fn __action50<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, v, _): (usize, alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>, usize),
     (_, e, _): (usize, (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>), usize),
 ) -> alloc::vec::Vec<(Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)>
@@ -3639,6 +3772,7 @@ fn __action51<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> usize
@@ -3652,6 +3786,7 @@ fn __action52<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     (_, __0, _): (usize, String, usize),
 ) -> Option<String>
 {
@@ -3664,6 +3799,7 @@ fn __action53<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> Option<String>
@@ -3677,6 +3813,7 @@ fn __action54<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __lookbehind: &usize,
     __lookahead: &usize,
 ) -> usize
@@ -3691,6 +3828,7 @@ fn __action55<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3701,6 +3839,7 @@ fn __action55<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3708,6 +3847,7 @@ fn __action55<
     __action2(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3722,6 +3862,7 @@ fn __action56<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3732,6 +3873,7 @@ fn __action56<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3739,6 +3881,7 @@ fn __action56<
     __action3(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3753,6 +3896,7 @@ fn __action57<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3763,6 +3907,7 @@ fn __action57<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3770,6 +3915,7 @@ fn __action57<
     __action4(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3784,6 +3930,7 @@ fn __action58<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
     __2: (usize, usize, usize),
@@ -3794,6 +3941,7 @@ fn __action58<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3801,6 +3949,7 @@ fn __action58<
     __action5(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3815,6 +3964,7 @@ fn __action59<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, NodeLabelToken, usize),
@@ -3827,6 +3977,7 @@ fn __action59<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3834,6 +3985,7 @@ fn __action59<
     __action30(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3850,6 +4002,7 @@ fn __action60<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, Vec<String>, usize),
@@ -3860,6 +4013,7 @@ fn __action60<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3867,6 +4021,7 @@ fn __action60<
     __action31(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3881,6 +4036,7 @@ fn __action61<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, NodeLabelToken, usize),
@@ -3893,6 +4049,7 @@ fn __action61<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3900,6 +4057,7 @@ fn __action61<
     __action32(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3916,6 +4074,7 @@ fn __action62<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, String, usize),
@@ -3927,6 +4086,7 @@ fn __action62<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3934,6 +4094,7 @@ fn __action62<
     __action33(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3949,6 +4110,7 @@ fn __action63<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, Vec<String>, usize),
@@ -3959,6 +4121,7 @@ fn __action63<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3966,6 +4129,7 @@ fn __action63<
     __action34(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -3980,6 +4144,7 @@ fn __action64<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, usize, usize),
     __2: (usize, String, usize),
@@ -3990,6 +4155,7 @@ fn __action64<
     let __temp0 = __action54(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -3997,6 +4163,7 @@ fn __action64<
     __action13(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -4011,6 +4178,7 @@ fn __action65<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4020,6 +4188,7 @@ fn __action65<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4027,6 +4196,7 @@ fn __action65<
     __action55(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4040,6 +4210,7 @@ fn __action66<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4049,6 +4220,7 @@ fn __action66<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4056,6 +4228,7 @@ fn __action66<
     __action56(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4069,6 +4242,7 @@ fn __action67<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4078,6 +4252,7 @@ fn __action67<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4085,6 +4260,7 @@ fn __action67<
     __action57(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4098,6 +4274,7 @@ fn __action68<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, Option<String>, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4107,6 +4284,7 @@ fn __action68<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4114,6 +4292,7 @@ fn __action68<
     __action58(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4127,6 +4306,7 @@ fn __action69<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Option<String>, usize),
@@ -4138,6 +4318,7 @@ fn __action69<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4145,6 +4326,7 @@ fn __action69<
     __action59(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -4160,6 +4342,7 @@ fn __action70<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, Vec<String>, usize),
 ) -> Node
@@ -4169,6 +4352,7 @@ fn __action70<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4176,6 +4360,7 @@ fn __action70<
     __action60(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -4189,6 +4374,7 @@ fn __action71<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Option<String>, usize),
@@ -4200,6 +4386,7 @@ fn __action71<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4207,6 +4394,7 @@ fn __action71<
     __action61(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -4222,6 +4410,7 @@ fn __action72<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, String, usize),
     __2: (usize, Vec<String>, usize),
@@ -4232,6 +4421,7 @@ fn __action72<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4239,6 +4429,7 @@ fn __action72<
     __action62(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -4253,6 +4444,7 @@ fn __action73<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, Vec<String>, usize),
 ) -> Node
@@ -4262,6 +4454,7 @@ fn __action73<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4269,6 +4462,7 @@ fn __action73<
     __action63(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -4282,6 +4476,7 @@ fn __action74<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, String, usize),
 ) -> Result<StatementId,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
@@ -4291,6 +4486,7 @@ fn __action74<
     let __temp0 = __action51(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4298,6 +4494,7 @@ fn __action74<
     __action64(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -4311,6 +4508,7 @@ fn __action75<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4320,12 +4518,14 @@ fn __action75<
     let __temp0 = __action52(
         statements,
         control,
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action65(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4338,6 +4538,7 @@ fn __action76<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
@@ -4346,6 +4547,7 @@ fn __action76<
     let __temp0 = __action53(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4353,6 +4555,7 @@ fn __action76<
     __action65(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4365,6 +4568,7 @@ fn __action77<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4374,12 +4578,14 @@ fn __action77<
     let __temp0 = __action52(
         statements,
         control,
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action66(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4392,6 +4598,7 @@ fn __action78<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
@@ -4400,6 +4607,7 @@ fn __action78<
     let __temp0 = __action53(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4407,6 +4615,7 @@ fn __action78<
     __action66(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4419,6 +4628,7 @@ fn __action79<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4428,12 +4638,14 @@ fn __action79<
     let __temp0 = __action52(
         statements,
         control,
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action67(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4446,6 +4658,7 @@ fn __action80<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
@@ -4454,6 +4667,7 @@ fn __action80<
     let __temp0 = __action53(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4461,6 +4675,7 @@ fn __action80<
     __action67(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4473,6 +4688,7 @@ fn __action81<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, String, usize),
 ) -> (String, Option<String>, SourceSpan)
@@ -4482,12 +4698,14 @@ fn __action81<
     let __temp0 = __action52(
         statements,
         control,
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action68(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4500,6 +4718,7 @@ fn __action82<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
 ) -> (String, Option<String>, SourceSpan)
 {
@@ -4508,6 +4727,7 @@ fn __action82<
     let __temp0 = __action53(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4515,6 +4735,7 @@ fn __action82<
     __action68(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4527,6 +4748,7 @@ fn __action83<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, ArrowToken, usize),
     __2: (usize, Option<LabeledText>, usize),
@@ -4538,12 +4760,14 @@ fn __action83<
     let __temp0 = __action45(
         statements,
         control,
+        edge_budget,
         __0,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action26(
         statements,
         control,
+        edge_budget,
         __temp0,
         __1,
         __2,
@@ -4558,6 +4782,7 @@ fn __action84<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, ArrowToken, usize),
     __1: (usize, Option<LabeledText>, usize),
     __2: (usize, Vec<Node>, usize),
@@ -4568,6 +4793,7 @@ fn __action84<
     let __temp0 = __action46(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4575,6 +4801,7 @@ fn __action84<
     __action26(
         statements,
         control,
+        edge_budget,
         __temp0,
         __0,
         __1,
@@ -4589,6 +4816,7 @@ fn __action85<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, ArrowToken, usize),
     __2: (usize, LabeledText, usize),
@@ -4600,12 +4828,14 @@ fn __action85<
     let __temp0 = __action43(
         statements,
         control,
+        edge_budget,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action83(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4620,6 +4850,7 @@ fn __action86<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, ArrowToken, usize),
     __2: (usize, Vec<Node>, usize),
@@ -4630,6 +4861,7 @@ fn __action86<
     let __temp0 = __action44(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4637,6 +4869,7 @@ fn __action86<
     __action83(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4651,6 +4884,7 @@ fn __action87<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, ArrowToken, usize),
     __1: (usize, LabeledText, usize),
     __2: (usize, Vec<Node>, usize),
@@ -4661,12 +4895,14 @@ fn __action87<
     let __temp0 = __action43(
         statements,
         control,
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action84(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __2,
@@ -4680,6 +4916,7 @@ fn __action88<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, ArrowToken, usize),
     __1: (usize, Vec<Node>, usize),
 ) -> (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>)
@@ -4689,6 +4926,7 @@ fn __action88<
     let __temp0 = __action44(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4696,6 +4934,7 @@ fn __action88<
     __action84(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,
@@ -4709,6 +4948,7 @@ fn __action89<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Node, usize),
 ) -> Vec<Node>
 {
@@ -4717,6 +4957,7 @@ fn __action89<
     let __temp0 = __action41(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4724,6 +4965,7 @@ fn __action89<
     __action27(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4736,6 +4978,7 @@ fn __action90<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Node, usize),
     __1: (usize, alloc::vec::Vec<Node>, usize),
 ) -> Vec<Node>
@@ -4745,12 +4988,14 @@ fn __action90<
     let __temp0 = __action42(
         statements,
         control,
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action27(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
     )
@@ -4763,6 +5008,7 @@ fn __action91<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, String, usize),
@@ -4774,12 +5020,14 @@ fn __action91<
     let __temp0 = __action37(
         statements,
         control,
+        edge_budget,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action69(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4794,6 +5042,7 @@ fn __action92<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Vec<String>, usize),
@@ -4804,6 +5053,7 @@ fn __action92<
     let __temp0 = __action38(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4811,6 +5061,7 @@ fn __action92<
     __action69(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4825,6 +5076,7 @@ fn __action93<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, String, usize),
@@ -4836,12 +5088,14 @@ fn __action93<
     let __temp0 = __action37(
         statements,
         control,
+        edge_budget,
         __2,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action71(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4856,6 +5110,7 @@ fn __action94<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, String, usize),
     __1: (usize, NodeLabelToken, usize),
     __2: (usize, Vec<String>, usize),
@@ -4866,6 +5121,7 @@ fn __action94<
     let __temp0 = __action38(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4873,6 +5129,7 @@ fn __action94<
     __action71(
         statements,
         control,
+        edge_budget,
         __0,
         __1,
         __temp0,
@@ -4887,6 +5144,7 @@ fn __action95<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, SubgraphHeader, usize),
     __2: (usize, (), usize),
@@ -4899,12 +5157,14 @@ fn __action95<
     let __temp0 = __action47(
         statements,
         control,
+        edge_budget,
         __1,
     );
     let __temp0 = (__start0, __temp0, __end0);
     __action25(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __2,
@@ -4920,6 +5180,7 @@ fn __action96<
 >(
     statements: &mut StatementArena,
     control: &crate::OperationControl,
+    edge_budget: &std::cell::Cell<usize>,
     __0: (usize, Tok, usize),
     __1: (usize, (), usize),
     __2: (usize, StatementList, usize),
@@ -4931,6 +5192,7 @@ fn __action96<
     let __temp0 = __action48(
         statements,
         control,
+        edge_budget,
         &__start0,
         &__end0,
     );
@@ -4938,6 +5200,7 @@ fn __action96<
     __action25(
         statements,
         control,
+        edge_budget,
         __0,
         __temp0,
         __1,

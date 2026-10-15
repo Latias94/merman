@@ -106,7 +106,7 @@ pub(crate) fn layout_flat(
         work_meter,
     )?;
     Ok(super::project_layout(
-        working,
+        &working,
         &std::collections::HashMap::new(),
     ))
 }

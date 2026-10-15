@@ -11,6 +11,10 @@ use merman_core::diagrams::railroad::{
     RailroadAstNode, RailroadDiagramRenderModel, RailroadRepeatBound, RailroadRuleModel,
 };
 
+mod theme;
+
+pub(crate) use theme::{RailroadSurfaceReceipt, RailroadTypographyThemePlan};
+
 #[derive(Debug, Clone)]
 pub(crate) struct RailroadStyle {
     pub padding: f64,
@@ -86,6 +90,7 @@ pub(crate) fn layout_railroad_diagram_typed(
     layout_railroad_diagram_typed_for_type(model, "railroad", effective_config, measurer)
 }
 
+#[cfg(test)]
 pub(crate) fn layout_railroad_diagram_typed_for_type(
     model: &RailroadDiagramRenderModel,
     diagram_type: &str,
@@ -93,12 +98,35 @@ pub(crate) fn layout_railroad_diagram_typed_for_type(
     measurer: &dyn TextMeasurer,
 ) -> Result<RailroadDiagramLayout> {
     let style = railroad_style(effective_config);
+    layout_railroad_diagram_typed_for_type_with_style(model, diagram_type, &style, measurer)
+}
+
+pub(crate) fn layout_railroad_diagram_typed_for_type_with_theme(
+    model: &RailroadDiagramRenderModel,
+    diagram_type: &str,
+    typography_theme: &RailroadTypographyThemePlan,
+    measurer: &dyn TextMeasurer,
+) -> Result<RailroadDiagramLayout> {
+    layout_railroad_diagram_typed_for_type_with_style(
+        model,
+        diagram_type,
+        typography_theme.style(),
+        measurer,
+    )
+}
+
+fn layout_railroad_diagram_typed_for_type_with_style(
+    model: &RailroadDiagramRenderModel,
+    diagram_type: &str,
+    style: &RailroadStyle,
+    measurer: &dyn TextMeasurer,
+) -> Result<RailroadDiagramLayout> {
     let mut y = style.padding;
     let mut max_width: f64 = 0.0;
     let mut rules = Vec::new();
 
     for rule in &model.rules {
-        let mut rule_layout = layout_rule(rule, y, &style, measurer);
+        let mut rule_layout = layout_rule(rule, y, style, measurer);
         y += rule_layout.height + style.vertical_separation;
         max_width = max_width.max(rule_layout.width);
         rule_layout.x = 0.0;

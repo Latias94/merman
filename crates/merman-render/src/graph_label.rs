@@ -205,19 +205,64 @@ pub(crate) fn flowchart_node_svg_width_mode(
 
 /// Pure source projection of Mermaid's non-Markdown SVG createText payload.
 ///
-/// The source rows retain authored entity/tag boundaries while `plain_text` is the exact visible
-/// projection used for emptiness and metrics. This state is independent of style, width, and text
-/// measurement routing; measured preparation lives in the private Flowchart family sidecar.
+/// The source rows retain authored entity and tag boundaries while `plain_text` is the exact
+/// visible projection used for emptiness and metrics. This state is independent of style, width,
+/// and text-measurement routing; measured preparation lives in the private Flowchart sidecar.
 #[derive(Debug, Clone)]
 pub(crate) struct FlowchartSvgLabelSource {
     source_lines: Vec<Vec<String>>,
     plain_text: String,
 }
 
+fn flowchart_source_plain_projection(source_lines: &[Vec<String>]) -> String {
+    let mut plain_text = String::new();
+    for (line_index, line) in source_lines.iter().enumerate() {
+        if line_index > 0 {
+            plain_text.push('\n');
+        }
+        for (word_index, source_word) in line.iter().enumerate() {
+            if word_index > 0 {
+                plain_text.push(' ');
+            }
+            let mut rest = source_word.as_str();
+            while !rest.is_empty() {
+                if let Some(entity_len) = authored_entity_len(rest) {
+                    let entity = &rest[..entity_len];
+                    plain_text.push_str(match entity {
+                        "&lt;" => "<",
+                        "&gt;" => ">",
+                        "&amp;" => "&",
+                        _ => entity,
+                    });
+                    rest = &rest[entity_len..];
+                } else {
+                    let character = rest.chars().next().expect("nonempty source word");
+                    plain_text.push(character);
+                    rest = &rest[character.len_utf8()..];
+                }
+            }
+        }
+    }
+    plain_text
+}
+
+fn authored_entity_len(text: &str) -> Option<usize> {
+    const MAX_AUTHORED_ENTITY_BYTES: usize = 64;
+
+    let bytes = text.as_bytes();
+    if bytes.first() != Some(&b'&') {
+        return None;
+    }
+    let scan = &bytes[..bytes.len().min(MAX_AUTHORED_ENTITY_BYTES)];
+    let end = scan.iter().position(|byte| *byte == b';')?.checked_add(1)?;
+    let body = text.get(1..end - 1)?;
+    (!body.is_empty() && body.chars().all(|character| !character.is_whitespace())).then_some(end)
+}
+
 impl FlowchartSvgLabelSource {
     pub(crate) fn new(source: &str) -> Self {
         let source_lines = flowchart_non_markdown_svg_source_word_lines(source);
-        let plain_text = flowchart_svg_source_word_lines_plain_text(&source_lines);
+        let plain_text = flowchart_source_plain_projection(&source_lines);
         Self {
             source_lines,
             plain_text,
@@ -1297,6 +1342,40 @@ mod tests {
     use super::*;
     use crate::math::MathRenderer;
     use crate::model::{LayoutLabel, LayoutPoint};
+
+    #[test]
+    fn authored_entity_scan_is_bounded_to_sixty_four_bytes() {
+        let longest_admitted = format!("&{};", "a".repeat(62));
+        let first_rejected = format!("&{};", "a".repeat(63));
+        let amplified = format!("{};", "&".repeat(16_384));
+
+        assert_eq!(authored_entity_len(&longest_admitted), Some(64));
+        assert_eq!(authored_entity_len(&first_rejected), None);
+        assert_eq!(authored_entity_len(&amplified), None);
+        assert_eq!(
+            FlowchartSvgLabelSource::new(&amplified).plain_text(),
+            amplified
+        );
+    }
+
+    #[test]
+    fn authored_entity_scan_preserves_unicode_entity_semantics() {
+        assert_eq!(authored_entity_len("&é;"), Some(4));
+        assert_eq!(authored_entity_len("&\u{2003};"), None);
+
+        let split_at_scan_boundary = format!("&{};", "é".repeat(32));
+        assert_eq!(authored_entity_len(&split_at_scan_boundary), None);
+        assert_eq!(
+            FlowchartSvgLabelSource::new(&split_at_scan_boundary).plain_text(),
+            split_at_scan_boundary
+        );
+    }
+
+    #[test]
+    fn source_plain_projection_preserves_unknown_entities_and_source_breaks() {
+        let source = FlowchartSvgLabelSource::new("alpha &amp; &bad&amp; &unknown;\nbeta");
+        assert_eq!(source.plain_text(), "alpha & &bad&amp; &unknown;\nbeta");
+    }
 
     #[cfg(any(
         feature = "diagram-flowchart",

@@ -44,8 +44,22 @@ fn flowchart_stylesheet_matches_mermaid12_neo_reference() {
             .expect("stylesheet")
             .to_owned()
     };
+    // Internal filter IDs are document-scoped; retain the upstream stylesheet contract
+    // after verifying that the local reference points to the emitted definition.
+    let document = roxmltree::Document::parse(&local).unwrap();
+    let filter_id = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("filter")
+                && node
+                    .attribute("id")
+                    .is_some_and(|id| id.ends_with("-drop-shadow"))
+        })
+        .and_then(|node| node.attribute("id"))
+        .expect("emitted Neo shadow filter");
+    assert!(stylesheet(&local).contains(&format!("url(#{filter_id})")));
     assert_eq!(
-        stylesheet(&local),
+        stylesheet(&local).replace(&format!("url(#{filter_id})"), "url(#merman-drop-shadow)"),
         stylesheet(&upstream).replace(name, "merman")
     );
 }

@@ -60,6 +60,9 @@ remain unchanged. Published tags keep their own contract and verifier. The stand
 release command inventory is `batch`, `capabilities`, `completion`, `detect`, `fix`, `layout`,
 `lint`, `lint-rules`, `mmdc`, `parse`, `render`, and `rustdoc`.
 The archive, installation, and Homebrew verifiers require the standard profile's exact contract.
+SVG-enabled artifacts also expose `theme_presets` with alpha maturity, compiler-policy availability,
+and empty built-in qualification scope; archive qualification remains a separate host-scoped
+companion rather than a claim from the installed binary alone.
 
 Root invocations beginning with an `mmdc`-owned option are permanently and silently forwarded to
 the explicit compatibility command while remaining absent from help and completions. Native `render` / `batch` use `-f/--format`; the former native `-e` aliases are removed in 0.9.0 as scheduled by 0.8.x. See the [migration guide](../release/V080_TO_V090_UPGRADE_GUIDE.md#fonts-and-cli-discovery). The explicit `merman-cli mmdc` command and its `-e/--outputFormat` option remain supported. Failed ASCII report-mode invocations retain exactly one schema-1 Plain JSON stderr

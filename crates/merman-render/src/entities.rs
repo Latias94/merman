@@ -35,18 +35,7 @@ pub(crate) fn decode_svg_text_content_entities(text: &str) -> Cow<'_, str> {
 /// The replacement order matters: for example `&amp;quot;` becomes `"` (two-step), while
 /// `&amp;lt;` stays as `&lt;` (one-step).
 pub(crate) fn decode_entities_minimal(text: &str) -> String {
-    if !text.contains('&') {
-        return text.to_string();
-    }
-
-    let stage1 = decode_stage1_lt_gt_amp(text);
-    if !stage1.contains('&') {
-        return stage1;
-    }
-    if !stage1.contains("&quot;") && !stage1.contains("&#39;") {
-        return stage1;
-    }
-    decode_stage2_quot_apos(&stage1)
+    merman_core::entities::decode_entities_minimal(text)
 }
 
 pub(crate) fn decode_entities_minimal_cow(text: &str) -> Cow<'_, str> {
@@ -70,27 +59,6 @@ fn decode_stage1_lt_gt_amp(text: &str) -> String {
             rest = stripped;
         } else if let Some(stripped) = tail.strip_prefix("&amp;") {
             out.push('&');
-            rest = stripped;
-        } else {
-            out.push('&');
-            rest = &tail[1..];
-        }
-    }
-    out.push_str(rest);
-    out
-}
-
-fn decode_stage2_quot_apos(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut rest = text;
-    while let Some(pos) = rest.find('&') {
-        out.push_str(&rest[..pos]);
-        let tail = &rest[pos..];
-        if let Some(stripped) = tail.strip_prefix("&quot;") {
-            out.push('"');
-            rest = stripped;
-        } else if let Some(stripped) = tail.strip_prefix("&#39;") {
-            out.push('\'');
             rest = stripped;
         } else {
             out.push('&');

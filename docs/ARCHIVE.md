@@ -16,10 +16,14 @@ current owner; Git history remains the archive for any such removed journal.
 | Capability and build-profile selection | [`FEATURES.md`](FEATURES.md) |
 | Package and channel ownership | [`release/PACKAGE_SURFACES.md`](release/PACKAGE_SURFACES.md) |
 | Release operations | [`release/RELEASING.md`](release/RELEASING.md) |
-| Presentation themes and output policy | [`rendering/presentation-themes.md`](rendering/presentation-themes.md) |
+| Compiled diagram themes | [`rendering/custom-diagram-themes.md`](rendering/custom-diagram-themes.md) |
+| Terminal palettes and color encoding | [`merman-ascii` terminal theme API](../crates/merman-ascii/README.md#terminal-theme-api) |
+| SVG output policy | [`rendering/SVG_OUTPUT_PIPELINE.md`](rendering/SVG_OUTPUT_PIPELINE.md) |
 
 ## Retained Historical Targets
 
+- [`rendering/presentation-themes.md`](rendering/presentation-themes.md) preserves the historical
+  Options 2 ownership context and directs readers to current theme and output owners.
 - [`release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md`](release/ALPHA3_TO_ALPHA5_REFACTORING_REPORT.md)
   is a frozen engineering evidence checkpoint. The public migration target remains
   [`release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md`](release/ALPHA3_TO_ALPHA5_UPGRADE_GUIDE.md).

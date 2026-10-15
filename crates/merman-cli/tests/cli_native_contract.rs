@@ -36,7 +36,9 @@ fn render_help_excludes_mmdc_and_batch_only_options() {
         "--output",
         "--format",
         "--css-file",
-        "--presentation-profile",
+        "--theme-preset",
+        "--theme-file",
+        "--theme-definition",
         "--raster-max-width",
         "--icon-pack",
         "--icon-pack-source",
@@ -79,7 +81,9 @@ fn render_short_help_prioritizes_the_common_workflow() {
         "--raster-max-width",
         "--pdf-filter-scale",
         "--embedded-image-max-bytes",
-        "--presentation-profile",
+        "--theme-preset",
+        "--theme-file",
+        "--theme-definition",
         "--system-timing",
         "--allow-private-network",
     ] {
@@ -131,7 +135,9 @@ fn batch_help_exposes_only_graphical_batch_options() {
         "--format",
         "--jobs",
         "--svg-pipeline",
-        "--presentation-profile",
+        "--theme-preset",
+        "--theme-file",
+        "--theme-definition",
     ] {
         assert!(
             stdout.contains(present),
@@ -153,7 +159,7 @@ fn batch_help_exposes_only_graphical_batch_options() {
 }
 
 #[test]
-fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
+fn batch_and_mmdc_use_progressive_help_without_losing_contract_options() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
     for (command, common, advanced) in [
         (
@@ -164,7 +170,9 @@ fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
                 "--raster-max-width",
                 "--pdf-filter-scale",
                 "--svg-pipeline",
-                "--presentation-profile",
+                "--theme-preset",
+                "--theme-file",
+                "--theme-definition",
             ][..],
         ),
         (
@@ -177,7 +185,6 @@ fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
                 "--raster-max-width",
                 "--pdf-filter-scale",
                 "--svg-pipeline",
-                "--presentation-profile",
                 "--puppeteerConfigFile",
             ][..],
         ),
@@ -213,6 +220,32 @@ fn batch_and_mmdc_use_progressive_help_without_losing_long_options() {
         assert!(
             short.contains(&format!("merman-cli {command}")) && short.contains("--help"),
             "{command} short help needs an example and long-help cue:\n{short}"
+        );
+        if command == "mmdc" {
+            for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
+                assert!(
+                    !long.contains(removed),
+                    "mmdc long help must not expose provisional native option {removed}:\n{long}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn layout_help_excludes_native_theme_selection() {
+    let exe = assert_cmd::cargo_bin!("merman-cli");
+    let output = Command::new(exe)
+        .args(["layout", "--help"])
+        .output()
+        .expect("run cli");
+
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let stdout = String::from_utf8(output.stdout).expect("stdout should be utf8");
+    for removed in ["--theme-preset", "--theme-file", "--theme-definition"] {
+        assert!(
+            !stdout.contains(removed),
+            "layout help must not expose provisional native option {removed}:\n{stdout}"
         );
     }
 }

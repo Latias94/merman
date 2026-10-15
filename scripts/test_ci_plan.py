@@ -172,6 +172,9 @@ class PlannerTests(unittest.TestCase):
 
     def test_svg_parity_selector_uses_explicit_input_boundaries(self) -> None:
         fixtures = {
+            "scripts/run_theme_acceptance.py": True,
+            "scripts/test_run_theme_acceptance.py": True,
+            "scripts/verify_theme_acceptance_boundary.py": True,
             "crates/dugong/src/lib.rs": True,
             "crates/merman/Cargo.toml": True,
             "crates/merman/src/operation.rs": True,
@@ -818,12 +821,12 @@ class PlannerTests(unittest.TestCase):
 
 
 class WorkflowFontDependenciesTests(unittest.TestCase):
-    def test_arch_uses_current_packaging_tools_with_the_stable_source_contract(self) -> None:
+    def test_arch_uses_the_installation_contract_shipped_with_its_stable_source(self) -> None:
         root = Path(__file__).resolve().parents[1]
         arch = (root / ".github/workflows/arch-package.yml").read_text(encoding="utf-8")
-        self.assertIn("python /workspace/scripts/verify_cli_installation.py", arch)
+        self.assertIn("python src/merman-0.9.0/scripts/verify_cli_installation.py", arch)
         self.assertIn("--contract-root src/merman-0.9.0", arch)
-        self.assertNotIn("python src/merman-0.9.0/scripts/verify_cli_installation.py", arch)
+        self.assertNotIn("python /workspace/scripts/verify_cli_installation.py", arch)
         remove_exclusions = 'sed -i "/^[[:space:]]*NoExtract[[:space:]]*=/d" /etc/pacman.conf'
         self.assertIn(remove_exclusions, arch)
         self.assertLess(arch.index(remove_exclusions), arch.index("pacman -U"))

@@ -1,0 +1,12 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-state-style-precedence",
+  "evidenceKind": "source-compatibility",
+  "intent": "Preserve StateDiagram theme, assigned-class, and inline paint precedence from Mermaid.",
+  "styleEvidenceIds": [
+    "global-config-init",
+    "state-node-assigned",
+    "state-node-inline",
+    "state-node-theme"
+  ]
+}

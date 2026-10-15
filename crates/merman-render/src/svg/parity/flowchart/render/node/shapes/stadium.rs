@@ -1,7 +1,5 @@
 //! Flowchart v2 stadium shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::{escape_attr, fmt, fmt_display};
 
 use super::super::geom::path_from_points;
@@ -12,7 +10,7 @@ const FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
 const FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
@@ -28,6 +26,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
     // the CSS theme font size (e.g. `12.5px`) rather than the integer `parseFontSize` number.
     let metrics = super::super::helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,
@@ -55,6 +54,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_stadium(
                     FLOWCHART_STADIUM_HAND_DRAWN_FILL_WEIGHT,
                     FLOWCHART_STADIUM_HAND_DRAWN_HACHURE_GAP,
                     FLOWCHART_STADIUM_HAND_DRAWN_ROUGHNESS,
+                    common.work_meter,
                     common.hand_drawn_seed,
                 )
             })

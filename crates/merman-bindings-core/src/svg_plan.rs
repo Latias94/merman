@@ -16,8 +16,6 @@ pub struct SvgPlanPayload {
     schema_version: u32,
     planned_operation_id: String,
     diagram_type: String,
-    presentation_profile_id: Option<String>,
-    presentation_aspects: Vec<SvgPlanPresentationAspect>,
     required_capability_ids: Vec<String>,
     missing_capability_ids: Vec<String>,
     ready: bool,
@@ -40,16 +38,6 @@ impl SvgPlanPayload {
     }
 
     #[must_use]
-    pub fn presentation_profile_id(&self) -> Option<&str> {
-        self.presentation_profile_id.as_deref()
-    }
-
-    #[must_use]
-    pub fn presentation_aspects(&self) -> &[SvgPlanPresentationAspect] {
-        &self.presentation_aspects
-    }
-
-    #[must_use]
     pub fn required_capability_ids(&self) -> &[String] {
         &self.required_capability_ids
     }
@@ -62,30 +50,6 @@ impl SvgPlanPayload {
     #[must_use]
     pub const fn is_ready(&self) -> bool {
         self.ready
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
-pub struct SvgPlanPresentationAspect {
-    id: String,
-    state: String,
-    required_capability_id: Option<String>,
-}
-
-impl SvgPlanPresentationAspect {
-    #[must_use]
-    pub fn id(&self) -> &str {
-        &self.id
-    }
-
-    #[must_use]
-    pub fn state(&self) -> &str {
-        &self.state
-    }
-
-    #[must_use]
-    pub fn required_capability_id(&self) -> Option<&str> {
-        self.required_capability_id.as_deref()
     }
 }
 
@@ -120,25 +84,10 @@ impl SvgPlanPayload {
                 ),
             ));
         }
-        let presentation_aspects = plan
-            .presentation_aspects()
-            .iter()
-            .copied()
-            .map(|aspect| SvgPlanPresentationAspect {
-                id: aspect.id().to_string(),
-                state: aspect.state().as_str().to_string(),
-                required_capability_id: aspect.required_capability_id().map(str::to_string),
-            })
-            .collect::<Vec<_>>();
-        // Presentation describes the requested profile. Capability admission describes the
-        // resolved operation, which can be ready through an absent-loader Dagre fallback.
-
         Ok(Self {
             schema_version: SVG_PLAN_SCHEMA_VERSION,
             planned_operation_id: "svg".to_string(),
             diagram_type: plan.diagram_type().to_string(),
-            presentation_profile_id: plan.presentation_profile_id().map(str::to_string),
-            presentation_aspects,
             ready: missing_capability_ids.is_empty(),
             required_capability_ids,
             missing_capability_ids,
@@ -179,15 +128,13 @@ mod tests {
 
     #[cfg(feature = "svg")]
     #[test]
-    fn basic_flowchart_plan_is_ready_without_optional_backends() {
+    fn basic_flowchart_plan_resolves_the_default_registered_backend() {
         assert_eq!(
             plan("flowchart TD\nA --> B", b""),
             serde_json::json!({
                 "schema_version": SVG_PLAN_SCHEMA_VERSION,
                 "planned_operation_id": "svg",
                 "diagram_type": "flowchart-v2",
-                "presentation_profile_id": null,
-                "presentation_aspects": [],
                 "required_capability_ids": if cfg!(feature = "layout-elk") {
                     serde_json::json!(["layout-elk"])
                 } else {
@@ -197,63 +144,6 @@ mod tests {
                 "ready": true,
             })
         );
-    }
-
-    #[cfg(feature = "svg")]
-    #[test]
-    fn presentation_plan_reports_family_and_effective_renderer_states() {
-        let sequence = plan(
-            "sequenceDiagram\nA->>B: Hello",
-            br#"{"presentation":{"profile":"merman-modern"}}"#,
-        );
-        assert_eq!(sequence["presentation_profile_id"], "merman-modern");
-        assert_eq!(
-            sequence["presentation_aspects"],
-            serde_json::json!([
-                {
-                    "id": "global-defaults",
-                    "state": "active",
-                    "required_capability_id": null,
-                },
-                {
-                    "id": "flowchart-svg",
-                    "state": "inactive",
-                    "required_capability_id": null,
-                },
-                {
-                    "id": "flowchart-elk-default",
-                    "state": "inactive",
-                    "required_capability_id": "layout-elk",
-                },
-            ])
-        );
-        assert_eq!(sequence["ready"], true);
-
-        let dagre = plan(
-            "flowchart TD\nA --> B",
-            br#"{
-                "presentation":{"profile":"merman-modern"},
-                "site_config":{"flowchart":{"layout":"dagre"}}
-            }"#,
-        );
-        assert_eq!(dagre["presentation_aspects"][1]["state"], "active");
-        assert_eq!(dagre["presentation_aspects"][2]["state"], "inactive");
-        assert_eq!(dagre["ready"], true);
-
-        let default_flowchart = plan(
-            "flowchart TD\nA --> B",
-            br#"{"presentation":{"profile":"merman-modern"}}"#,
-        );
-        let expected = if cfg!(feature = "layout-elk") {
-            "active"
-        } else {
-            "blocked"
-        };
-        assert_eq!(
-            default_flowchart["presentation_aspects"][2]["state"],
-            expected
-        );
-        assert_eq!(default_flowchart["ready"], true);
     }
 
     #[cfg(feature = "svg")]

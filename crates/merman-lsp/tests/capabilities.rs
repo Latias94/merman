@@ -242,7 +242,7 @@ fn capability_matrix_derives_the_non_product_boundary_from_the_core_catalog() {
     let mut logical_family_visibility = BTreeMap::<&str, bool>::new();
     for capability in merman_core::diagram_family_capabilities() {
         logical_family_visibility
-            .entry(capability.logical_family_kind)
+            .entry(capability.family_id.as_str())
             .and_modify(|has_public_type| {
                 *has_public_type |= capability.metadata_id.is_some();
             })

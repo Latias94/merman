@@ -1131,7 +1131,10 @@ impl FeatureGraph {
                 ));
             }
             if strict {
-                for selector in merman_core::diagram_family_selectors() {
+                for selector in merman_core::diagram_family_selectors()
+                    .iter()
+                    .filter(|selector| package.features.contains_key(selector.feature))
+                {
                     cases.insert(BuildCase::new(
                         &package.name,
                         vec![selector.feature.to_string()],
@@ -1713,8 +1716,7 @@ mod tests {
         ])
     }
 
-    #[test]
-    fn diagram_selector_contract_rejects_shared_language_and_optional_dependency_leaks() {
+    fn diagram_selector_contract_graph() -> FeatureGraph {
         let selectors = merman_core::diagram_family_selectors();
         let mut packages = Vec::new();
         for (name, _) in PUBLIC_FEATURE_ALLOWLIST_EXTRAS {
@@ -1736,7 +1738,13 @@ mod tests {
             }
             packages.push(package);
         }
-        let mut graph = graph(packages);
+        graph(packages)
+    }
+
+    #[test]
+    fn diagram_selector_contract_rejects_shared_language_and_optional_dependency_leaks() {
+        let selectors = merman_core::diagram_family_selectors();
+        let mut graph = diagram_selector_contract_graph();
         graph.validate_diagram_selectors().unwrap();
         graph
             .packages
@@ -2144,6 +2152,71 @@ mod tests {
     }
 
     #[test]
+    fn public_feature_allowlist_rejects_acceptance_feature_on_every_production_crate() {
+        for name in ["merman", "merman-export", "merman-render"] {
+            let graph = graph(vec![package(
+                name,
+                &[("default", &[]), ("internal-theme-acceptance", &[])],
+            )]);
+            let extras = PUBLIC_FEATURE_ALLOWLIST_EXTRAS
+                .iter()
+                .find_map(|(candidate, extras)| (*candidate == name).then_some(*extras))
+                .unwrap();
+            let error = graph
+                .validate_public_feature_allowlist(name, extras)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("internal-theme-acceptance"),
+                "{error}"
+            );
+        }
+    }
+
+    #[test]
+    fn public_feature_allowlist_rejects_retired_font_features() {
+        for (name, extras) in PUBLIC_FEATURE_ALLOWLIST_EXTRAS {
+            let graph = graph(vec![package(
+                name,
+                &[("default", &[]), ("embedded-fonts", &[])],
+            )]);
+            let error = graph
+                .validate_public_feature_allowlist(name, extras)
+                .unwrap_err();
+            assert!(error.to_string().contains("embedded-fonts"), "{error}");
+        }
+    }
+
+    #[test]
+    fn public_feature_allowlist_still_rejects_unknown_features() {
+        let graph = graph(vec![package(
+            "merman-render",
+            &[
+                ("default", &[]),
+                ("internal-theme-acceptance", &[]),
+                ("internal-theme-acceptance-typo", &[]),
+            ],
+        )]);
+        let extras = PUBLIC_FEATURE_ALLOWLIST_EXTRAS
+            .iter()
+            .find_map(|(package, extras)| (*package == "merman-render").then_some(*extras))
+            .unwrap();
+
+        let error = graph
+            .validate_public_feature_allowlist("merman-render", extras)
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("unexpected public Cargo features"),
+            "{error}"
+        );
+        assert!(
+            error.to_string().contains("internal-theme-acceptance-typo"),
+            "{error}"
+        );
+    }
+
+    #[test]
     fn public_feature_allowlist_rejects_retired_presets() {
         let graph = graph(vec![package(
             "merman-wasm",
@@ -2187,6 +2260,61 @@ mod tests {
         assert_eq!(cases.len(), 2);
         assert!(cases.iter().any(|case| case.default_features));
         assert!(cases.iter().any(|case| !case.default_features));
+    }
+
+    #[test]
+    fn strict_singletons_follow_declared_features_without_weakening_production_contracts() {
+        let mut graph = diagram_selector_contract_graph();
+        let partial = package(
+            "private-partial-package",
+            &[
+                ("all-diagrams", &["merman/all-diagrams"]),
+                ("diagram-flowchart", &["merman/diagram-flowchart"]),
+                ("diagram-gantt", &["merman/diagram-gantt"]),
+            ],
+        );
+        graph.packages.insert(partial.name.clone(), partial);
+        graph.validate_diagram_selectors().unwrap();
+        let cases = graph.build_cases(true, &[]).unwrap();
+        let singleton_features = |package_name: &str| {
+            cases
+                .iter()
+                .filter(|case| case.package == package_name && case.reason == "diagram-singleton")
+                .map(|case| {
+                    assert!(!case.default_features);
+                    assert_eq!(case.features.len(), 1);
+                    case.features[0].clone()
+                })
+                .collect::<BTreeSet<_>>()
+        };
+        assert_eq!(
+            singleton_features("private-partial-package"),
+            BTreeSet::from(["diagram-flowchart".to_string(), "diagram-gantt".to_string()])
+        );
+        let expected = merman_core::diagram_family_selectors()
+            .iter()
+            .map(|selector| selector.feature.to_string())
+            .collect::<BTreeSet<_>>();
+        for (package_name, _) in PUBLIC_FEATURE_ALLOWLIST_EXTRAS {
+            if matches!(*package_name, "merman-export" | "roughr-merman") {
+                continue;
+            }
+            assert_eq!(singleton_features(package_name), expected, "{package_name}");
+        }
+
+        graph
+            .packages
+            .get_mut("merman-render")
+            .unwrap()
+            .features
+            .remove("diagram-block");
+        let error = graph.validate_diagram_selectors().unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("required feature `diagram-block` is missing"),
+            "{error}"
+        );
     }
 
     #[test]

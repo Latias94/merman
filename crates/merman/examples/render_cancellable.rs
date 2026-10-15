@@ -19,7 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         control.cancel();
     }
     let worker_control = control.clone();
-    let worker = thread::spawn(move || -> Result<String, RenderError> {
+    let worker = thread::spawn(move || -> Result<String, Box<RenderError>> {
         // Start the execution deadline inside the worker, after any host queue wait.
         let control = worker_control.with_deadline(Duration::from_secs(2));
         let request = SvgRequest {
@@ -31,7 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let output = Renderer::new().render(RenderRequest::svg(&source, control, request))?;
         match output {
             RenderOutput::Svg(Some(svg)) => Ok(svg.into_parts().0),
-            _ => Err(RenderError::NoDiagram),
+            _ => Err(Box::new(RenderError::NoDiagram)),
         }
     });
 
@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let result = worker
         .join()
         .map_err(|_| std::io::Error::other("render worker panicked"))?;
-    match result {
+    match result.map_err(|error| *error) {
         Ok(svg) => print!("{svg}"),
         Err(RenderError::Cancelled(cancelled)) => {
             eprintln!("preview cancelled: {cancelled}");

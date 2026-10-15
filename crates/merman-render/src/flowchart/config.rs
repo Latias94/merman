@@ -14,7 +14,36 @@ const FIXED_CLUSTER_PADDING: f64 = 8.0;
 
 // Mermaid `createText(...)` defaults its `width` argument to 200. Flowchart edge labels and
 // markdown subgraph titles rely on that default instead of `flowchart.wrappingWidth`.
-const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
+pub(crate) const FLOWCHART_FIXED_LABEL_WRAP_WIDTH: f64 = 200.0;
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct FlowchartTypographyConfigOwnership {
+    pub(crate) font_stack: bool,
+    pub(crate) font_size: bool,
+    pub(crate) font_weight: Option<u16>,
+    pub(crate) invalid_font_weight: bool,
+}
+
+pub(crate) fn flowchart_typography_config_ownership(
+    config: &merman_core::MermaidConfig,
+) -> FlowchartTypographyConfigOwnership {
+    let raw_weight = merman_core::__private::explicit_config_owns_path(config, "fontWeight")
+        .then(|| config.get_str("fontWeight"))
+        .flatten();
+    let font_weight = raw_weight.and_then(|raw| crate::text::resolve_css_font_weight(raw, 400));
+    FlowchartTypographyConfigOwnership {
+        font_weight,
+        invalid_font_weight: raw_weight.is_some() && font_weight.is_none(),
+        font_stack: merman_core::__private::explicit_config_owns_path(
+            config,
+            "themeVariables.fontFamily",
+        ) || merman_core::__private::explicit_config_owns_path(config, "fontFamily"),
+        font_size: merman_core::__private::explicit_config_owns_path(
+            config,
+            "themeVariables.fontSize",
+        ),
+    }
+}
 
 pub(crate) struct FlowchartConfigView<'a> {
     effective_config: &'a Value,
@@ -139,7 +168,7 @@ impl<'a> FlowchartConfigView<'a> {
         TextStyle {
             font_family: Some(font_family.to_string()),
             font_size,
-            font_weight: None,
+            font_weight: self.root_font_weight(),
             font_style: None,
         }
     }
@@ -194,22 +223,28 @@ impl<'a> FlowchartConfigView<'a> {
                 if !raw.to_ascii_lowercase().ends_with("px") {
                     return None;
                 }
-                crate::mermaid_style::parse_css_font_size_px(raw, render_style.font_size)
+                crate::mermaid_style::resolve_mermaid_font_size_px(
+                    raw,
+                    crate::mermaid_style::CssFontSizeContext::uniform(render_style.font_size),
+                )
             })
             .unwrap_or(16.0);
         style
     }
 
-    pub(crate) fn theme_token(&self, key: &str, fallback: &str) -> String {
-        self.theme_string(key)
-            .unwrap_or_else(|| fallback.to_string())
+    fn root_font_weight(&self) -> Option<String> {
+        let raw = self.root_string("fontWeight")?;
+        Some(
+            crate::text::resolve_css_font_weight(&raw, 400)
+                .map_or(raw, |weight| weight.to_string()),
+        )
     }
 
     fn layout_text_style(&self) -> TextStyle {
         TextStyle {
             font_family: Some(self.font_family()),
             font_size: self.theme_font_size_px().unwrap_or(16.0),
-            font_weight: self.root_string("fontWeight"),
+            font_weight: self.root_font_weight(),
             font_style: None,
         }
     }
@@ -486,8 +521,6 @@ mod tests {
         assert_eq!(config.render_node_padding(), 0.0);
         assert_eq!(config.render_curve().as_deref(), Some("linear"));
         assert_eq!(config.render_subgraph_title_y_shift(), 4.0);
-        assert_eq!(config.theme_token("mainBkg", "#ECECFF"), "#112233");
-        assert_eq!(config.theme_token("nodeBorder", "#9370DB"), "#445566");
     }
 
     #[test]

@@ -276,7 +276,8 @@ test("Infinite Canvas reveals visual overflow while ViewBox Frame preserves root
     .click();
   const framed = await sequenceTitlePresentation(viewport);
   expect(framed.viewBox).toEqual(infinite.viewBox);
-  expect(framed.titleBounds).toEqual(infinite.titleBounds);
+  expect(framed.titleMarkup).toEqual(infinite.titleMarkup);
+  expect(framed.titleBounds.right).toBeGreaterThan(framed.viewBox.right);
   expect(framed.rootOverflow).toBe("hidden");
 
   await page
@@ -688,7 +689,21 @@ test("Merman Gantt presents non-overlapping date ticks", async ({ page }) => {
   errors.assertNone();
 });
 
-test("a 100-million-unit SVG stays bounded in preview and export", async ({
+test("a 100-million-unit SVG is rejected at the backend coordinate ceiling", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  await replaceEditorSource(page, [
+    "---", "config:", "  xyChart:", "    width: 100000000", "    height: 1000000", "---",
+    "xychart-beta", "  x-axis [a, b]", "  y-axis 0 --> 10", "  line [1, 9]",
+  ].join("\n"));
+  const error = page.getByRole("alert").filter({ hasText: "Merman · Render Error" });
+  await expect(error).toContainText("svg_backend_coordinate_magnitude");
+  await expect(error).toContainText("actual=100000000 maximum=16777216");
+  await expect(page.locator(".preview-container > div")).toHaveCount(0);
+  errors.assertNone();
+});
+
+test("an admitted 10-million-unit SVG stays bounded in preview and export", async ({
   page,
 }) => {
   const errors = monitorBrowserErrors(page);
@@ -699,8 +714,8 @@ test("a 100-million-unit SVG stays bounded in preview and export", async ({
       "---",
       "config:",
       "  xyChart:",
-      "    width: 100000000",
-      "    height: 1000000",
+      "    width: 10000000",
+      "    height: 100000",
       "---",
       "xychart-beta",
       "  x-axis [a, b]",
@@ -712,8 +727,8 @@ test("a 100-million-unit SVG stays bounded in preview and export", async ({
   await expect.poll(() => largeSvgPreviewMetrics(page)).toMatchObject({
     rootWidth: "100%",
     rootHeight: "100%",
-    viewBoxWidth: 100_000_000,
-    viewBoxHeight: 1_000_000,
+    viewBoxWidth: 10_000_000,
+    viewBoxHeight: 100_000,
   });
 
   const metrics = await largeSvgPreviewMetrics(page);
@@ -745,7 +760,7 @@ test("a 100-million-unit SVG stays bounded in preview and export", async ({
   await dialog.getByRole("button", { name: "Download", exact: true }).click();
   const svgDownload = await svgDownloadPromise;
   const exportedSvg = await downloadText(svgDownload);
-  expect(exportedSvg).toContain('viewBox="0 0 100000000 1000000"');
+  expect(exportedSvg).toContain('viewBox="0 0 10000000 100000"');
   expect(exportedSvg).not.toContain("data-merman-svg-bounds");
   expect(exportedSvg).not.toContain("data-merman-svg-viewport");
   expect(exportedSvg).not.toContain("preview-canvas");
@@ -798,6 +813,7 @@ async function sequenceTitlePresentation(viewport: Locator) {
     const titleRect = title.getBoundingClientRect();
     return {
       rootOverflow: getComputedStyle(svg).overflow,
+      titleMarkup: title.outerHTML,
       titleBounds: {
         left: titleBounds.x,
         right: titleBounds.x + titleBounds.width,

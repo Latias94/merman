@@ -10,11 +10,10 @@ mod context;
 use context::{ClassRenderDetails, ClassRenderLookups, emit_class_render_timing};
 
 mod css;
-use css::class_css;
+use css::write_class_css;
 
 mod defs;
-use super::look_defs::{push_look_gradient, push_look_shadow_defs};
-use defs::class_markers;
+use defs::{class_marker_name, class_marker_terminal_expectations, class_markers};
 
 mod edge;
 
@@ -35,8 +34,6 @@ mod note;
 mod rough;
 
 mod root;
-
-mod settings;
 
 mod viewbox;
 

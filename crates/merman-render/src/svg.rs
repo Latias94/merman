@@ -7,6 +7,7 @@
 
 #![forbid(unsafe_code)]
 
+mod css_identifier;
 mod fallback;
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -18,14 +19,52 @@ mod fallback;
 )]
 mod icon_registry;
 mod parity;
+pub(crate) use parity::BaseEdgeMarkerKind;
+pub(crate) use parity::PreparedCommonCss;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow",
+    feature = "diagram-usecase"
+))]
+pub(crate) use parity::PreparedCommonNeoCss;
+pub(crate) use parity::PreparedLookDefs;
+pub(crate) use parity::cssom_color_value;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use parity::{
+    FlowchartRenderConfig, flowchart_node_label_fill_config_override,
+    prepare_flowchart_render_config,
+};
+#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
+pub(crate) use parity::{escape_attr, escape_xml};
 mod pipeline;
 pub(crate) mod scanner;
 
+pub(crate) use css_identifier::escape_css_identifier;
+pub(crate) use fallback::{
+    FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR,
+    PREPARED_TEXT_LABEL_DATA_ATTR,
+};
+pub(crate) use icon_registry::IconCurrentColorUse;
 #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) use parity::render_architecture_family_artifact;
-pub(crate) use parity::render_builtin_family_artifact;
 pub(crate) use parity::theme as render_theme;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use parity::{FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes};
+pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
+pub(crate) use pipeline::SvgPipelineBuffer;
 pub(crate) use pipeline::SvgPostprocessExecution;
+#[cfg(feature = "diagram-railroad")]
+pub(crate) use pipeline::decode_xml_style_text_with_checkpoints;
+pub(crate) use pipeline::reject_reserved_prepared_text_tokens;
 
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub use icon_registry::{
@@ -37,8 +76,13 @@ pub use parity::*;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
-    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StripForeignObjectPostprocessor,
+    SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StandaloneSvgArtifact,
+    StandaloneSvgTerminalStatus, StripForeignObjectPostprocessor, SvgFinalizationReport,
     SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgReferencePlan, finalize_resvg_svg, rebase_svg_ids,
-    validate_static_inline_svg, validate_static_inline_svg_admission,
+    SvgPostprocessor, SvgReferencePlan, SvgResourceClosure, SvgResourceFingerprint,
+    finalize_resvg_svg, rebase_svg_ids, validate_static_inline_svg,
+    validate_static_inline_svg_admission,
 };
+
+#[cfg(feature = "diagram-block")]
+pub(crate) use parity::block_edge_path_data;

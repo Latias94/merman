@@ -71,9 +71,9 @@ svg = client.render_svg(source, resource_options)
 
 Use `CONSTRAINED` for untrusted, public, or multi-tenant input; `INTERACTIVE` is for cooperative local editing. Leave the profile unset when a reusable request must inherit its constructor ceiling. The native CLI's default is intentionally separate (`trusted-native`).
 
-Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.presentation_catalog_json()` for the open-ended theme preset, presentation profile, aspect, and capability-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `7` and is independent from native C ABI and the text-measurement protocol version.
+Call `client.runtime_catalog_json()` to inspect the loaded runtime catalog and exact resource profile values instead of duplicating limits in application code. Decode `client.theme_catalog_json()` for the open-ended versioned theme preset and artifact-availability catalog. `merman.get_runtime_catalog(client)` strictly validates its flat schema `1` artifact facts, package identity, transport API, supported options/payload schema IDs, named metadata IDs, sorted stable IDs, and local output/operation relations as one atomic response. New stable IDs remain forward compatible. This direct binding API version is `7` and is independent from native C ABI and the text-measurement protocol version.
 
-API 7 adds `requested_layout_profile` and `compact_attempted` to the schema-3 ASCII output plan.
+API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in the schema-3 ASCII output plan.
 The effective `layout_profile` remains Canonical or Compact. Replace `binding_api_version_v6()`
 with `binding_api_version_v7()` and regenerate the package and native library together; published
 alpha.6 wheels retain API 6.

@@ -1,11 +1,16 @@
 # merman-export
 
+> [!NOTE]
+> This README documents the current `main` branch. The operation-scoped `Renderer`,
+> `RenderedDocument`, and target-admission examples were introduced after the published
+> `0.8.0-alpha.5` tag. Use matching Git revisions for current-main APIs.
+
 `merman-export` is the bounded binary-export layer behind Merman's PNG, JPEG, and PDF output. It encodes SVG that has already passed Merman's terminal resvg-compatible finalizer; it does not parse Mermaid source or choose a layout engine.
 
 Most applications should depend on [`merman`](https://crates.io/crates/merman) and select its
 typed PNG, JPEG, or PDF target. Use this crate directly only when the application needs to retain a
-validated SVG artifact, inspect an allocation plan, or schedule encoding separately from Mermaid
-rendering.
+validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
+separately from Mermaid rendering.
 
 This guide targets `merman-export 0.9.0`. Match the documentation and generated artifacts to the version installed in your project.
 
@@ -50,6 +55,11 @@ cross-process content hash of every subsequently selected platform font.
 
 `png` and `jpeg` share private bitmap preparation. `pdf` is a separate vector export capability. Features are additive, but one output does not implicitly expose another output's API. The published `merman-export`, `merman`, and `merman-render` versions must match because the sealed SVG type crosses their crate boundaries.
 
+PNG, JPEG, and PDF retain backend system-font handling. Themes can select font-family names and
+typography values, but caller-supplied theme font files remain rejected and no font files are
+bundled. For explicit native shaping across layout and typed binary outputs, use the separate
+`native-fonts` context described above rather than a theme recipe.
+
 ## First Export
 
 The `merman` facade owns the shortest source-to-output path. This dependency enables PNG and its
@@ -68,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = RasterOptions::default()
         .with_fit_to(RasterFitBox::contain(960, 540))
         .with_scale(2.0)
-        .with_background("white");
+        .with_matte("white");
 
     let output = Renderer::new().render(RenderRequest::png(
         "flowchart LR\n  Source --> PNG",
@@ -82,12 +92,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         return Err("no Mermaid diagram detected".into());
     };
 
-    std::fs::write("diagram.png", png.bytes)?;
+    std::fs::write("diagram.png", png.bytes())?;
     Ok(())
 }
 ```
 
-Replace `png` with `jpeg` or `pdf` when only that format is required. JPEG uses `RasterOptions`; PDF uses its independent `PdfOptions` page and filter policy.
+Replace `png` with `jpeg` or `pdf` when only that format is required. JPEG uses `RasterOptions`; PDF uses its independent `PdfOptions` page and filter policy. Use `into_bytes()` only when deliberately discarding render and target-admission evidence.
+
+`RasterOptions::matte` and `PdfOptions::page_paint` are output-compositing controls. They do not
+change the diagram theme canvas or trigger layout. Use theme configuration for diagram-owned
+backgrounds, and use these options only when the target file needs paint behind the rendered SVG.
 
 ## Direct Encoding
 

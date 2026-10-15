@@ -586,7 +586,7 @@ pub(crate) fn mermaid_markdown_to_xhtml_label_fragment(
 /// malformed fragment remains on the structured HTML path.
 pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<String> {
     let wrapped = format!("<merman-fragment>{fragment}</merman-fragment>");
-    let document = roxmltree::Document::parse(&wrapped).ok()?;
+    let document = crate::xml_dom::Document::parse(&wrapped).ok()?;
     let root = document.root_element();
 
     let mut children = root.children();
@@ -609,7 +609,7 @@ pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<String> {
 
 pub(crate) fn mermaid_xhtml_label_text_content(fragment: &str) -> Option<String> {
     let wrapped = format!("<merman-fragment>{fragment}</merman-fragment>");
-    let document = roxmltree::Document::parse(&wrapped).ok()?;
+    let document = crate::xml_dom::Document::parse(&wrapped).ok()?;
     Some(
         document
             .root_element()
@@ -990,7 +990,7 @@ mod tests {
         );
         // These balanced HTML tags are also XML-compatible: parsing them demonstrates the
         // elements produced by insertion without adding another Markdown interpreter.
-        let html_document = roxmltree::Document::parse(&html).unwrap();
+        let html_document = crate::xml_dom::Document::parse(&html).unwrap();
         let html_spans: Vec<_> = html_document
             .descendants()
             .filter(|node| node.has_tag_name("span"))
@@ -1007,7 +1007,7 @@ mod tests {
         );
 
         let fragment = mermaid_markdown_to_xhtml_label_fragment(&input, true);
-        let document = roxmltree::Document::parse(&fragment).unwrap();
+        let document = crate::xml_dom::Document::parse(&fragment).unwrap();
         let spans: Vec<_> = document
             .descendants()
             .filter(|node| node.has_tag_name("span"))

@@ -3,13 +3,11 @@ use crate::text::TextStyle;
 pub(super) struct SequenceRenderSettings {
     pub(super) force_menus: bool,
     pub(super) mirror_actors: bool,
-    pub(super) diagram_margin_x: f64,
     pub(super) box_margin: f64,
     pub(super) actor_height: f64,
     pub(super) box_text_margin: f64,
     pub(super) message_align: String,
     pub(super) label_box_height: f64,
-    pub(super) label_box_width: f64,
     pub(super) right_angles: bool,
     pub(super) wrap_padding: f64,
     pub(super) note_margin: f64,
@@ -17,13 +15,17 @@ pub(super) struct SequenceRenderSettings {
     pub(super) activation_width: f64,
     pub(super) actor_wrap_width: f64,
     pub(super) rect_default_fill: String,
-    pub(super) loop_text_style: TextStyle,
     pub(super) actor_text_style: TextStyle,
+    pub(super) message_text_style: TextStyle,
+    pub(super) loop_text_style: TextStyle,
     pub(super) note_text_style: TextStyle,
 }
 
 impl SequenceRenderSettings {
-    pub(super) fn from_effective_config(effective_config: &serde_json::Value) -> Self {
+    pub(super) fn from_resolved_typography(
+        effective_config: &serde_json::Value,
+        typography: &crate::sequence::SequenceTypographyPlan,
+    ) -> Self {
         let config = crate::sequence::config::SequenceConfigView::new(effective_config);
 
         let force_menus = config
@@ -31,7 +33,6 @@ impl SequenceRenderSettings {
             .or_else(|| config.root_bool("forceMenus"))
             .unwrap_or(false);
         let mirror_actors = config.sequence_bool("mirrorActors", true);
-        let diagram_margin_x = config.sequence_json_number_min("diagramMarginX", 50.0, 0.0);
         let box_margin = config.sequence_json_number("boxMargin").unwrap_or(10.0);
         let actor_height = config.sequence_json_number_min("height", 65.0, 1.0);
         let box_text_margin = config.sequence_json_number("boxTextMargin").unwrap_or(5.0);
@@ -41,40 +42,23 @@ impl SequenceRenderSettings {
         let label_box_height = config
             .sequence_json_number("labelBoxHeight")
             .unwrap_or(20.0);
-        let label_box_width = config
-            .sequence_json_number_min("labelBoxWidth", 50.0, 0.0)
-            .max(50.0);
         let right_angles = config.sequence_bool("rightAngles", false);
         let wrap_padding = config.sequence_json_number("wrapPadding").unwrap_or(10.0);
         let note_margin = config.sequence_json_number("noteMargin").unwrap_or(10.0);
         let sequence_width = config.sequence_json_number_min("width", 150.0, 1.0);
-        let activation_width = config.sequence_json_number_min("activationWidth", 10.0, 1.0);
+        let activation_width = typography.compat_binding().svg_activation_width;
 
-        let loop_text_style =
-            config.text_style("messageFontFamily", "messageFontSize", "messageFontWeight");
-        let actor_text_style =
-            config.text_style("actorFontFamily", "actorFontSize", "actorFontWeight");
-        let note_text_style = config.text_style("noteFontFamily", "noteFontSize", "noteFontWeight");
         let actor_wrap_width = (sequence_width - 2.0 * wrap_padding).max(1.0);
-        let rect_default_fill =
-            crate::config::config_string(effective_config, &["themeVariables", "rectBkgColor"])
-                .filter(|fill| !fill.is_empty())
-                .or_else(|| {
-                    crate::config::config_string(effective_config, &["themeVariables", "actorBkg"])
-                        .filter(|fill| !fill.is_empty())
-                })
-                .unwrap_or_else(|| "rgba(128, 128, 128, 0.5)".to_string());
+        let rect_default_fill = typography.compat_binding().rect_default_fill.clone();
 
         Self {
             force_menus,
             mirror_actors,
-            diagram_margin_x,
             box_margin,
             actor_height,
             box_text_margin,
             message_align,
             label_box_height,
-            label_box_width,
             right_angles,
             wrap_padding,
             note_margin,
@@ -82,10 +66,22 @@ impl SequenceRenderSettings {
             activation_width,
             actor_wrap_width,
             rect_default_fill,
-            loop_text_style,
-            actor_text_style,
-            note_text_style,
+            message_text_style: typography.message().measurement_style().clone(),
+            loop_text_style: typography.loop_label().measurement_style().clone(),
+            actor_text_style: typography.actor().measurement_style().clone(),
+            note_text_style: typography.note().measurement_style().clone(),
         }
+    }
+
+    #[cfg(test)]
+    pub(super) fn from_effective_config(effective_config: &serde_json::Value) -> Self {
+        let config = merman_core::MermaidConfig::from_value(effective_config.clone());
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::interactive(),
+        );
+        let typography = crate::sequence::SequenceTypographyPlan::resolve(&config, None, &meter)
+            .expect("resolve Sequence test typography");
+        Self::from_resolved_typography(config.as_value(), &typography)
     }
 }
 
@@ -110,6 +106,46 @@ pub(super) fn sequence_text_style_attribute(style: &TextStyle) -> String {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn resolved_theme_typography_is_used_when_constructing_render_settings() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemeTextStyle, TypographySpec,
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_typography(
+                    TypographySpec::default().with_family_style(
+                        crate::DiagramFamilyId::SEQUENCE,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("monospace").unwrap())
+                            .with_font_size_px(31.0)
+                            .unwrap(),
+                    ),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
+        let config = merman_core::MermaidConfig::default();
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::interactive(),
+        );
+        let typography =
+            crate::sequence::SequenceTypographyPlan::resolve(&config, Some(&resolved), &meter)
+                .unwrap();
+        let settings =
+            SequenceRenderSettings::from_resolved_typography(config.as_value(), &typography);
+
+        for style in [
+            &settings.actor_text_style,
+            &settings.message_text_style,
+            &settings.note_text_style,
+            &settings.loop_text_style,
+        ] {
+            assert_eq!(style.font_family.as_deref(), Some("monospace"));
+            assert_eq!(style.font_size, 31.0);
+        }
+    }
 
     #[test]
     fn note_weight_reaches_inline_style_without_changing_message_weight() {
@@ -182,7 +218,6 @@ mod tests {
 
         assert!(!settings.force_menus);
         assert!(!settings.mirror_actors);
-        assert_eq!(settings.diagram_margin_x, 0.0);
         assert_eq!(settings.box_margin, -1.0);
         assert_eq!(settings.actor_height, 1.0);
         assert_eq!(settings.box_text_margin, -1.0);

@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-layered-canvas",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise the source-required Screen blend with a tiled linear grid and non-repeating radial glow."
+}

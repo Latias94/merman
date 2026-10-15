@@ -12,7 +12,7 @@ fn snapshot_selector_accepts(selector: &str, diagram_type: &str) -> bool {
     // `--diagram <dir>` is a directory selector. Fixtures in that directory can still parse into
     // the error diagram under `suppress_errors=true`, and those goldens keep the fixture corpus
     // aligned with the test harness.
-    if selector == "all" || diagram_type == "error" || diagram_type == selector {
+    if matches!(selector, "all" | "themes") || diagram_type == "error" || diagram_type == selector {
         return true;
     }
 
@@ -1104,6 +1104,10 @@ mod tests {
     fn snapshot_selector_accepts_directory_aliases() {
         let cases = [
             ("all", "flowchart-v2", true),
+            ("themes", "classDiagram", true),
+            ("themes", "erDiagram", true),
+            ("themes", "flowchart-v2", true),
+            ("themes", "stateDiagram", true),
             ("er", "erDiagram", true),
             ("er", "er", true),
             ("flowchart", "flowchart-v2", true),

@@ -1,0 +1,10 @@
+%%{init: {"theme":"base","themeVariables":{"primaryColor":"#dbeafe"},"themeCSS":".node:nth-child(2):not(.disabled) rect { stroke: #7c3aed; } svg:has(.node) .label { text-transform: uppercase; letter-spacing: 0.04em; }"}}%%
+flowchart LR
+    A[Default] --> B[Assigned]
+    B --> C[Inline]
+    linkStyle default stroke:#94a3b8
+    linkStyle 0 stroke:#475569
+    classDef default fill:#f8fafc,color:#0f172a
+    classDef assigned fill:#d1fae5,color:#064e3b
+    class B assigned
+    style C fill:#fee2e2,color:#7f1d1d

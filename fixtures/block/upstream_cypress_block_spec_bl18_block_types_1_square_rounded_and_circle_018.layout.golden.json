@@ -5,25 +5,25 @@
       "nodes": [
         {
           "id": "A",
-          "x": 40.08,
+          "x": 36.64,
           "y": 0.0,
-          "width": 80.16,
+          "width": 73.28,
           "height": 44.48,
           "is_cluster": false
         },
         {
           "id": "B",
-          "x": 128.24,
+          "x": 117.92,
           "y": 0.0,
-          "width": 80.16,
+          "width": 73.28,
           "height": 44.48,
           "is_cluster": false
         },
         {
           "id": "C",
-          "x": 216.4,
+          "x": 199.2,
           "y": 0.0,
-          "width": 80.16,
+          "width": 73.28,
           "height": 44.48,
           "is_cluster": false
         }
@@ -33,14 +33,14 @@
         {
           "id": "A",
           "allocated": {
-            "x": 40.08,
+            "x": 36.64,
             "y": 0.0,
-            "width": 80.16,
+            "width": 73.28,
             "height": 44.48
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 80.16,
+            "width": 73.28,
             "height": 44.48,
             "radius": 0.0,
             "kind": "basic"
@@ -49,14 +49,14 @@
         {
           "id": "B",
           "allocated": {
-            "x": 128.24,
+            "x": 117.92,
             "y": 0.0,
-            "width": 80.16,
+            "width": 73.28,
             "height": 44.48
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 80.16,
+            "width": 73.28,
             "height": 44.48,
             "radius": 5.0,
             "kind": "basic"
@@ -65,9 +65,9 @@
         {
           "id": "C",
           "allocated": {
-            "x": 216.4,
+            "x": 199.2,
             "y": 0.0,
-            "width": 80.16,
+            "width": 73.28,
             "height": 44.48
           },
           "boundary": {
@@ -81,7 +81,7 @@
       "bounds": {
         "min_x": 0.0,
         "min_y": -22.24,
-        "max_x": 256.48,
+        "max_x": 235.84,
         "max_y": 22.24
       }
     }

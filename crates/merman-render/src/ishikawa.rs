@@ -4,7 +4,6 @@ use crate::model::{
     IshikawaSubGroupLayout, IshikawaTextLayout,
 };
 use crate::text::{TextMeasurer, TextStyle};
-use crate::theme::PresentationTheme;
 use crate::{Error, Result};
 use merman_core::diagrams::ishikawa::{
     IshikawaDiagramRenderModel, IshikawaNodeRenderModel as IshikawaNode,
@@ -20,13 +19,18 @@ const COS_A: f64 = 0.139_173_100_960_065_47;
 const SIN_A: f64 = 0.990_268_068_741_570_4;
 
 mod config;
+mod theme;
 
 pub(crate) use config::IshikawaConfigView;
 use config::IshikawaLayoutSettings;
+pub(crate) use theme::{
+    IshikawaCssBinding, IshikawaTextThemePlan, IshikawaTextThemeReceipt, IshikawaTypographyTerminal,
+};
 
 pub(crate) fn layout_ishikawa_diagram_typed(
     model: &IshikawaDiagramRenderModel,
     effective_config: &Value,
+    font_family_css: &str,
     measurer: &dyn TextMeasurer,
 ) -> Result<IshikawaDiagramLayout> {
     let cfg = IshikawaConfigView::new(effective_config).layout_settings();
@@ -59,9 +63,7 @@ pub(crate) fn layout_ishikawa_diagram_typed(
         })?;
     let mut ctx = LayoutCtx {
         cfg: cfg.clone(),
-        font_family: PresentationTheme::new(effective_config)
-            .ishikawa()
-            .font_family,
+        font_family: font_family_css.to_string(),
         measurer,
         records: &model.nodes,
         bounds: BoundsAcc::new(),
@@ -931,18 +933,73 @@ mod font_style_tests {
             "fontFamily": "Cousine, sans-serif",
             "themeVariables": {"fontFamily": "Different, sans-serif"}
         });
-        let family = PresentationTheme::new(&config).ishikawa().font_family;
-        assert_eq!(family, "Cousine, sans-serif");
+        let config = merman_core::MermaidConfig::from_value(config);
+        let font_stack =
+            crate::family::InheritedFontStackPlan::resolve_property_local(None, &config);
+        let family = font_stack.font_family_css();
+        assert_eq!(family, "Different,sans-serif");
 
-        let head = ishikawa_text_measure_style("ishikawa-head-label", 18.0, &family);
-        assert_eq!(head.font_family.as_deref(), Some(family.as_str()));
+        let head = ishikawa_text_measure_style("ishikawa-head-label", 18.0, family);
+        assert_eq!(head.font_family.as_deref(), Some(family));
         assert_eq!(head.font_size, 14.0);
         assert_eq!(head.font_weight.as_deref(), Some("600"));
 
-        let cause = ishikawa_text_measure_style("ishikawa-label cause", 18.0, &family);
-        assert_eq!(cause.font_family.as_deref(), Some(family.as_str()));
+        let cause = ishikawa_text_measure_style("ishikawa-label cause", 18.0, family);
+        assert_eq!(cause.font_family.as_deref(), Some(family));
         assert_eq!(cause.font_size, 18.0);
         assert_eq!(cause.font_weight, None);
+    }
+
+    #[test]
+    fn layout_measurement_uses_the_canonical_font_stack() {
+        struct FontProbe(std::cell::RefCell<Vec<TextStyle>>);
+        impl TextMeasurer for FontProbe {
+            fn measure(&self, _text: &str, style: &TextStyle) -> crate::text::TextMetrics {
+                self.0.borrow_mut().push(style.clone());
+                crate::text::TextMetrics {
+                    width: 24.0,
+                    height: 14.0,
+                    line_count: 1,
+                }
+            }
+            fn measure_svg_raw_text_bbox_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+                self.measure(text, style).width
+            }
+        }
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "fontFamily": "RootFallback",
+            "themeVariables": {"fontFamily": "ThemeWinner"}
+        }));
+        let font_stack =
+            crate::family::InheritedFontStackPlan::resolve_property_local(None, &config);
+        let probe = FontProbe(std::cell::RefCell::new(Vec::new()));
+        let model = IshikawaDiagramRenderModel {
+            root: Some(0),
+            nodes: vec![IshikawaNode {
+                text: "Result".to_string(),
+                children: Vec::new(),
+            }],
+            ..Default::default()
+        };
+        layout_ishikawa_diagram_typed(
+            &model,
+            config.as_value(),
+            font_stack.font_family_css(),
+            &probe,
+        )
+        .unwrap();
+        let styles = probe.0.borrow();
+        assert!(!styles.is_empty());
+        assert!(
+            styles
+                .iter()
+                .all(|style| style.font_family.as_deref() == Some("ThemeWinner"))
+        );
+        assert!(
+            styles
+                .iter()
+                .all(|style| style.font_weight.as_deref() == Some("600"))
+        );
     }
 
     #[test]

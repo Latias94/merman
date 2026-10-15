@@ -1,0 +1,28 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-style-precedence",
+  "evidenceKind": "source-compatibility",
+  "intent": "Preserve Mermaid source-style conflicts as family-local evidence.",
+  "referenceMechanisms": [
+    "css-letter-spacing",
+    "css-text-transform",
+    "has-selector",
+    "not-selector",
+    "nth-child-selector",
+    "theme-variables"
+  ],
+  "styleEvidenceIds": [
+    "flow-node-assigned",
+    "flow-node-default",
+    "flow-edge-default",
+    "flow-edge-specific",
+    "flow-node-inline",
+    "flow-node-named",
+    "flow-node-theme",
+    "global-config-init",
+    "global-css-classdef",
+    "global-css-family",
+    "global-css-family-typography-residual",
+    "global-css-theme"
+  ]
+}

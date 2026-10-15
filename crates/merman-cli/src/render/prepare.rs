@@ -75,12 +75,6 @@ pub(crate) struct PreparedGraphicalRender {
     pub(super) pipeline: SvgPipeline,
     pub(super) output: PreparedGraphicalOutput,
     pub(super) admission: BackendAdmission,
-    #[cfg(any(
-        feature = "native-fonts",
-        feature = "png",
-        feature = "jpeg",
-        feature = "pdf"
-    ))]
     pub(super) quiet: bool,
     #[cfg(feature = "native-fonts")]
     pub(super) font_context: Option<merman::svg::export::NativeFontContext>,
@@ -142,20 +136,11 @@ impl PreparedGraphicalOutput {
         match self {
             Self::Svg => merman::RenderTarget::Svg(svg),
             #[cfg(feature = "png")]
-            Self::Png { options } => merman::RenderTarget::Png(merman::PngRequest {
-                svg,
-                options: options.clone(),
-            }),
+            Self::Png { .. } => merman::RenderTarget::Document(svg),
             #[cfg(feature = "jpeg")]
-            Self::Jpeg { options } => merman::RenderTarget::Jpeg(merman::JpegRequest {
-                svg,
-                options: options.clone(),
-            }),
+            Self::Jpeg { .. } => merman::RenderTarget::Document(svg),
             #[cfg(feature = "pdf")]
-            Self::Pdf { options } => merman::RenderTarget::Pdf(merman::PdfRequest {
-                svg,
-                options: options.clone(),
-            }),
+            Self::Pdf { .. } => merman::RenderTarget::Document(svg),
         }
     }
 }
@@ -645,12 +630,6 @@ pub(crate) fn prepare_graphical_output(
             pipeline,
             output,
             admission,
-            #[cfg(any(
-                feature = "native-fonts",
-                feature = "png",
-                feature = "jpeg",
-                feature = "pdf"
-            ))]
             quiet: common.quiet,
             #[cfg(feature = "native-fonts")]
             font_context,
@@ -787,12 +766,14 @@ fn prepare_rustdoc_renderer(
         },
     };
     let render = crate::invocation::ResolvedRenderOptions {
+        theme_preset: None,
+        theme_file: None,
+        theme_definition: None,
         #[cfg(feature = "native-fonts")]
         fonts: crate::cli::FontCliArgs {
             measurement: Some(crate::cli::FontMeasurementKind::Deterministic),
             ..Default::default()
         },
-        presentation_profile: None,
         math_renderer: Some(crate::cli::MathRendererKind::Ratex),
         container_width: None,
         container_height: None,
@@ -808,12 +789,6 @@ fn prepare_rustdoc_renderer(
         pipeline,
         output: PreparedGraphicalOutput::Svg,
         admission: BackendAdmission::for_svg(resources)?,
-        #[cfg(any(
-            feature = "native-fonts",
-            feature = "png",
-            feature = "jpeg",
-            feature = "pdf"
-        ))]
         quiet: true,
         #[cfg(feature = "native-fonts")]
         font_context: None,
@@ -1003,12 +978,12 @@ fn conversion_limits(
 fn raster_options(
     raster: crate::invocation::ResolvedRasterOptions,
     embedded_images: crate::invocation::ResolvedEmbeddedImageOptions,
-    background: Option<String>,
+    matte: Option<String>,
     resources: &ResolvedResourcePolicy,
 ) -> merman::svg::export::RasterOptions {
     let mut options = merman::svg::export::RasterOptions {
         scale: raster.scale,
-        background,
+        matte,
         ..Default::default()
     };
     if raster.fit_width.is_some() || raster.fit_height.is_some() {
@@ -1039,7 +1014,7 @@ fn raster_options(
 fn pdf_options(
     pdf: crate::invocation::ResolvedPdfOptions,
     embedded_images: crate::invocation::ResolvedEmbeddedImageOptions,
-    background: Option<String>,
+    page_paint: Option<String>,
     common: &ResolvedRenderCommon,
     mmdc_compat: bool,
     mmdc_fit_width_px: Option<f32>,
@@ -1064,7 +1039,7 @@ fn pdf_options(
         options.filter_image_limit =
             merman::svg::export::PdfFilterImageLimit::new(Some(max_pixels));
     }
-    options.background = background;
+    options.page_paint = page_paint;
     options.embedded_image_limit = embedded_image_limit(embedded_images);
     options.conversion_limits = conversion_limits(&common.resources);
     options

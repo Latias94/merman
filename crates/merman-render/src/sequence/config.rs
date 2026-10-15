@@ -1,9 +1,76 @@
+use std::collections::BTreeSet;
+
+use crate::diagram_theme::ThemeTypographyProperty;
 use crate::text::TextStyle;
+use merman_core::MermaidConfig;
 use serde_json::Value;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SequenceTypographyConfigRole {
+    Actor,
+    Message,
+    Note,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SequenceTypographyMeasurementWinner {
+    path: &'static str,
+}
+
+impl SequenceTypographyMeasurementWinner {
+    #[cfg(test)]
+    pub(crate) const fn path(self) -> &'static str {
+        self.path
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct SequenceRoleTypographyConfig {
+    measurement_style: TextStyle,
+    #[cfg(test)]
+    font_stack_measurement_winner: Option<SequenceTypographyMeasurementWinner>,
+    #[cfg(test)]
+    font_size_measurement_winner: Option<SequenceTypographyMeasurementWinner>,
+    #[cfg(test)]
+    font_weight_measurement_winner: Option<SequenceTypographyMeasurementWinner>,
+    config_owned_properties: BTreeSet<ThemeTypographyProperty>,
+}
+
+impl SequenceRoleTypographyConfig {
+    pub(crate) const fn measurement_style(&self) -> &TextStyle {
+        &self.measurement_style
+    }
+
+    #[cfg(test)]
+    pub(crate) const fn measurement_winner(
+        &self,
+        property: ThemeTypographyProperty,
+    ) -> Option<SequenceTypographyMeasurementWinner> {
+        match property {
+            ThemeTypographyProperty::FontStack => self.font_stack_measurement_winner,
+            ThemeTypographyProperty::FontSize => self.font_size_measurement_winner,
+            ThemeTypographyProperty::FontWeight => self.font_weight_measurement_winner,
+            ThemeTypographyProperty::FontStyle
+            | ThemeTypographyProperty::LineHeight
+            | ThemeTypographyProperty::LetterSpacing
+            | ThemeTypographyProperty::WordSpacing
+            | ThemeTypographyProperty::Transform
+            | ThemeTypographyProperty::Decoration
+            | ThemeTypographyProperty::TextAlign
+            | ThemeTypographyProperty::WhiteSpace
+            | ThemeTypographyProperty::Wrap => None,
+        }
+    }
+
+    pub(crate) fn config_owns(&self, property: ThemeTypographyProperty) -> bool {
+        self.config_owned_properties.contains(&property)
+    }
+}
 
 pub(crate) struct SequenceConfigView<'a> {
     effective_config: &'a Value,
     sequence_config: &'a Value,
+    config_provenance: Option<&'a MermaidConfig>,
 }
 
 impl<'a> SequenceConfigView<'a> {
@@ -11,7 +78,25 @@ impl<'a> SequenceConfigView<'a> {
         Self {
             effective_config,
             sequence_config: effective_config.get("sequence").unwrap_or(&Value::Null),
+            config_provenance: None,
         }
+    }
+
+    pub(crate) fn from_mermaid_config(effective_config: &'a MermaidConfig) -> Self {
+        Self {
+            effective_config: effective_config.as_value(),
+            sequence_config: effective_config
+                .as_value()
+                .get("sequence")
+                .unwrap_or(&Value::Null),
+            config_provenance: Some(effective_config),
+        }
+    }
+
+    fn path_overrides_typed_default(&self, path: &str) -> bool {
+        self.config_provenance.is_some_and(|config| {
+            merman_core::__private::config_path_overrides_typed_default(config, path)
+        })
     }
 
     pub(crate) fn sequence_bool(&self, key: &str, default: bool) -> bool {
@@ -78,6 +163,7 @@ impl<'a> SequenceConfigView<'a> {
         parser.is_exhausted().then_some(css)
     }
 
+    #[cfg(test)]
     pub(crate) fn font_weight(&self, key: &str) -> Option<String> {
         // sequenceRenderer.setConf selects a truthy global value before CSSOM validation.
         // A rejected global value must not reveal the overridden family setting.
@@ -86,6 +172,12 @@ impl<'a> SequenceConfigView<'a> {
             Some(value) => Self::parse_font_weight(value),
             None => Some("400".to_string()),
         }
+    }
+
+    pub(crate) fn font_size(&self, key: &str) -> f64 {
+        self.font_value("fontSize", key)
+            .and_then(crate::config::json_f64_css_px)
+            .unwrap_or(16.0)
     }
 
     fn sequence_compat_f64(&self, key: &str, default: f64) -> f64 {
@@ -104,29 +196,203 @@ impl<'a> SequenceConfigView<'a> {
             .or_else(|| self.sequence_config.get(sequence_key))
     }
 
-    pub(crate) fn text_style(
+    #[cfg(test)]
+    pub(crate) fn resolve_role_typography(
         &self,
-        family_key: &str,
-        size_key: &str,
-        weight_key: &str,
-    ) -> TextStyle {
-        let font_family = self
-            .font_value("fontFamily", family_key)
+        role: SequenceTypographyConfigRole,
+    ) -> SequenceRoleTypographyConfig {
+        self.resolve_role_typography_with_typed_properties(role, &BTreeSet::new())
+    }
+
+    pub(crate) fn resolve_role_typography_with_typed_properties(
+        &self,
+        role: SequenceTypographyConfigRole,
+        typed_theme_properties: &BTreeSet<ThemeTypographyProperty>,
+    ) -> SequenceRoleTypographyConfig {
+        let (family_key, family_path, size_key, size_path, weight_key, weight_path) = match role {
+            SequenceTypographyConfigRole::Actor => (
+                "actorFontFamily",
+                "sequence.actorFontFamily",
+                "actorFontSize",
+                "sequence.actorFontSize",
+                "actorFontWeight",
+                "sequence.actorFontWeight",
+            ),
+            SequenceTypographyConfigRole::Message => (
+                "messageFontFamily",
+                "sequence.messageFontFamily",
+                "messageFontSize",
+                "sequence.messageFontSize",
+                "messageFontWeight",
+                "sequence.messageFontWeight",
+            ),
+            SequenceTypographyConfigRole::Note => (
+                "noteFontFamily",
+                "sequence.noteFontFamily",
+                "noteFontSize",
+                "sequence.noteFontSize",
+                "noteFontWeight",
+                "sequence.noteFontWeight",
+            ),
+        };
+
+        let root_font_family_value = self
+            .effective_config
+            .get("fontFamily")
+            .filter(|value| crate::config::json_value_is_truthy(value));
+        let root_font_family = root_font_family_value
             .and_then(Value::as_str)
             .map(str::to_owned);
-        // svgDraw.parseFontSize accepts numeric strings and explicit px lengths as well
-        // as numbers. Resolve these identically for layout and SVG emission.
-        let font_size = self
-            .font_value("fontSize", size_key)
-            .and_then(crate::config::json_f64_css_px)
-            .unwrap_or(16.0);
-        let font_weight = self.font_weight(weight_key);
+        let role_font_family = self.sequence_string(family_key);
+        let theme_variable_font_family =
+            crate::config::config_string(self.effective_config, &["themeVariables", "fontFamily"]);
+        let theme_variable_font_family_owns = self
+            .path_overrides_typed_default("themeVariables.fontFamily")
+            && theme_variable_font_family.is_some();
+        let root_font_family_owns =
+            root_font_family_value.is_some() && self.path_overrides_typed_default("fontFamily");
+        let role_font_family_owns =
+            role_font_family.is_some() && self.path_overrides_typed_default(family_path);
+        let typed_font_stack = typed_theme_properties.contains(&ThemeTypographyProperty::FontStack);
+        let root_font_family_present = root_font_family_value.is_some();
+        // Mermaid mirrors truthy root font values, including generated defaults, over the
+        // role-local Sequence value. A role-local config only bypasses a generated root value
+        // when that property participates in typed-theme ownership.
+        let (font_family, _font_stack_measurement_winner) = if root_font_family_owns {
+            (
+                root_font_family,
+                Some(SequenceTypographyMeasurementWinner { path: "fontFamily" }),
+            )
+        } else if typed_font_stack && role_font_family_owns {
+            (
+                role_font_family,
+                Some(SequenceTypographyMeasurementWinner { path: family_path }),
+            )
+        } else if root_font_family_present {
+            (
+                root_font_family,
+                Some(SequenceTypographyMeasurementWinner { path: "fontFamily" }),
+            )
+        } else if let Some(value) = role_font_family {
+            (
+                Some(value),
+                Some(SequenceTypographyMeasurementWinner { path: family_path }),
+            )
+        } else {
+            (None, None)
+        };
 
-        TextStyle {
-            font_family,
-            font_size,
-            font_weight,
-            font_style: None,
+        let root_font_size_value = self
+            .effective_config
+            .get("fontSize")
+            .filter(|value| crate::config::json_value_is_truthy(value));
+        let root_font_size = root_font_size_value.and_then(crate::config::json_f64_css_px);
+        let role_font_size = self
+            .sequence_config
+            .get(size_key)
+            .and_then(crate::config::json_f64_css_px);
+        let root_font_size_owns =
+            root_font_size_value.is_some() && self.path_overrides_typed_default("fontSize");
+        let role_font_size_owns =
+            role_font_size.is_some() && self.path_overrides_typed_default(size_path);
+        let typed_font_size = typed_theme_properties.contains(&ThemeTypographyProperty::FontSize);
+        let root_font_size_present = root_font_size_value.is_some();
+        let (font_size, _font_size_measurement_winner) = if root_font_size_owns {
+            (
+                root_font_size.unwrap_or(16.0),
+                Some(SequenceTypographyMeasurementWinner { path: "fontSize" }),
+            )
+        } else if typed_font_size && role_font_size_owns {
+            (
+                role_font_size.expect("owned role Sequence font size must exist"),
+                Some(SequenceTypographyMeasurementWinner { path: size_path }),
+            )
+        } else if root_font_size_present {
+            (
+                root_font_size.unwrap_or(16.0),
+                Some(SequenceTypographyMeasurementWinner { path: "fontSize" }),
+            )
+        } else if let Some(value) = role_font_size {
+            (
+                value,
+                Some(SequenceTypographyMeasurementWinner { path: size_path }),
+            )
+        } else {
+            (16.0, None)
+        };
+
+        let root_font_weight_value = self
+            .effective_config
+            .get("fontWeight")
+            .filter(|value| crate::config::json_value_is_truthy(value));
+        let role_font_weight_value = self.sequence_config.get(weight_key);
+        let root_font_weight = root_font_weight_value.and_then(Self::parse_font_weight);
+        let role_font_weight = role_font_weight_value.and_then(Self::parse_font_weight);
+        let root_font_weight_owns =
+            root_font_weight_value.is_some() && self.path_overrides_typed_default("fontWeight");
+        let role_font_weight_owns =
+            role_font_weight_value.is_some() && self.path_overrides_typed_default(weight_path);
+        let (font_weight, _font_weight_measurement_winner) = if root_font_weight_owns {
+            (
+                root_font_weight,
+                Some(SequenceTypographyMeasurementWinner { path: "fontWeight" }),
+            )
+        } else if role_font_weight_owns
+            && (root_font_weight_value.is_none()
+                || typed_theme_properties.contains(&ThemeTypographyProperty::FontWeight))
+        {
+            (
+                role_font_weight,
+                Some(SequenceTypographyMeasurementWinner { path: weight_path }),
+            )
+        } else if root_font_weight_value.is_some() {
+            (
+                root_font_weight,
+                Some(SequenceTypographyMeasurementWinner { path: "fontWeight" }),
+            )
+        } else if role_font_weight_value.is_some() {
+            (
+                role_font_weight,
+                Some(SequenceTypographyMeasurementWinner { path: weight_path }),
+            )
+        } else {
+            (Some("400".to_string()), None)
+        };
+
+        let mut config_owned_properties = BTreeSet::new();
+        if theme_variable_font_family_owns
+            || root_font_family_owns
+            || (role_font_family_owns && (typed_font_stack || !root_font_family_present))
+        {
+            config_owned_properties.insert(ThemeTypographyProperty::FontStack);
+        }
+        if root_font_size_owns
+            || (role_font_size_owns && (typed_font_size || !root_font_size_present))
+        {
+            config_owned_properties.insert(ThemeTypographyProperty::FontSize);
+        }
+        if root_font_weight_owns
+            || (role_font_weight_owns
+                && (root_font_weight_value.is_none()
+                    || typed_theme_properties.contains(&ThemeTypographyProperty::FontWeight)))
+        {
+            config_owned_properties.insert(ThemeTypographyProperty::FontWeight);
+        }
+
+        SequenceRoleTypographyConfig {
+            measurement_style: TextStyle {
+                font_family,
+                font_size,
+                font_weight,
+                font_style: None,
+            },
+            #[cfg(test)]
+            font_stack_measurement_winner: _font_stack_measurement_winner,
+            #[cfg(test)]
+            font_size_measurement_winner: _font_size_measurement_winner,
+            #[cfg(test)]
+            font_weight_measurement_winner: _font_weight_measurement_winner,
+            config_owned_properties,
         }
     }
 }
@@ -151,10 +417,14 @@ pub(super) struct SequenceLayoutSettings {
     pub(super) actor_text_style: TextStyle,
     pub(super) note_text_style: TextStyle,
     pub(super) msg_text_style: TextStyle,
+    pub(super) loop_text_style: TextStyle,
 }
 
 impl SequenceLayoutSettings {
-    pub(super) fn from_effective_config(effective_config: &Value) -> Self {
+    pub(super) fn from_effective_config(
+        effective_config: &Value,
+        typography: &super::typography::SequenceTypographyPlan,
+    ) -> Self {
         let config = SequenceConfigView::new(effective_config);
 
         let diagram_margin_x = config.sequence_compat_f64("diagramMarginX", 50.0);
@@ -174,12 +444,6 @@ impl SequenceLayoutSettings {
         let is_neo = crate::config::config_diagram_look(effective_config).is_neo();
         let activation_width = config.sequence_compat_f64_min("activationWidth", 10.0, 1.0);
 
-        let actor_text_style =
-            config.text_style("actorFontFamily", "actorFontSize", "actorFontWeight");
-        let note_text_style = config.text_style("noteFontFamily", "noteFontSize", "noteFontWeight");
-        let msg_text_style =
-            config.text_style("messageFontFamily", "messageFontSize", "messageFontWeight");
-
         Self {
             diagram_margin_x,
             diagram_margin_y,
@@ -197,9 +461,10 @@ impl SequenceLayoutSettings {
             right_angles,
             is_neo,
             activation_width,
-            actor_text_style,
-            note_text_style,
-            msg_text_style,
+            actor_text_style: typography.actor().measurement_style().clone(),
+            note_text_style: typography.note().measurement_style().clone(),
+            msg_text_style: typography.message().measurement_style().clone(),
+            loop_text_style: typography.loop_label().measurement_style().clone(),
         }
     }
 }
@@ -208,6 +473,20 @@ impl SequenceLayoutSettings {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn sequence_layout_settings(config: Value) -> SequenceLayoutSettings {
+        let effective_config = MermaidConfig::from_value(config);
+        let work_meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let typography = super::super::typography::SequenceTypographyPlan::resolve(
+            &effective_config,
+            None,
+            &work_meter,
+        )
+        .expect("resolve Sequence typography");
+        SequenceLayoutSettings::from_effective_config(effective_config.as_value(), &typography)
+    }
 
     #[test]
     fn note_weight_matches_source_numeric_string_and_global_precedence() {
@@ -256,7 +535,7 @@ mod tests {
             ),
             (json!({"sequence": {"noteFontWeight": 0}}), None),
         ] {
-            let settings = SequenceLayoutSettings::from_effective_config(&config);
+            let settings = sequence_layout_settings(config.clone());
             assert_eq!(
                 settings.note_text_style.font_weight.as_deref(),
                 expected,
@@ -286,7 +565,7 @@ mod tests {
                 }
             });
             let view = SequenceConfigView::new(&config);
-            let settings = SequenceLayoutSettings::from_effective_config(&config);
+            let settings = sequence_layout_settings(config.clone());
             for weight in [
                 view.font_weight("actorFontWeight"),
                 settings.actor_text_style.font_weight,
@@ -324,7 +603,7 @@ mod tests {
             "look": "neo",
             "fontFamily": "Global, Arial",
             "fontSize": "22",
-            "fontWeight": "700",
+            "fontWeight": 700,
             "sequence": {
                 "width": "240",
                 "height": "80",
@@ -336,7 +615,7 @@ mod tests {
             }
         });
 
-        let settings = SequenceLayoutSettings::from_effective_config(&cfg);
+        let settings = sequence_layout_settings(cfg);
 
         assert_eq!(settings.sequence_default_width, 240.0);
         assert_eq!(settings.actor_height, 80.0);
@@ -367,7 +646,7 @@ mod tests {
             }
         });
 
-        let settings = SequenceLayoutSettings::from_effective_config(&cfg);
+        let settings = sequence_layout_settings(cfg);
 
         assert_eq!(
             settings.actor_text_style.font_family.as_deref(),
@@ -390,5 +669,256 @@ mod tests {
         );
         assert_eq!(settings.msg_text_style.font_size, 21.0);
         assert_eq!(settings.msg_text_style.font_weight.as_deref(), Some("700"));
+    }
+
+    #[test]
+    fn sequence_role_typography_keeps_winner_paths_after_css_size_selection() {
+        for (root, expected_size, expected_path) in [
+            (json!(""), 19.5, "sequence.actorFontSize"),
+            (json!(0), 19.5, "sequence.actorFontSize"),
+            (json!("22.25px"), 22.25, "fontSize"),
+            (json!("invalid"), 16.0, "fontSize"),
+        ] {
+            let config = json!({
+                "fontSize": root,
+                "sequence": { "actorFontSize": "19.5px" }
+            });
+            let resolved = SequenceConfigView::new(&config)
+                .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+            assert_eq!(
+                resolved.measurement_style().font_size,
+                expected_size,
+                "{config}"
+            );
+            assert_eq!(
+                resolved
+                    .measurement_winner(ThemeTypographyProperty::FontSize)
+                    .map(SequenceTypographyMeasurementWinner::path),
+                Some(expected_path),
+                "{config}"
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_role_typography_reports_root_winners_ahead_of_role_local_config() {
+        let cfg = json!({
+            "fontFamily": "Root Family",
+            "fontSize": 22,
+            "fontWeight": 700,
+            "sequence": {
+                "actorFontFamily": "Actor Family",
+                "actorFontSize": 19,
+                "actorFontWeight": 500
+            }
+        });
+
+        let resolved = SequenceConfigView::new(&cfg)
+            .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some("Root Family")
+        );
+        assert_eq!(resolved.measurement_style().font_size, 22.0);
+        assert_eq!(
+            resolved.measurement_style().font_weight.as_deref(),
+            Some("700")
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontStack),
+            Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontSize),
+            Some(SequenceTypographyMeasurementWinner { path: "fontSize" })
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontWeight),
+            Some(SequenceTypographyMeasurementWinner { path: "fontWeight" })
+        );
+    }
+
+    #[test]
+    fn sequence_role_typography_ignores_unowned_theme_defaults_ahead_of_root_config() {
+        let cfg = json!({
+            "fontFamily": "Root Family",
+            "themeVariables": {"fontFamily": "Theme Family"},
+            "sequence": {"actorFontFamily": "Actor Family"}
+        });
+
+        let resolved = SequenceConfigView::new(&cfg)
+            .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some("Root Family")
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontStack),
+            Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
+        );
+    }
+
+    #[test]
+    fn sequence_role_typography_keeps_explicit_root_font_ownership_after_mirroring() {
+        let metadata = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "fontFamily": "Root Family",
+            })))
+            .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello")
+            .expect("parse Sequence site font config");
+        let resolved = SequenceConfigView::from_mermaid_config(&metadata.effective_config)
+            .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some("Root Family")
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontStack),
+            Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
+        );
+        assert!(resolved.config_owns(ThemeTypographyProperty::FontStack));
+    }
+
+    #[test]
+    fn sequence_role_typography_keeps_theme_variable_ownership_separate_from_measurement() {
+        let metadata = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "fontFamily": "Root Family",
+                "themeVariables": {"fontFamily": "Theme Family"},
+            })))
+            .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello")
+            .expect("parse Sequence theme-variable font config");
+        let resolved = SequenceConfigView::from_mermaid_config(&metadata.effective_config)
+            .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some("Root Family")
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontStack),
+            Some(SequenceTypographyMeasurementWinner { path: "fontFamily" })
+        );
+        assert!(resolved.config_owns(ThemeTypographyProperty::FontStack));
+    }
+
+    #[test]
+    fn sequence_role_typography_uses_generated_root_defaults_on_mermaid_compatibility_path() {
+        let metadata = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "sequence": {
+                    "actorFontFamily": "Actor Family",
+                    "actorFontSize": 19,
+                    "actorFontWeight": 500,
+                },
+            })))
+            .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello")
+            .expect("parse Sequence role typography config");
+        let resolved = SequenceConfigView::from_mermaid_config(&metadata.effective_config)
+            .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+        let generated_root_family = metadata
+            .effective_config
+            .as_value()
+            .get("fontFamily")
+            .and_then(Value::as_str)
+            .expect("generated root fontFamily");
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some(generated_root_family)
+        );
+        assert_eq!(resolved.measurement_style().font_size, 16.0);
+        assert_eq!(
+            resolved.measurement_style().font_weight.as_deref(),
+            Some("500")
+        );
+        assert!(!resolved.config_owns(ThemeTypographyProperty::FontStack));
+        assert!(!resolved.config_owns(ThemeTypographyProperty::FontSize));
+        assert!(resolved.config_owns(ThemeTypographyProperty::FontWeight));
+    }
+
+    #[test]
+    fn sequence_role_typography_keeps_explicit_role_ownership_for_typed_properties() {
+        let metadata = merman_core::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "sequence": {
+                    "actorFontFamily": "Actor Family",
+                    "actorFontSize": 19,
+                    "actorFontWeight": 500,
+                },
+            })))
+            .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello")
+            .expect("parse Sequence role typography config");
+        let typed_theme_properties = BTreeSet::from([
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+        ]);
+        let resolved = SequenceConfigView::from_mermaid_config(&metadata.effective_config)
+            .resolve_role_typography_with_typed_properties(
+                SequenceTypographyConfigRole::Actor,
+                &typed_theme_properties,
+            );
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some("Actor Family")
+        );
+        assert_eq!(resolved.measurement_style().font_size, 19.0);
+        assert_eq!(
+            resolved.measurement_style().font_weight.as_deref(),
+            Some("500")
+        );
+        for property in [
+            ThemeTypographyProperty::FontStack,
+            ThemeTypographyProperty::FontSize,
+            ThemeTypographyProperty::FontWeight,
+        ] {
+            assert!(resolved.config_owns(property));
+        }
+    }
+
+    #[test]
+    fn sequence_role_typography_reports_role_winners_only_without_global_values() {
+        let cfg = json!({
+            "sequence": {
+                "actorFontFamily": "Actor Family",
+                "actorFontSize": 19,
+                "actorFontWeight": 500
+            }
+        });
+
+        let resolved = SequenceConfigView::new(&cfg)
+            .resolve_role_typography(SequenceTypographyConfigRole::Actor);
+
+        assert_eq!(
+            resolved.measurement_style().font_family.as_deref(),
+            Some("Actor Family")
+        );
+        assert_eq!(resolved.measurement_style().font_size, 19.0);
+        assert_eq!(
+            resolved.measurement_style().font_weight.as_deref(),
+            Some("500")
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontStack),
+            Some(SequenceTypographyMeasurementWinner {
+                path: "sequence.actorFontFamily",
+            })
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontSize),
+            Some(SequenceTypographyMeasurementWinner {
+                path: "sequence.actorFontSize",
+            })
+        );
+        assert_eq!(
+            resolved.measurement_winner(ThemeTypographyProperty::FontWeight),
+            Some(SequenceTypographyMeasurementWinner {
+                path: "sequence.actorFontWeight",
+            })
+        );
     }
 }

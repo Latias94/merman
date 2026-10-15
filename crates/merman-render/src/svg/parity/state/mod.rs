@@ -1,5 +1,7 @@
+use super::shadow::write_theme_shadow_application;
 use super::*;
 use rustc_hash::FxHashMap;
+use std::cell::RefCell;
 mod context;
 mod edge;
 mod node;
@@ -32,9 +34,16 @@ type StateSvgLink = merman_core::diagrams::state::StateDiagramRenderLink;
 type StateSvgLinks = merman_core::diagrams::state::StateDiagramRenderLinks;
 type StateSvgNode = merman_core::diagrams::state::StateDiagramRenderNode;
 type StateSvgEdge = merman_core::diagrams::state::StateDiagramRenderEdge;
+
+fn state_transition_marker_id(diagram_id: impl SvgDiagramIdValue, ordinal: usize) -> String {
+    format!("{diagram_id}_stateDiagram-barbEnd-{ordinal}")
+}
+
 struct StateRenderCtx<'a> {
     diagram_id: SvgDiagramId<'a>,
+    /// The normalized look used for renderer behavior (`default` behaves as `classic`).
     diagram_look: String,
+    serialized_diagram_look: String,
     palette_size: usize,
     uses_elk_adapter_dom: bool,
     elk_edge_paths: &'a std::collections::HashMap<String, Vec<crate::model::LayoutPoint>>,
@@ -59,8 +68,10 @@ struct StateRenderCtx<'a> {
     include_edges: bool,
     include_nodes: bool,
     measurer: &'a dyn TextMeasurer,
-    text_style: crate::text::TextStyle,
-    theme_defaults: StateThemeDefaults,
+    label_sidecar: &'a crate::state::StateLabelSidecar,
+    effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
+    style_plan: &'a crate::state::StateStylePlan,
+    theme_receipt: RefCell<crate::state::StateThemeTerminalReceipt>,
     rough_cache: StateRoughCache,
 }
 

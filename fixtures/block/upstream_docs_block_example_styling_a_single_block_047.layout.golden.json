@@ -5,18 +5,18 @@
       "nodes": [
         {
           "id": "id1",
-          "x": 34.56,
+          "x": 26.56,
           "y": 0.0,
-          "width": 69.12,
-          "height": 32.0,
+          "width": 53.12,
+          "height": 40.0,
           "is_cluster": false
         },
         {
           "id": "id2",
-          "x": 188.8,
+          "x": 148.8,
           "y": 0.0,
-          "width": 69.12,
-          "height": 32.0,
+          "width": 53.12,
+          "height": 40.0,
           "is_cluster": false
         }
       ],
@@ -29,15 +29,15 @@
           "to_cluster": null,
           "points": [
             {
-              "x": 34.56,
+              "x": 26.56,
               "y": 0.0
             },
             {
-              "x": 111.68,
+              "x": 87.68,
               "y": 0.0
             },
             {
-              "x": 188.8,
+              "x": 148.8,
               "y": 0.0
             }
           ],
@@ -55,15 +55,15 @@
         {
           "id": "id1",
           "allocated": {
-            "x": 34.56,
+            "x": 26.56,
             "y": 0.0,
-            "width": 69.12,
-            "height": 32.0
+            "width": 53.12,
+            "height": 40.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 69.12,
-            "height": 32.0,
+            "width": 53.12,
+            "height": 40.0,
             "radius": 5.0,
             "kind": "basic"
           }
@@ -71,15 +71,15 @@
         {
           "id": "id2",
           "allocated": {
-            "x": 188.8,
+            "x": 148.8,
             "y": 0.0,
-            "width": 69.12,
-            "height": 32.0
+            "width": 53.12,
+            "height": 40.0
           },
           "boundary": {
             "shape": "rectangle",
-            "width": 69.12,
-            "height": 32.0,
+            "width": 53.12,
+            "height": 40.0,
             "radius": 5.0,
             "kind": "basic"
           }
@@ -87,9 +87,9 @@
       ],
       "bounds": {
         "min_x": 0.0,
-        "min_y": -16.0,
-        "max_x": 223.36,
-        "max_y": 16.0
+        "min_y": -20.0,
+        "max_x": 175.36,
+        "max_y": 20.0
       }
     }
   }

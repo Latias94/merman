@@ -25,7 +25,7 @@ class PrereleaseCompatibilityTests(unittest.TestCase):
 
         self.assertIn(
             'merman = { version = "=0.9.0-alpha.1", default-features = false, '
-            'features = ["ascii"] }',
+            'features = ["ascii", "svg"] }',
             manifest,
         )
         self.assertIn(
@@ -66,6 +66,72 @@ class PrereleaseCompatibilityTests(unittest.TestCase):
         self.assertIn(f'"merman" = {{ path = {merman_path} }}', candidate_manifest)
         self.assertNotIn(f'"merman" = {{ path = {merman_path} }}', previous_manifest)
         self.assertIn(f'"merman-core" = {{ path = {core_path} }}', previous_manifest)
+
+    def test_previous_facade_compile_failure_rejects_the_candidate(self) -> None:
+        calls = []
+
+        def fake_check(command, *, cwd, env):
+            calls.append(cwd.name)
+            if cwd.name == "previous-with-candidate-siblings":
+                return subprocess.CompletedProcess(
+                    command, 101, "", "unresolved import `merman_render::presentation`"
+                )
+            return subprocess.CompletedProcess(command, 0, "", "")
+
+        with mock.patch.object(verify, "candidate_packages", return_value=()):
+            with tempfile.TemporaryDirectory() as temp_dir:
+                with self.assertRaisesRegex(
+                    verify.PrereleaseCompatibilityError,
+                    "previous-with-candidate-siblings.*merman_render::presentation",
+                ):
+                    verify.verify(
+                        Path(temp_dir),
+                        "0.8.0-alpha.7",
+                        "0.8.0-alpha.6",
+                        run_check=fake_check,
+                    )
+        self.assertEqual(calls, ["candidate", "previous-with-candidate-siblings"])
+
+    def test_accepted_alpha6_transition_checks_candidate_and_reports_known_break(self) -> None:
+        with mock.patch.object(verify, "candidate_packages", return_value=()):
+            with mock.patch.object(verify, "_run_lane") as run_lane:
+                with mock.patch("builtins.print") as output:
+                    verify.verify(
+                        Path("."), "0.8.0-alpha.7", "0.8.0-alpha.6",
+                        accept_alpha6_transition=True,
+                    )
+        run_lane.assert_called_once()
+        self.assertEqual(run_lane.call_args.args[0], "candidate")
+        self.assertIn("NOT VERIFIED", output.call_args.args[0])
+        self.assertIn("known incompatible", output.call_args.args[0])
+
+    def test_accepted_alpha6_transition_does_not_suppress_candidate_failure(self) -> None:
+        def failed_check(command, *, cwd, env):
+            return subprocess.CompletedProcess(command, 101, "", "candidate compile failure")
+
+        with mock.patch.object(verify, "candidate_packages", return_value=()):
+            with self.assertRaisesRegex(verify.PrereleaseCompatibilityError, "candidate compile failure"):
+                verify.verify(
+                    Path("."), "0.8.0-alpha.7", "0.8.0-alpha.6",
+                    accept_alpha6_transition=True, run_check=failed_check,
+                )
+
+    def test_transition_exception_rejects_other_versions_and_missing_previous(self) -> None:
+        for candidate, previous, first in [
+            ("0.8.0-alpha.8", "0.8.0-alpha.7", False),
+            ("0.8.0-alpha.7", "0.8.0-alpha.5", False),
+            ("0.8.0-alpha.7", None, True),
+            ("0.8.0-alpha.7", "0.8.0-alpha.6", True),
+            ("0.8.0", "0.8.0-alpha.6", False),
+        ]:
+            with self.subTest(candidate=candidate, previous=previous, first=first):
+                with mock.patch.object(verify, "candidate_packages") as packages:
+                    with self.assertRaisesRegex(verify.PrereleaseCompatibilityError, "requires candidate"):
+                        verify.verify(
+                            Path("."), candidate, previous,
+                            accept_alpha6_transition=True, allow_missing_previous=first,
+                        )
+                packages.assert_not_called()
 
     def test_stable_releases_skip_without_loading_candidate_packages(self) -> None:
         with mock.patch.object(verify, "candidate_packages") as packages:

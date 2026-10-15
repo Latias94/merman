@@ -46,6 +46,7 @@ THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 **/THIRD_PARTY_LICENSES/** text eol=lf -whitespace
 **/THIRD_PARTY_NOTICES.md -whitespace
 **/THIRD_PARTY_LICENSES/npm-production-dependencies.txt text eol=lf
+fixtures/themes/licenses/modern-mermaid-MIT.txt text eol=lf whitespace=-blank-at-eof
 
 # Test font license copies retain their upstream whitespace.
 crates/merman-export/tests/fonts/OFL.txt text eol=lf -whitespace

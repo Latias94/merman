@@ -31,14 +31,14 @@
           "label": {
             "text": "global",
             "y": 8.0,
-            "width": 800.0,
+            "width": 36.0,
             "height": 18.0,
             "line_count": 1.0
           },
           "ty": {
             "text": "[global]",
             "y": 31.0,
-            "width": 800.0,
+            "width": 41.0,
             "height": 15.0,
             "line_count": 1.0
           },

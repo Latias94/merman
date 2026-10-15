@@ -1,0 +1,118 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Operator",
+      "Console"
+    ],
+    "actors": {
+      "Console": {
+        "name": "Console",
+        "description": "Console",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "Operator": {
+        "name": "Operator",
+        "description": "Operator",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Operator",
+        "to": "Console",
+        "type": 0,
+        "message": "Breach",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "Console",
+        "to": null,
+        "type": 17,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "Operator",
+        "to": "Console",
+        "type": 2,
+        "message": "Access granted",
+        "wrap": false,
+        "activate": false,
+        "placement": 2
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "type": 10,
+        "message": "Trace",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "Console",
+        "to": "Operator",
+        "type": 1,
+        "message": "Scan",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "type": 11,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "Console",
+        "to": null,
+        "type": 18,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": [
+          "Operator",
+          "Console"
+        ],
+        "message": "Access granted",
+        "placement": 2,
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

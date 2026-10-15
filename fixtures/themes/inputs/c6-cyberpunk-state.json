@@ -1,0 +1,48 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-c6-cyberpunk-state",
+  "tokens": {
+    "background": "#020617",
+    "surface": "#0f172a",
+    "primary": "#22d3ee",
+    "text": "#e0f2fe"
+  },
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [
+    {
+      "kind": "solid",
+      "color": "#020617"
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": {
+    "border": {
+      "color": "#22d3ee",
+      "widthPx": 2
+    },
+    "dashPattern": [],
+    "cornerRadiusPx": 10,
+    "shadow": {
+      "offsetXPx": 0,
+      "offsetYPx": 0,
+      "blurPx": 8,
+      "spreadPx": 0,
+      "color": "#22d3ee"
+    }
+  },
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-hand-drawn-effects",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise bounded filter resources and licensed hand-drawn typography."
+}

@@ -9,8 +9,10 @@ mod markdown;
 mod markdown_label;
 mod measure;
 mod metrics;
+mod prepared;
 mod svg_metrics;
 mod types;
+mod visible_style;
 mod whitespace;
 mod wrap;
 
@@ -26,7 +28,7 @@ pub use icons::replace_fontawesome_icons;
 pub(crate) use line_break::{html_has_soft_break_opportunity, mermaid_html_breaks_to_newlines};
 pub(crate) use markdown::{
     MermaidMarkdownAnalysis, MermaidMarkdownWordType, analyze_mermaid_markdown,
-    mermaid_markdown_contains_html_tags, mermaid_markdown_to_lines,
+    mermaid_markdown_contains_html_tags, mermaid_markdown_is_plain_text, mermaid_markdown_to_lines,
 };
 pub(crate) use markdown_label::{
     mermaid_markdown_contains_raw_blocks, mermaid_markdown_to_html_label_fragment,
@@ -49,7 +51,19 @@ pub use metrics::{measure_html_with_inline_styles, measure_markdown_with_inline_
 pub(crate) use metrics::{
     measure_svg_markdown_word_lines, measure_wrapped_markdown_with_inline_styles,
     measure_xhtml_label_fragment, mermaid_markdown_to_wrapped_word_lines,
+    style_requests_bold_font_weight, style_requests_italic_font_style,
 };
+
+pub(crate) use prepared::{PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId};
+pub(crate) use prepared::{ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight};
+pub(crate) use visible_style::VisibleTextStyleFacts;
+
+/// Workspace-internal reserved-token observation for native export.
+#[doc(hidden)]
+pub mod __private {
+    pub use super::prepared::PreparedTextLabelId;
+}
+pub use prepared::{PreparedTextLayoutReport, TextLayoutFailure};
 pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
     svg_wrapped_first_line_bbox_height_px,
@@ -65,6 +79,10 @@ pub use wrap::{
     ceil_to_1_64_px, round_to_1_64_px, round_to_1_64_px_ties_to_even, split_html_br_lines,
     wrap_label_like_mermaid_lines, wrap_text_lines_measurer,
 };
+
+pub(crate) fn sequence_text_line_step_px(font_size_px: f64) -> f64 {
+    font_size_px.max(1.0) * 1.1875
+}
 
 #[cfg(all(
     test,

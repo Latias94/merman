@@ -5,7 +5,7 @@
     "version": "0.9.0",
     "merman_version": "0.9.0",
     "mermaid_version": "12.2.0",
-    "capability_digest": "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed",
+    "capability_digest": "sha256:5b258cdc24e14dbc01dc19276c0c3d3477a4c3db20fba0214c87f6fd2333d00c",
     "profile": "rustdoc-static-v1"
   },
   "inputs": [
@@ -30,13 +30,13 @@
       "fragment": "crate-overview",
       "source": "docs/rustdoc-src/crate-overview.md",
       "path": "crate-overview.md",
-      "sha256": "a4bf8cc3c338f34533b2800fbc12467b088fb38898f69bb238f432e4a69ebff9"
+      "sha256": "56f969e9c3db0d972abcd931bf90c90eb06443f466970c4d7aedd39587f7bc4c"
     },
     {
       "fragment": "render-module",
       "source": "docs/rustdoc-src/render-module.md",
       "path": "render-module.md",
-      "sha256": "5239b35a13d18027eccfc5629792c1fcda19bf4e58f4d6072f0b0c39bb23f3fd"
+      "sha256": "4bd2a9af69cb83b1fae49c9922cb47df7195b9318e175fad25c74a04363a5bab"
     }
   ],
   "managed_files": [

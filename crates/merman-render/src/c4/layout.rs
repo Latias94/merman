@@ -1,5 +1,6 @@
 use super::{
-    C4Conf, C4ConfigView, C4Model, C4NodeShape, c4_node_shape, c4_stereotype_text, measure_c4_text,
+    C4_FRAMED_FRAME_WIDTH, C4_NEO_FRAMED_LABEL_PADDING_X, C4_NEO_FRAMED_LABEL_PADDING_Y, C4Conf,
+    C4ConfigView, C4Look, C4Model, C4NodeShape, c4_node_shape, c4_stereotype_text, measure_c4_text,
     measure_c4_unified_text,
 };
 use crate::model::{
@@ -123,7 +124,7 @@ struct Rect {
 
 struct C4LayoutContext<'a> {
     model: &'a C4Model,
-    cfg: &'a C4ConfigView<'a>,
+    typography: &'a super::C4TypographyThemePlan,
     conf: &'a C4Conf,
     c4_shape_in_row: usize,
     c4_boundary_in_row: usize,
@@ -451,19 +452,40 @@ fn layout_c4_shape_array(
         let shape = &ctx.model.shapes[*idx];
         let type_c4_shape = shape.type_c4_shape.as_str().to_string();
         let shape_kind = c4_node_shape(shape);
+        let look = ctx.conf.look;
+        // The 11.17 unified C4 label helper reads the diagram-local `c4.wrap` setting.  The
+        // parser's per-object `wrap` field belongs to the legacy boundary/relationship path and
+        // is not consulted by the unified shape renderer.
         let text_wrap = ctx.conf.wrap;
         let text_limit_width = match shape_kind {
             // Mermaid's cylinder handlers subtract one padding unit from the requested node
             // width before c4LabelHelper derives its inner wrapping width.
-            C4NodeShape::Cylinder => (ctx.conf.width - ctx.conf.c4_shape_padding * 3.0).max(32.0),
+            C4NodeShape::Cylinder => {
+                let label_padding = if look.is_neo() {
+                    24.0
+                } else {
+                    ctx.conf.c4_shape_padding
+                };
+                (ctx.conf.width - label_padding - ctx.conf.c4_shape_padding * 2.0).max(32.0)
+            }
             C4NodeShape::HorizontalCylinder => {
                 // `tiltedCylinder` first subtracts half the padding from the target width;
                 // the label helper then subtracts the full node padding for its wrap probe.
-                (ctx.conf.width - ctx.conf.c4_shape_padding * 2.5).max(32.0)
+                let label_padding = if look.is_neo() {
+                    12.0
+                } else {
+                    ctx.conf.c4_shape_padding / 2.0
+                };
+                (ctx.conf.width - label_padding - ctx.conf.c4_shape_padding * 2.0).max(32.0)
             }
             _ => (ctx.conf.width - ctx.conf.c4_shape_padding * 2.0).max(32.0),
         };
-        let text_conf = ctx.cfg.shape_font(&type_c4_shape);
+        let text_conf = ctx
+            .typography
+            .element_style(&type_c4_shape)
+            .expect("C4 preparation binds every model shape type before layout")
+            .font
+            .clone();
 
         // Unified C4 labels are measured as stacked name/stereotype/description sections.
         // Their CSS font sizes are part of the geometry contract, so measure each section with
@@ -492,6 +514,9 @@ fn layout_c4_shape_array(
             render_plan: label_m.map(|m| m.render_plan),
         };
 
+        // Mermaid's unified C4 shape adapter derives the node stereotype exclusively from
+        // `typeC4Shape` and the optional technology. A named `$type` argument may remain in the
+        // legacy source model, but unlike boundary `type` it is not a node label override.
         let stereotype_text = c4_stereotype_text(shape);
         let mut stereotype_conf = text_conf.clone();
         stereotype_conf.font_size *= 0.75;
@@ -553,12 +578,16 @@ fn layout_c4_shape_array(
 
         // Store section centre positions relative to the top-left layout box. The SVG renderer
         // translates the unified shape to its centre and uses these values to place each label.
-        let mut section_y = (ctx
-            .conf
-            .height
-            .max(content_height + 2.0 * ctx.conf.c4_shape_padding)
-            - content_height)
-            / 2.0;
+        let label_padding_y = match (shape_kind, look) {
+            // `section_y` is a per-side offset, while Mermaid's subroutine padding is the total
+            // vertical addition to the label bounds.
+            (C4NodeShape::Framed, C4Look::Neo) => C4_NEO_FRAMED_LABEL_PADDING_Y / 2.0,
+            (C4NodeShape::HorizontalCylinder, C4Look::Neo) => 6.0,
+            (C4NodeShape::Cylinder, C4Look::Neo) => 24.0,
+            _ => ctx.conf.c4_shape_padding,
+        };
+        let mut section_y =
+            (ctx.conf.height.max(content_height + 2.0 * label_padding_y) - content_height) / 2.0;
         let mut label = label;
         if has_label {
             label.y = section_y + label.height / 2.0;
@@ -584,10 +613,23 @@ fn layout_c4_shape_array(
         let base_height = content_height + 2.0 * padding;
         let (width, height) = match shape_kind {
             C4NodeShape::Rounded => (base_width, base_height),
-            C4NodeShape::Framed => (
-                (content_width + padding + 16.0).max(ctx.conf.width),
-                content_height + padding,
-            ),
+            C4NodeShape::Framed => {
+                let label_padding_x = if look.is_neo() {
+                    C4_NEO_FRAMED_LABEL_PADDING_X
+                } else {
+                    padding
+                };
+                let label_padding_y = if look.is_neo() {
+                    C4_NEO_FRAMED_LABEL_PADDING_Y
+                } else {
+                    padding
+                };
+                (
+                    (content_width + 2.0 * C4_FRAMED_FRAME_WIDTH + label_padding_x)
+                        .max(ctx.conf.width),
+                    content_height + label_padding_y,
+                )
+            }
             C4NodeShape::Person => {
                 let width = base_width.max(100.0);
                 let head_radius = (width * 0.23).clamp(16.0, 56.0);
@@ -598,19 +640,20 @@ fn layout_c4_shape_array(
             C4NodeShape::Cylinder => {
                 // The unified cylinder reserves one padding unit around the label, while the
                 // legacy `c4.width` remains a lower bound for the full shape.
-                let width = (content_width + padding).max(ctx.conf.width).max(1.0);
+                let label_padding = if look.is_neo() { 24.0 } else { padding };
+                let width = (content_width + label_padding).max(ctx.conf.width).max(1.0);
                 let rx = width / 2.0;
                 let ry = rx / (2.5 + width / 50.0);
                 // `cylinder`'s path extends one cap radius beyond its vertical body on both
                 // sides; the legacy grid stores the resulting outer bounding-box height.
-                (width, content_height + padding + 3.0 * ry)
+                (width, content_height + label_padding + 3.0 * ry)
             }
             C4NodeShape::HorizontalCylinder => {
                 // Mermaid's `h-cyl` resolves to `tiltedCylinder`: the requested width is
                 // reduced by half-padding for the wrap probe, then the rendered path adds that
                 // half-padding and a horizontal cap radius back. Its returned height is the
                 // path height itself (the path's vertical capsule is centered by a transform).
-                let label_padding = padding / 2.0;
+                let label_padding = if look.is_neo() { 12.0 } else { padding / 2.0 };
                 let inner_width = (ctx.conf.width - label_padding).max(10.0);
                 let body_height = content_height + label_padding;
                 let ry = body_height / 2.0;
@@ -709,7 +752,10 @@ fn prepare_c4_boundary_layout(
         y = image.y + image.height;
     }
 
-    let text_wrap = boundary.wrap.unwrap_or(ctx.model.wrap) && ctx.conf.wrap;
+    // Legacy Mermaid boundaries carry their own root-wrap snapshot. A global
+    // boundary has no such field and therefore does not wrap when it is absent;
+    // do not substitute the diagram model's root directive here.
+    let text_wrap = boundary.wrap.unwrap_or(false) && ctx.conf.wrap;
     let mut label_conf = ctx.conf.boundary_font();
     label_conf.font_size += 2.0;
     label_conf.font_weight = Some("bold".to_string());
@@ -950,13 +996,15 @@ fn layout_inside_boundary(
 pub(crate) fn layout_c4_diagram_typed(
     model: &C4DiagramRenderModel,
     effective_config: &Value,
+    typography: &super::C4TypographyThemePlan,
     measurer: &dyn TextMeasurer,
     container_width: f64,
     container_height: f64,
     screen_available_width: Option<f64>,
 ) -> Result<C4DiagramLayout> {
     let c4_cfg = C4ConfigView::new(effective_config);
-    let conf = c4_cfg.layout_settings();
+    let conf = c4_cfg
+        .layout_settings_with_prepared_fonts(typography.boundary_font(), typography.message_font());
 
     let c4_shape_in_row = (model.layout.c4_shape_in_row.max(1)) as usize;
     let c4_boundary_in_row = (model.layout.c4_boundary_in_row.max(1)) as usize;
@@ -1001,7 +1049,7 @@ pub(crate) fn layout_c4_diagram_typed(
 
     let ctx = C4LayoutContext {
         model,
-        cfg: &c4_cfg,
+        typography,
         conf: &conf,
         c4_shape_in_row,
         c4_boundary_in_row,

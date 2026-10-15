@@ -17,6 +17,95 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 14 native repair closeout](native_theme_repair_2026-10-14.md) closes N01–N36
+as correctness or owner-local structural repairs. The fourteen-row frozen confirmation cohort
+passes non-regression against clean corrected control `d5ae01105`; no row clears the registered
+improvement gate. Final code `ac4a40437` preserves all 38 corrected outputs. Against original
+main, nineteen fixtures remain byte-identical and the thirteen-row confirmation intersection
+retains ten material regressions and three inconclusive outcomes. Class remains about 85.7%
+(554.3 us) slower than main. Keep the main gap in the active attribution queue; the final cost
+has not been separated into required validation and avoidable work. Preserve operation,
+resource, source-ownership and exact-artifact contracts while profiling the remaining owners.
+The repaired-control non-regression result does not close the historical release-range queue
+or establish a whole-corpus latency or allocation improvement.
+
+The [October 14 root-cause checkpoint](native_theme_root_cause_2026-10-14.md)
+classifies the original nineteen changed-output fixtures and records the initial 25 high-confidence
+repair items, expanded to 36 during implementation. Public probes reproduce a shared stylesheet/XML
+boundary failure in 28 of 38 legal-font variants, incorrect scoped-theme derivation,
+Neo non-palette Swimlane border override and four Block geometry/configuration gaps.
+The [repair plan](../plans/2026-10-14-0053-refactor-native-theme-regressions-plan.md)
+fixes correctness first, then removes demonstrated configuration, family-evidence and
+reference-summary waste. The root-cause investigation alone did not admit performance recovery;
+the closeout above records the subsequent implementation and confirmation separately. Retain
+the original timing receipts.
+
+The [October 13 native main-versus-theme checkpoint](native_main_theme_2026-10-13.md)
+compares clean main `3a4b8c393` with theme branch `f47abded0` on macOS ARM64. Nine
+byte-identical default-SVG cases confirm regression after stable eight-pair A/A calibration
+per executable and eight fresh balanced AB/BA pairs. Class medium increases 82.35%
+(537.66 us); Journey increases 246.49% (67.85 us). All nine simultaneous 95% lower bounds
+clear the unchanged 10%/50 us gate. Nineteen of 38 discovery inputs change SVG bytes and
+remain outside same-output latency admission. Parse diagnostics and separate CPU captures
+identify selected-theme materialization/configuration copying and exact standalone SVG
+finalization as profiling priorities. Preserve output, resource, cancellation and admission
+contracts. This is current main-versus-branch evidence, separate from published release ranges;
+no performance implementation is included in the checkpoint.
+
+The [reference attribute-value experiment](reference_attribute_values_2026-09-20.md) rejects
+skipping repeated normalization of values the reference collector does not read. Class medium
+improves only 9.90 µs (0.84%) in two diagnostic pairs, below the registered joint latency gate.
+All 245 pipeline tests and exact public SVG/receipt/preset identities pass; no production patch
+is integrated. The complete XML/reference finalization cost remains an attribution target.
+
+The [XML/reference single-pass candidate](xml_reference_single_pass_2026-09-20.md) is accepted
+on the clean macOS ARM64 confirmation lane. It fuses XML event and attribute traversal while
+retaining full validation, resource checks, cancellation and exact output contracts. Class medium
+improves 10.925% and 136.988 microseconds with simultaneous 95% bounds clearing both thresholds;
+Sequence medium also clears the improvement gate. Class tiny, XY Chart medium and Flowchart medium
+confirm non-regression. The candidate is integrated as `bdb209e11`. This is an adjacent-source
+improvement and does not close the alpha.6 release-range regression, cross-host cost matrix or
+C7a/U10.
+
+The [reference-plan checkpoint](reference_plan_2026-09-21.md) removes a repeated dependency-graph
+evaluation while retaining conservative effect amplification. Class medium drops 12 allocations,
+21,136 cumulative bytes and 5,184 bytes of peak growth per complete SVG render. Five controls
+preserve exact SVGs, complete public receipts and preset fingerprints. Two diagnostic timing
+pairs show no material slowdown; they do not establish a latency improvement. The earlier
+no-effect-only reuse candidate was rejected because default Class contains filter definitions.
+
+The [SHA-256 upgrade](sha2_upgrade_2026-09-20.md) admits sha2 0.11.0 on the measured macOS ARM64
+lane. After eight A/A pairs per executable and eight balanced confirmation pairs, Class medium
+falls from 1,461.74 to 1,248.73 µs (14.58%, 213.01 µs); Sequence medium also clears the existing
+joint improvement gate. All five fixtures confirm non-regression and preserve exact SVGs,
+public receipts, preset fingerprints and measured heap behavior. Feature, platform, legal and
+dependency checks pass. This follows the [backend attribution](sha2_arm64_attribution_2026-09-20.md);
+it does not close the alpha.6 release-range regression or establish cross-host/package results.
+
+The [SVG attribute-validation checkpoint](svg_attribute_validation_2026-09-20.md) removes repeated
+second-pass duplicate-name storage after full XML validation. Class medium drops 492 allocations
+and 41,088 cumulative bytes per complete SVG render; five controls preserve exact output and peak
+growth. Two diagnostic timing pairs show no material slowdown, but do not establish a confirmed
+speedup or close the alpha.7 regression. The earlier single-byte-search candidate was rejected
+because measured allocation did not change.
+
+The [identity-shadow-offset checkpoint](zero_offset_shadow_2026-09-18.md) reduces actual filter
+work from 140 to 112 primitives for the fixed Cyberpunk XY scene, preserving PNG/PDF bytes and
+existing limits. It does not claim a latency improvement. Larger default-profile charts remain
+limited by conservative SVG reference-expansion accounting and conversion budgets, and native PDF
+cumulative allocation remains a U10 profiling target.
+
+The [native export checkpoint](native_export_2026-09-20.md) adds current public-renderer throughput
+for three complete default/Cyberpunk scenes across SVG, PNG and PDF. All 18 rows pass output-byte
+replay at default limits; six PDFs also pass independent PDFKit reader/raster smoke. Cyberpunk
+PDF costs 378.6–730.6 ms per output on the measured macOS ARM64 host, versus 42.6–59.0 ms for PNG.
+These are different output workloads, not a revision regression. Keep localized PDF filter-image
+work and cumulative allocation as profiling targets; matched output and calibrated evidence are
+still required before changing implementation, quality or budgets.
+
+The September 16 [theme capability and impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md)
+adds confirmed alpha.6-to-alpha.7 default-SVG regressions and matched CPU samples. These are
+active work below; the earlier headless optimization decisions remain historical and unchanged.
 - [System font query feasibility](../research/2026-10-10-system-font-query-feasibility.md)
   records an isolated Windows source-query probe and font-kit/fontique source
   audit. Targeted lookup is promising, but complete render equivalence, fallback,
@@ -159,6 +248,34 @@ The [initial observation](library_rendering_v070_to_01cc4562f_2026-10-05.md) and
 Retain LIBPERF-01 (Mindmap), LIBPERF-02 (SVG-emission ownership boundaries), and LIBPERF-03 (State plus historical Requirement/Gitgraph identity instability) as deferred findings under their original contracts. LIBPERF-04 remains resolved by restoring the twelve AgentFlow/Usecase selectors. LIBPERF-05 records coverage of the earlier native corpus; memory, additional scales, cold-engine, and other transports remain outside this comparison. For LIBPERF-06, the four matched-Dagre controls do not reproduce the prior slowdown direction; parallel-merges and backedges/subgraphs have not received matched-backend confirmation. LIBPERF-07 retains the smaller/noisy historical signals. A stronger release claim requires a new preregistered stable-runner campaign with A/A calibration and fresh balanced pairs; do not retry the failed schedule until favorable. No production fix or alpha bisect is part of this checkpoint. The older priorities below retain their original revision/host scope.
 
 ## Priorities
+
+The [current Web/Typst artifact snapshot](../knowledge/engineering/verification/2026-09-20-web-typst-consumers-single-pass.md)
+at `bdb209e11` passes all 24 existing size-budget metrics across six profiles, with installed Web
+and Typst owner checks. The refresh changes no size limits. Matched release-range footprint and
+runtime comparisons remain separate open work.
+
+The [historical artifact checkpoint](theme_web_artifact_gate_2026-09-13.md) at `eda8c3846` records
+all five then-current Web profiles exceeding raw, stripped, Gzip and Brotli limits despite passing
+production smoke and an installed Chromium consumer. The explicit Binaryen `-Oz` candidate was
+rejected because compressed sizes grew. The clean revision-86 baseline at `4e4f3acc3` confirms
+those twenty historical failures. Its five-sort canonical encoding/font-catalog candidate is also
+rejected: render shrinks only 2552 bytes while gzip grows
+683 bytes and Brotli grows 2034 bytes. Keep that rejected result closed and require a distinct
+causal hypothesis for further size work; raw stable-sort symbol totals are not admission evidence.
+
+The [family evidence index repair](theme_evidence_requirement_index_2026-09-13.md) at `d92dee3ad`
+removes the quadratic ordered-key deduplication step by using the ledger's existing membership
+index. Native route order and compatibility ownership are preserved, with no added retained index.
+The clean private Release owner suite passed 3,273 tests, SVG structure and real Typst package
+checks passed, and all four Typst size controls decreased slightly. This is a structural work-bound
+repair, not a measured latency or peak-memory improvement; it did not close the size gates at
+that checkpoint.
+
+The [typography winner guard](theme_typography_recomputation_2026-09-13.md) removes repeated font-stack
+copying for paint-only rules. Its bounded public SVG probe reduces cumulative allocated bytes by
+90.719% with unchanged peak heap growth; the Web render artifact has a small measured size cost.
+That allocation repair did not close the artifact-size gate or change family support at its
+checkpoint.
 
 | Priority | Fixture | Current latency | Current / alpha.3 | Current / mmdr | User impact |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -307,6 +424,81 @@ and XYChart sources from every ratio.
 
 ## Work queue
 
+### Active: alpha.7 default SVG regression
+
+The September 16 release-range audit confirms regressions in unthemed complete SVG operations
+from published alpha.6 source to candidate `a5e3cd2d6`: Class tiny +270% to +274%, Class medium
++125% to +127%, and XY Chart medium +162% to +166% (simultaneous confidence bounds). The same
+Rust 1.95 toolchain, harness, features and exact SVG bytes were used. Dependency changes remain
+part of this release-range comparison; this is not theme-only attribution.
+
+Stage diagnostics and matched alpha.6/candidate CPU sampling identify prepared-text token
+partitioning and standalone SVG finalization as shared cost centers. First review the minimal
+typed-theme/SVG dependency and execution boundary separately from native-export guarantees.
+Theme font embedding/shaping was retired in `54b4d484a`; that removes its dependency cost but does
+not close the default-SVG regression. Investigate scanning/allocation and ownership of already
+validated artifact facts. Preserve output bytes, terminal evidence, malformed-token and
+XML errors, resource limits and cancellation. Do not revive the rejected July raw-string API or
+skip admission because the caller did not explicitly select a theme.
+
+The September 20 [allocation repair](svg_attribute_validation_2026-09-20.md) now reuses the XML
+owner's attribute-name uniqueness result in private second passes. Full XML validation and
+resource/error/cancellation semantics remain unchanged. Its measured allocation reduction does
+not close this latency gate; continue profiling finalization and prepared-text work rather than
+assuming source-level temporary allocations survive optimization.
+
+Follow-up source tracing at `2db16c6b7` excludes per-tag prepared-text copying from the default
+Class cause: Class owns an empty prepared-text ledger, so these fixtures only execute the reserved
+spelling search. A direct-copy candidate was rejected before measurement rather than switching
+its registered workload. Ordinary finalization also computes the resource fingerprint only once.
+Keep the remaining XML/reference work and reserved-spelling search distinct from prepared-font
+token rewriting when forming the next hypothesis.
+
+The SHA backend candidate is now [accepted](sha2_upgrade_2026-09-20.md): the workspace upgrade
+to 0.11.0 preserves both the framed resource fingerprint and raw public artifact digest while
+confirming a 14.58% Class-medium latency reduction against an adjacent old-SHA baseline with
+identical benchmark source. All five controls pass. Continue attributing the remaining Class
+cost and renew final-candidate artifact evidence; the isolated native win does not close this
+release-range regression. The [September 21 matched renewal](alpha6_current_class_2026-09-21.md)
+compares published alpha.6 with post-upgrade source `aa35110ee`: Class tiny remains +209.94%
+(50.65 to 156.99 µs), and Class medium +102.32% (600.34 to 1,214.61 µs). Both clear the unchanged
+10%/50 µs regression gate with stable calibration, eight balanced confirmation pairs and exact
+SVG identities. These current observations supersede the pre-upgrade values for this source;
+they remain release-range evidence, not theme-only attribution.
+Two-pair stage diagnostics show sub-microsecond parse deltas and family SVG emission increases
+of 16.50/92.57 µs. Layout projection identities differ only in the default secure-key list;
+geometry matches, but that changed-config stage is not sampled. Four fresh CPU captures retain
+the measured binary identities: that capture's standalone finalization accounts for 2,393 of 7,493
+main-thread end-to-end samples, including 2,327 in XML/reference resource-budget checking.
+These overlapping samples identify the next owner to investigate, not removable time. Preserve
+the new artifact/resource/admission contract and do not infer a finalizer-only cause by subtracting
+independent stage measurements.
+
+The subsequent [single-evaluation candidate](reference_plan_2026-09-21.md) measures a bounded
+allocation reduction without weakening effect accounting; full strict verification remains
+blocked by existing workspace Clippy errors. It does not materially resolve the measured
+alpha.6 latency gap. Continue source-backed attribution before choosing another candidate;
+do not infer a speedup from reduced temporary storage.
+
+The [September 24 correctness and attribution checkpoint](../knowledge/engineering/verification/2026-09-24-modern-theme-performance-attribution.md)
+refreshes sampling at `8325653c3` after font retirement. Ordinary XML/reference budget validation
+accounts for 36.50%, 33.20% and 24.49% of the Flowchart-tiny, Sequence-medium and Class-medium
+main-thread samples respectively (inclusive, overlapping counts). This default BestEffort path
+already combines XML/reference collection in one pass and does not perform strict resvg/resource
+closure certification. Attribute its remaining attribute validation and reference-plan allocations
+before proposing another traversal refactor. Class also constructs node/relation/marker terminal
+expectations without a selected theme; determine their source-style responsibilities before making
+that work conditional. Keep reserved-token defenses, fingerprint identities and cancellation/error
+ordering intact. The 8-second `profile_render` stage data are diagnostic; its render stage includes
+preparation and is not Criterion's render-only body. No new latency improvement is claimed.
+
+Exit: a measured candidate against a fixed adjacent baseline, representative Class/XY Chart and
+cross-family controls, full relevant negative-contract tests, and the existing scenario-specific
+confirmation gate. Sampling percentages alone cannot admit a change or justify the added cost.
+See the [September 16 capability and impact audit](../knowledge/engineering/verification/2026-09-16-theme-capability-impact-audit.md)
+for exact observations, excluded fixtures and remaining memory/throughput work. This active
+regression is separate from the historical closed hypotheses below.
+
 ### P1.0: Profile residual Requirement layout and SVG construction
 
 The repeated-label cause is closed. Profile Dugong layout separately from path/DOM string
@@ -444,6 +636,24 @@ opaque style-group side index reduce Rust planning to `O(B + R + K)` plus explic
 backend work, remove the growing `B * K` scratch-copy term, and preserve host/built-in semantics.
 The side index adds `O(R + K)` logical `usize` slots; no peak-memory or latency improvement is
 claimed. See [the decision receipt](rich_inline_html_planning_2026-08-07.md).
+
+### P1.9: Remove duplicated theme and terminal SVG work
+
+Reduce ownership overhead on the frozen theme-ownership branch without altering configuration
+revisions, provenance, failure atomicity or terminal SVG admission. Keep fresh-process Windows
+CLI startup as a separate full-capability experiment.
+
+The 2026-10-14 candidate removes one complete JSON copy-on-write from exclusively owned legacy
+theme calculation, consumes terminal reference collections instead of cloning discarded data,
+and reuses adjacent final-byte observations to reduce explicit best-effort parity/readable XML
+traversals from three to two. Observations have retention limits and fall back to the existing
+scanner without changing error order. Strict/resvg-safe paths retain their validation scopes.
+
+These are structural work reductions. Combined native diagnostics support non-regression but
+do not establish a calibrated clean-revision latency or peak-memory improvement. The complete
+Windows delay-import candidate did not meet its joint materiality screen and was rejected;
+no linker setting or ordinary CI performance gate is retained. See
+[the checkpoint and validation receipt](SVG_OWNED_WORK_2026-10-14.md).
 
 ## Guardrails
 

@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-dotted-canvas",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise a source-required tiled radial dot canvas."
+}

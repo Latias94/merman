@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-striped-canvas",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise source-required repeating linear canvas stripes."
+}

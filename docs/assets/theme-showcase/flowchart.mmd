@@ -1,0 +1,7 @@
+flowchart LR
+    Browse[Browse Products] --> Stock{Item in Stock?}
+    subgraph Checkout[Checkout]
+        Cart[Add to Cart]
+    end
+    Stock -->|Yes| Cart
+    Stock -->|No| Unavailable[Out of Stock]

@@ -3,19 +3,19 @@ use crate::model::{
     Bounds, EventModelingBoxLayout, EventModelingDiagramLayout, EventModelingRelationLayout,
     EventModelingSwimlaneLayout,
 };
-use crate::svg::render_theme::EventModelingTheme;
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines, wrap_label_like_mermaid_lines};
-use crate::theme::PresentationTheme;
 use merman_core::diagrams::eventmodeling::{
     EventModelingDataEntityRenderModel, EventModelingDiagramRenderModel,
     EventModelingFrameRenderModel,
 };
-use serde_json::Value;
 use std::collections::{BTreeMap, HashMap};
 
 mod config;
+mod css_binding;
+mod theme;
 
-use config::EventModelingConfigView;
+pub(crate) use css_binding::EventModelingCssBinding;
+pub(crate) use theme::EventModelingTextThemePlan;
 
 const SWIMLANE_MIN_HEIGHT: f64 = 70.0;
 const SWIMLANE_PADDING: f64 = 15.0;
@@ -32,13 +32,12 @@ const BOX_TEXT_PADDING: f64 = 10.0;
 const TEXT_FONT_SIZE: f64 = 16.0;
 const HTML_LABEL_BBOX_LINE_HEIGHT: f64 = 19.0;
 
-pub(crate) fn layout_eventmodeling_diagram_typed(
+pub(crate) fn layout_eventmodeling_diagram_typed_with_binding(
     model: &EventModelingDiagramRenderModel,
-    effective_config: &Value,
+    theme: &EventModelingCssBinding,
     measurer: &dyn TextMeasurer,
 ) -> Result<EventModelingDiagramLayout> {
-    let cfg = EventModelingConfigView::new(effective_config).layout_settings();
-    let theme = PresentationTheme::new(effective_config).eventmodeling();
+    let cfg = theme.layout_settings;
     let data_entities: HashMap<&str, &EventModelingDataEntityRenderModel> = model
         .data_entities
         .iter()
@@ -79,7 +78,7 @@ pub(crate) fn layout_eventmodeling_diagram_typed(
         swimlane.height = swimlane.max_height.max(SWIMLANE_MIN_HEIGHT) + 2.0 * SWIMLANE_PADDING;
         max_r = max_r.max(swimlane.r).max(r);
 
-        let visual = entity_visual_props(&theme, &frame.model_entity_type);
+        let visual = entity_visual_props(theme, &frame.model_entity_type);
         let box_state = BoxState {
             index,
             frame_name: frame.name.clone(),
@@ -581,7 +580,7 @@ fn normalize_eventmodeling_data_for_measurement(raw: &str) -> String {
     without_outer_braces.trim().to_string()
 }
 
-fn entity_visual_props(theme: &EventModelingTheme, entity_type: &str) -> VisualProps {
+fn entity_visual_props(theme: &EventModelingCssBinding, entity_type: &str) -> VisualProps {
     match entity_type {
         "ui" => VisualProps {
             fill: theme.ui_fill.clone(),

@@ -1,10 +1,10 @@
 use super::super::*;
 use super::actor_man_glyphs::{ActorManGlyphPlacement, write_actor_man_glyph};
-use super::actor_shapes::{ActorLabelContext, is_actor_man_variant};
+use super::actor_shapes::is_actor_man_variant;
 use super::actors::SequenceActorRenderContext;
 
 pub(super) fn render_sequence_actor_man_tops(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
     diagram_id: SvgDiagramId<'_>,
 ) -> Result<()> {
@@ -12,7 +12,7 @@ pub(super) fn render_sequence_actor_man_tops(
 }
 
 pub(super) fn render_sequence_actor_man_bottoms(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
     diagram_id: SvgDiagramId<'_>,
 ) -> Result<()> {
@@ -20,20 +20,12 @@ pub(super) fn render_sequence_actor_man_bottoms(
 }
 
 fn render_sequence_actor_man(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     ctx: &SequenceActorRenderContext<'_>,
     diagram_id: SvgDiagramId<'_>,
     footer: bool,
 ) -> Result<()> {
-    let label_ctx = ActorLabelContext::new(
-        ctx.actor_wrap_width,
-        ctx.diagram_id,
-        ctx.measurer,
-        ctx.actor_text_style,
-        ctx.sanitize_config,
-        ctx.math_renderer,
-        ctx.checkpoints,
-    );
+    let label_ctx = ctx.label_context();
     // These groups are appended by drawActor, unlike the box groups that are lowered.
     for (actor_index, actor_id) in ctx.model.actor_order.iter().enumerate() {
         ctx.checkpoints.checkpoint_loop(actor_index)?;
@@ -46,6 +38,8 @@ fn render_sequence_actor_man(
         let placement = if footer { "bottom" } else { "top" };
         let node_id = format!("actor-{placement}-{actor_id}");
         let Some(node) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
+            ctx.typography_receipt
+                .record_missing_text_effect(crate::sequence::SequenceTextSurface::ParticipantLabel);
             continue;
         };
         write_actor_man_glyph(
@@ -65,8 +59,9 @@ fn render_sequence_actor_man(
                 label_box_height: ctx.label_box_height,
                 diagram_id,
             },
-            &label_ctx,
+            &label_ctx.for_actor(actor_index),
         )?;
+        out.checkpoint()?;
     }
     ctx.checkpoints.checkpoint()
 }

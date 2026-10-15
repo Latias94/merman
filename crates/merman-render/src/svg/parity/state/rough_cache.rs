@@ -25,6 +25,7 @@ pub(super) struct StateRoughCacheKey {
     pub(super) tag: u8,
     pub(super) a: u64,
     pub(super) b: u64,
+    pub(super) c: u64,
     pub(super) seed: roughr::core::RoughJsSeed,
 }
 
@@ -128,6 +129,7 @@ mod tests {
             tag,
             a: 10,
             b: 20,
+            c: 0,
             seed: roughr::core::RoughJsSeed::new(seed),
         }
     }

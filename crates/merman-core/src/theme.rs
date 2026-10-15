@@ -1,42 +1,172 @@
 use crate::MermaidConfig;
+use crate::ThemeEvaluationLimitExceeded;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
 use serde::Deserialize;
 use serde_json::{Map, Value};
-#[cfg(test)]
 use std::collections::BTreeMap;
+use std::fmt;
+use std::str::FromStr;
 use std::sync::OnceLock;
 
-mod base;
+mod staged;
 
-pub(crate) const SUPPORTED_THEME_NAMES: &[&str] = &[
-    "default",
-    "base",
-    "dark",
-    "forest",
-    "neutral",
-    "neo",
-    "neo-dark",
-    "redux",
-    "redux-dark",
-    "redux-color",
-    "redux-dark-color",
+pub(crate) fn theme_color_iterations(
+    raw: Option<&Value>,
+) -> Result<usize, ThemeEvaluationLimitExceeded> {
+    staged::theme_color_iteration_count_for_value(raw)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum ThemeResolutionError {
+    #[error(transparent)]
+    Color(#[from] ColorError),
+    #[error(transparent)]
+    EvaluationLimit(#[from] ThemeEvaluationLimitExceeded),
+}
+
+impl From<ThemeResolutionError> for crate::Error {
+    fn from(error: ThemeResolutionError) -> Self {
+        match error {
+            ThemeResolutionError::Color(error) => Self::ThemeColor(error),
+            ThemeResolutionError::EvaluationLimit(error) => Self::ThemeEvaluationLimit(error),
+        }
+    }
+}
+
+// Source: Mermaid 12.2.0 `packages/mermaid/src/themes/index.js`.
+macro_rules! define_mermaid_theme_ids {
+    ($(($variant:ident, $name:literal)),+ $(,)?) => {
+        /// A theme identifier from the pinned Mermaid theme catalog.
+        ///
+        /// This type is deliberately separate from Merman's compiled theme presets. It models
+        /// only the upstream `MermaidConfig.theme` contract and is therefore also the source of
+        /// truth for bindings, CLI discovery, and compatibility projection. Mermaid's `"null"`
+        /// configuration sentinel is not a registered theme and is deliberately excluded.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        #[non_exhaustive]
+        pub enum MermaidThemeId {
+            $( $variant, )+
+        }
+
+        impl MermaidThemeId {
+            /// All theme identifiers supported by the pinned Mermaid baseline, in catalog order.
+            pub const ALL: &'static [Self] = &[
+                $(Self::$variant,)+
+            ];
+
+            /// The exact upstream spellings in the same order as [`Self::ALL`].
+            pub const NAMES: &'static [&'static str] = &[
+                $($name,)+
+            ];
+
+            /// Returns the exact upstream spelling used in Mermaid configuration and mmdc files.
+            pub const fn as_str(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $name,)+
+                }
+            }
+
+            /// Parses an upstream theme identifier without applying a fallback.
+            pub fn parse(value: &str) -> Result<Self, MermaidThemeIdParseError> {
+                value.parse()
+            }
+
+            /// Returns whether the selected upstream theme uses a dark visual palette.
+            ///
+            /// This classification does not set or imply Mermaid's independent
+            /// `themeVariables.darkMode` compatibility value.
+            pub const fn is_dark(self) -> bool {
+                matches!(
+                    self,
+                    Self::Dark | Self::NeoDark | Self::ReduxDark | Self::ReduxDarkColor
+                )
+            }
+        }
+
+        impl Default for MermaidThemeId {
+            fn default() -> Self {
+                Self::Default
+            }
+        }
+
+        impl fmt::Display for MermaidThemeId {
+            fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str(self.as_str())
+            }
+        }
+
+        impl FromStr for MermaidThemeId {
+            type Err = MermaidThemeIdParseError;
+
+            fn from_str(value: &str) -> Result<Self, Self::Err> {
+                match value {
+                    $($name => Ok(Self::$variant),)+
+                    _ => Err(MermaidThemeIdParseError::new(value)),
+                }
+            }
+        }
+
+    };
+}
+
+define_mermaid_theme_ids![
+    (Default, "default"),
+    (Base, "base"),
+    (Dark, "dark"),
+    (Forest, "forest"),
+    (Neutral, "neutral"),
+    (Neo, "neo"),
+    (NeoDark, "neo-dark"),
+    (Redux, "redux"),
+    (ReduxDark, "redux-dark"),
+    (ReduxColor, "redux-color"),
+    (ReduxDarkColor, "redux-dark-color"),
 ];
 
-const THEME_RUNTIME_SCHEMA_VERSION: u32 = 2;
+/// Error returned when a string is not one of the pinned Mermaid theme identifiers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MermaidThemeIdParseError {
+    input: String,
+}
+
+impl MermaidThemeIdParseError {
+    fn new(input: &str) -> Self {
+        Self {
+            input: input.to_string(),
+        }
+    }
+
+    /// Returns the unsupported identifier supplied to the parser.
+    pub fn input(&self) -> &str {
+        &self.input
+    }
+}
+
+impl fmt::Display for MermaidThemeIdParseError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "unsupported Mermaid theme `{}`", self.input)
+    }
+}
+
+impl std::error::Error for MermaidThemeIdParseError {}
+
+const THEME_RUNTIME_SCHEMA_VERSION: u32 = 3;
+const THEME_ORACLE_CASE_COUNT: usize = MermaidThemeId::ALL.len() * 5 + 12;
 #[cfg(test)]
-const THEME_AUDIT_SCHEMA_VERSION: u32 = 1;
+const THEME_AUDIT_SCHEMA_VERSION: u32 = 2;
 
 // Generated from the content-pinned Mermaid runtime by `xtask gen-theme-snapshot`.
 static GENERATED_THEME_RUNTIME: OnceLock<GeneratedThemeRuntimeArtifact> = OnceLock::new();
 
 #[cfg(test)]
-static GENERATED_THEME_AUDIT: OnceLock<GeneratedThemeAuditArtifact> = OnceLock::new();
+static GENERATED_THEME_ORACLES: OnceLock<GeneratedThemeOracles> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct GeneratedThemeRuntimeStorage {
     schema_version: u32,
     provenance: GeneratedThemeProvenance,
+    prepared_constructors: Map<String, Value>,
     themes: Map<String, Value>,
     dark_mode_true_overrides: Map<String, Value>,
     oracle_case_count: usize,
@@ -46,6 +176,7 @@ struct GeneratedThemeRuntimeStorage {
 struct GeneratedThemeRuntimeArtifact {
     #[cfg(test)]
     provenance: GeneratedThemeProvenance,
+    prepared_constructors: Map<String, Value>,
     themes: Map<String, Value>,
     dark_mode_true: Map<String, Value>,
     oracle_case_count: usize,
@@ -54,10 +185,11 @@ struct GeneratedThemeRuntimeArtifact {
 #[cfg(test)]
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GeneratedThemeAuditArtifact {
+struct GeneratedThemeOracles {
     schema_version: u32,
     provenance: GeneratedThemeProvenance,
     oracle_cases: Vec<Value>,
+    stage_oracle_cases: Vec<Value>,
 }
 
 #[derive(Debug, Deserialize, PartialEq, Eq)]
@@ -73,10 +205,7 @@ struct GeneratedThemeProvenance {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ThemeProgramKind {
     Default,
-    Base,
-    Dark,
-    Forest,
-    Neutral,
+    Staged(staged::StagedProgram),
     Extended,
 }
 
@@ -84,21 +213,379 @@ enum ThemeProgramKind {
 enum ThemeDependencyGraph {
     None,
     Default,
-    Dark,
-    Forest,
-    Neutral,
     DarkenedScale,
     DarkenedScaleAndGit,
     DynamicGit,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeVariableDependencyScope {
+    Default,
+    Extended,
+    ExtendedLight,
+    ExtendedDark,
+    ExtendedDarkWithoutReduxColor,
+    ReduxColor,
+    ReduxDarkColor,
+    LegacyNonDefault,
+    NeoFamily,
+    NeoDark,
+    ExtendedWithoutReduxDark,
+    ExtendedWithoutReduxVariants,
+    ExtendedWithoutReduxDarkVariants,
+}
+
+impl ThemeVariableDependencyScope {
+    const fn includes(self, theme: MermaidThemeId) -> bool {
+        match self {
+            Self::Default => matches!(theme, MermaidThemeId::Default),
+            Self::Extended => matches!(
+                theme,
+                MermaidThemeId::Neo
+                    | MermaidThemeId::NeoDark
+                    | MermaidThemeId::Redux
+                    | MermaidThemeId::ReduxDark
+                    | MermaidThemeId::ReduxColor
+                    | MermaidThemeId::ReduxDarkColor
+            ),
+            Self::ExtendedLight => matches!(
+                theme,
+                MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor
+            ),
+            Self::ExtendedDark => matches!(
+                theme,
+                MermaidThemeId::NeoDark
+                    | MermaidThemeId::ReduxDark
+                    | MermaidThemeId::ReduxDarkColor
+            ),
+            Self::ExtendedDarkWithoutReduxColor => {
+                matches!(theme, MermaidThemeId::NeoDark | MermaidThemeId::ReduxDark)
+            }
+            Self::ReduxColor => matches!(
+                theme,
+                MermaidThemeId::ReduxColor | MermaidThemeId::ReduxDarkColor
+            ),
+            Self::ReduxDarkColor => matches!(theme, MermaidThemeId::ReduxDarkColor),
+            Self::LegacyNonDefault => matches!(
+                theme,
+                MermaidThemeId::Neo
+                    | MermaidThemeId::NeoDark
+                    | MermaidThemeId::Redux
+                    | MermaidThemeId::ReduxDark
+                    | MermaidThemeId::ReduxColor
+                    | MermaidThemeId::ReduxDarkColor
+            ),
+            Self::NeoFamily => matches!(theme, MermaidThemeId::Neo | MermaidThemeId::NeoDark),
+            Self::NeoDark => matches!(theme, MermaidThemeId::NeoDark),
+            Self::ExtendedWithoutReduxDark => matches!(
+                theme,
+                MermaidThemeId::Neo
+                    | MermaidThemeId::NeoDark
+                    | MermaidThemeId::Redux
+                    | MermaidThemeId::ReduxColor
+                    | MermaidThemeId::ReduxDarkColor
+            ),
+            Self::ExtendedWithoutReduxVariants => matches!(
+                theme,
+                MermaidThemeId::Neo
+                    | MermaidThemeId::NeoDark
+                    | MermaidThemeId::ReduxColor
+                    | MermaidThemeId::ReduxDarkColor
+            ),
+            Self::ExtendedWithoutReduxDarkVariants => matches!(
+                theme,
+                MermaidThemeId::Neo
+                    | MermaidThemeId::NeoDark
+                    | MermaidThemeId::Redux
+                    | MermaidThemeId::ReduxColor
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum ThemeVariableDependencyTransform {
+    Copy,
+    Invert,
+    AdjustHsl {
+        hue: f64,
+        saturation: f64,
+        lightness: f64,
+    },
+    Darken(f64),
+    Lighten(f64),
+    MkBorder,
+    DarkenWhenDarkMode(f64),
+}
+
+macro_rules! copied_theme_dependency {
+    ($scope:ident, $source:literal, $target:literal) => {
+        ThemeVariableDependency::copied(ThemeVariableDependencyScope::$scope, $source, $target)
+    };
+}
+
+macro_rules! assigned_theme_dependency {
+    ($scope:ident, $source:literal, $target:literal) => {
+        ThemeVariableDependency::assigned(ThemeVariableDependencyScope::$scope, $source, $target)
+    };
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeVariableDependencyAssignment {
+    IfMissing,
+    Always,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ThemeVariableDependencyCondition {
+    Always,
+    SourceExplicitTruthy,
+}
+
+impl ThemeVariableDependencyCondition {
+    fn permits(self, explicit_source_truthiness: Option<bool>) -> bool {
+        match self {
+            Self::Always => true,
+            Self::SourceExplicitTruthy => explicit_source_truthiness == Some(true),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ThemeVariableDependency {
+    scope: ThemeVariableDependencyScope,
+    source: &'static str,
+    target: &'static str,
+    transform: ThemeVariableDependencyTransform,
+    assignment: ThemeVariableDependencyAssignment,
+    condition: ThemeVariableDependencyCondition,
+}
+
+impl ThemeVariableDependency {
+    const fn copied(
+        scope: ThemeVariableDependencyScope,
+        source: &'static str,
+        target: &'static str,
+    ) -> Self {
+        Self {
+            scope,
+            source,
+            target,
+            transform: ThemeVariableDependencyTransform::Copy,
+            assignment: ThemeVariableDependencyAssignment::IfMissing,
+            condition: ThemeVariableDependencyCondition::Always,
+        }
+    }
+
+    const fn assigned(
+        scope: ThemeVariableDependencyScope,
+        source: &'static str,
+        target: &'static str,
+    ) -> Self {
+        Self {
+            scope,
+            source,
+            target,
+            transform: ThemeVariableDependencyTransform::Copy,
+            assignment: ThemeVariableDependencyAssignment::Always,
+            condition: ThemeVariableDependencyCondition::Always,
+        }
+    }
+
+    const fn copied_when_source_explicit_truthy(
+        scope: ThemeVariableDependencyScope,
+        source: &'static str,
+        target: &'static str,
+    ) -> Self {
+        Self {
+            scope,
+            source,
+            target,
+            transform: ThemeVariableDependencyTransform::Copy,
+            assignment: ThemeVariableDependencyAssignment::IfMissing,
+            condition: ThemeVariableDependencyCondition::SourceExplicitTruthy,
+        }
+    }
+
+    const fn transformed(
+        scope: ThemeVariableDependencyScope,
+        source: &'static str,
+        target: &'static str,
+        transform: ThemeVariableDependencyTransform,
+    ) -> Self {
+        Self {
+            scope,
+            source,
+            target,
+            transform,
+            assignment: ThemeVariableDependencyAssignment::IfMissing,
+            condition: ThemeVariableDependencyCondition::Always,
+        }
+    }
+}
+
+// Ordered dependencies from the pinned Mermaid theme programs. This ledger is consumed by both
+// calculation and ownership propagation. Order and assignment mode are significant: Mermaid
+// calculates through unconditional intermediate assignments before replaying explicit targets.
+const THEME_VARIABLE_DEPENDENCIES: &[ThemeVariableDependency] = &[
+    assigned_theme_dependency!(Default, "border1", "nodeBorder"),
+    assigned_theme_dependency!(Default, "textColor", "titleColor"),
+    assigned_theme_dependency!(Default, "labelBackground", "edgeLabelBackground"),
+    assigned_theme_dependency!(Default, "border1", "actorBorder"),
+    assigned_theme_dependency!(Default, "mainBkg", "actorBkg"),
+    assigned_theme_dependency!(Default, "actorBorder", "actorLineColor"),
+    assigned_theme_dependency!(Default, "actorBkg", "labelBoxBkgColor"),
+    assigned_theme_dependency!(Default, "textColor", "signalColor"),
+    assigned_theme_dependency!(Default, "textColor", "signalTextColor"),
+    assigned_theme_dependency!(Default, "actorBorder", "labelBoxBorderColor"),
+    assigned_theme_dependency!(Default, "actorTextColor", "labelTextColor"),
+    assigned_theme_dependency!(Default, "actorTextColor", "loopTextColor"),
+    assigned_theme_dependency!(Default, "border2", "noteBorderColor"),
+    assigned_theme_dependency!(Default, "actorTextColor", "noteTextColor"),
+    assigned_theme_dependency!(Default, "nodeBorder", "innerEndBackground"),
+    assigned_theme_dependency!(Default, "lineColor", "specialStateColor"),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::NeoFamily,
+        "noteBkgColor",
+        "noteBorderColor",
+        ThemeVariableDependencyTransform::MkBorder,
+    ),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::ExtendedLight,
+        "primaryColor",
+        "secondaryColor",
+        ThemeVariableDependencyTransform::AdjustHsl {
+            hue: -120.0,
+            saturation: 0.0,
+            lightness: 0.0,
+        },
+    ),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::Extended,
+        "background",
+        "lineColor",
+        ThemeVariableDependencyTransform::Invert,
+    ),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::ExtendedLight,
+        "background",
+        "arrowheadColor",
+        ThemeVariableDependencyTransform::Invert,
+    ),
+    copied_theme_dependency!(Extended, "primaryColor", "nodeBkg"),
+    copied_theme_dependency!(Extended, "tertiaryTextColor", "titleColor"),
+    copied_theme_dependency!(NeoDark, "border1", "nodeBorder"),
+    copied_theme_dependency!(Extended, "lineColor", "defaultLinkColor"),
+    copied_theme_dependency!(Extended, "secondaryBorderColor", "flowContainerStroke"),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::Extended,
+        "secondaryColor",
+        "edgeLabelBackground",
+        ThemeVariableDependencyTransform::DarkenWhenDarkMode(30.0),
+    ),
+    copied_theme_dependency!(Extended, "mainBkg", "actorBkg"),
+    copied_theme_dependency!(NeoFamily, "primaryBorderColor", "actorBorder"),
+    copied_theme_dependency!(Extended, "primaryTextColor", "actorTextColor"),
+    copied_theme_dependency!(
+        ExtendedWithoutReduxDarkVariants,
+        "actorBorder",
+        "actorLineColor"
+    ),
+    copied_theme_dependency!(Extended, "actorBkg", "labelBoxBkgColor"),
+    copied_theme_dependency!(ExtendedWithoutReduxDarkVariants, "textColor", "signalColor"),
+    copied_theme_dependency!(Extended, "textColor", "signalTextColor"),
+    copied_theme_dependency!(
+        ExtendedWithoutReduxDarkVariants,
+        "actorBorder",
+        "labelBoxBorderColor"
+    ),
+    copied_theme_dependency!(Extended, "actorTextColor", "labelTextColor"),
+    copied_theme_dependency!(Extended, "actorTextColor", "loopTextColor"),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::Extended,
+        "secondaryColor",
+        "activationBorderColor",
+        ThemeVariableDependencyTransform::Darken(10.0),
+    ),
+    copied_theme_dependency!(Extended, "secondaryColor", "activationBkgColor"),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::Extended,
+        "lineColor",
+        "sequenceNumberColor",
+        ThemeVariableDependencyTransform::Invert,
+    ),
+    assigned_theme_dependency!(Extended, "lineColor", "archEdgeColor"),
+    assigned_theme_dependency!(Extended, "lineColor", "archEdgeArrowColor"),
+    copied_theme_dependency!(Extended, "mainBkg", "personBkg"),
+    copied_theme_dependency!(Extended, "lineColor", "transitionColor"),
+    copied_theme_dependency!(Extended, "textColor", "transitionLabelColor"),
+    copied_theme_dependency!(Extended, "mainBkg", "stateBkg"),
+    copied_theme_dependency!(Extended, "stateBkg", "labelBackgroundColor"),
+    copied_theme_dependency!(
+        ExtendedWithoutReduxDark,
+        "background",
+        "compositeBackground"
+    ),
+    copied_theme_dependency!(
+        ExtendedWithoutReduxVariants,
+        "mainBkg",
+        "compositeTitleBackground"
+    ),
+    assigned_theme_dependency!(Extended, "nodeBorder", "innerEndBackground"),
+    assigned_theme_dependency!(Extended, "lineColor", "specialStateColor"),
+    copied_theme_dependency!(ExtendedDark, "primaryColor", "taskBkgColor"),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::ExtendedDark,
+        "primaryColor",
+        "activeTaskBkgColor",
+        ThemeVariableDependencyTransform::Lighten(23.0),
+    ),
+    copied_theme_dependency!(ExtendedDark, "primaryColor", "requirementBackground"),
+    copied_theme_dependency!(Extended, "lineColor", "relationColor"),
+    ThemeVariableDependency::transformed(
+        ThemeVariableDependencyScope::Extended,
+        "secondaryColor",
+        "relationLabelBackground",
+        ThemeVariableDependencyTransform::DarkenWhenDarkMode(30.0),
+    ),
+    copied_theme_dependency!(Extended, "primaryColor", "tagLabelBackground"),
+    copied_theme_dependency!(Extended, "secondaryColor", "commitLabelBackground"),
+    copied_theme_dependency!(ExtendedDarkWithoutReduxColor, "primaryColor", "pie1"),
+    copied_theme_dependency!(ReduxColor, "cScale0", "pie1"),
+    copied_theme_dependency!(ReduxColor, "cScale1", "pie2"),
+    copied_theme_dependency!(ReduxColor, "cScale2", "pie3"),
+    copied_theme_dependency!(ReduxColor, "cScale3", "pie4"),
+    copied_theme_dependency!(ReduxColor, "cScale4", "pie5"),
+    copied_theme_dependency!(ReduxColor, "cScale5", "pie6"),
+    copied_theme_dependency!(ReduxColor, "cScale6", "pie7"),
+    copied_theme_dependency!(ReduxColor, "cScale7", "pie8"),
+    copied_theme_dependency!(ReduxColor, "cScale8", "pie9"),
+    copied_theme_dependency!(ReduxColor, "cScale9", "pie10"),
+    copied_theme_dependency!(ReduxColor, "cScale10", "pie11"),
+    copied_theme_dependency!(ReduxColor, "cScale11", "pie12"),
+    copied_theme_dependency!(ReduxColor, "cScale0", "sectionBkgColor"),
+    copied_theme_dependency!(ReduxColor, "cScale1", "sectionBkgColor2"),
+    copied_theme_dependency!(ReduxDarkColor, "background", "altSectionBkgColor"),
+    // Unlike theme-default, every other pinned theme creates its Venn variables during
+    // calculate(). Keep Default's constructor snapshot stable while replaying the non-Default
+    // nullish assignments and their ownership edges.
+    copied_theme_dependency!(LegacyNonDefault, "titleColor", "vennTitleTextColor"),
+    copied_theme_dependency!(LegacyNonDefault, "textColor", "vennSetTextColor"),
+    copied_theme_dependency!(LegacyNonDefault, "primaryTextColor", "stateLabelColor"),
+    ThemeVariableDependency::copied_when_source_explicit_truthy(
+        ThemeVariableDependencyScope::LegacyNonDefault,
+        "stateBkg",
+        "stateLabelColor",
+    ),
+];
+
 /// Pure-Rust execution contract for one pinned Mermaid theme class.
 ///
 /// The generated artifact owns exact release snapshots; this descriptor owns the operations and
-/// input dependencies needed between the four `ThemeResolution` stages.
+/// input dependencies still used by theme programs that have not entered staged execution.
 #[derive(Debug, Clone, Copy)]
 struct ThemeProgram {
-    name: &'static str,
+    id: MermaidThemeId,
     kind: ThemeProgramKind,
     dependencies: ThemeDependencyGraph,
     evaluated_color_inputs: &'static [&'static str],
@@ -113,33 +600,7 @@ const DEFAULT_COLOR_INPUTS: &[&str] = &[
     "git1",
     "quadrant1Fill",
 ];
-const DARK_COLOR_INPUTS: &[&str] = &[
-    "primaryColor",
-    "secondaryColor",
-    "background",
-    "cScale0",
-    "cScale1",
-    "quadrant1Fill",
-];
-const FOREST_COLOR_INPUTS: &[&str] = &[
-    "primaryColor",
-    "secondaryColor",
-    "tertiaryColor",
-    "cScale0",
-    "cScale1",
-    "git0",
-    "git1",
-    "quadrant1Fill",
-];
-const NEUTRAL_COLOR_INPUTS: &[&str] = &[
-    "primaryColor",
-    "secondaryColor",
-    "border1",
-    "cScale0",
-    "cScale1",
-    "quadrant1Fill",
-];
-const BASE_COLOR_INPUTS: &[&str] = &[
+const EXTENDED_COLOR_INPUTS: &[&str] = &[
     "primaryColor",
     "secondaryColor",
     "tertiaryColor",
@@ -159,134 +620,161 @@ const REDUX_COLOR_INPUTS: &[&str] = &[
     "git1",
     "quadrant1Fill",
 ];
-
 const THEME_PROGRAMS: &[ThemeProgram] = &[
     ThemeProgram::new(
-        "default",
+        MermaidThemeId::Default,
         ThemeProgramKind::Default,
         ThemeDependencyGraph::Default,
         DEFAULT_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "base",
-        ThemeProgramKind::Base,
+        MermaidThemeId::Base,
+        ThemeProgramKind::Staged(staged::StagedProgram::Base),
         ThemeDependencyGraph::None,
-        BASE_COLOR_INPUTS,
+        &[],
     ),
     ThemeProgram::new(
-        "dark",
-        ThemeProgramKind::Dark,
-        ThemeDependencyGraph::Dark,
-        DARK_COLOR_INPUTS,
+        MermaidThemeId::Dark,
+        ThemeProgramKind::Staged(staged::StagedProgram::Dark),
+        ThemeDependencyGraph::None,
+        &[],
     ),
     ThemeProgram::new(
-        "forest",
-        ThemeProgramKind::Forest,
-        ThemeDependencyGraph::Forest,
-        FOREST_COLOR_INPUTS,
+        MermaidThemeId::Forest,
+        ThemeProgramKind::Staged(staged::StagedProgram::Forest),
+        ThemeDependencyGraph::None,
+        &[],
     ),
     ThemeProgram::new(
-        "neutral",
-        ThemeProgramKind::Neutral,
-        ThemeDependencyGraph::Neutral,
-        NEUTRAL_COLOR_INPUTS,
+        MermaidThemeId::Neutral,
+        ThemeProgramKind::Staged(staged::StagedProgram::Neutral),
+        ThemeDependencyGraph::None,
+        &[],
     ),
     ThemeProgram::new(
-        "neo",
+        MermaidThemeId::Neo,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::None,
-        BASE_COLOR_INPUTS,
+        EXTENDED_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "neo-dark",
+        MermaidThemeId::NeoDark,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::DarkenedScale,
-        BASE_COLOR_INPUTS,
+        EXTENDED_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux",
+        MermaidThemeId::Redux,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::None,
         REDUX_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux-dark",
+        MermaidThemeId::ReduxDark,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::DarkenedScaleAndGit,
-        BASE_COLOR_INPUTS,
+        EXTENDED_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux-color",
+        MermaidThemeId::ReduxColor,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::None,
-        BASE_COLOR_INPUTS,
+        EXTENDED_COLOR_INPUTS,
     ),
     ThemeProgram::new(
-        "redux-dark-color",
+        MermaidThemeId::ReduxDarkColor,
         ThemeProgramKind::Extended,
         ThemeDependencyGraph::DynamicGit,
-        BASE_COLOR_INPUTS,
+        EXTENDED_COLOR_INPUTS,
     ),
 ];
 
-const THEME_ORACLE_CASE_COUNT: usize = THEME_PROGRAMS.len() * 5 + 11;
-
 impl ThemeProgram {
     const fn new(
-        name: &'static str,
+        id: MermaidThemeId,
         kind: ThemeProgramKind,
         dependencies: ThemeDependencyGraph,
         evaluated_color_inputs: &'static [&'static str],
     ) -> Self {
         Self {
-            name,
+            id,
             kind,
             dependencies,
             evaluated_color_inputs,
         }
     }
 
-    fn resolve(requested: &str) -> &'static Self {
+    fn resolve(id: MermaidThemeId) -> &'static Self {
         THEME_PROGRAMS
             .iter()
-            .find(|program| program.name == requested)
-            .unwrap_or(&THEME_PROGRAMS[0])
+            .find(|program| program.id == id)
+            .expect("every MermaidThemeId must have a theme program")
     }
 
-    fn default_snapshot(self) -> &'static Map<String, Value> {
+    const fn staged_program(self) -> Option<staged::StagedProgram> {
+        match self.kind {
+            ThemeProgramKind::Staged(program) => Some(program),
+            ThemeProgramKind::Default | ThemeProgramKind::Extended => None,
+        }
+    }
+
+    fn variable_dependencies(self) -> impl Iterator<Item = &'static ThemeVariableDependency> {
+        THEME_VARIABLE_DEPENDENCIES
+            .iter()
+            .filter(move |dependency| dependency.scope.includes(self.id))
+    }
+
+    fn prepared_constructor(self) -> &'static Map<String, Value> {
+        generated_theme_runtime()
+            .prepared_constructors
+            .get(self.id.as_str())
+            .and_then(Value::as_object)
+            .unwrap_or_else(|| {
+                panic!(
+                    "generated theme artifact is missing prepared constructor `{}`",
+                    self.id
+                )
+            })
+    }
+
+    fn resolved_without_overrides(self) -> &'static Map<String, Value> {
         generated_theme_runtime()
             .themes
-            .get(self.name)
+            .get(self.id.as_str())
             .and_then(Value::as_object)
-            .unwrap_or_else(|| panic!("generated theme artifact is missing `{}`", self.name))
+            .unwrap_or_else(|| {
+                panic!(
+                    "generated theme artifact is missing resolved no-override `{}`",
+                    self.id
+                )
+            })
     }
 
-    fn dark_mode_snapshot(self) -> &'static Map<String, Value> {
+    fn resolved_dark_mode_true(self) -> &'static Map<String, Value> {
         generated_theme_runtime()
             .dark_mode_true
-            .get(self.name)
+            .get(self.id.as_str())
             .and_then(Value::as_object)
             .unwrap_or_else(|| {
                 panic!(
                     "generated theme artifact is missing darkMode=true `{}`",
-                    self.name
+                    self.id
                 )
             })
     }
 
     fn calculation_snapshot(self, explicit: &Map<String, Value>) -> &'static Map<String, Value> {
         if explicit.get("darkMode").is_some_and(is_js_truthy) {
-            self.dark_mode_snapshot()
+            self.resolved_dark_mode_true()
         } else {
-            self.default_snapshot()
+            self.resolved_without_overrides()
         }
     }
 
     fn exact_snapshot(self, explicit: &Map<String, Value>) -> Option<&'static Map<String, Value>> {
-        if self.kind != ThemeProgramKind::Base
-            && explicit
-                .keys()
-                .all(|key| matches!(key.as_str(), "darkMode" | "fontFamily" | "fontSize"))
+        if explicit
+            .keys()
+            .all(|key| matches!(key.as_str(), "darkMode" | "fontFamily" | "fontSize"))
         {
             Some(self.calculation_snapshot(explicit))
         } else {
@@ -295,18 +783,11 @@ impl ThemeProgram {
     }
 
     fn normalize_overrides(self, raw: Map<String, Value>) -> Map<String, Value> {
-        if self.kind == ThemeProgramKind::Base {
-            // initialize() copies into an empty options object before constructing the theme.
-            // That merge drops nulls at this depth, but retains non-null objects. In particular,
-            // an object supplied as a color must reach the evaluator and fail at its transform.
-            return raw
-                .into_iter()
-                .filter(|(_, value)| !value.is_null())
-                .collect();
-        }
-        let defaults = self.default_snapshot();
+        // Mermaid's public initialize/config path runs themeVariables through assignWithDepth
+        // before Theme.calculate(). Object-valued source fields whose value is null are skipped
+        // there, so they never participate in either explicit overlay or explicit replay.
         raw.into_iter()
-            .filter(|(key, value)| assign_with_depth_accepts_theme_value(defaults.get(key), value))
+            .filter(|(_, value)| !value.is_null())
             .collect()
     }
 
@@ -328,14 +809,87 @@ impl ThemeProgram {
         Ok(())
     }
 
-    fn execute(self, config: &mut MermaidConfig) -> Result<(), ColorError> {
+    fn resolve_legacy(
+        self,
+        explicit: &Map<String, Value>,
+    ) -> Result<Map<String, Value>, ColorError> {
         match self.kind {
-            ThemeProgramKind::Default => apply_default_theme_defaults(config),
-            ThemeProgramKind::Base => apply_base_theme_defaults(config),
-            ThemeProgramKind::Dark => apply_dark_theme_defaults(config),
-            ThemeProgramKind::Forest => apply_forest_theme_defaults(config),
-            ThemeProgramKind::Neutral => apply_neutral_theme_defaults(config),
-            ThemeProgramKind::Extended => apply_snapshot_theme_defaults(config, self.name),
+            ThemeProgramKind::Default => {
+                let calculated = calculate_default_theme_variables(explicit)?;
+                Ok(ThemeResolution::new(self.id, explicit, calculated)?.into_resolved_variables())
+            }
+            ThemeProgramKind::Staged(_) => {
+                unreachable!("staged themes do not enter legacy theme execution")
+            }
+            ThemeProgramKind::Extended => {
+                Ok(ThemeResolution::new(self.id, explicit, explicit.clone())?
+                    .into_resolved_variables())
+            }
+        }
+    }
+
+    fn propagate_derived_ownership(
+        self,
+        explicit_dependency_variables: &[(&str, bool)],
+        config: &mut MermaidConfig,
+    ) {
+        match self.dependencies {
+            ThemeDependencyGraph::DarkenedScale | ThemeDependencyGraph::DarkenedScaleAndGit => {
+                propagate_standard_color_scale_ownership(config);
+            }
+            ThemeDependencyGraph::None
+            | ThemeDependencyGraph::Default
+            | ThemeDependencyGraph::DynamicGit => {}
+        }
+
+        let dependencies = self.variable_dependencies().collect::<Vec<_>>();
+        let mut calculated_origins = BTreeMap::new();
+        for dependency in &dependencies {
+            for variable in [dependency.source, dependency.target] {
+                calculated_origins.entry(variable).or_insert_with(|| {
+                    config
+                        .theme_variable_has_calculation_owner(variable)
+                        .then_some(variable)
+                });
+            }
+        }
+
+        let mut winning_assignments = BTreeMap::new();
+        for (index, dependency) in dependencies.iter().enumerate() {
+            if !dependency.condition.permits(
+                explicit_dependency_variables
+                    .iter()
+                    .find_map(|(variable, truthy)| {
+                        (*variable == dependency.source).then_some(*truthy)
+                    }),
+            ) {
+                continue;
+            }
+            if dependency.assignment == ThemeVariableDependencyAssignment::IfMissing
+                && explicit_dependency_variables
+                    .iter()
+                    .any(|(variable, _)| *variable == dependency.target)
+            {
+                continue;
+            }
+            let source_origin = calculated_origins.get(dependency.source).copied().flatten();
+            calculated_origins.insert(dependency.target, source_origin);
+            winning_assignments.insert(dependency.target, index);
+        }
+
+        for (index, dependency) in dependencies.iter().enumerate() {
+            if explicit_dependency_variables
+                .iter()
+                .any(|(variable, _)| *variable == dependency.target)
+                || winning_assignments.get(dependency.target) != Some(&index)
+            {
+                continue;
+            }
+            if let Some(source_origin) =
+                calculated_origins.get(dependency.target).copied().flatten()
+            {
+                config.propagate_theme_variable_ownership(source_origin, dependency.target);
+            }
         }
     }
 
@@ -347,9 +901,6 @@ impl ThemeProgram {
         match self.dependencies {
             ThemeDependencyGraph::None => Ok(()),
             ThemeDependencyGraph::Default => apply_default_theme_dependencies(explicit, calculated),
-            ThemeDependencyGraph::Dark => apply_dark_theme_dependencies(explicit, calculated),
-            ThemeDependencyGraph::Forest => apply_forest_theme_dependencies(explicit, calculated),
-            ThemeDependencyGraph::Neutral => apply_neutral_theme_dependencies(explicit, calculated),
             ThemeDependencyGraph::DarkenedScale => {
                 apply_darkened_scale_dependencies(explicit, calculated)
             }
@@ -360,8 +911,93 @@ impl ThemeProgram {
             ThemeDependencyGraph::DynamicGit => {
                 apply_dynamic_git_dependencies(explicit, calculated)
             }
-        }
+        }?;
+        apply_theme_variable_dependencies(self, explicit, calculated)?;
+        Ok(())
     }
+}
+
+fn apply_theme_variable_dependencies(
+    program: ThemeProgram,
+    explicit: &Map<String, Value>,
+    calculated: &mut Map<String, Value>,
+) -> Result<(), ColorError> {
+    for dependency in program.variable_dependencies() {
+        if !dependency
+            .condition
+            .permits(explicit.get(dependency.source).map(is_js_truthy))
+        {
+            continue;
+        }
+        if dependency.assignment == ThemeVariableDependencyAssignment::IfMissing
+            && explicit.contains_key(dependency.target)
+        {
+            continue;
+        }
+        let Some(source) = calculated.get(dependency.source) else {
+            continue;
+        };
+        let value = match dependency.transform {
+            ThemeVariableDependencyTransform::Copy => source.clone(),
+            ThemeVariableDependencyTransform::Invert => {
+                let source = required_color(calculated, dependency.source)?;
+                Value::String(theme_color::invert(&source)?)
+            }
+            ThemeVariableDependencyTransform::AdjustHsl {
+                hue,
+                saturation,
+                lightness,
+            } => {
+                let source = required_color(calculated, dependency.source)?;
+                Value::String(theme_color::adjust(
+                    &source,
+                    ColorAdjustment::hsl(hue, saturation, lightness),
+                )?)
+            }
+            ThemeVariableDependencyTransform::Darken(amount) => {
+                let source = required_color(calculated, dependency.source)?;
+                Value::String(theme_color::darken(&source, amount)?)
+            }
+            ThemeVariableDependencyTransform::Lighten(amount) => {
+                let source = required_color(calculated, dependency.source)?;
+                Value::String(theme_color::lighten(&source, amount)?)
+            }
+            ThemeVariableDependencyTransform::MkBorder => {
+                let source = required_color(calculated, dependency.source)?;
+                Value::String(mk_border(
+                    &source,
+                    calculated.get("darkMode").is_some_and(is_js_truthy),
+                )?)
+            }
+            ThemeVariableDependencyTransform::DarkenWhenDarkMode(amount) => {
+                let source = required_color(calculated, dependency.source)?;
+                if calculated.get("darkMode").is_some_and(is_js_truthy) {
+                    Value::String(theme_color::darken(&source, amount)?)
+                } else {
+                    Value::String(source)
+                }
+            }
+        };
+        calculated.insert(dependency.target.to_string(), value);
+    }
+    Ok(())
+}
+
+fn propagate_theme_variable_to_scales(
+    config: &mut MermaidConfig,
+    source: &str,
+    indices: impl IntoIterator<Item = usize>,
+) {
+    for index in indices {
+        config.propagate_theme_variable_ownership(source, &format!("cScale{index}"));
+    }
+}
+
+fn propagate_standard_color_scale_ownership(config: &mut MermaidConfig) {
+    propagate_theme_variable_to_scales(config, "primaryColor", [0]);
+    propagate_theme_variable_to_scales(config, "secondaryColor", [1]);
+    propagate_theme_variable_to_scales(config, "tertiaryColor", [2]);
+    propagate_theme_variable_to_scales(config, "primaryColor", 3..12);
 }
 
 fn get_truthy_string(map: &Map<String, Value>, key: &str) -> Option<String> {
@@ -371,7 +1007,7 @@ fn get_truthy_string(map: &Map<String, Value>, key: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
-fn is_js_truthy(value: &Value) -> bool {
+pub(crate) fn is_js_truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(value) => *value,
@@ -379,18 +1015,6 @@ fn is_js_truthy(value: &Value) -> bool {
         Value::String(value) => !value.is_empty(),
         Value::Array(_) | Value::Object(_) => true,
     }
-}
-
-fn assign_with_depth_accepts_theme_value(default: Option<&Value>, source: &Value) -> bool {
-    let source_is_non_null_object = matches!(source, Value::Array(_) | Value::Object(_));
-    let source_is_object = matches!(source, Value::Null | Value::Array(_) | Value::Object(_));
-    let default_is_object = default
-        .is_some_and(|value| matches!(value, Value::Null | Value::Array(_) | Value::Object(_)));
-
-    // Mermaid's site-config merge reaches themeVariables with depth=1. Non-null objects recurse
-    // once (and therefore retain nested nulls); dissimilar object/scalar values do not clobber.
-    source_is_non_null_object && (default.is_none() || default_is_object)
-        || !source_is_object && !default_is_object
 }
 
 fn required_color(map: &Map<String, Value>, key: &str) -> Result<String, ColorError> {
@@ -414,17 +1038,6 @@ fn set_if_missing(map: &mut Map<String, Value>, key: &str, value: Value) {
 
 fn set_string_if_missing(map: &mut Map<String, Value>, key: &str, value: impl Into<String>) {
     set_if_missing(map, key, Value::String(value.into()));
-}
-
-fn set_string_if_missing_with(
-    map: &mut Map<String, Value>,
-    key: &str,
-    value: impl FnOnce() -> Result<String, ColorError>,
-) -> Result<(), ColorError> {
-    if value_is_missing(map, key) {
-        map.insert(key.to_string(), Value::String(value()?));
-    }
-    Ok(())
 }
 
 fn set_derived_string_unless_explicit(
@@ -465,6 +1078,7 @@ fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
         let artifact = GeneratedThemeRuntimeArtifact {
             #[cfg(test)]
             provenance: storage.provenance,
+            prepared_constructors: storage.prepared_constructors,
             themes: storage.themes,
             dark_mode_true,
             oracle_case_count: storage.oracle_case_count,
@@ -473,14 +1087,20 @@ fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
         for program in THEME_PROGRAMS {
             assert!(
                 artifact
+                    .prepared_constructors
+                    .get(program.id.as_str())
+                    .is_some_and(Value::is_object)
+            );
+            assert!(
+                artifact
                     .themes
-                    .get(program.name)
+                    .get(program.id.as_str())
                     .is_some_and(Value::is_object)
             );
             assert!(
                 artifact
                     .dark_mode_true
-                    .get(program.name)
+                    .get(program.id.as_str())
                     .is_some_and(Value::is_object)
             );
         }
@@ -488,7 +1108,7 @@ fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
     })
 }
 
-// Schema 2 stores exact top-level set/remove deltas. Assigned nulls and objects replace
+// The runtime stores exact top-level set/remove deltas. Assigned nulls and objects replace
 // whole values, unlike JSON merge patch. Restore the full maps once before theme evaluation.
 fn restore_theme_overrides(base: &Map<String, Value>, changes: Value) -> Map<String, Value> {
     let Value::Object(mut changes) = changes else {
@@ -538,20 +1158,24 @@ fn assert_generated_theme_provenance(provenance: &GeneratedThemeProvenance) {
 }
 
 #[cfg(test)]
-fn generated_theme_audit() -> &'static GeneratedThemeAuditArtifact {
-    GENERATED_THEME_AUDIT.get_or_init(|| {
-        let artifact: GeneratedThemeAuditArtifact = serde_json::from_str(include_str!(
+fn generated_theme_oracles() -> &'static GeneratedThemeOracles {
+    GENERATED_THEME_ORACLES.get_or_init(|| {
+        let artifact: GeneratedThemeOracles = serde_json::from_str(include_str!(
             "../../../fixtures/_verification/theme_variables_oracle_12_2_0.json"
         ))
-        .expect("generated Mermaid theme audit JSON is valid");
+        .expect("generated Mermaid theme oracle JSON is valid");
         assert_eq!(artifact.schema_version, THEME_AUDIT_SCHEMA_VERSION);
         assert_generated_theme_provenance(&artifact.provenance);
-        assert_eq!(artifact.provenance, generated_theme_runtime().provenance);
-        assert_eq!(artifact.oracle_cases.len(), THEME_ORACLE_CASE_COUNT);
+        assert_eq!(
+            &artifact.provenance,
+            &generated_theme_runtime().provenance,
+            "runtime and test-only theme artifacts must share one provenance"
+        );
         assert_eq!(
             artifact.oracle_cases.len(),
-            generated_theme_runtime().oracle_case_count
+            MermaidThemeId::ALL.len() * 5 + 12
         );
+        assert!(!artifact.stage_oracle_cases.is_empty());
         artifact
     })
 }
@@ -574,20 +1198,6 @@ fn merge_theme_variable_defaults(target: &mut Map<String, Value>, defaults: &Map
             _ => {}
         }
     }
-}
-
-fn finish_theme_defaults(
-    config: &mut MermaidConfig,
-    theme: &str,
-    tv: Map<String, Value>,
-) -> Result<(), ColorError> {
-    let explicit = theme_variables_map(config);
-    let resolution = ThemeResolution::new(theme, explicit, tv)?;
-    config.set_value(
-        "themeVariables",
-        Value::Object(resolution.into_resolved_variables()),
-    );
-    Ok(())
 }
 
 #[cfg(test)]
@@ -668,13 +1278,13 @@ struct ThemeResolution {
 
 impl ThemeResolution {
     fn new(
-        theme: &str,
-        explicit: Map<String, Value>,
+        theme: MermaidThemeId,
+        explicit: &Map<String, Value>,
         calculated: Map<String, Value>,
     ) -> Result<Self, ColorError> {
         let program = ThemeProgram::resolve(theme);
         let has_user_theme_variables = !explicit.is_empty();
-        let default_variables = program.default_snapshot();
+        let default_variables = program.resolved_without_overrides();
         #[cfg(test)]
         let default_snapshot = ThemeStageSnapshot {
             stage: ThemeResolutionStage::DefaultSnapshot,
@@ -689,18 +1299,18 @@ impl ThemeResolution {
         let overrides_applied = {
             let mut snapshot = default_snapshot.clone();
             snapshot.stage = ThemeResolutionStage::OverridesApplied;
-            snapshot.overlay(&explicit, false);
+            snapshot.overlay(explicit, false);
             snapshot
         };
 
         let mut calculated_snapshot = ThemeStageSnapshot::from_variables(calculated);
 
-        if let Some(snapshot) = program.exact_snapshot(&explicit) {
+        if let Some(snapshot) = program.exact_snapshot(explicit) {
             // Generated snapshots are exact calculation-stage results for branch-only inputs.
             // Typography inputs do not affect updateColors() and are replayed below.
             calculated_snapshot = ThemeStageSnapshot::from_variables(snapshot.clone());
-        } else if program.kind != ThemeProgramKind::Base {
-            let snapshot = program.calculation_snapshot(&explicit);
+        } else {
+            let snapshot = program.calculation_snapshot(explicit);
             merge_theme_variable_defaults(&mut calculated_snapshot.variables, snapshot);
             #[cfg(test)]
             for key in snapshot.keys() {
@@ -714,25 +1324,12 @@ impl ThemeResolution {
             let before_dependencies = calculated_snapshot.variables.clone();
             if program.kind == ThemeProgramKind::Extended {
                 apply_extended_theme_visible_derivations(
-                    theme,
-                    &explicit,
+                    *program,
+                    explicit,
                     &mut calculated_snapshot.variables,
                 )?;
             }
-            program.apply_dependency_graph(&explicit, &mut calculated_snapshot.variables)?;
-            // Only default runs updateColors() in its constructor. Its first-pass
-            // container stroke survives later secondary-border overrides.
-            if program.kind != ThemeProgramKind::Default
-                && !explicit.contains_key("flowContainerStroke")
-                && let Some(border) = calculated_snapshot
-                    .variables
-                    .get("secondaryBorderColor")
-                    .cloned()
-            {
-                calculated_snapshot
-                    .variables
-                    .insert("flowContainerStroke".to_string(), border);
-            }
+            program.apply_dependency_graph(explicit, &mut calculated_snapshot.variables)?;
             #[cfg(test)]
             for (key, value) in &calculated_snapshot.variables {
                 if before_dependencies.get(key) != Some(value) {
@@ -756,25 +1353,10 @@ impl ThemeResolution {
         // inverse values retain their first-pass values. Restore the generated no-override palette
         // baseline before replaying explicit values; this is why a font-only override must not
         // change Radar/Kanban/Mindmap/Timeline colors.
-        if has_user_theme_variables && theme == "default" {
+        if has_user_theme_variables && theme == MermaidThemeId::Default {
             restore_default_baseline_palette(&mut explicit_replay, default_variables);
         }
-        explicit_replay.overlay(&explicit, true);
-        // Mermaid base.calculate() disables the inferred gradient after replay so an
-        // explicitly supplied node stroke paints under the default neo look.
-        if program.kind == ThemeProgramKind::Base
-            && explicit.contains_key("nodeBorder")
-            && !explicit.contains_key("useGradient")
-        {
-            explicit_replay
-                .variables
-                .insert("useGradient".to_string(), Value::Bool(false));
-            #[cfg(test)]
-            explicit_replay
-                .origins
-                .insert("useGradient".to_string(), ThemeValueOrigin::Calculated);
-        }
-
+        explicit_replay.overlay(explicit, true);
         Ok(Self {
             #[cfg(test)]
             default_snapshot,
@@ -847,17 +1429,6 @@ fn mk_border(color: &str, dark_mode: bool) -> Result<String, ColorError> {
     )
 }
 
-fn ensure_gradient_theme_defaults(tv: &mut Map<String, Value>) {
-    let primary_border_color =
-        get_truthy_string(tv, "primaryBorderColor").unwrap_or_else(|| "#9370DB".to_string());
-    let secondary_border_color = get_truthy_string(tv, "secondaryBorderColor")
-        .unwrap_or_else(|| primary_border_color.clone());
-
-    set_if_missing(tv, "useGradient", Value::Bool(true));
-    set_if_missing(tv, "gradientStart", Value::String(primary_border_color));
-    set_if_missing(tv, "gradientStop", Value::String(secondary_border_color));
-}
-
 fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &str) {
     let background = get_truthy_string(tv, "background").unwrap_or_else(|| "white".to_string());
     let primary_text = get_truthy_string(tv, "primaryTextColor")
@@ -877,6 +1448,7 @@ fn ensure_xychart_theme_defaults(tv: &mut Map<String, Value>, default_palette: &
     for key in [
         "titleColor",
         "dataLabelColor",
+        "legendTextColor",
         "xAxisTitleColor",
         "xAxisLabelColor",
         "xAxisTickColor",
@@ -961,13 +1533,6 @@ fn apply_quadrant_theme_defaults(
         set_string_if_missing(tv, key, border_base);
     }
     Ok(())
-}
-
-fn apply_current_quadrant_theme_defaults(tv: &mut Map<String, Value>) -> Result<(), ColorError> {
-    let fill_base = required_color(tv, "primaryColor")?;
-    let text_base = required_color(tv, "primaryTextColor")?;
-    let border_base = required_color(tv, "primaryBorderColor")?;
-    apply_quadrant_theme_defaults(tv, &fill_base, &text_base, &border_base)
 }
 
 fn discard_non_explicit_quadrant_snapshot_values(
@@ -1102,21 +1667,6 @@ fn apply_default_theme_dependencies(
     Ok(())
 }
 
-fn apply_dark_theme_dependencies(
-    explicit: &Map<String, Value>,
-    tv: &mut Map<String, Value>,
-) -> Result<(), ColorError> {
-    let fallback = if tv.get("darkMode").is_some_and(is_js_truthy) {
-        Value::String("black".to_string())
-    } else {
-        tv.get("labelTextColor")
-            .cloned()
-            .unwrap_or_else(|| Value::String("lightgrey".to_string()))
-    };
-    apply_scale_label_dependencies(explicit, tv, fallback);
-    Ok(())
-}
-
 fn git_palette_bases(tv: &Map<String, Value>) -> Result<[String; 8], ColorError> {
     let primary = required_color(tv, "primaryColor")?;
     Ok([
@@ -1141,85 +1691,6 @@ fn apply_dynamic_git_dependencies(
         ColorTransform::Darken(25.0)
     };
     apply_single_pass_git_palette(tv, explicit, git_palette_bases(tv)?, transform)
-}
-
-fn apply_forest_theme_dependencies(
-    explicit: &Map<String, Value>,
-    tv: &mut Map<String, Value>,
-) -> Result<(), ColorError> {
-    // Forest constructs `mainBkg` independently from `primaryColor`; overriding the latter must
-    // not retarget ER striping. An explicit `mainBkg` still participates in the update pass.
-    let main_bkg = if explicit.contains_key("mainBkg") {
-        required_color(tv, "mainBkg")?
-    } else {
-        required_color(
-            ThemeProgram::resolve("forest").default_snapshot(),
-            "mainBkg",
-        )?
-    };
-    set_derived_string_unless_explicit(
-        tv,
-        explicit,
-        "rowOdd",
-        theme_color::lighten(&main_bkg, 75.0)?,
-    );
-    set_derived_string_unless_explicit(
-        tv,
-        explicit,
-        "rowEven",
-        theme_color::lighten(&main_bkg, 20.0)?,
-    );
-    apply_dynamic_git_dependencies(explicit, tv)
-}
-
-fn apply_neutral_theme_dependencies(
-    explicit: &Map<String, Value>,
-    tv: &mut Map<String, Value>,
-) -> Result<(), ColorError> {
-    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
-    for index in 0..12 {
-        let scale = required_color(tv, &format!("cScale{index}"))?;
-        let peer = if dark_mode {
-            theme_color::lighten(&scale, 10.0)?
-        } else {
-            theme_color::darken(&scale, 10.0)?
-        };
-        set_derived_string_unless_explicit(tv, explicit, &format!("cScalePeer{index}"), peer);
-        set_derived_string_unless_explicit(
-            tv,
-            explicit,
-            &format!("cScaleInv{index}"),
-            theme_color::invert(&scale)?,
-        );
-    }
-
-    let fallback = if dark_mode {
-        Value::String("black".to_string())
-    } else {
-        tv.get("labelTextColor")
-            .cloned()
-            .unwrap_or_else(|| Value::String("#333".to_string()))
-    };
-    let scale_label = calculated_or_fallback_value(explicit, "scaleLabelColor", fallback);
-    tv.insert("scaleLabelColor".to_string(), scale_label.clone());
-    let scale_one = tv
-        .get("cScale1")
-        .cloned()
-        .unwrap_or_else(|| Value::String("#F4F4F4".to_string()));
-    for index in 0..12 {
-        let key = format!("cScaleLabel{index}");
-        if !explicit.contains_key(&key) {
-            tv.insert(
-                key,
-                if matches!(index, 0 | 2) {
-                    scale_one.clone()
-                } else {
-                    scale_label.clone()
-                },
-            );
-        }
-    }
-    Ok(())
 }
 
 fn darkened_scale_bases(tv: &Map<String, Value>) -> Result<[String; 12], ColorError> {
@@ -1290,20 +1761,20 @@ fn validate_explicit_operation(
 }
 
 fn replay_extended_theme_khroma_operations(
-    theme: &str,
+    theme: MermaidThemeId,
     explicit: &Map<String, Value>,
     tv: &mut Map<String, Value>,
 ) -> Result<(), ColorError> {
     let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
     match theme {
-        "neo" | "redux" | "redux-color" => {
+        MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor => {
             for key in ["secondaryColor", "tertiaryColor"] {
                 validate_explicit_operation(tv, explicit, key, |color| {
                     mk_border(color, dark_mode)
                 })?;
             }
         }
-        "neo-dark" => {
+        MermaidThemeId::NeoDark => {
             validate_explicit_operation(tv, explicit, "secondaryColor", |color| {
                 theme_color::darken(color, 10.0)
             })?;
@@ -1315,12 +1786,14 @@ fn replay_extended_theme_khroma_operations(
     }
 
     let scale_policy = match theme {
-        "neo" | "neo-dark" | "redux-dark" => Some(Some(ColorTransform::Darken(if dark_mode {
-            75.0
-        } else {
-            25.0
-        }))),
-        "redux-color" | "redux-dark-color" => Some(None),
+        MermaidThemeId::Neo | MermaidThemeId::NeoDark | MermaidThemeId::ReduxDark => {
+            Some(Some(ColorTransform::Darken(if dark_mode {
+                75.0
+            } else {
+                25.0
+            })))
+        }
+        MermaidThemeId::ReduxColor | MermaidThemeId::ReduxDarkColor => Some(None),
         _ => None,
     };
     if let Some(transform) = scale_policy {
@@ -1351,7 +1824,7 @@ fn replay_extended_theme_khroma_operations(
                 };
                 tv.insert(peer_key, Value::String(peer));
             }
-            if theme == "redux-dark-color" {
+            if theme == MermaidThemeId::ReduxDarkColor {
                 let label_key = format!("cScaleLabel{index}");
                 if !explicit.contains_key(&label_key) {
                     tv.insert(
@@ -1365,36 +1838,75 @@ fn replay_extended_theme_khroma_operations(
     Ok(())
 }
 
-pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
-    let requested = config.get_str("theme").unwrap_or("default").to_string();
-    let program = *ThemeProgram::resolve(&requested);
+pub(crate) fn apply_theme_defaults(config: &mut MermaidConfig) -> Result<(), ThemeResolutionError> {
+    let requested = config.get_str("theme").unwrap_or("default");
+    // Mermaid's raw configuration runtime falls back to `default` for unknown strings. Typed
+    // Merman theme APIs use `MermaidThemeId::parse` and never enter this compatibility branch.
+    let theme = MermaidThemeId::parse(requested).unwrap_or_default();
+    let program = *ThemeProgram::resolve(theme);
     let raw = theme_variables_map(config);
-    // The complete base evaluator validates only operands actually reached by updateColors().
-    // Prevalidating a list would reject valid falsy fallbacks and miss later dependencies.
-    if program.kind != ThemeProgramKind::Base {
-        program.validate_evaluated_inputs(&raw)?;
-    }
     let explicit = program.normalize_overrides(raw);
-    config.set_value("themeVariables", Value::Object(explicit));
-    program.execute(config)
+
+    if let Some(staged_program) = program.staged_program() {
+        let resolution =
+            staged::Resolution::execute(staged_program, program.prepared_constructor(), &explicit)?;
+        // Keep the staged path transactional: normalization affects compatibility ownership,
+        // so defer that side effect until every evaluated assignment has succeeded.
+        config.retain_normalized_theme_compatibility_variables(&explicit);
+        resolution.materialize_into(config);
+        return Ok(());
+    }
+
+    program.validate_evaluated_inputs(&explicit)?;
+    let resolved = program.resolve_legacy(&explicit)?;
+    // Calculation owns only local variables. Commit values and normalization together after every
+    // fallible calculation succeeds, without staging an unrelated full configuration tree.
+    config.retain_normalized_theme_compatibility_variables(&explicit);
+    let has_calculation_owners = config.has_theme_variable_calculation_owners();
+    config.commit_legacy_theme_variables(resolved);
+    if has_calculation_owners {
+        let explicit_dependency_variables = program
+            .variable_dependencies()
+            .flat_map(|dependency| [dependency.source, dependency.target])
+            .filter_map(|variable| {
+                explicit
+                    .get(variable)
+                    .map(|value| (variable, is_js_truthy(value)))
+            })
+            .collect::<Vec<_>>();
+        program.propagate_derived_ownership(&explicit_dependency_variables, config);
+    }
+    Ok(())
 }
 
-fn apply_snapshot_theme_defaults(
-    config: &mut MermaidConfig,
-    theme: &str,
-) -> Result<(), ColorError> {
-    let tv = theme_variables_map(config);
-    finish_theme_defaults(config, theme, tv)
+pub(crate) fn materialize_selected_theme(
+    mut effective_config: MermaidConfig,
+    selected_theme: MermaidThemeId,
+) -> Result<MermaidConfig, ThemeResolutionError> {
+    #[cfg(test)]
+    crate::config::record_config_work(|work| work.selected_theme_materializations += 1);
+    effective_config.set_value_preserving_theme_compatibility(
+        "theme",
+        Value::String(selected_theme.as_str().to_string()),
+    );
+    apply_theme_defaults(&mut effective_config)?;
+    Ok(effective_config)
 }
 
 fn apply_extended_theme_visible_derivations(
-    theme: &str,
+    program: ThemeProgram,
     explicit: &Map<String, Value>,
     tv: &mut Map<String, Value>,
 ) -> Result<(), ColorError> {
+    let theme = program.id;
     if !matches!(
         theme,
-        "neo" | "neo-dark" | "redux" | "redux-dark" | "redux-color" | "redux-dark-color"
+        MermaidThemeId::Neo
+            | MermaidThemeId::NeoDark
+            | MermaidThemeId::Redux
+            | MermaidThemeId::ReduxDark
+            | MermaidThemeId::ReduxColor
+            | MermaidThemeId::ReduxDarkColor
     ) {
         return Ok(());
     }
@@ -1409,8 +1921,10 @@ fn apply_extended_theme_visible_derivations(
         set_derived_string_unless_explicit(tv, explicit, "nodeBkg", primary.clone());
         set_derived_string_unless_explicit(tv, explicit, "tagLabelBackground", primary.clone());
 
-        if matches!(theme, "neo" | "redux" | "redux-color")
-            && !explicit.contains_key("secondaryColor")
+        if matches!(
+            theme,
+            MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor
+        ) && !explicit.contains_key("secondaryColor")
         {
             let secondary = theme_color::adjust(&primary, ColorAdjustment::hsl(-120.0, 0.0, 0.0))?;
             tv.insert("secondaryColor".to_string(), Value::String(secondary));
@@ -1426,32 +1940,6 @@ fn apply_extended_theme_visible_derivations(
             "secondaryBorderColor".to_string(),
             Value::String(mk_border(&secondary, dark_mode)?),
         );
-    }
-
-    if explicit.contains_key("background") {
-        let background = required_color(tv, "background")?;
-        if !explicit.contains_key("lineColor") {
-            let line_color = theme_color::invert(&background)?;
-            tv.insert("lineColor".to_string(), Value::String(line_color));
-        }
-        if !explicit.contains_key("arrowheadColor") {
-            let arrowhead_color = theme_color::invert(&background)?;
-            tv.insert("arrowheadColor".to_string(), Value::String(arrowhead_color));
-        }
-    }
-
-    if explicit.contains_key("lineColor") || explicit.contains_key("background") {
-        let line_color = required_color(tv, "lineColor")?;
-        for key in [
-            "defaultLinkColor",
-            "archEdgeColor",
-            "archEdgeArrowColor",
-            "relationColor",
-            "transitionColor",
-            "specialStateColor",
-        ] {
-            set_derived_string_unless_explicit(tv, explicit, key, line_color.clone());
-        }
     }
 
     if explicit.contains_key("secondaryColor") || explicit.contains_key("primaryColor") {
@@ -1486,19 +1974,24 @@ fn apply_extended_theme_visible_derivations(
     }
 
     if explicit.contains_key("primaryColor")
-        && matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color")
+        && matches!(
+            theme,
+            MermaidThemeId::NeoDark | MermaidThemeId::ReduxDark | MermaidThemeId::ReduxDarkColor
+        )
     {
         let primary = required_color(tv, "primaryColor")?;
         set_derived_string_unless_explicit(tv, explicit, "requirementBackground", primary.clone());
-        if theme != "redux-dark-color" {
+        if theme != MermaidThemeId::ReduxDarkColor {
             set_derived_string_unless_explicit(tv, explicit, "pie1", primary);
         }
     }
 
     // Mermaid 12 uses a visible, direction-aware band on the light extended
     // themes, and resolves dark themes' constructor placeholder from mainBkg.
-    if matches!(theme, "neo" | "redux" | "redux-color")
-        && explicit.contains_key("background")
+    if matches!(
+        theme,
+        MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor
+    ) && explicit.contains_key("background")
         && !explicit.contains_key("rectBkgColor")
     {
         let background = required_color(tv, "background")?;
@@ -1509,7 +2002,10 @@ fn apply_extended_theme_visible_derivations(
         };
         tv.insert("rectBkgColor".to_string(), Value::String(band));
     }
-    if matches!(theme, "neo-dark" | "redux-dark" | "redux-dark-color") {
+    if matches!(
+        theme,
+        MermaidThemeId::NeoDark | MermaidThemeId::ReduxDark | MermaidThemeId::ReduxDarkColor
+    ) {
         let second_is_placeholder =
             explicit.get("secondBkg").and_then(Value::as_str) == Some("calculated");
         if (explicit.contains_key("mainBkg") && !explicit.contains_key("secondBkg"))
@@ -1525,8 +2021,11 @@ fn apply_extended_theme_visible_derivations(
             tv.insert("doneTaskBkgColor".to_string(), second);
         }
     }
-    if matches!(theme, "redux-color" | "redux-dark-color") {
-        // The categorical scale now drives pie slices and Gantt section bands.
+    if matches!(
+        theme,
+        MermaidThemeId::ReduxColor | MermaidThemeId::ReduxDarkColor
+    ) {
+        // Resolve categorical fallbacks before the shared dependency ledger derives pie/Gantt.
         for index in 0..12 {
             let scale = format!("cScale{index}");
             if explicit.contains_key(&scale) {
@@ -1535,30 +2034,10 @@ fn apply_extended_theme_visible_derivations(
                 let fallback =
                     ThemeProgram::resolve(theme).calculation_snapshot(explicit)[&scale].clone();
                 set_if_missing(tv, &scale, fallback);
-                let color = tv[&scale].clone();
-                let pie = format!("pie{}", index + 1);
-                if !explicit.contains_key(&pie) {
-                    tv.insert(pie, color.clone());
-                }
-                let section = match index {
-                    0 => Some("sectionBkgColor"),
-                    1 => Some("sectionBkgColor2"),
-                    _ => None,
-                };
-                if let Some(section) = section.filter(|key| !explicit.contains_key(*key)) {
-                    tv.insert(section.to_string(), color.clone());
-                }
             }
         }
-        if theme == "redux-dark-color"
-            && explicit.contains_key("background")
-            && !explicit.contains_key("altSectionBkgColor")
-            && let Some(background) = tv.get("background").cloned()
-        {
-            tv.insert("altSectionBkgColor".to_string(), background);
-        }
         for (palette, prefix) in [("borderColorArray", "venn"), ("bkgColorArray", "fillType")] {
-            if prefix == "fillType" && theme == "redux-dark-color" {
+            if prefix == "fillType" && theme == MermaidThemeId::ReduxDarkColor {
                 continue;
             }
             if let Some(colors) = explicit.get(palette).and_then(Value::as_array) {
@@ -1593,7 +2072,10 @@ fn apply_extended_theme_visible_derivations(
     }
 
     discard_non_explicit_quadrant_snapshot_values(tv, explicit);
-    let quadrant_fill_base = if matches!(theme, "neo" | "redux" | "redux-color") {
+    let quadrant_fill_base = if matches!(
+        theme,
+        MermaidThemeId::Neo | MermaidThemeId::Redux | MermaidThemeId::ReduxColor
+    ) {
         "#ECECFE".to_string()
     } else {
         required_color(tv, "primaryColor")?
@@ -1609,9 +2091,10 @@ fn apply_extended_theme_visible_derivations(
     Ok(())
 }
 
-fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
-    let mut tv = theme_variables_map(config);
-    let explicit_theme_variables = tv.clone();
+fn calculate_default_theme_variables(
+    explicit: &Map<String, Value>,
+) -> Result<Map<String, Value>, ColorError> {
+    let mut tv = explicit.clone();
 
     // Mermaid 11.16.1: `theme-default` constructor defaults and `updateColors()`.
     // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-default.js`.
@@ -1620,6 +2103,7 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
     let default_tertiary =
         theme_color::adjust(default_primary, ColorAdjustment::hsl(-160.0, 0.0, 0.0))?;
     let default_primary_border = mk_border(default_primary, false)?;
+    let default_secondary_border = mk_border(default_secondary, false)?;
 
     set_if_missing(&mut tv, "background", Value::String("white".to_string()));
     set_if_missing(
@@ -1646,7 +2130,7 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
     set_if_missing(
         &mut tv,
         "secondaryBorderColor",
-        Value::String(mk_border(default_secondary, false)?),
+        Value::String(default_secondary_border.clone()),
     );
     set_if_missing(
         &mut tv,
@@ -1832,10 +2316,6 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
         Some(color) => color,
         None => mk_border(default_primary, false)?,
     };
-    let secondary_border_color = match get_truthy_string(&tv, "secondaryBorderColor") {
-        Some(color) => color,
-        None => mk_border(default_secondary, false)?,
-    };
     set_if_missing(
         &mut tv,
         "personBorder",
@@ -1892,27 +2372,38 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
         "errorTextColor",
         Value::String("#552222".to_string()),
     );
+    // `theme-default` materializes these `||` State fallbacks during construction, before
+    // calculate() applies overrides. Only the unconditional specialStateColor assignment below
+    // follows a replayed lineColor override during the second updateColors() pass.
     set_if_missing(
         &mut tv,
         "transitionColor",
-        Value::String(line_color.clone()),
+        Value::String("#333333".to_string()),
     );
     set_if_missing(
         &mut tv,
         "transitionLabelColor",
-        Value::String(text_color.clone()),
+        Value::String("#333".to_string()),
     );
     let state_label_color = get_truthy_string(&tv, "stateBkg")
         .map(Value::String)
         .unwrap_or_else(|| Value::String(primary_text_color.clone()));
     set_if_missing(&mut tv, "stateLabelColor", state_label_color);
-    set_if_missing(&mut tv, "stateBkg", Value::String(main_bkg.clone()));
-    let state_bkg = get_truthy_string(&tv, "stateBkg").unwrap_or_else(|| main_bkg.clone());
-    set_if_missing(&mut tv, "labelBackgroundColor", Value::String(state_bkg));
-    let composite_background = get_truthy_string(&tv, "background")
-        .map(Value::String)
-        .unwrap_or_else(|| Value::String("white".to_string()));
-    set_if_missing(&mut tv, "compositeBackground", composite_background);
+    set_if_missing(
+        &mut tv,
+        "stateBkg",
+        Value::String(default_primary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "labelBackgroundColor",
+        Value::String(default_primary.to_string()),
+    );
+    set_if_missing(
+        &mut tv,
+        "compositeBackground",
+        Value::String("white".to_string()),
+    );
     set_if_missing(
         &mut tv,
         "altBackground",
@@ -2162,12 +2653,12 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
     set_if_missing(
         &mut tv,
         "gradientStart",
-        Value::String(primary_border_color),
+        Value::String(default_primary_border.clone()),
     );
     set_if_missing(
         &mut tv,
         "gradientStop",
-        Value::String(secondary_border_color),
+        Value::String(default_secondary_border),
     );
     set_if_missing(
         &mut tv,
@@ -2181,895 +2672,20 @@ fn apply_default_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorE
     );
 
     apply_quadrant_theme_defaults(&mut tv, default_primary, "#131300", &default_primary_border)?;
-    validate_explicit_git_transforms(&tv, &explicit_theme_variables, ColorTransform::Darken(25.0))?;
+    validate_explicit_git_transforms(&tv, explicit, ColorTransform::Darken(25.0))?;
 
-    finish_theme_defaults(config, "default", tv)
-}
-
-fn apply_dark_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
-    let mut tv = theme_variables_map(config);
-
-    // Mermaid 11.16.1: `theme-dark` color scale seeds.
-    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-dark.js`.
-    //
-    // Note: `theme-dark` keeps `cScale*` as the provided hex strings, while derived
-    // `cScalePeer*` values are produced via `khroma.lighten(...)` (serialized as `hsl(...)`).
-    let c_scales_hex: [&str; 12] = [
-        "#1f2020", // primaryColor
-        "#0b0000", "#4d1037", "#3f5258", "#4f2f1b", "#6e0a0a", "#3b0048", "#995a01", "#154706",
-        "#161722", "#00296f", "#01629c",
-    ];
-
-    // Mermaid's dark theme is not just a palette switch: most readable text colors are derived
-    // from dark surface colors in `updateColors()`. Seed those diagram-facing variables here so
-    // headless renderers do not fall back to default-theme black text on dark backgrounds.
-    set_string_if_missing(&mut tv, "background", "#333");
-    set_string_if_missing(&mut tv, "primaryColor", "#1f2020");
-    if get_truthy_string(&tv, "primaryTextColor").is_none()
-        && let Some(primary_color) = get_truthy_string(&tv, "primaryColor")
-    {
-        tv.insert(
-            "primaryTextColor".to_string(),
-            Value::String(theme_color::invert(&primary_color)?),
-        );
-    }
-    set_string_if_missing(&mut tv, "textColor", "#ccc");
-    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
-    set_string_if_missing(&mut tv, "fontSize", "16px");
-    set_string_if_missing(&mut tv, "border1", "#ccc");
-    set_string_if_missing(&mut tv, "border2", "rgba(255, 255, 255, 0.25)");
-    set_string_if_missing(&mut tv, "labelBackground", "#181818");
-    set_string_if_missing(&mut tv, "titleColor", "#F9FFFE");
-    set_if_missing(&mut tv, "THEME_COLOR_LIMIT", Value::Number(12.into()));
-    set_if_missing(&mut tv, "radius", Value::Number(5.into()));
-    set_if_missing(&mut tv, "strokeWidth", Value::Number(1.into()));
-    set_string_if_missing(&mut tv, "errorBkgColor", "#a44141");
-    set_string_if_missing(&mut tv, "errorTextColor", "#ddd");
-
-    let primary_color =
-        get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#1f2020".to_string());
-    let default_secondary_color = theme_color::lighten(&primary_color, 16.0)?;
-    set_if_missing(
-        &mut tv,
-        "secondaryColor",
-        Value::String(default_secondary_color.clone()),
-    );
-    set_if_missing(
-        &mut tv,
-        "primaryBorderColor",
-        Value::String("#cccccc".to_string()),
-    );
-    set_if_missing(
-        &mut tv,
-        "secondaryBorderColor",
-        Value::String(mk_border(&default_secondary_color, false)?),
-    );
-    let default_tertiary_color =
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(-160.0, 0.0, 0.0))?;
-    set_string_if_missing(&mut tv, "tertiaryColor", default_tertiary_color.clone());
-    set_string_if_missing(
-        &mut tv,
-        "tertiaryBorderColor",
-        mk_border(&default_tertiary_color, false)?,
-    );
-    set_string_if_missing(
-        &mut tv,
-        "secondaryTextColor",
-        theme_color::invert(&default_secondary_color)?,
-    );
-    set_string_if_missing(
-        &mut tv,
-        "tertiaryTextColor",
-        theme_color::invert(&default_tertiary_color)?,
-    );
-    ensure_gradient_theme_defaults(&mut tv);
-
-    let secondary_color =
-        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| default_secondary_color.clone());
-    let secondary_text_color = match get_truthy_string(&tv, "secondaryTextColor") {
-        Some(color) => color,
-        None => theme_color::invert(&secondary_color)?,
-    };
-    let tertiary_color =
-        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| default_tertiary_color.clone());
-    let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#333".to_string());
-    let primary_text_color =
-        get_truthy_string(&tv, "primaryTextColor").unwrap_or_else(|| "#e0dfdf".to_string());
-    let text_color = get_truthy_string(&tv, "textColor").unwrap_or_else(|| "#ccc".to_string());
-    let line_color = get_truthy_string(&tv, "lineColor").unwrap_or_else(|| "lightgrey".to_string());
-    let border1 = get_truthy_string(&tv, "border1").unwrap_or_else(|| "#ccc".to_string());
-    let border2 = get_truthy_string(&tv, "border2")
-        .unwrap_or_else(|| "rgba(255, 255, 255, 0.25)".to_string());
-    let primary_border_color =
-        get_truthy_string(&tv, "primaryBorderColor").unwrap_or_else(|| "#cccccc".to_string());
-    let secondary_border_color = match get_truthy_string(&tv, "secondaryBorderColor") {
-        Some(color) => color,
-        None => mk_border(&secondary_color, false)?,
-    };
-
-    // theme-dark updates Journey colors unconditionally before replaying explicit values.
-    for (key, color) in [
-        ("fillType0", primary_color.clone()),
-        ("fillType1", secondary_color.clone()),
-        (
-            "fillType2",
-            theme_color::adjust(&primary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType3",
-            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType4",
-            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType5",
-            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType6",
-            theme_color::adjust(&primary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType7",
-            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
-        ),
-    ] {
-        tv.insert(key.to_string(), Value::String(color));
-    }
-
-    set_string_if_missing(&mut tv, "mainBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "secondBkg", secondary_color.clone());
-    set_string_if_missing(&mut tv, "mainContrastColor", "lightgrey");
-    set_string_if_missing(
-        &mut tv,
-        "darkTextColor",
-        "hsl(28.5714285714, 17.3553719008%, 86.2745098039%)",
-    );
-    set_string_if_missing(&mut tv, "lineColor", "lightgrey");
-    set_string_if_missing(&mut tv, "arrowheadColor", "lightgrey");
-
-    // Flowchart/block/class surfaces.
-    set_string_if_missing(&mut tv, "nodeBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "mainBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "nodeBorder", border1.clone());
-    set_string_if_missing(&mut tv, "clusterBkg", secondary_color.clone());
-    set_string_if_missing(&mut tv, "clusterBorder", border2.clone());
-    set_string_if_missing(&mut tv, "defaultLinkColor", line_color.clone());
-    set_string_if_missing(&mut tv, "edgeLabelBackground", "hsl(0, 0%, 34.4117647059%)");
-    set_string_if_missing(&mut tv, "classText", primary_text_color.clone());
-
-    // Sequence diagram and note text must stay light on dark actor/message backgrounds.
-    set_string_if_missing(&mut tv, "actorBorder", border1.clone());
-    set_string_if_missing(&mut tv, "actorBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "actorTextColor", "lightgrey");
-    set_string_if_missing(&mut tv, "actorLineColor", border1.clone());
-    set_string_if_missing(&mut tv, "signalColor", "lightgrey");
-    set_string_if_missing(&mut tv, "signalTextColor", "lightgrey");
-    set_string_if_missing(&mut tv, "labelBoxBkgColor", primary_color.clone());
-    set_string_if_missing(&mut tv, "labelBoxBorderColor", border1.clone());
-    set_string_if_missing(&mut tv, "labelTextColor", "lightgrey");
-    set_string_if_missing(&mut tv, "loopTextColor", "lightgrey");
-    set_string_if_missing(&mut tv, "noteBorderColor", secondary_border_color.clone());
-    set_string_if_missing(&mut tv, "noteBkgColor", secondary_color.clone());
-    set_string_if_missing(&mut tv, "noteTextColor", secondary_text_color.clone());
-    set_string_if_missing(&mut tv, "activationBorderColor", border1);
-    set_string_if_missing(&mut tv, "activationBkgColor", secondary_color.clone());
-    set_string_if_missing(&mut tv, "sequenceNumberColor", "black");
-    set_string_if_missing(&mut tv, "rectBkgColor", tertiary_color.clone());
-
-    // Gantt text colors are deliberately not all the same: completed-task labels use the
-    // inverse of the light completed-task fill, while outside labels stay light on dark canvas.
-    set_string_if_missing(
-        &mut tv,
-        "sectionBkgColor",
-        "hsl(50, 26.087%, 48.2352941176%)",
-    );
-    set_string_if_missing(&mut tv, "altSectionBkgColor", background.clone());
-    set_string_if_missing(&mut tv, "sectionBkgColor2", "#EAE8D9");
-    set_string_if_missing(
-        &mut tv,
-        "excludeBkgColor",
-        "hsl(50, 26.087%, 38.2352941176%)",
-    );
-    set_string_if_missing(
-        &mut tv,
-        "taskBorderColor",
-        theme_color::rgba(255.0, 255.0, 255.0, 70.0)?,
-    );
-    set_string_if_missing(
-        &mut tv,
-        "taskBkgColor",
-        "hsl(180, 1.5873015873%, 35.3529411765%)",
-    );
-    set_string_if_missing(
-        &mut tv,
-        "taskTextColor",
-        "hsl(28.5714285714, 17.3553719008%, 86.2745098039%)",
-    );
-    set_string_if_missing(&mut tv, "taskTextLightColor", "lightgrey");
-    set_string_if_missing(&mut tv, "taskTextOutsideColor", "lightgrey");
-    set_string_if_missing(&mut tv, "taskTextClickableColor", "#003163");
-    set_string_if_missing(
-        &mut tv,
-        "activeTaskBorderColor",
-        theme_color::rgba(255.0, 255.0, 255.0, 50.0)?,
-    );
-    set_string_if_missing(&mut tv, "activeTaskBkgColor", "#81B1DB");
-    set_string_if_missing(&mut tv, "gridColor", "lightgrey");
-    set_string_if_missing(&mut tv, "doneTaskBkgColor", "lightgrey");
-    set_string_if_missing(&mut tv, "doneTaskBorderColor", "grey");
-    set_string_if_missing(&mut tv, "critBorderColor", "#E83737");
-    set_string_if_missing(&mut tv, "critBkgColor", "#E83737");
-    set_string_if_missing(&mut tv, "taskTextDarkColor", "#2c2c2c");
-    set_string_if_missing(&mut tv, "todayLineColor", "#DB5757");
-    set_string_if_missing(&mut tv, "vertLineColor", "#00BFFF");
-
-    // C4, architecture, ER, and state surfaces.
-    set_string_if_missing(&mut tv, "personBorder", primary_border_color.clone());
-    set_string_if_missing(&mut tv, "personBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "archEdgeColor", line_color.clone());
-    set_string_if_missing(&mut tv, "archEdgeArrowColor", line_color.clone());
-    set_string_if_missing(&mut tv, "archEdgeWidth", "3");
-    set_string_if_missing(
-        &mut tv,
-        "archGroupBorderColor",
-        primary_border_color.clone(),
-    );
-    set_string_if_missing(&mut tv, "archGroupBorderWidth", "2px");
-    set_string_if_missing(&mut tv, "rowOdd", "hsl(180, 1.5873015873%, 17.3529411765%)");
-    set_string_if_missing(&mut tv, "rowEven", "hsl(180, 1.5873015873%, 2.3529411765%)");
-    set_string_if_missing(&mut tv, "transitionColor", line_color.clone());
-    set_string_if_missing(&mut tv, "transitionLabelColor", text_color.clone());
-    set_string_if_missing(&mut tv, "stateLabelColor", primary_text_color.clone());
-    set_string_if_missing(&mut tv, "stateBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "labelBackgroundColor", primary_color.clone());
-    set_string_if_missing(&mut tv, "compositeBackground", background.clone());
-    set_string_if_missing(&mut tv, "altBackground", "#555");
-    set_string_if_missing(&mut tv, "compositeTitleBackground", primary_color.clone());
-    let composite_border =
-        get_truthy_string(&tv, "nodeBorder").unwrap_or_else(|| "#ccc".to_string());
-    set_string_if_missing(&mut tv, "compositeBorder", composite_border);
-    set_string_if_missing(&mut tv, "innerEndBackground", primary_border_color.clone());
-    set_string_if_missing(&mut tv, "specialStateColor", "#f4f4f4");
-    set_string_if_missing_with(&mut tv, "emSwimlaneBackgroundOdd", || {
-        theme_color::lighten(&background, 5.0)
-    })?;
-    set_string_if_missing_with(&mut tv, "emSwimlaneBackgroundStroke", || {
-        theme_color::lighten(&background, 12.0)
-    })?;
-    set_string_if_missing_with(&mut tv, "attributeBackgroundColorOdd", || {
-        theme_color::lighten(&background, 12.0)
-    })?;
-    set_string_if_missing_with(&mut tv, "attributeBackgroundColorEven", || {
-        theme_color::lighten(&background, 2.0)
-    })?;
-    set_string_if_missing(&mut tv, "noteFontWeight", "normal");
-    set_string_if_missing(&mut tv, "fontWeight", "normal");
-    set_string_if_missing(
-        &mut tv,
-        "dropShadow",
-        "drop-shadow( 1px 2px 2px rgba(185,185,185,1))",
-    );
-
-    // Mermaid's `config.ts` calls `theme-dark.getThemeVariables(conf.themeVariables)` without
-    // injecting `darkMode=true`, so `theme-dark.js` falls back to `labelTextColor` here.
-    let label_text_color =
-        get_truthy_string(&tv, "labelTextColor").unwrap_or_else(|| "lightgrey".to_string());
-    set_if_missing(
-        &mut tv,
-        "scaleLabelColor",
-        Value::String(label_text_color.clone()),
-    );
-    let scale_label_color =
-        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| label_text_color.clone());
-
-    for (i, c_hex) in c_scales_hex.iter().enumerate() {
-        let c_scale_key = format!("cScale{i}");
-        let default_scale = if i == 0 {
-            primary_color.clone()
-        } else {
-            (*c_hex).to_string()
-        };
-        set_if_missing(&mut tv, &c_scale_key, Value::String(default_scale));
-
-        let c_scale = required_color(&tv, &c_scale_key)?;
-
-        // `theme-dark` peers: `lighten(cScale, 10)`.
-        set_if_missing(
-            &mut tv,
-            &format!("cScalePeer{i}"),
-            Value::String(theme_color::lighten(&c_scale, 10.0)?),
-        );
-
-        // `theme-dark` inverted scale: `invert(cScale)`.
-        set_if_missing(
-            &mut tv,
-            &format!("cScaleInv{i}"),
-            Value::String(theme_color::invert(&c_scale)?),
-        );
-
-        // `theme-dark` label scale: `scaleLabelColor`.
-        set_if_missing(
-            &mut tv,
-            &format!("cScaleLabel{i}"),
-            Value::String(scale_label_color.clone()),
-        );
-    }
-
-    set_string_if_missing(&mut tv, "pieTitleTextColor", line_color.clone());
-    set_string_if_missing(&mut tv, "pieSectionTextColor", text_color);
-    set_string_if_missing(&mut tv, "pieLegendTextColor", line_color.clone());
-    set_string_if_missing(&mut tv, "branchLabelColor", "#2c2c2c");
-    set_string_if_missing(&mut tv, "gitBranchLabel0", "#2c2c2c");
-    set_string_if_missing(&mut tv, "gitBranchLabel1", "lightgrey");
-    set_string_if_missing(&mut tv, "gitBranchLabel2", "lightgrey");
-    set_string_if_missing(&mut tv, "gitBranchLabel3", "#2c2c2c");
-    for i in 4..8 {
-        set_string_if_missing(&mut tv, &format!("gitBranchLabel{i}"), "lightgrey");
-    }
-    set_string_if_missing(&mut tv, "tagLabelColor", primary_text_color);
-    set_string_if_missing(&mut tv, "tagLabelBackground", primary_color);
-    set_string_if_missing(&mut tv, "tagLabelBorder", primary_border_color);
-    set_string_if_missing(&mut tv, "tagLabelFontSize", "10px");
-    set_string_if_missing(&mut tv, "commitLabelColor", secondary_text_color);
-    set_string_if_missing(&mut tv, "commitLabelBackground", secondary_color);
-    set_string_if_missing(&mut tv, "commitLabelFontSize", "10px");
-
-    // `theme-dark` xychart palette + colors.
-    // Source: `theme-dark.js`.
-    ensure_xychart_theme_defaults(
-        &mut tv,
-        "#3498db,#2ecc71,#e74c3c,#f1c40f,#bdc3c7,#ffffff,#34495e,#9b59b6,#1abc9c,#e67e22",
-    );
-    apply_current_quadrant_theme_defaults(&mut tv)?;
-
-    finish_theme_defaults(config, "dark", tv)
-}
-
-fn apply_forest_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
-    let mut tv = theme_variables_map(config);
-    let explicit_theme_variables = tv.clone();
-
-    // Mermaid 11.16.1: `theme-forest` base colors.
-    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-forest.js`.
-    //
-    // NOTE: `theme-forest` is not a thin palette override. It sets several diagram-facing
-    // variables (flowchart/state/sequence/...) in its `constructor()` + `updateColors()`.
-    // We explicitly seed those values here so headless SVG rendering can match upstream.
-    set_if_missing(
-        &mut tv,
-        "primaryColor",
-        Value::String("#cde498".to_string()),
-    );
-    set_if_missing(
-        &mut tv,
-        "secondaryColor",
-        Value::String("#cdffb2".to_string()),
-    );
-    set_if_missing(&mut tv, "background", Value::String("white".to_string()));
-    set_if_missing(&mut tv, "border1", Value::String("#13540c".to_string()));
-    set_if_missing(&mut tv, "border2", Value::String("#6eaa49".to_string()));
-    set_if_missing(
-        &mut tv,
-        "arrowheadColor",
-        Value::String("green".to_string()),
-    );
-    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
-    set_if_missing(&mut tv, "fontSize", Value::String("16px".to_string()));
-    set_if_missing(&mut tv, "titleColor", Value::String("#333".to_string()));
-    set_if_missing(
-        &mut tv,
-        "edgeLabelBackground",
-        Value::String("#e8e8e8".to_string()),
-    );
-    set_if_missing(
-        &mut tv,
-        "errorBkgColor",
-        Value::String("#552222".to_string()),
-    );
-    set_if_missing(
-        &mut tv,
-        "errorTextColor",
-        Value::String("#552222".to_string()),
-    );
-
-    let primary_color = required_color(&tv, "primaryColor")?;
-    if get_truthy_string(&tv, "primaryTextColor").is_none() {
-        tv.insert(
-            "primaryTextColor".to_string(),
-            Value::String(theme_color::invert(&primary_color)?),
-        );
-    }
-
-    let secondary_color =
-        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| "#cdffb2".to_string());
-
-    // `theme-forest` diagram-facing surfaces.
-    // Source: `theme-forest.js` constructor + `updateColors()`.
-    set_if_missing(&mut tv, "mainBkg", Value::String(primary_color.clone()));
-    set_if_missing(&mut tv, "secondBkg", Value::String(secondary_color.clone()));
-    // Table striping colors (used by ER diagrams).
-    // Source: `theme-forest.js`:
-    //   rowOdd  = lighten(mainBkg, 75) || '#ffffff'
-    //   rowEven = lighten(mainBkg, 20)
-    set_if_missing(
-        &mut tv,
-        "rowOdd",
-        Value::String(theme_color::lighten(&primary_color, 75.0)?),
-    );
-    set_if_missing(
-        &mut tv,
-        "rowEven",
-        Value::String(theme_color::lighten(&primary_color, 20.0)?),
-    );
-
-    // `invert('white')` in `khroma` ends up as a pure black in Mermaid's serialized SVG output.
-    set_if_missing(&mut tv, "lineColor", Value::String("#000000".to_string()));
-    set_if_missing(&mut tv, "textColor", Value::String("#000000".to_string()));
-
-    // Flowchart variables (after `updateColors()`).
-    set_if_missing(&mut tv, "nodeBkg", Value::String(primary_color.clone()));
-    set_if_missing(&mut tv, "nodeBorder", Value::String("#13540c".to_string()));
-    set_if_missing(
-        &mut tv,
-        "clusterBkg",
-        Value::String(secondary_color.clone()),
-    );
-    set_if_missing(
-        &mut tv,
-        "clusterBorder",
-        Value::String("#6eaa49".to_string()),
-    );
-    set_if_missing(
-        &mut tv,
-        "defaultLinkColor",
-        Value::String("#000000".to_string()),
-    );
-
-    // mkBorder(...) helper (shared across themes).
-    let dark_mode = tv.get("darkMode").is_some_and(is_js_truthy);
-    set_if_missing(
-        &mut tv,
-        "primaryBorderColor",
-        Value::String(mk_border(&primary_color, dark_mode)?),
-    );
-    set_if_missing(
-        &mut tv,
-        "secondaryBorderColor",
-        Value::String(mk_border(&secondary_color, dark_mode)?),
-    );
-    ensure_gradient_theme_defaults(&mut tv);
-
-    // `theme-forest` sets: `tertiaryColor = lighten(primaryColor, 10)`.
-    let tertiary_color = if let Some(color) = get_truthy_string(&tv, "tertiaryColor") {
-        color
-    } else {
-        theme_color::lighten(&primary_color, 10.0)?
-    };
-    set_if_missing(
-        &mut tv,
-        "tertiaryColor",
-        Value::String(tertiary_color.clone()),
-    );
-    set_if_missing(
-        &mut tv,
-        "tertiaryBorderColor",
-        Value::String(mk_border(&tertiary_color, dark_mode)?),
-    );
-
-    // `theme-forest` ends up using black label text (via `actorTextColor`).
-    set_if_missing(
-        &mut tv,
-        "labelTextColor",
-        Value::String("black".to_string()),
-    );
-    set_if_missing(
-        &mut tv,
-        "scaleLabelColor",
-        Value::String("black".to_string()),
-    );
-    let scale_label_color =
-        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "black".to_string());
-
-    // Color scales: match `theme-forest` `updateColors()`:
-    // - derive from base colors / hue shifts
-    // - darken each `cScale*` by 10
-    // - `cScalePeer1/2` use special darken amounts, others are darken(`cScale*`, 25)
-    let c_scale_bases = [
-        primary_color.clone(),
-        secondary_color.clone(),
-        tertiary_color.clone(),
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(30.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(60.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(90.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(120.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(150.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(210.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(270.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(300.0, 0.0, 0.0))?,
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(330.0, 0.0, 0.0))?,
-    ];
-    let mut c_scales = Vec::with_capacity(c_scale_bases.len());
-    for base in c_scale_bases {
-        c_scales.push(theme_color::darken(&base, 10.0)?);
-    }
-
-    for (i, v) in c_scales.iter().enumerate() {
-        set_if_missing(&mut tv, &format!("cScale{i}"), Value::String(v.clone()));
-    }
-
-    set_if_missing(
-        &mut tv,
-        "cScalePeer1",
-        Value::String(theme_color::darken(&secondary_color, 45.0)?),
-    );
-    set_if_missing(
-        &mut tv,
-        "cScalePeer2",
-        Value::String(theme_color::darken(&tertiary_color, 40.0)?),
-    );
-
-    for (i, fallback_color) in c_scales.iter().enumerate() {
-        let c_scale_key = format!("cScale{i}");
-        let mut color =
-            get_truthy_string(&tv, &c_scale_key).unwrap_or_else(|| fallback_color.clone());
-        if explicit_theme_variables.contains_key(&c_scale_key) {
-            color = theme_color::darken(&color, 10.0)?;
-        }
-        set_if_missing(
-            &mut tv,
-            &format!("cScalePeer{i}"),
-            Value::String(theme_color::darken(&color, 25.0)?),
-        );
-        set_if_missing(
-            &mut tv,
-            &format!("cScaleInv{i}"),
-            Value::String(theme_color::adjust(
-                &color,
-                ColorAdjustment::hsl(180.0, 0.0, 0.0),
-            )?),
-        );
-        set_if_missing(
-            &mut tv,
-            &format!("cScaleLabel{i}"),
-            Value::String(scale_label_color.clone()),
-        );
-    }
-
-    // `theme-forest` xychart palette + colors.
-    // Source: `theme-forest.js`.
-    ensure_xychart_theme_defaults(
-        &mut tv,
-        "#CDE498,#FF6B6B,#A0D2DB,#D7BDE2,#F0F0F0,#FFC3A0,#7FD8BE,#FF9A8B,#FAF3E0,#FFF176",
-    );
-    apply_current_quadrant_theme_defaults(&mut tv)?;
-
-    finish_theme_defaults(config, "forest", tv)
-}
-
-fn apply_neutral_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
-    let mut tv = theme_variables_map(config);
-
-    // `theme-neutral` constructor defaults.
-    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
-    set_string_if_missing(&mut tv, "background", "#ffffff");
-    set_string_if_missing(&mut tv, "primaryColor", "#eee");
-    set_if_missing(&mut tv, "fontFamily", mermaid_default_font_family());
-    set_string_if_missing(&mut tv, "fontSize", "16px");
-    if get_truthy_string(&tv, "primaryTextColor").is_none()
-        && let Some(primary_color) = get_truthy_string(&tv, "primaryColor")
-    {
-        tv.insert(
-            "primaryTextColor".to_string(),
-            Value::String(theme_color::invert(&primary_color)?),
-        );
-    }
-
-    // Mermaid 11.16.1: `theme-neutral` color scale seeds.
-    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
-    let c_scales_hex: [&str; 12] = [
-        "#555", "#F4F4F4", "#555", "#BBB", "#777", "#999", "#DDD", "#FFF", "#DDD", "#BBB", "#999",
-        "#777",
-    ];
-
-    let primary_color =
-        get_truthy_string(&tv, "primaryColor").unwrap_or_else(|| "#eee".to_string());
-    let contrast = get_truthy_string(&tv, "contrast").unwrap_or_else(|| "#707070".to_string());
-    let default_secondary_color = theme_color::lighten(&contrast, 55.0)?;
-    let default_tertiary_color =
-        theme_color::adjust(&primary_color, ColorAdjustment::hsl(-160.0, 0.0, 0.0))?;
-    set_if_missing(
-        &mut tv,
-        "secondaryColor",
-        Value::String(default_secondary_color.clone()),
-    );
-    set_string_if_missing(&mut tv, "tertiaryColor", default_tertiary_color.clone());
-    set_if_missing(
-        &mut tv,
-        "primaryBorderColor",
-        Value::String(mk_border(&primary_color, false)?),
-    );
-    set_if_missing(
-        &mut tv,
-        "secondaryBorderColor",
-        Value::String(mk_border(&default_secondary_color, false)?),
-    );
-    set_string_if_missing(
-        &mut tv,
-        "tertiaryBorderColor",
-        mk_border(&default_tertiary_color, false)?,
-    );
-    set_string_if_missing(
-        &mut tv,
-        "secondaryTextColor",
-        theme_color::invert(&default_secondary_color)?,
-    );
-    set_string_if_missing(
-        &mut tv,
-        "tertiaryTextColor",
-        theme_color::invert(&default_tertiary_color)?,
-    );
-    ensure_gradient_theme_defaults(&mut tv);
-
-    let secondary_color =
-        get_truthy_string(&tv, "secondaryColor").unwrap_or_else(|| default_secondary_color.clone());
-    let tertiary_color =
-        get_truthy_string(&tv, "tertiaryColor").unwrap_or_else(|| default_tertiary_color.clone());
-    let secondary_text_color = match get_truthy_string(&tv, "secondaryTextColor") {
-        Some(color) => color,
-        None => theme_color::invert(&secondary_color)?,
-    };
-    let tertiary_text_color = match get_truthy_string(&tv, "tertiaryTextColor") {
-        Some(color) => color,
-        None => theme_color::invert(&tertiary_color)?,
-    };
-    let background = get_truthy_string(&tv, "background").unwrap_or_else(|| "#ffffff".to_string());
-    let primary_text_color =
-        get_truthy_string(&tv, "primaryTextColor").unwrap_or_else(|| "#111111".to_string());
-    let text_color = get_truthy_string(&tv, "textColor").unwrap_or_else(|| "#000000".to_string());
-    let primary_border_color = match get_truthy_string(&tv, "primaryBorderColor") {
-        Some(color) => color,
-        None => mk_border(&primary_color, false)?,
-    };
-    let contrast = get_truthy_string(&tv, "contrast").unwrap_or_else(|| "#707070".to_string());
-
-    set_string_if_missing(&mut tv, "textColor", "#000000");
-    set_string_if_missing(&mut tv, "mainBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "secondBkg", secondary_color.clone());
-    set_string_if_missing(&mut tv, "lineColor", "#666");
-    set_string_if_missing(&mut tv, "border1", "#999");
-    let border1 = required_color(&tv, "border1")?;
-    set_string_if_missing(&mut tv, "border2", contrast.clone());
-    set_string_if_missing(&mut tv, "note", "#ffa");
-    set_string_if_missing(&mut tv, "text", "#333");
-    set_string_if_missing(&mut tv, "critical", "#d42");
-    set_string_if_missing(&mut tv, "done", "#bbb");
-    set_string_if_missing(&mut tv, "arrowheadColor", "#333333");
-    set_if_missing(&mut tv, "THEME_COLOR_LIMIT", Value::Number(12.into()));
-    set_if_missing(&mut tv, "radius", Value::Number(5.into()));
-    set_if_missing(&mut tv, "strokeWidth", Value::Number(1.into()));
-
-    // Flowchart/block/class text follows the neutral foreground family, not the default theme's
-    // purple/yellow assumptions.
-    set_string_if_missing(&mut tv, "nodeBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "nodeBorder", "#999");
-    set_string_if_missing(&mut tv, "clusterBkg", secondary_color.clone());
-    set_string_if_missing(&mut tv, "clusterBorder", contrast);
-    set_string_if_missing(&mut tv, "defaultLinkColor", "#666");
-    set_string_if_missing(&mut tv, "titleColor", "#333");
-    set_string_if_missing(&mut tv, "edgeLabelBackground", "white");
-    set_string_if_missing(&mut tv, "classText", primary_text_color.clone());
-
-    // Sequence and note colors. Neutral assigns the border transforms unconditionally.
-    let actor_border = theme_color::lighten(&border1, 23.0)?;
-    tv.insert(
-        "actorBorder".to_string(),
-        Value::String(actor_border.clone()),
-    );
-    set_string_if_missing(&mut tv, "actorBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "actorTextColor", "#333");
-    tv.insert(
-        "actorLineColor".to_string(),
-        Value::String(actor_border.clone()),
-    );
-    set_string_if_missing(&mut tv, "signalColor", "#333");
-    set_string_if_missing(&mut tv, "signalTextColor", "#333");
-    set_string_if_missing(&mut tv, "labelBoxBkgColor", primary_color.clone());
-    tv.insert(
-        "labelBoxBorderColor".to_string(),
-        Value::String(actor_border),
-    );
-    set_string_if_missing(&mut tv, "labelTextColor", "#333");
-    set_string_if_missing(&mut tv, "loopTextColor", "#333");
-    set_string_if_missing(&mut tv, "noteBorderColor", "#999");
-    set_string_if_missing(&mut tv, "noteBkgColor", "#666");
-    set_string_if_missing(&mut tv, "noteTextColor", "#fff");
-    set_string_if_missing(&mut tv, "activationBorderColor", "#666");
-    set_string_if_missing(&mut tv, "activationBkgColor", "#f4f4f4");
-    set_string_if_missing(&mut tv, "sequenceNumberColor", "white");
-
-    // Gantt and general text colors.
-    set_string_if_missing(&mut tv, "sectionBkgColor", "hsl(0, 0%, 73.9215686275%)");
-    set_string_if_missing(&mut tv, "altSectionBkgColor", "white");
-    set_string_if_missing(&mut tv, "sectionBkgColor2", "hsl(0, 0%, 73.9215686275%)");
-    set_string_if_missing(&mut tv, "excludeBkgColor", "#eeeeee");
-    set_string_if_missing(&mut tv, "taskBorderColor", "hsl(0, 0%, 34.1176470588%)");
-    set_string_if_missing(&mut tv, "taskBkgColor", "#707070");
-    set_string_if_missing(&mut tv, "taskTextLightColor", "white");
-    set_string_if_missing(&mut tv, "taskTextColor", "white");
-    set_string_if_missing(&mut tv, "taskTextDarkColor", "#333");
-    set_string_if_missing(&mut tv, "taskTextOutsideColor", "#333");
-    set_string_if_missing(&mut tv, "taskTextClickableColor", "#003163");
-    set_string_if_missing(
-        &mut tv,
-        "activeTaskBorderColor",
-        "hsl(0, 0%, 34.1176470588%)",
-    );
-    set_string_if_missing(&mut tv, "activeTaskBkgColor", primary_color.clone());
-    tv.insert(
-        "gridColor".to_string(),
-        Value::String(theme_color::lighten(&border1, 30.0)?),
-    );
-    set_string_if_missing(&mut tv, "doneTaskBkgColor", "#bbb");
-    set_string_if_missing(&mut tv, "doneTaskBorderColor", "#666");
-    set_string_if_missing(&mut tv, "critBkgColor", "#d42");
-    set_string_if_missing(
-        &mut tv,
-        "critBorderColor",
-        "hsl(9.4736842105, 72.1518987342%, 44.5098039216%)",
-    );
-    set_string_if_missing(&mut tv, "todayLineColor", "#d42");
-    set_string_if_missing(&mut tv, "vertLineColor", "#d42");
-
-    // C4, architecture, ER, and state surfaces.
-    set_string_if_missing(&mut tv, "personBorder", primary_border_color.clone());
-    set_string_if_missing(&mut tv, "personBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "archEdgeColor", "#666");
-    set_string_if_missing(&mut tv, "archEdgeArrowColor", "#666");
-    set_string_if_missing(&mut tv, "archEdgeWidth", "3");
-    set_string_if_missing(
-        &mut tv,
-        "archGroupBorderColor",
-        primary_border_color.clone(),
-    );
-    set_string_if_missing(&mut tv, "archGroupBorderWidth", "2px");
-    set_string_if_missing(&mut tv, "rowOdd", "hsl(0, 0%, 100%)");
-    set_string_if_missing(&mut tv, "rowEven", "#f4f4f4");
-    set_string_if_missing(&mut tv, "transitionColor", "#000");
-    set_string_if_missing(&mut tv, "transitionLabelColor", text_color.clone());
-    set_string_if_missing(&mut tv, "stateLabelColor", primary_text_color.clone());
-    set_string_if_missing(&mut tv, "stateBkg", primary_color.clone());
-    set_string_if_missing(&mut tv, "labelBackgroundColor", primary_color.clone());
-    set_string_if_missing(&mut tv, "compositeBackground", background);
-    set_string_if_missing(&mut tv, "altBackground", "#f4f4f4");
-    set_string_if_missing(&mut tv, "compositeTitleBackground", primary_color.clone());
-    set_string_if_missing(&mut tv, "stateBorder", "#000");
-    set_string_if_missing(&mut tv, "innerEndBackground", primary_border_color.clone());
-    set_string_if_missing(&mut tv, "specialStateColor", "#222");
-    set_string_if_missing(&mut tv, "errorBkgColor", tertiary_color);
-    set_string_if_missing(&mut tv, "errorTextColor", tertiary_text_color);
-    set_string_if_missing(&mut tv, "attributeBackgroundColorOdd", "#ffffff");
-    set_string_if_missing(&mut tv, "attributeBackgroundColorEven", "#f2f2f2");
-    set_string_if_missing(&mut tv, "noteFontWeight", "normal");
-    set_string_if_missing(&mut tv, "fontWeight", "normal");
-    set_string_if_missing(
-        &mut tv,
-        "dropShadow",
-        "drop-shadow( 1px 2px 2px rgba(185,185,185,1))",
-    );
-
-    for (key, color) in [
-        ("fillType0", primary_color.clone()),
-        ("fillType1", secondary_color.clone()),
-        (
-            "fillType2",
-            theme_color::adjust(&primary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType3",
-            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType4",
-            theme_color::adjust(&primary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType5",
-            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(-64.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType6",
-            theme_color::adjust(&primary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
-        ),
-        (
-            "fillType7",
-            theme_color::adjust(&secondary_color, ColorAdjustment::hsl(128.0, 0.0, 0.0))?,
-        ),
-    ] {
-        tv.insert(key.to_string(), Value::String(color));
-    }
-
-    set_string_if_missing(&mut tv, "scaleLabelColor", "#333");
-    let scale_label_color =
-        get_truthy_string(&tv, "scaleLabelColor").unwrap_or_else(|| "#333".to_string());
-
-    for (i, c_hex) in c_scales_hex.iter().enumerate() {
-        let c_scale_key = format!("cScale{i}");
-        set_if_missing(&mut tv, &c_scale_key, Value::String((*c_hex).to_string()));
-
-        let c_scale = required_color(&tv, &c_scale_key)?;
-
-        // `theme-neutral` peers: `darken(cScale, 10)` (darkMode defaults to false).
-        set_if_missing(
-            &mut tv,
-            &format!("cScalePeer{i}"),
-            Value::String(theme_color::darken(&c_scale, 10.0)?),
-        );
-
-        // `theme-neutral` inverted scale: `invert(cScale)`.
-        set_if_missing(
-            &mut tv,
-            &format!("cScaleInv{i}"),
-            Value::String(theme_color::invert(&c_scale)?),
-        );
-
-        // `theme-neutral` label scale: `scaleLabelColor`, with special-cased indices.
-        // - `cScaleLabel0` and `cScaleLabel2`: `cScale1` (light fill needs dark text)
-        if i == 0 || i == 2 {
-            set_if_missing(
-                &mut tv,
-                &format!("cScaleLabel{i}"),
-                Value::String(c_scales_hex[1].to_string()),
-            );
-        }
-        set_if_missing(
-            &mut tv,
-            &format!("cScaleLabel{i}"),
-            Value::String(scale_label_color.clone()),
-        );
-    }
-
-    set_string_if_missing(&mut tv, "pieTitleTextColor", "#333");
-    set_string_if_missing(&mut tv, "pieSectionTextColor", text_color);
-    set_string_if_missing(&mut tv, "pieLegendTextColor", "#333");
-    set_string_if_missing(&mut tv, "branchLabelColor", "#333");
-    set_string_if_missing(&mut tv, "gitBranchLabel0", "#333");
-    set_string_if_missing(&mut tv, "gitBranchLabel1", "white");
-    set_string_if_missing(&mut tv, "gitBranchLabel2", "#333");
-    set_string_if_missing(&mut tv, "gitBranchLabel3", "white");
-    for i in 4..8 {
-        set_string_if_missing(&mut tv, &format!("gitBranchLabel{i}"), "#333");
-    }
-    set_string_if_missing(&mut tv, "tagLabelColor", primary_text_color);
-    set_string_if_missing(&mut tv, "tagLabelBackground", primary_color);
-    set_string_if_missing(&mut tv, "tagLabelBorder", primary_border_color);
-    set_string_if_missing(&mut tv, "tagLabelFontSize", "10px");
-    set_string_if_missing(&mut tv, "commitLabelColor", secondary_text_color);
-    set_string_if_missing(&mut tv, "commitLabelBackground", secondary_color);
-    set_string_if_missing(&mut tv, "commitLabelFontSize", "10px");
-
-    // `theme-neutral` xychart palette + colors.
-    // Source: `repo-ref/mermaid/packages/mermaid/src/themes/theme-neutral.js`.
-    ensure_xychart_theme_defaults(
-        &mut tv,
-        "#EEE,#6BB8E4,#8ACB88,#C7ACD6,#E8DCC2,#FFB2A8,#FFF380,#7E8D91,#FFD8B1,#FAF3E0",
-    );
-    apply_current_quadrant_theme_defaults(&mut tv)?;
-
-    finish_theme_defaults(config, "neutral", tv)
-}
-
-fn apply_base_theme_defaults(config: &mut MermaidConfig) -> Result<(), ColorError> {
-    let tv = base::calculate(&theme_variables_map(config))?;
-    finish_theme_defaults(config, "base", tv)
+    Ok(tv)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use serde_json::json;
+
+    fn value_at_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
+        path.split('.')
+            .try_fold(root, |value, key| value.as_object()?.get(key))
+    }
 
     #[test]
     fn supported_theme_names_match_core_expansion_surface() {
@@ -3088,6 +2704,423 @@ mod tests {
                 "redux-color",
                 "redux-dark-color"
             ]
+        );
+        assert_eq!(crate::supported_theme_ids(), MermaidThemeId::ALL);
+        assert!(
+            THEME_PROGRAMS
+                .iter()
+                .map(|program| program.id)
+                .eq(MermaidThemeId::ALL.iter().copied()),
+            "the executable theme programs must cover the typed catalog exactly"
+        );
+        assert_eq!(
+            MermaidThemeId::ALL
+                .iter()
+                .copied()
+                .map(MermaidThemeId::as_str)
+                .collect::<Vec<_>>(),
+            crate::supported_themes()
+        );
+    }
+
+    #[test]
+    fn typed_theme_ids_round_trip_without_fallback() {
+        for &theme in MermaidThemeId::ALL {
+            assert_eq!(MermaidThemeId::parse(theme.as_str()).unwrap(), theme);
+            assert_eq!(theme.to_string(), theme.as_str());
+        }
+
+        for invalid in ["unknown", "null"] {
+            let error = MermaidThemeId::parse(invalid).unwrap_err();
+            assert_eq!(error.input(), invalid);
+            assert_eq!(
+                error.to_string(),
+                format!("unsupported Mermaid theme `{invalid}`")
+            );
+        }
+    }
+
+    #[test]
+    fn owned_staged_theme_materialization_needs_no_json_cow_copy() {
+        let raw = MermaidConfig::from_value(json!({
+            "theme": "base", "themeVariables": { "primaryColor": "#123456" },
+        }));
+        let (materialized, work) = crate::config::measure_config_work(|| {
+            materialize_selected_theme(raw, MermaidThemeId::Base).unwrap()
+        });
+        assert_eq!(
+            materialized.get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert_eq!(work.json_cow_copies, 0, "{work:?}");
+        assert_eq!(work.selected_theme_materializations, 1, "{work:?}");
+    }
+
+    #[test]
+    fn owned_legacy_theme_materialization_needs_no_json_cow_copy() {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
+            let unrelated = "retained host data ".repeat(8_192);
+            let raw = MermaidConfig::from_value(json!({
+                "theme": theme.as_str(),
+                "themeVariables": { "primaryColor": "#123456" },
+                "unrelatedHostData": unrelated,
+            }));
+            let (materialized, work) = crate::config::measure_config_work(|| {
+                materialize_selected_theme(raw, theme).unwrap()
+            });
+            assert_eq!(
+                materialized.get_str("themeVariables.primaryColor"),
+                Some("#123456")
+            );
+            assert_eq!(
+                materialized.get_str("unrelatedHostData"),
+                Some(unrelated.as_str())
+            );
+            assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
+            assert_eq!(work.explicit_path_candidates, 0, "{theme}: {work:?}");
+            assert_eq!(work.selected_theme_materializations, 1, "{theme}: {work:?}");
+        }
+    }
+
+    #[test]
+    fn shared_legacy_theme_materialization_detaches_only_at_successful_commit() {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
+            let original = MermaidConfig::from_value(json!({
+                "theme": theme.as_str(),
+                "themeVariables": { "primaryColor": "#123456" },
+                "unrelatedHostData": "retained host data ".repeat(8_192),
+            }));
+            let mut working = original.clone();
+            let (_, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut working).unwrap());
+            assert_eq!(work.json_cow_copies, 1, "{theme}: {work:?}");
+            assert_eq!(
+                original.as_value()["themeVariables"],
+                json!({"primaryColor": "#123456"})
+            );
+            assert_eq!(
+                working.get_str("themeVariables.primaryColor"),
+                Some("#123456")
+            );
+            assert_eq!(
+                working.as_value()["unrelatedHostData"],
+                original.as_value()["unrelatedHostData"]
+            );
+            assert!(
+                working.as_value()["themeVariables"]
+                    .as_object()
+                    .unwrap()
+                    .len()
+                    > 1
+            );
+        }
+    }
+
+    #[test]
+    fn unowned_legacy_materialization_does_not_construct_derived_owner_queries() {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": theme.as_str(),
+                "themeVariables": { "primaryColor": "#123456" },
+            }));
+            let (_, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut config).unwrap());
+            assert_eq!(work.explicit_path_candidates, 0, "{theme}: {work:?}");
+            assert_eq!(
+                config.get_str("themeVariables.primaryColor"),
+                Some("#123456")
+            );
+            assert!(!config.config_path_overrides_typed_default("themeVariables.primaryColor"));
+            assert!(!config.config_path_overrides_typed_default("themeVariables.nodeBkg"));
+        }
+    }
+
+    #[test]
+    fn retired_or_non_variable_compatibility_owners_do_not_construct_derived_queries() {
+        for authority in ["theme-only", "shadowed-variable", "normalized-null"] {
+            let input = match authority {
+                "theme-only" => json!({"theme": "redux-color"}),
+                _ => json!({"theme": "redux-color", "themeVariables": {"primaryColor": "#123456"}}),
+            };
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x78; 32],
+                MermaidConfig::from_value(input),
+            )
+            .unwrap();
+            let mut config = MermaidConfig::from_theme_parse_binding(binding);
+            match authority {
+                "shadowed-variable" => {
+                    config.set_value("themeVariables.primaryColor", json!("#123456"))
+                }
+                "normalized-null" => config.set_value_preserving_theme_compatibility(
+                    "themeVariables.primaryColor",
+                    Value::Null,
+                ),
+                _ => {}
+            }
+            let mut expected = MermaidConfig::from_value(config.as_value().clone());
+            apply_theme_defaults(&mut expected).unwrap();
+            let (_, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut config).unwrap());
+            assert_eq!(config.as_value(), expected.as_value(), "{authority}");
+            assert_eq!(work.explicit_path_candidates, 0, "{authority}: {work:?}");
+            config.freeze_theme_compatibility();
+            assert!(
+                !config.config_path_overrides_typed_default("themeVariables.nodeBkg"),
+                "{authority}"
+            );
+            assert_eq!(
+                config.mermaid_compatibility_residual_count(),
+                1,
+                "only theme remains owned for {authority}"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_owner_propagation_keeps_tracking_frozen_and_same_value_authorities() {
+        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
+            let input =
+                json!({"theme": theme.as_str(), "themeVariables": {"textColor": "#123456"}});
+            let mut expected = MermaidConfig::from_value(input.clone());
+            apply_theme_defaults(&mut expected).unwrap();
+            for authority in ["tracking", "frozen", "same-value", "parent"] {
+                let mut config = if matches!(authority, "tracking" | "frozen") {
+                    let binding = crate::config::ThemeParseBinding::try_new(
+                        [0x75; 32],
+                        MermaidConfig::from_value(input.clone()),
+                    )
+                    .unwrap();
+                    MermaidConfig::from_theme_parse_binding(binding)
+                } else {
+                    MermaidConfig::from_value(input.clone())
+                };
+                match authority {
+                    "frozen" => config.freeze_theme_compatibility(),
+                    "same-value" => {
+                        config.set_value_explicit("themeVariables.textColor", json!("#123456"))
+                    }
+                    "parent" => {
+                        config.set_value_explicit("themeVariables", input["themeVariables"].clone())
+                    }
+                    _ => {}
+                }
+                apply_theme_defaults(&mut config).unwrap();
+                config.freeze_theme_compatibility();
+                assert_eq!(
+                    config.as_value(),
+                    expected.as_value(),
+                    "{theme}/{authority}"
+                );
+                assert_eq!(
+                    config.get_str("themeVariables.signalTextColor"),
+                    Some("#123456")
+                );
+                assert!(
+                    config.config_path_overrides_typed_default("themeVariables.signalTextColor"),
+                    "{theme}/{authority}"
+                );
+                if authority != "parent" {
+                    assert!(
+                        !config.config_path_overrides_typed_default("themeVariables.radius"),
+                        "{theme}/{authority}"
+                    );
+                }
+            }
+
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x76; 32],
+                MermaidConfig::from_value(input),
+            )
+            .unwrap();
+            let mut shadowed = MermaidConfig::from_theme_parse_binding(binding);
+            shadowed.set_value("themeVariables.textColor", json!("#123456"));
+            apply_theme_defaults(&mut shadowed).unwrap();
+            assert_eq!(shadowed.as_value(), expected.as_value());
+            assert!(
+                !shadowed.config_path_overrides_typed_default("themeVariables.signalTextColor")
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_compatibility_derived_owners_survive_public_engine_initialization() {
+        for theme in [MermaidThemeId::Default, MermaidThemeId::ReduxColor] {
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x77; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(), "themeVariables": {"textColor": "#123456"},
+                })),
+            )
+            .unwrap();
+            let parsed = crate::Engine::new()
+                .with_theme_compatibility(binding)
+                .parse_metadata_sync("sequenceDiagram\nA->>B: Hello")
+                .expect("parse initialized compatibility through the public operation");
+            assert_eq!(
+                parsed
+                    .effective_config
+                    .get_str("themeVariables.signalTextColor"),
+                Some("#123456")
+            );
+            assert!(
+                parsed
+                    .effective_config
+                    .config_path_overrides_typed_default("themeVariables.signalTextColor"),
+                "{theme} must retain its actual compatibility-derived owner"
+            );
+            let fields = parsed
+                .effective_config
+                .mermaid_compatibility_fields()
+                .unwrap();
+            assert!(
+                fields.iter().any(|field| field
+                    .surviving_paths()
+                    .iter()
+                    .any(|path| path.as_ref() == "themeVariables.signalTextColor")),
+                "{theme} must freeze the derived physical path into its conceptual input field"
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_theme_ownership_guard_preserves_owned_scale_derivations() {
+        for frozen in [false, true] {
+            let value = json!({
+                "theme": "neo-dark", "themeVariables": {"primaryColor": "#123456"},
+            });
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x7c; 32],
+                MermaidConfig::from_value(value.clone()),
+            )
+            .expect("valid Neo Dark compatibility binding");
+            let mut bound = MermaidConfig::from_theme_parse_binding(binding);
+            if frozen {
+                bound.freeze_theme_compatibility();
+            }
+            let (_, work) = crate::config::measure_config_work(|| {
+                apply_theme_defaults(&mut bound).unwrap();
+            });
+            assert!(
+                work.explicit_path_candidates > 0,
+                "frozen={frozen}: {work:?}"
+            );
+            bound.freeze_theme_compatibility();
+            let fields = bound.mermaid_compatibility_fields().unwrap();
+            assert!(
+                fields.iter().any(|field| {
+                    field
+                        .surviving_paths()
+                        .iter()
+                        .any(|path| path.as_ref() == "themeVariables.cScale0")
+                }),
+                "frozen={frozen}"
+            );
+
+            let mut raw = MermaidConfig::from_value(value);
+            let (_, unowned_work) = crate::config::measure_config_work(|| {
+                apply_theme_defaults(&mut raw).unwrap();
+            });
+            assert_eq!(raw.as_value(), bound.as_value(), "frozen={frozen}");
+            assert_eq!(unowned_work.explicit_path_candidates, 0, "{unowned_work:?}");
+        }
+
+        let mut explicit = MermaidConfig::from_value(json!({"theme": "neo-dark"}));
+        explicit.set_value_explicit("themeVariables.primaryColor", json!("#123456"));
+        let (_, work) = crate::config::measure_config_work(|| {
+            apply_theme_defaults(&mut explicit).unwrap();
+        });
+        assert!(work.explicit_path_candidates > 0, "{work:?}");
+        for target in ["cScale0", "taskBkgColor", "activeTaskBkgColor"] {
+            assert!(
+                explicit.config_path_overrides_typed_default(&format!("themeVariables.{target}"))
+            );
+        }
+    }
+
+    #[test]
+    fn legacy_late_failure_keeps_config_and_compatibility_ownership() {
+        for theme in [MermaidThemeId::NeoDark, MermaidThemeId::ReduxDark] {
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x6a; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(),
+                    "themeVariables": {"nodeBkg": "#123456", "cScale2": "#abcdef"},
+                })),
+            )
+            .expect("valid extended theme compatibility binding");
+            let mut config = MermaidConfig::from_theme_parse_binding(binding);
+            config.set_value_preserving_theme_compatibility(
+                "unrelated",
+                json!({"nested": [1, 2, 3]}),
+            );
+            config.set_value_preserving_theme_compatibility(
+                "themeVariables.cScale2",
+                Value::String("not-a-color".to_string()),
+            );
+            config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+            config.set_value_explicit("themeVariables.background", json!("#012345"));
+
+            let program = *ThemeProgram::resolve(theme);
+            assert_eq!(program.kind, ThemeProgramKind::Extended);
+            let normalized = program.normalize_overrides(theme_variables_map(&config));
+            program
+                .validate_evaluated_inputs(&normalized)
+                .expect("cScale2 fails during calculation, after early input validation");
+
+            let before = config.clone();
+            let mut expected_compatibility = before.clone();
+            expected_compatibility.freeze_theme_compatibility();
+
+            assert_eq!(
+                apply_theme_defaults(&mut config),
+                Err(ThemeResolutionError::Color(ColorError::UnsupportedFormat {
+                    input: "not-a-color".to_string(),
+                })),
+                "{theme}"
+            );
+            assert_eq!(config.as_value(), before.as_value(), "{theme}");
+            assert!(!config.path_was_mutated_after(&before, ""), "{theme}");
+            assert!(config.config_path_overrides_typed_default("themeVariables.background"));
+            assert!(!config.config_path_overrides_typed_default("themeVariables.cScalePeer2"));
+
+            config.freeze_theme_compatibility();
+            assert_eq!(
+                config.mermaid_compatibility_fields(),
+                expected_compatibility.mermaid_compatibility_fields(),
+                "a failed {theme} execution must not retire compatibility ownership"
+            );
+        }
+    }
+
+    #[test]
+    fn source_theme_materialization_merges_array_sources_without_object_coercion() {
+        let materialized = crate::Engine::new()
+            .parse_metadata_sync(
+                "%%{init: {\"theme\": \"base\", \"themeVariables\": [{\"primaryColor\": \"#123456\"}, {\"secondaryColor\": \"#654321\"}]}}%%\nflowchart TD\nA-->B",
+            )
+            .expect("materialize source theme through the public parse pipeline")
+            .effective_config;
+
+        assert_eq!(
+            materialized.get_str("themeVariables.primaryColor"),
+            Some("#123456")
+        );
+        assert_eq!(
+            materialized.get_str("themeVariables.secondaryColor"),
+            Some("#654321")
         );
     }
 
@@ -3186,7 +3219,7 @@ mod tests {
 
     #[test]
     fn supported_theme_defaults_match_upstream_snapshot() {
-        for &theme in SUPPORTED_THEME_NAMES {
+        for &theme in MermaidThemeId::NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme
             }));
@@ -3197,15 +3230,1504 @@ mod tests {
                 .get("themeVariables")
                 .and_then(|v| v.as_object())
                 .unwrap();
-            let expected = ThemeProgram::resolve(theme).default_snapshot();
+            let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
+                .resolved_without_overrides();
 
             assert_eq!(actual, expected, "theme {theme}");
         }
     }
 
     #[test]
+    fn theme_variable_derived_ownership_follows_base_primary_color_dependencies() {
+        for (theme, derives_main_background, derives_node_border) in [
+            (MermaidThemeId::Base, true, true),
+            (MermaidThemeId::Default, false, false),
+            (MermaidThemeId::Dark, false, false),
+            (MermaidThemeId::Forest, false, false),
+            (MermaidThemeId::Neutral, false, false),
+            (MermaidThemeId::Neo, false, false),
+            (MermaidThemeId::NeoDark, false, false),
+            (MermaidThemeId::Redux, false, false),
+            (MermaidThemeId::ReduxDark, false, false),
+            (MermaidThemeId::ReduxColor, false, false),
+            (MermaidThemeId::ReduxDarkColor, false, false),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme.as_str() }));
+            config.deep_merge_explicit(&json!({
+                "themeVariables": { "primaryColor": "#fff4dd" }
+            }));
+
+            apply_theme_defaults(&mut config).unwrap();
+
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.mainBkg"),
+                derives_main_background,
+                "theme {theme}"
+            );
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.nodeBorder"),
+                derives_node_border,
+                "theme {theme}"
+            );
+            assert!(
+                !config.config_path_overrides_typed_default("themeVariables.radius"),
+                "theme {theme} must not generalize derived ownership to sibling variables"
+            );
+        }
+    }
+
+    #[test]
+    fn theme_variable_derived_ownership_follows_base_cluster_dependencies() {
+        for (source, owned_fill, owned_stroke) in [
+            ("primaryColor", true, true),
+            ("tertiaryColor", true, true),
+            ("tertiaryBorderColor", false, true),
+            ("secondaryColor", false, false),
+        ] {
+            for explicit in [false, true] {
+                let values = json!({ "themeVariables": { source: "#123456" } });
+                let mut config = MermaidConfig::from_value(json!({"theme": "base"}));
+                if explicit {
+                    config.deep_merge_explicit(&values);
+                } else {
+                    config.deep_merge(&values);
+                }
+                apply_theme_defaults(&mut config).unwrap();
+                for (target, owns) in [("clusterBkg", owned_fill), ("clusterBorder", owned_stroke)]
+                {
+                    assert_eq!(
+                        config.config_path_overrides_typed_default(&format!(
+                            "themeVariables.{target}"
+                        )),
+                        explicit && owns,
+                        "source={source}, target={target}, explicit={explicit}"
+                    );
+                }
+                assert_eq!(
+                    config.get_str("themeVariables.clusterBkg"),
+                    config.get_str("themeVariables.tertiaryColor")
+                );
+                assert_eq!(
+                    config.get_str("themeVariables.clusterBorder"),
+                    config.get_str("themeVariables.tertiaryBorderColor")
+                );
+            }
+        }
+        let mut config = MermaidConfig::from_value(json!({"theme": "base"}));
+        config.deep_merge_explicit(&json!({"themeVariables": {
+            "tertiaryColor": "#123456", "clusterBkg": "#abcdef", "clusterBorder": "#fedcba"
+        }}));
+        apply_theme_defaults(&mut config).unwrap();
+        assert_eq!(config.get_str("themeVariables.clusterBkg"), Some("#abcdef"));
+        assert_eq!(
+            config.get_str("themeVariables.clusterBorder"),
+            Some("#fedcba")
+        );
+    }
+
+    #[test]
+    fn theme_variable_derived_ownership_requires_owned_primary_color() {
+        let mut config = MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": { "primaryColor": "#fff4dd" }
+        }));
+
+        apply_theme_defaults(&mut config).unwrap();
+
+        assert!(!config.config_path_overrides_typed_default("themeVariables.mainBkg"));
+    }
+
+    #[test]
+    fn theme_variable_derived_ownership_follows_color_scale_inputs() {
+        for (theme, source, expected_owned) in [
+            ("default", "secondaryColor", &[][..]),
+            ("base", "secondaryColor", &[1][..]),
+            (
+                "base",
+                "primaryColor",
+                &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+            ),
+            (
+                "forest",
+                "primaryColor",
+                &[0, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+            ),
+            (
+                "neo-dark",
+                "primaryColor",
+                &[0, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+            ),
+            ("neutral", "primaryColor", &[][..]),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme }));
+            config.deep_merge_explicit(&json!({
+                "themeVariables": { (source): "#336699" }
+            }));
+
+            apply_theme_defaults(&mut config).unwrap();
+
+            for index in 0..12 {
+                assert_eq!(
+                    config.config_path_overrides_typed_default(&format!(
+                        "themeVariables.cScale{index}"
+                    )),
+                    expected_owned.contains(&index),
+                    "theme {theme} source {source} has incorrect cScale{index} ownership"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn signal_color_ownership_follows_themes_that_derive_it_from_text_color() {
+        for (theme, text_color, derives_signal_color) in [
+            (MermaidThemeId::Default, "#22c55e", true),
+            (MermaidThemeId::Base, "#333", true),
+            (MermaidThemeId::Dark, "lightgrey", false),
+            (MermaidThemeId::Forest, "#333", false),
+            (MermaidThemeId::Neutral, "#333", false),
+            (MermaidThemeId::Neo, "#333", true),
+            (MermaidThemeId::NeoDark, "#ccc", true),
+            (MermaidThemeId::Redux, "#28253D", true),
+            (MermaidThemeId::ReduxDark, "#FFFFFF", false),
+            (MermaidThemeId::ReduxColor, "#28253D", true),
+            (MermaidThemeId::ReduxDarkColor, "#FFFFFF", false),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme.as_str() }));
+            config.deep_merge_explicit(&json!({
+                "themeVariables": { "textColor": text_color }
+            }));
+
+            apply_theme_defaults(&mut config).unwrap();
+
+            assert_eq!(
+                config.get_str("themeVariables.signalColor"),
+                Some(text_color),
+                "theme {theme} intentionally uses an equal final value in this provenance probe"
+            );
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.signalColor"),
+                derives_signal_color,
+                "theme {theme}"
+            );
+        }
+    }
+
+    #[test]
+    fn variable_dependency_ownership_follows_the_selected_theme_program() {
+        let cases: &[(&str, &str, &str, &[&str])] = &[
+            (
+                "default",
+                "textColor",
+                "#22c55e",
+                &["signalColor", "signalTextColor"],
+            ),
+            (
+                "default",
+                "actorTextColor",
+                "#16a34a",
+                &["labelTextColor", "loopTextColor", "noteTextColor"],
+            ),
+            (
+                "base",
+                "mainBkg",
+                "#0f172a",
+                &["actorBkg", "labelBoxBkgColor"],
+            ),
+            (
+                "base",
+                "primaryBorderColor",
+                "#38bdf8",
+                &["actorBorder", "actorLineColor", "labelBoxBorderColor"],
+            ),
+            (
+                "dark",
+                "mainContrastColor",
+                "#f8fafc",
+                &[
+                    "actorTextColor",
+                    "signalColor",
+                    "signalTextColor",
+                    "labelTextColor",
+                    "loopTextColor",
+                ],
+            ),
+            (
+                "dark",
+                "border1",
+                "#a78bfa",
+                &[
+                    "actorBorder",
+                    "actorLineColor",
+                    "labelBoxBorderColor",
+                    "activationBorderColor",
+                ],
+            ),
+            (
+                "neo",
+                "primaryColor",
+                "#0ea5e9",
+                &["nodeBkg", "tagLabelBackground"],
+            ),
+            (
+                "neo-dark",
+                "primaryBorderColor",
+                "#38bdf8",
+                &["actorBorder", "actorLineColor", "labelBoxBorderColor"],
+            ),
+            (
+                "redux",
+                "mainBkg",
+                "#0f172a",
+                &["actorBkg", "labelBoxBkgColor", "personBkg", "stateBkg"],
+            ),
+            (
+                "redux-color",
+                "secondaryColor",
+                "#22c55e",
+                &[
+                    "edgeLabelBackground",
+                    "activationBkgColor",
+                    "commitLabelBackground",
+                    "relationLabelBackground",
+                ],
+            ),
+            (
+                "redux-dark",
+                "primaryTextColor",
+                "#f8fafc",
+                &["actorTextColor", "labelTextColor", "loopTextColor"],
+            ),
+            (
+                "redux-dark-color",
+                "textColor",
+                "#e2e8f0",
+                &["signalTextColor", "transitionLabelColor"],
+            ),
+        ];
+
+        for &(theme, source, value, targets) in cases {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme }));
+            config.deep_merge_explicit(&json!({
+                "themeVariables": { (source): value }
+            }));
+
+            apply_theme_defaults(&mut config).unwrap();
+
+            for target in targets {
+                assert_eq!(
+                    config.get_str(&format!("themeVariables.{target}")),
+                    Some(value),
+                    "theme {theme} source {source} has incorrect {target} value"
+                );
+                assert!(
+                    config.config_path_overrides_typed_default(&format!("themeVariables.{target}")),
+                    "theme {theme} source {source} must own derived {target}"
+                );
+            }
+            assert!(
+                !config.config_path_overrides_typed_default("themeVariables.sequenceNumberColor"),
+                "theme {theme} source {source} must not own an unrelated Sequence variable"
+            );
+        }
+    }
+
+    #[test]
+    fn extended_state_label_fallback_ignores_falsy_authored_background() {
+        for theme in [
+            "neo",
+            "neo-dark",
+            "redux",
+            "redux-dark",
+            "redux-color",
+            "redux-dark-color",
+        ] {
+            for background in [json!(false), json!(0)] {
+                for owned_primary in [false, true] {
+                    let mut config = MermaidConfig::from_value(json!({
+                        "theme": theme,
+                        "themeVariables": { "primaryTextColor": "#123456" }
+                    }));
+                    config.deep_merge_explicit(
+                        &json!({ "themeVariables": { "stateBkg": background } }),
+                    );
+                    if owned_primary {
+                        config.deep_merge_explicit(
+                            &json!({ "themeVariables": { "primaryTextColor": "#123456" } }),
+                        );
+                    }
+                    apply_theme_defaults(&mut config).unwrap();
+                    assert_eq!(
+                        config.get_str("themeVariables.stateLabelColor"),
+                        Some("#123456"),
+                        "{theme}: {background}"
+                    );
+                    assert_eq!(
+                        config
+                            .config_path_overrides_typed_default("themeVariables.stateLabelColor"),
+                        owned_primary,
+                        "the winning primary text source must own the derived label"
+                    );
+                    assert_eq!(
+                        config.as_value().pointer("/themeVariables/stateBkg"),
+                        Some(&background)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn extended_theme_transformed_dependencies_share_value_and_ownership_semantics() {
+        for theme in [
+            "neo",
+            "neo-dark",
+            "redux",
+            "redux-dark",
+            "redux-color",
+            "redux-dark-color",
+        ] {
+            let mut background = MermaidConfig::from_value(json!({ "theme": theme }));
+            background.deep_merge_explicit(&json!({
+                "themeVariables": { "background": "#ffffff" }
+            }));
+            apply_theme_defaults(&mut background).unwrap();
+            for (target, expected) in [
+                ("lineColor", "#000000"),
+                ("transitionColor", "#000000"),
+                ("sequenceNumberColor", "#ffffff"),
+            ] {
+                assert_eq!(
+                    background.get_str(&format!("themeVariables.{target}")),
+                    Some(expected),
+                    "theme {theme} has incorrect background-derived {target} value"
+                );
+                assert!(
+                    background
+                        .config_path_overrides_typed_default(&format!("themeVariables.{target}")),
+                    "theme {theme} background must own derived {target}"
+                );
+            }
+
+            let mut secondary = MermaidConfig::from_value(json!({ "theme": theme }));
+            secondary.deep_merge_explicit(&json!({
+                "themeVariables": { "secondaryColor": "#22c55e" }
+            }));
+            apply_theme_defaults(&mut secondary).unwrap();
+            let expected_activation_border = theme_color::darken("#22c55e", 10.0).unwrap();
+            assert_eq!(
+                secondary.get_str("themeVariables.activationBorderColor"),
+                Some(expected_activation_border.as_str()),
+                "theme {theme} has incorrect activationBorderColor value"
+            );
+            for target in ["activationBorderColor", "activationBkgColor"] {
+                assert!(
+                    secondary
+                        .config_path_overrides_typed_default(&format!("themeVariables.{target}")),
+                    "theme {theme} secondaryColor must own derived {target}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn variable_dependency_ownership_requires_an_owned_source_and_yields_to_explicit_targets() {
+        let mut unowned = MermaidConfig::from_value(json!({
+            "theme": "base",
+            "themeVariables": { "mainBkg": "#0f172a" }
+        }));
+        apply_theme_defaults(&mut unowned).unwrap();
+        assert_eq!(
+            unowned.get_str("themeVariables.labelBoxBkgColor"),
+            Some("#0f172a")
+        );
+        assert!(!unowned.config_path_overrides_typed_default("themeVariables.labelBoxBkgColor"));
+
+        let mut explicit_target = MermaidConfig::from_value(json!({ "theme": "base" }));
+        explicit_target.deep_merge_explicit(&json!({
+            "themeVariables": {
+                "mainBkg": "#0f172a",
+                "actorBkg": "#1e293b",
+                "labelBoxBkgColor": "#334155"
+            }
+        }));
+        apply_theme_defaults(&mut explicit_target).unwrap();
+        assert_eq!(
+            explicit_target.get_str("themeVariables.actorBkg"),
+            Some("#1e293b")
+        );
+        assert_eq!(
+            explicit_target.get_str("themeVariables.labelBoxBkgColor"),
+            Some("#334155")
+        );
+
+        for theme in [
+            "neo",
+            "neo-dark",
+            "redux",
+            "redux-dark",
+            "redux-color",
+            "redux-dark-color",
+        ] {
+            let mut unowned_route = MermaidConfig::from_value(json!({ "theme": theme }));
+            unowned_route.deep_merge_explicit(&json!({
+                "themeVariables": { "nodeBkg": "#0ea5e9" }
+            }));
+            apply_theme_defaults(&mut unowned_route).unwrap();
+            assert!(
+                !unowned_route
+                    .config_path_overrides_typed_default("themeVariables.labelBoxBkgColor"),
+                "theme {theme} must not route nodeBkg ownership into Sequence Loop paint"
+            );
+        }
+    }
+
+    #[test]
+    fn unconditional_sequence_intermediates_ignore_explicit_replay_for_downstream_provenance() {
+        for (theme, expected_actor_line, expected_label_box_background) in [
+            ("default", "#9370DB", "#ECECFF"),
+            ("dark", "#ccc", "#1f2020"),
+        ] {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme }));
+            config.deep_merge_explicit(&json!({
+                "themeVariables": {
+                    "actorBorder": "#ec4899",
+                    "actorBkg": "#0f172a"
+                }
+            }));
+
+            apply_theme_defaults(&mut config).unwrap();
+
+            assert_eq!(
+                config.get_str("themeVariables.actorBorder"),
+                Some("#ec4899"),
+                "theme {theme} must replay explicit actorBorder"
+            );
+            assert_eq!(
+                config.get_str("themeVariables.actorBkg"),
+                Some("#0f172a"),
+                "theme {theme} must replay explicit actorBkg"
+            );
+            for (target, expected) in [
+                ("actorLineColor", expected_actor_line),
+                ("labelBoxBkgColor", expected_label_box_background),
+            ] {
+                let path = format!("themeVariables.{target}");
+                assert_eq!(
+                    config.get_str(&path),
+                    Some(expected),
+                    "theme {theme} must calculate {target} before explicit replay"
+                );
+                assert!(
+                    !config.config_path_overrides_typed_default(&path),
+                    "theme {theme} explicit intermediate must not own downstream {target}"
+                );
+            }
+        }
+
+        let mut forest = MermaidConfig::from_value(json!({ "theme": "forest" }));
+        forest.deep_merge_explicit(&json!({
+            "themeVariables": { "primaryColor": "#ec4899" }
+        }));
+        apply_theme_defaults(&mut forest).unwrap();
+        assert_eq!(forest.get_str("themeVariables.mainBkg"), Some("#cde498"));
+        assert!(
+            !forest.config_path_overrides_typed_default("themeVariables.mainBkg"),
+            "Forest primaryColor does not feed the independently constructed mainBkg"
+        );
+    }
+
+    #[test]
+    fn source_text_color_recalculates_scoped_sequence_but_preserves_unchanged_global_theme() {
+        for (theme, initialized_signal, source_signal, source_owns_signal) in [
+            (None, "#28253D", "#22c55e", true),
+            (Some("default"), "#333", "#333", false),
+        ] {
+            let mut site = json!({
+                "secure": [
+                    "secure", "securityLevel", "startOnLoad", "maxTextSize",
+                    "suppressErrorRendering", "maxEdges"
+                ]
+            });
+            if let Some(theme) = theme {
+                site["theme"] = json!(theme);
+            }
+            let engine = crate::Engine::new().with_site_config(MermaidConfig::from_value(site));
+            let initialized = engine
+                .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello\n")
+                .expect("parse initialized Sequence theme");
+            assert_eq!(
+                initialized
+                    .effective_config
+                    .get_str("themeVariables.signalColor"),
+                Some(initialized_signal)
+            );
+            let metadata = engine
+                .parse_metadata_sync(
+                    r##"%%{init: {"themeVariables": {"textColor": "#22c55e"}}}%%
+sequenceDiagram
+Alice->>Bob: Hello
+"##,
+                )
+                .expect("parse Sequence init textColor");
+
+            assert_eq!(
+                metadata.config.get_str("themeVariables.textColor"),
+                Some("#22c55e")
+            );
+            assert_eq!(
+                metadata
+                    .effective_config
+                    .get_str("themeVariables.textColor"),
+                Some("#22c55e")
+            );
+            assert_eq!(
+                metadata
+                    .effective_config
+                    .get_str("themeVariables.signalColor"),
+                Some(source_signal)
+            );
+            assert_eq!(
+                metadata
+                    .effective_config
+                    .config_path_overrides_typed_default("themeVariables.signalColor"),
+                source_owns_signal,
+                "source ownership follows actual recalculation of the selected Sequence theme"
+            );
+            assert!(
+                metadata
+                    .effective_config
+                    .explicit_config_owns_path("themeVariables.textColor")
+            );
+            assert_eq!(metadata.config.get_str("themeVariables.signalColor"), None);
+        }
+    }
+
+    #[test]
+    fn dark_extended_themes_preserve_constructor_arrowhead_after_background_override() {
+        const SOURCE: &str = "flowchart LR\nA --> B\n";
+        let expected_arrowhead = theme_color::invert("#333").unwrap();
+
+        for theme in ["neo-dark", "redux-dark", "redux-dark-color"] {
+            for origin in ["site", "source"] {
+                let config = json!({
+                    "theme": theme,
+                    "themeVariables": {"background": "#010203"}
+                });
+                let (engine, source) = if origin == "site" {
+                    (
+                        crate::Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                        SOURCE.to_string(),
+                    )
+                } else {
+                    (
+                        crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                            "secure": []
+                        }))),
+                        format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                    )
+                };
+                let metadata = engine.parse_metadata_sync(&source).unwrap_or_else(|error| {
+                    panic!("parse {origin} {theme} arrowhead snapshot config: {error}")
+                });
+
+                assert_eq!(
+                    metadata
+                        .effective_config
+                        .get_str("themeVariables.arrowheadColor"),
+                    Some(expected_arrowhead.as_str()),
+                    "{origin} {theme} must retain its constructor arrowhead snapshot"
+                );
+                assert!(
+                    !metadata
+                        .effective_config
+                        .config_path_overrides_typed_default("themeVariables.arrowheadColor"),
+                    "{origin} {theme} background ownership must not propagate into the constructor-seeded arrowhead"
+                );
+                assert_eq!(
+                    metadata
+                        .effective_config
+                        .get_str("themeVariables.lineColor"),
+                    Some("#fefdfc"),
+                    "{origin} {theme} must still recompute lineColor from explicit background"
+                );
+                assert!(
+                    metadata
+                        .effective_config
+                        .config_path_overrides_typed_default("themeVariables.lineColor"),
+                    "{origin} {theme} explicit background must still own derived lineColor"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn venn_color_dependencies_follow_non_default_calculation_and_default_snapshots() {
+        const SOURCE: &str = "venn-beta\ntitle Ownership\nset A\n";
+
+        fn effective_config(theme: &str, theme_variables: Value, origin: &str) -> MermaidConfig {
+            let config = json!({
+                "theme": theme,
+                "themeVariables": theme_variables
+            });
+            let (engine, source) = if origin == "site" {
+                (
+                    crate::Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                    SOURCE.to_string(),
+                )
+            } else {
+                (
+                    crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                        "secure": []
+                    }))),
+                    format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                )
+            };
+            engine
+                .parse_metadata_sync(&source)
+                .unwrap_or_else(|error| panic!("parse {origin} {theme} Venn config: {error}"))
+                .effective_config
+        }
+
+        for origin in ["site", "source"] {
+            let base = effective_config(
+                "base",
+                json!({
+                    "titleColor": "#123456",
+                    "textColor": "#abcdef"
+                }),
+                origin,
+            );
+            for (target, expected) in [
+                ("vennTitleTextColor", "#123456"),
+                ("vennSetTextColor", "#abcdef"),
+            ] {
+                let path = format!("themeVariables.{target}");
+                assert_eq!(
+                    base.get_str(&path),
+                    Some(expected),
+                    "{origin} base {target}"
+                );
+                assert!(
+                    base.config_path_overrides_typed_default(&path),
+                    "{origin} base source must own derived {target}"
+                );
+            }
+
+            let neutral = effective_config(
+                "neutral",
+                json!({
+                    "text": "#345678",
+                    "textColor": "#abcdef"
+                }),
+                origin,
+            );
+            let neutral_expectations = if origin == "site" {
+                [
+                    ("vennTitleTextColor", "#345678", true),
+                    ("vennSetTextColor", "#abcdef", true),
+                ]
+            } else {
+                // Mermaid's directive sanitizer does not admit the internal Neutral `text`
+                // constructor variable. Source config therefore retains the `#333` title
+                // snapshot, while the public `textColor` input still owns Venn set text.
+                [
+                    ("vennTitleTextColor", "#333", false),
+                    ("vennSetTextColor", "#abcdef", true),
+                ]
+            };
+            for (target, expected, owned) in neutral_expectations {
+                let path = format!("themeVariables.{target}");
+                assert_eq!(
+                    neutral.get_str(&path),
+                    Some(expected),
+                    "{origin} neutral {target}"
+                );
+                assert_eq!(
+                    neutral.config_path_overrides_typed_default(&path),
+                    owned,
+                    "{origin} neutral source has incorrect derived ownership for {target}"
+                );
+            }
+            assert_eq!(
+                neutral.get_str("themeVariables.text"),
+                Some(if origin == "site" { "#345678" } else { "#333" }),
+                "{origin} neutral directive sanitizer scope"
+            );
+
+            let explicit_targets = effective_config(
+                "base",
+                json!({
+                    "titleColor": "#123456",
+                    "textColor": "#abcdef",
+                    "vennTitleTextColor": "#fedcba",
+                    "vennSetTextColor": "#654321"
+                }),
+                origin,
+            );
+            assert_eq!(
+                explicit_targets.get_str("themeVariables.vennTitleTextColor"),
+                Some("#fedcba")
+            );
+            assert_eq!(
+                explicit_targets.get_str("themeVariables.vennSetTextColor"),
+                Some("#654321")
+            );
+
+            let default = effective_config(
+                "default",
+                json!({
+                    "titleColor": "#123456",
+                    "textColor": "#abcdef"
+                }),
+                origin,
+            );
+            for (target, expected) in [("vennTitleTextColor", "#333"), ("vennSetTextColor", "#333")]
+            {
+                let path = format!("themeVariables.{target}");
+                assert_eq!(
+                    default.get_str(&path),
+                    Some(expected),
+                    "{origin} default must retain the constructor snapshot for {target}"
+                );
+                assert!(
+                    !default.config_path_overrides_typed_default(&path),
+                    "{origin} default constructor snapshot must not acquire source ownership"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn theme_dependency_ledger_preserves_site_and_source_values_and_ownership() {
+        const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Finish\n";
+        struct Case {
+            theme: &'static str,
+            variables: Value,
+            owned: Vec<(&'static str, String)>,
+            unowned: Vec<(&'static str, String)>,
+        }
+
+        let note_border = mk_border("#abcdef", false).unwrap();
+        let dark_note_background = theme_color::lighten("#123456", 16.0).unwrap();
+        let dark_default_note_background = theme_color::lighten("#1f2020", 16.0).unwrap();
+        let forest_actor_border = theme_color::darken("#89abcd", 20.0).unwrap();
+        let neutral_actor_border = theme_color::lighten("#456789", 23.0).unwrap();
+        let cases = vec![
+            Case {
+                theme: "base",
+                variables: json!({
+                    "noteBkgColor": "#abcdef",
+                    "lineColor": "#123456",
+                    "textColor": "#234567",
+                    "mainBkg": "#345678"
+                }),
+                owned: vec![
+                    ("noteBorderColor", note_border.clone()),
+                    ("transitionColor", "#123456".to_string()),
+                    ("specialStateColor", "#123456".to_string()),
+                    ("transitionLabelColor", "#234567".to_string()),
+                    ("stateBkg", "#345678".to_string()),
+                    ("labelBackgroundColor", "#345678".to_string()),
+                ],
+                unowned: vec![],
+            },
+            Case {
+                theme: "neo",
+                variables: json!({ "noteBkgColor": "#abcdef" }),
+                owned: vec![("noteBorderColor", note_border.clone())],
+                unowned: vec![],
+            },
+            Case {
+                theme: "neo-dark",
+                variables: json!({ "noteBkgColor": "#abcdef" }),
+                owned: vec![("noteBorderColor", note_border)],
+                unowned: vec![],
+            },
+            Case {
+                theme: "forest",
+                variables: json!({
+                    "border2": "#456789",
+                    "actorTextColor": "#56789a",
+                    "lineColor": "#6789ab",
+                    "textColor": "#789abc",
+                    "mainBkg": "#89abcd"
+                }),
+                owned: vec![
+                    ("actorBorder", forest_actor_border.clone()),
+                    ("actorLineColor", forest_actor_border),
+                    ("actorBkg", "#89abcd".to_string()),
+                    ("labelBoxBkgColor", "#89abcd".to_string()),
+                    ("labelTextColor", "#56789a".to_string()),
+                    ("loopTextColor", "#56789a".to_string()),
+                    ("noteBorderColor", "#456789".to_string()),
+                    ("noteTextColor", "#56789a".to_string()),
+                    ("transitionColor", "#6789ab".to_string()),
+                    ("specialStateColor", "#6789ab".to_string()),
+                    ("transitionLabelColor", "#789abc".to_string()),
+                    ("stateBkg", "#89abcd".to_string()),
+                    ("labelBackgroundColor", "#89abcd".to_string()),
+                ],
+                unowned: vec![],
+            },
+            Case {
+                theme: "neutral",
+                variables: json!({
+                    "noteBkgColor": "#abcdef",
+                    "border1": "#456789",
+                    "lineColor": "#123456",
+                    "textColor": "#234567",
+                    "mainBkg": "#345678"
+                }),
+                owned: vec![
+                    ("actorBorder", neutral_actor_border.clone()),
+                    ("actorLineColor", neutral_actor_border.clone()),
+                    ("labelBoxBorderColor", neutral_actor_border),
+                    ("actorBkg", "#345678".to_string()),
+                    ("labelBoxBkgColor", "#345678".to_string()),
+                    ("transitionLabelColor", "#234567".to_string()),
+                    ("stateBkg", "#345678".to_string()),
+                    ("labelBackgroundColor", "#345678".to_string()),
+                ],
+                unowned: vec![
+                    ("noteBorderColor", "#999".to_string()),
+                    ("transitionColor", "#000".to_string()),
+                    ("specialStateColor", "#222".to_string()),
+                ],
+            },
+            Case {
+                theme: "dark",
+                variables: json!({
+                    "mainBkg": "#123456",
+                    "secondBkg": "#abcdef",
+                    "secondaryBorderColor": "#234567",
+                    "secondaryTextColor": "#345678",
+                    "lineColor": "#fedcba",
+                    "textColor": "#56789a"
+                }),
+                owned: vec![
+                    ("noteBorderColor", "#234567".to_string()),
+                    ("noteBkgColor", dark_note_background),
+                    ("noteTextColor", "#345678".to_string()),
+                    ("transitionLabelColor", "#56789a".to_string()),
+                    ("stateBkg", "#123456".to_string()),
+                    ("labelBackgroundColor", "#123456".to_string()),
+                ],
+                unowned: vec![
+                    ("transitionColor", "lightgrey".to_string()),
+                    ("specialStateColor", "#f4f4f4".to_string()),
+                ],
+            },
+            Case {
+                theme: "dark",
+                variables: json!({ "secondBkg": "#abcdef" }),
+                owned: vec![],
+                unowned: vec![
+                    ("noteBkgColor", dark_default_note_background.clone()),
+                    ("activationBkgColor", dark_default_note_background),
+                ],
+            },
+            Case {
+                theme: "dark",
+                variables: json!({ "lineColor": "#fedcba" }),
+                owned: vec![],
+                unowned: vec![
+                    ("transitionColor", "lightgrey".to_string()),
+                    ("specialStateColor", "#f4f4f4".to_string()),
+                ],
+            },
+            Case {
+                theme: "default",
+                variables: json!({
+                    "border2": "#456789",
+                    "actorTextColor": "#56789a",
+                    "lineColor": "#123456",
+                    "textColor": "#234567",
+                    "mainBkg": "#345678"
+                }),
+                owned: vec![
+                    ("noteBorderColor", "#456789".to_string()),
+                    ("noteTextColor", "#56789a".to_string()),
+                    ("specialStateColor", "#123456".to_string()),
+                ],
+                unowned: vec![
+                    ("transitionColor", "#333333".to_string()),
+                    ("transitionLabelColor", "#333".to_string()),
+                    ("stateBkg", "#ECECFF".to_string()),
+                    ("labelBackgroundColor", "#ECECFF".to_string()),
+                ],
+            },
+        ];
+
+        for case in cases {
+            for origin in ["site", "source"] {
+                let config = json!({
+                    "theme": case.theme,
+                    "themeVariables": case.variables.clone()
+                });
+                let (engine, source) = if origin == "site" {
+                    (
+                        crate::Engine::new().with_site_config(MermaidConfig::from_value(config)),
+                        SOURCE.to_string(),
+                    )
+                } else {
+                    (
+                        crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+                            "secure": []
+                        }))),
+                        format!("%%{{init: {config}}}%%\n{SOURCE}"),
+                    )
+                };
+                let metadata = engine.parse_metadata_sync(&source).unwrap_or_else(|error| {
+                    panic!("parse {origin} {} dependency config: {error}", case.theme)
+                });
+
+                for (target, expected) in &case.owned {
+                    let path = format!("themeVariables.{target}");
+                    assert_eq!(
+                        metadata.effective_config.get_str(&path),
+                        Some(expected.as_str()),
+                        "{origin} {} has incorrect owned {target} value",
+                        case.theme
+                    );
+                    assert!(
+                        metadata
+                            .effective_config
+                            .config_path_overrides_typed_default(&path),
+                        "{origin} {} source variables must own derived {target}",
+                        case.theme
+                    );
+                }
+                for (target, expected) in &case.unowned {
+                    let path = format!("themeVariables.{target}");
+                    assert_eq!(
+                        metadata.effective_config.get_str(&path),
+                        Some(expected.as_str()),
+                        "{origin} {} has incorrect unowned {target} value",
+                        case.theme
+                    );
+                    assert!(
+                        !metadata
+                            .effective_config
+                            .config_path_overrides_typed_default(&path),
+                        "{origin} {} must preserve unowned {target} semantics",
+                        case.theme
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn state_terminal_dependency_ledger_preserves_ordered_values_and_ownership() {
+        fn config_with_explicit_theme_variables(
+            theme: &str,
+            theme_variables: Value,
+        ) -> MermaidConfig {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme }));
+            config.deep_merge_explicit(&json!({ "themeVariables": theme_variables }));
+            config
+        }
+
+        fn assert_owned(config: &MermaidConfig, target: &str, expected: &str) {
+            let path = format!("themeVariables.{target}");
+            assert_eq!(
+                config.get_str(&path),
+                Some(expected),
+                "incorrect {target} value"
+            );
+            assert!(
+                config.config_path_overrides_typed_default(&path),
+                "explicit source must own derived {target}"
+            );
+        }
+
+        fn assert_unowned(config: &MermaidConfig, target: &str, expected: &str) {
+            let path = format!("themeVariables.{target}");
+            assert_eq!(
+                config.get_str(&path),
+                Some(expected),
+                "incorrect {target} value"
+            );
+            assert!(
+                !config.config_path_overrides_typed_default(&path),
+                "calculated default must not own {target}"
+            );
+        }
+
+        let mut default = config_with_explicit_theme_variables(
+            "default",
+            json!({
+                "background": "#123456",
+                "border1": "#234567",
+                "lineColor": "#345678",
+                "textColor": "#456789"
+            }),
+        );
+        apply_theme_defaults(&mut default).unwrap();
+        for (target, expected) in [
+            ("nodeBorder", "#234567"),
+            ("innerEndBackground", "#234567"),
+            ("specialStateColor", "#345678"),
+            ("titleColor", "#456789"),
+        ] {
+            assert_owned(&default, target, expected);
+        }
+        assert_unowned(&default, "compositeBackground", "white");
+        assert_unowned(&default, "transitionColor", "#333333");
+
+        let mut base = config_with_explicit_theme_variables(
+            "base",
+            json!({
+                "background": "#123456",
+                "lineColor": "#234567",
+                "mainBkg": "#345678",
+                "primaryBorderColor": "#456789",
+                "primaryTextColor": "#56789a",
+                "tertiaryTextColor": "#6789ab"
+            }),
+        );
+        apply_theme_defaults(&mut base).unwrap();
+        for (target, expected) in [
+            ("compositeBackground", "#123456"),
+            ("specialStateColor", "#234567"),
+            ("stateBkg", "#345678"),
+            ("labelBackgroundColor", "#345678"),
+            ("compositeTitleBackground", "#345678"),
+            ("nodeBorder", "#456789"),
+            ("innerEndBackground", "#456789"),
+            ("stateLabelColor", "#56789a"),
+            ("titleColor", "#6789ab"),
+        ] {
+            assert_owned(&base, target, expected);
+        }
+
+        let mut explicit_state_background = config_with_explicit_theme_variables(
+            "base",
+            json!({
+                "mainBkg": "#123456",
+                "primaryTextColor": "#234567",
+                "stateBkg": "#345678"
+            }),
+        );
+        apply_theme_defaults(&mut explicit_state_background).unwrap();
+        assert_owned(&explicit_state_background, "stateLabelColor", "#345678");
+
+        let mut derived_state_background =
+            config_with_explicit_theme_variables("base", json!({ "mainBkg": "#123456" }));
+        apply_theme_defaults(&mut derived_state_background).unwrap();
+        assert_owned(&derived_state_background, "stateBkg", "#123456");
+        assert_unowned(&derived_state_background, "stateLabelColor", "#333");
+
+        let dark_edge_label = theme_color::lighten("#234567", 25.0).unwrap();
+        for (theme, variables, owned, unowned) in [
+            (
+                "dark",
+                json!({
+                    "background": "#123456",
+                    "labelBackground": "#234567",
+                    "mainBkg": "#345678",
+                    "primaryBorderColor": "#456789"
+                }),
+                vec![
+                    ("compositeBackground", "#123456".to_string()),
+                    ("edgeLabelBackground", dark_edge_label),
+                    ("stateBkg", "#345678".to_string()),
+                    ("labelBackgroundColor", "#345678".to_string()),
+                    ("compositeTitleBackground", "#345678".to_string()),
+                    ("innerEndBackground", "#456789".to_string()),
+                ],
+                vec![("specialStateColor", "#f4f4f4".to_string())],
+            ),
+            (
+                "forest",
+                json!({
+                    "background": "#123456",
+                    "lineColor": "#234567",
+                    "mainBkg": "#345678",
+                    "primaryBorderColor": "#456789"
+                }),
+                vec![
+                    ("compositeBackground", "#123456".to_string()),
+                    ("specialStateColor", "#234567".to_string()),
+                    ("stateBkg", "#345678".to_string()),
+                    ("labelBackgroundColor", "#345678".to_string()),
+                    ("compositeTitleBackground", "#345678".to_string()),
+                    ("innerEndBackground", "#456789".to_string()),
+                ],
+                vec![("titleColor", "#333".to_string())],
+            ),
+            (
+                "neutral",
+                json!({
+                    "background": "#123456",
+                    "mainBkg": "#234567",
+                    "primaryBorderColor": "#345678",
+                    "text": "#456789"
+                }),
+                vec![
+                    ("compositeBackground", "#123456".to_string()),
+                    ("stateBkg", "#234567".to_string()),
+                    ("labelBackgroundColor", "#234567".to_string()),
+                    ("compositeTitleBackground", "#234567".to_string()),
+                    ("innerEndBackground", "#345678".to_string()),
+                    ("titleColor", "#456789".to_string()),
+                ],
+                vec![("specialStateColor", "#222".to_string())],
+            ),
+        ] {
+            let mut config = config_with_explicit_theme_variables(theme, variables);
+            apply_theme_defaults(&mut config).unwrap();
+            for (target, expected) in owned {
+                assert_owned(&config, target, &expected);
+            }
+            for (target, expected) in unowned {
+                assert_unowned(&config, target, &expected);
+            }
+        }
+
+        for (theme, expected_composite, expected_title) in [
+            ("neo", "#123456", "#345678"),
+            ("neo-dark", "#123456", "#345678"),
+            ("redux", "#123456", "#F9F9FB"),
+            ("redux-dark", "#16141F", "#16141F"),
+            ("redux-color", "#123456", "#345678"),
+            ("redux-dark-color", "#123456", "#345678"),
+        ] {
+            let mut config = config_with_explicit_theme_variables(
+                theme,
+                json!({
+                    "background": "#123456",
+                    "lineColor": "#234567",
+                    "mainBkg": "#345678",
+                    "nodeBorder": "#456789",
+                    "primaryTextColor": "#56789a",
+                    "tertiaryTextColor": "#6789ab"
+                }),
+            );
+            apply_theme_defaults(&mut config).unwrap();
+
+            assert_owned(&config, "titleColor", "#6789ab");
+            assert_owned(&config, "innerEndBackground", "#456789");
+            assert_owned(&config, "specialStateColor", "#234567");
+            assert_owned(&config, "stateLabelColor", "#56789a");
+            if theme == "redux-dark" {
+                assert_unowned(&config, "compositeBackground", expected_composite);
+            } else {
+                assert_owned(&config, "compositeBackground", expected_composite);
+            }
+            if matches!(theme, "redux" | "redux-dark") {
+                assert_unowned(&config, "compositeTitleBackground", expected_title);
+            } else {
+                assert_owned(&config, "compositeTitleBackground", expected_title);
+            }
+        }
+
+        let mut default_gradient = config_with_explicit_theme_variables(
+            "default",
+            json!({
+                "primaryBorderColor": "#123456",
+                "secondaryBorderColor": "#234567"
+            }),
+        );
+        apply_theme_defaults(&mut default_gradient).unwrap();
+        assert_unowned(
+            &default_gradient,
+            "gradientStart",
+            &mk_border("#ECECFF", false).unwrap(),
+        );
+        assert_unowned(
+            &default_gradient,
+            "gradientStop",
+            &mk_border("#ffffde", false).unwrap(),
+        );
+
+        let mut base_gradient = config_with_explicit_theme_variables(
+            "base",
+            json!({
+                "primaryBorderColor": "#123456",
+                "secondaryBorderColor": "#234567"
+            }),
+        );
+        apply_theme_defaults(&mut base_gradient).unwrap();
+        assert_owned(&base_gradient, "gradientStart", "#123456");
+        assert_owned(&base_gradient, "gradientStop", "#234567");
+
+        for (theme, gradient_start, gradient_stop) in [
+            ("dark", "#cccccc", "hsl(180, 0%, 18.3529411765%)"),
+            (
+                "forest",
+                "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
+                "hsl(98.961038961, 60%, 74.9019607843%)",
+            ),
+            (
+                "neutral",
+                "hsl(0, 0%, 83.3333333333%)",
+                "hsl(0, 0%, 88.9215686275%)",
+            ),
+        ] {
+            let mut config = config_with_explicit_theme_variables(
+                theme,
+                json!({
+                    "primaryBorderColor": "#123456",
+                    "secondaryBorderColor": "#234567"
+                }),
+            );
+            apply_theme_defaults(&mut config).unwrap();
+            assert_unowned(&config, "gradientStart", gradient_start);
+            assert_unowned(&config, "gradientStop", gradient_stop);
+        }
+
+        let mut base_sources = config_with_explicit_theme_variables(
+            "base",
+            json!({
+                "background": "#123456",
+                "primaryTextColor": "#234567",
+                "secondaryColor": "#345678",
+                "tertiaryColor": "#456789"
+            }),
+        );
+        apply_theme_defaults(&mut base_sources).unwrap();
+        let derived_line = theme_color::invert("#123456").unwrap();
+        let derived_tertiary_text = theme_color::invert("#456789").unwrap();
+        let derived_secondary_border = mk_border("#345678", false).unwrap();
+        let derived_activation_border = theme_color::darken("#345678", 10.0).unwrap();
+        let derived_sequence_number = theme_color::invert(&derived_line).unwrap();
+        for (target, expected) in [
+            ("lineColor", derived_line.as_str()),
+            ("transitionColor", derived_line.as_str()),
+            ("specialStateColor", derived_line.as_str()),
+            ("sequenceNumberColor", derived_sequence_number.as_str()),
+            ("textColor", "#234567"),
+            ("signalTextColor", "#234567"),
+            ("transitionLabelColor", "#234567"),
+            ("tertiaryTextColor", derived_tertiary_text.as_str()),
+            ("titleColor", derived_tertiary_text.as_str()),
+            ("secondaryBorderColor", derived_secondary_border.as_str()),
+            ("gradientStop", derived_secondary_border.as_str()),
+            ("activationBorderColor", derived_activation_border.as_str()),
+        ] {
+            assert_owned(&base_sources, target, expected);
+        }
+
+        for theme in [
+            "neo",
+            "neo-dark",
+            "redux",
+            "redux-dark",
+            "redux-color",
+            "redux-dark-color",
+        ] {
+            let mut config = config_with_explicit_theme_variables(
+                theme,
+                json!({
+                    "primaryBorderColor": "#123456",
+                    "secondaryBorderColor": "#234567"
+                }),
+            );
+            apply_theme_defaults(&mut config).unwrap();
+            assert_unowned(&config, "gradientStart", "#0042eb");
+            assert_unowned(&config, "gradientStop", "#eb0042");
+        }
+    }
+
+    #[test]
+    fn gantt_terminal_fill_dependencies_preserve_values_and_ownership() {
+        fn config_with_explicit_theme_variables(
+            theme: &str,
+            theme_variables: Value,
+        ) -> MermaidConfig {
+            let mut config = MermaidConfig::from_value(json!({ "theme": theme }));
+            config.deep_merge_explicit(&json!({ "themeVariables": theme_variables }));
+            config
+        }
+
+        fn assert_owned(config: &MermaidConfig, target: &str, expected: &str) {
+            let path = format!("themeVariables.{target}");
+            assert_eq!(
+                config.get_str(&path),
+                Some(expected),
+                "incorrect {target} value"
+            );
+            assert!(
+                config.config_path_overrides_typed_default(&path),
+                "the explicit Gantt source must own derived {target}"
+            );
+        }
+
+        fn assert_unowned(config: &MermaidConfig, target: &str, expected: &str) {
+            let path = format!("themeVariables.{target}");
+            assert_eq!(
+                config.get_str(&path),
+                Some(expected),
+                "incorrect {target} value"
+            );
+            assert!(
+                !config.config_path_overrides_typed_default(&path),
+                "the pinned Gantt constant must not inherit unrelated ownership for {target}"
+            );
+        }
+
+        let mut base =
+            config_with_explicit_theme_variables("base", json!({ "primaryColor": "#123456" }));
+        apply_theme_defaults(&mut base).unwrap();
+        assert_owned(&base, "taskBkgColor", "#123456");
+        assert_owned(
+            &base,
+            "activeTaskBkgColor",
+            &theme_color::lighten("#123456", 23.0).unwrap(),
+        );
+
+        let mut dark = config_with_explicit_theme_variables(
+            "dark",
+            json!({
+                "mainBkg": "#123456",
+                "mainContrastColor": "#abcdef"
+            }),
+        );
+        apply_theme_defaults(&mut dark).unwrap();
+        assert_owned(
+            &dark,
+            "taskBkgColor",
+            &theme_color::lighten("#123456", 23.0).unwrap(),
+        );
+        assert_owned(&dark, "doneTaskBkgColor", "#abcdef");
+
+        let mut forest =
+            config_with_explicit_theme_variables("forest", json!({ "mainBkg": "#123456" }));
+        apply_theme_defaults(&mut forest).unwrap();
+        assert_owned(&forest, "activeTaskBkgColor", "#123456");
+
+        let mut neutral = config_with_explicit_theme_variables(
+            "neutral",
+            json!({
+                "contrast": "#123456",
+                "mainBkg": "#234567",
+                "done": "#345678",
+                "critical": "#456789"
+            }),
+        );
+        apply_theme_defaults(&mut neutral).unwrap();
+        for (target, expected) in [
+            ("taskBkgColor", "#123456"),
+            ("activeTaskBkgColor", "#234567"),
+            ("doneTaskBkgColor", "#345678"),
+            ("critBkgColor", "#456789"),
+        ] {
+            assert_owned(&neutral, target, expected);
+        }
+
+        let active_dark = theme_color::lighten("#123456", 23.0).unwrap();
+        for theme in ["neo-dark", "redux-dark", "redux-dark-color"] {
+            let mut config =
+                config_with_explicit_theme_variables(theme, json!({ "primaryColor": "#123456" }));
+            apply_theme_defaults(&mut config).unwrap();
+            assert_owned(&config, "taskBkgColor", "#123456");
+            assert_owned(&config, "activeTaskBkgColor", &active_dark);
+        }
+
+        let pinned_light_active = theme_color::lighten("#ECECFE", 23.0).unwrap();
+        for theme in ["neo", "redux", "redux-color"] {
+            let mut config =
+                config_with_explicit_theme_variables(theme, json!({ "primaryColor": "#123456" }));
+            apply_theme_defaults(&mut config).unwrap();
+            assert_unowned(&config, "taskBkgColor", "#ECECFE");
+            assert_unowned(&config, "activeTaskBkgColor", &pinned_light_active);
+        }
+
+        let mut explicit_targets = config_with_explicit_theme_variables(
+            "default",
+            json!({
+                "taskBkgColor": "#111111",
+                "activeTaskBkgColor": "#222222",
+                "doneTaskBkgColor": "#333333",
+                "critBkgColor": "#444444"
+            }),
+        );
+        apply_theme_defaults(&mut explicit_targets).unwrap();
+        for (target, expected) in [
+            ("taskBkgColor", "#111111"),
+            ("activeTaskBkgColor", "#222222"),
+            ("doneTaskBkgColor", "#333333"),
+            ("critBkgColor", "#444444"),
+        ] {
+            assert_owned(&explicit_targets, target, expected);
+        }
+    }
+
+    #[test]
+    fn neutral_site_text_owns_unconditional_sequence_derivations() {
+        let metadata = crate::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "theme": "neutral",
+                "themeVariables": { "text": "#56789a" }
+            })))
+            .parse_metadata_sync("sequenceDiagram\nAlice->>Bob: Hello\n")
+            .expect("parse site-owned Neutral text");
+
+        assert_eq!(
+            metadata.effective_config.get_str("themeVariables.text"),
+            Some("#56789a")
+        );
+        for target in [
+            "actorTextColor",
+            "signalColor",
+            "signalTextColor",
+            "labelTextColor",
+            "loopTextColor",
+        ] {
+            let path = format!("themeVariables.{target}");
+            assert_eq!(
+                metadata.effective_config.get_str(&path),
+                Some("#56789a"),
+                "Neutral site text has incorrect derived {target} value"
+            );
+            assert!(
+                metadata
+                    .effective_config
+                    .config_path_overrides_typed_default(&path),
+                "Neutral site text must own derived {target}"
+            );
+        }
+    }
+
+    #[test]
+    fn dark_site_main_contrast_owns_unconditional_state_and_sequence_derivations() {
+        let metadata = crate::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "theme": "dark",
+                "themeVariables": { "mainContrastColor": "#456789" }
+            })))
+            .parse_metadata_sync("stateDiagram-v2\nReady --> Done: Finish\n")
+            .expect("parse site-owned Dark mainContrastColor");
+
+        for target in [
+            "lineColor",
+            "actorTextColor",
+            "signalColor",
+            "signalTextColor",
+            "labelTextColor",
+            "loopTextColor",
+            "transitionColor",
+        ] {
+            let path = format!("themeVariables.{target}");
+            assert_eq!(
+                metadata.effective_config.get_str(&path),
+                Some("#456789"),
+                "Dark site mainContrastColor has incorrect derived {target} value"
+            );
+            assert!(
+                metadata
+                    .effective_config
+                    .config_path_overrides_typed_default(&path),
+                "Dark site mainContrastColor must own derived {target}"
+            );
+        }
+    }
+
+    #[test]
     fn dark_mode_branch_matches_generated_mermaid_oracle_for_every_theme() {
-        for &theme in SUPPORTED_THEME_NAMES {
+        for &theme in MermaidThemeId::NAMES {
             let mut config = MermaidConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "darkMode": true }
@@ -3216,20 +4738,16 @@ mod tests {
                 .get("themeVariables")
                 .and_then(Value::as_object)
                 .unwrap();
-            let expected = ThemeProgram::resolve(theme).dark_mode_snapshot();
+            let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
+                .resolved_dark_mode_true();
             assert_eq!(actual, expected, "theme {theme}");
         }
     }
 
     #[test]
     fn generated_mermaid_oracle_locks_override_value_semantics() {
-        fn value_at_path<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
-            path.split('.')
-                .try_fold(root, |value, key| value.as_object()?.get(key))
-        }
-
         let mut mismatches = Vec::new();
-        for case in &generated_theme_audit().oracle_cases {
+        for case in &generated_theme_oracles().oracle_cases {
             let id = case.get("id").and_then(Value::as_str).unwrap();
             let theme = case.get("theme").and_then(Value::as_str).unwrap();
             let overrides = case.get("overrides").cloned().unwrap();
@@ -3284,7 +4802,7 @@ mod tests {
 
     #[test]
     fn font_only_override_preserves_upstream_derived_palette_for_public_themes() {
-        for &theme in SUPPORTED_THEME_NAMES {
+        for &theme in MermaidThemeId::NAMES {
             let mut cfg = MermaidConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": {
@@ -3298,7 +4816,8 @@ mod tests {
                 .get("themeVariables")
                 .and_then(Value::as_object)
                 .unwrap();
-            let expected = ThemeProgram::resolve(theme).default_snapshot();
+            let expected = ThemeProgram::resolve(MermaidThemeId::parse(theme).unwrap())
+                .resolved_without_overrides();
 
             for key in [
                 "cScale0",
@@ -3351,8 +4870,36 @@ mod tests {
     }
 
     #[test]
+    fn base_finalize_uses_presence_and_preserves_explicit_gradient_ownership() {
+        let program = ThemeProgram::resolve(MermaidThemeId::Base);
+        for border in [json!(false), json!(0), Value::Null] {
+            let explicit = json!({"nodeBorder": border});
+            let resolved = staged::Resolution::execute(
+                staged::StagedProgram::Base,
+                program.prepared_constructor(),
+                explicit.as_object().unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                resolved.trace().final_resolved.variables["useGradient"],
+                json!(false)
+            );
+            assert!(
+                resolved
+                    .trace()
+                    .final_resolved
+                    .depends_on("useGradient", "nodeBorder")
+            );
+        }
+        let mut config = MermaidConfig::from_value(json!({"theme": "base"}));
+        config.deep_merge_explicit(&json!({"themeVariables": {"nodeBorder": "#123456"}}));
+        apply_theme_defaults(&mut config).unwrap();
+        assert!(config.config_path_overrides_typed_default("themeVariables.useGradient"));
+    }
+
+    #[test]
     fn agentflow_stroke_follows_upstream_constructor_order() {
-        for &theme in SUPPORTED_THEME_NAMES {
+        for &theme in MermaidThemeId::NAMES {
             let mut config = MermaidConfig::from_value(json!({
                 "theme": theme,
                 "themeVariables": { "secondaryBorderColor": "#123456" }
@@ -3430,6 +4977,35 @@ mod tests {
             } else {
                 assert_eq!(variables["fillType0"], "#701a75");
                 assert_eq!(variables["altSectionBkgColor"], "#000000");
+            }
+        }
+    }
+
+    #[test]
+    fn mermaid_12_dependency_updates_propagate_authored_ownership() {
+        for theme in MermaidThemeId::NAMES {
+            let mut config = MermaidConfig::from_value(json!({"theme": theme}));
+            config.deep_merge_explicit(
+                &json!({"themeVariables": {"secondaryBorderColor": "#123456"}}),
+            );
+            apply_theme_defaults(&mut config).unwrap();
+            assert_eq!(
+                config.config_path_overrides_typed_default("themeVariables.flowContainerStroke"),
+                *theme != "default",
+                "{theme}",
+            );
+        }
+        for theme in ["redux-color", "redux-dark-color"] {
+            let mut config = MermaidConfig::from_value(json!({"theme": theme}));
+            config.deep_merge_explicit(
+                &json!({"themeVariables": {"cScale0": "#123456", "cScale1": "#abcdef"}}),
+            );
+            apply_theme_defaults(&mut config).unwrap();
+            for target in ["pie1", "pie2", "sectionBkgColor", "sectionBkgColor2"] {
+                assert!(
+                    config.config_path_overrides_typed_default(&format!("themeVariables.{target}")),
+                    "{theme}/{target}"
+                );
             }
         }
     }
@@ -4024,7 +5600,9 @@ mod tests {
         }));
         assert!(matches!(
             apply_theme_defaults(&mut config),
-            Err(ColorError::UnsupportedFormat { .. })
+            Err(ThemeResolutionError::Color(
+                ColorError::UnsupportedFormat { .. }
+            ))
         ));
 
         let engine = crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
@@ -4070,14 +5648,421 @@ flowchart TD
     }
 
     #[test]
+    fn staged_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
+        let binding = crate::config::ThemeParseBinding::try_new(
+            [0x5a; 32],
+            MermaidConfig::from_value(json!({
+                "theme": "dark",
+                "themeVariables": {
+                    "mainBkg": "#abcdef",
+                    "nodeBkg": "#123456"
+                }
+            })),
+        )
+        .expect("valid dark compatibility binding");
+        let mut config = MermaidConfig::from_theme_parse_binding(binding);
+        // Keep compatibility ownership attached while presenting the staged executor with one
+        // invalid color and one null override that normalization would otherwise retire.
+        config.set_value_preserving_theme_compatibility(
+            "themeVariables.mainBkg",
+            Value::String("not-a-color".to_string()),
+        );
+        config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+
+        let before_value = config.as_value().clone();
+        let mut expected_compatibility = config.clone();
+        expected_compatibility.freeze_theme_compatibility();
+
+        assert!(apply_theme_defaults(&mut config).is_err());
+        assert_eq!(config.as_value(), &before_value);
+
+        config.freeze_theme_compatibility();
+        assert_eq!(
+            config.mermaid_compatibility_fields(),
+            expected_compatibility.mermaid_compatibility_fields(),
+            "a failed staged execution must not retire compatibility ownership"
+        );
+    }
+
+    #[test]
+    fn base_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
+        let binding = crate::config::ThemeParseBinding::try_new(
+            [0x6a; 32],
+            MermaidConfig::from_value(json!({
+                "theme": "base",
+                "themeVariables": {
+                    "nodeBkg": "#123456",
+                    "cScale2": "#abcdef"
+                }
+            })),
+        )
+        .expect("valid Base compatibility binding");
+        let mut config = MermaidConfig::from_theme_parse_binding(binding);
+        config.set_value_preserving_theme_compatibility(
+            "themeVariables.cScale2",
+            Value::String("not-a-color".to_string()),
+        );
+        config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+
+        let before_value = config.as_value().clone();
+        let mut expected_compatibility = config.clone();
+        expected_compatibility.freeze_theme_compatibility();
+
+        assert!(apply_theme_defaults(&mut config).is_err());
+        assert_eq!(config.as_value(), &before_value);
+
+        config.freeze_theme_compatibility();
+        assert_eq!(
+            config.mermaid_compatibility_fields(),
+            expected_compatibility.mermaid_compatibility_fields(),
+            "a failed Base execution must not retire compatibility ownership"
+        );
+    }
+
+    #[test]
+    fn legacy_theme_failure_is_transactional_for_config_and_compatibility_ownership() {
+        for theme in MermaidThemeId::ALL
+            .iter()
+            .copied()
+            .filter(|theme| ThemeProgram::resolve(*theme).staged_program().is_none())
+        {
+            let binding = crate::config::ThemeParseBinding::try_new(
+                [0x6b; 32],
+                MermaidConfig::from_value(json!({
+                    "theme": theme.as_str(),
+                    "themeVariables": {
+                        "primaryColor": "#123456",
+                        "nodeBkg": "#abcdef",
+                    },
+                })),
+            )
+            .expect("valid legacy-theme compatibility binding");
+            let mut config = MermaidConfig::from_theme_parse_binding(binding);
+            config.set_value_preserving_theme_compatibility(
+                "themeVariables.primaryColor",
+                json!("not-a-color"),
+            );
+            config.set_value_preserving_theme_compatibility("themeVariables.nodeBkg", Value::Null);
+            config.set_value_explicit("hostOption", json!(true));
+            let before_value = config.as_value().clone();
+            let mut expected_compatibility = config.clone();
+            expected_compatibility.freeze_theme_compatibility();
+
+            let (result, work) =
+                crate::config::measure_config_work(|| apply_theme_defaults(&mut config));
+            assert!(
+                result.is_err(),
+                "{theme} must reject the invalid evaluated color"
+            );
+            assert_eq!(config.as_value(), &before_value, "{theme}");
+            assert_eq!(work.json_cow_copies, 0, "{theme}: {work:?}");
+            assert!(config.explicit_config_owns_path("hostOption"));
+            assert!(!config.explicit_config_owns_path("themeVariables.nodeBkg"));
+            config.freeze_theme_compatibility();
+            assert_eq!(
+                config.mermaid_compatibility_fields(),
+                expected_compatibility.mermaid_compatibility_fields(),
+                "a failed {theme} execution must not retire compatibility ownership",
+            );
+            assert_eq!(
+                config.theme_parse_binding(),
+                expected_compatibility.theme_parse_binding()
+            );
+        }
+    }
+
+    #[test]
+    fn staged_theme_color_limit_fails_closed_before_mutation() {
+        for value in [json!(65), json!("0x41"), json!("Infinity")] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": "dark",
+                "themeVariables": {
+                    "THEME_COLOR_LIMIT": value,
+                    "nodeBkg": "#123456"
+                }
+            }));
+            let before = config.as_value().clone();
+
+            let error = apply_theme_defaults(&mut config).unwrap_err();
+            let ThemeResolutionError::EvaluationLimit(error) = error else {
+                panic!("expected a theme evaluation limit error");
+            };
+            assert_eq!(error.limit, "THEME_COLOR_LIMIT");
+            assert_eq!(error.max, staged::MAX_THEME_COLOR_ITERATIONS);
+            assert_eq!(config.as_value(), &before);
+        }
+
+        let engine = crate::Engine::new().with_site_config(MermaidConfig::from_value(json!({
+            "theme": "dark",
+            "themeVariables": { "THEME_COLOR_LIMIT": 65 }
+        })));
+        assert!(matches!(
+            engine.parse_metadata_sync("flowchart TD\n  A"),
+            Err(crate::Error::ThemeEvaluationLimit(
+                crate::ThemeEvaluationLimitExceeded {
+                    limit: "THEME_COLOR_LIMIT",
+                    max: staged::MAX_THEME_COLOR_ITERATIONS,
+                    ..
+                }
+            ))
+        ));
+    }
+
+    #[test]
+    fn staged_object_dependencies_remain_field_local() {
+        let metadata = crate::Engine::new()
+            .with_site_config(MermaidConfig::from_value(json!({
+                "theme": "dark",
+                "themeVariables": { "background": "#123456" }
+            })))
+            .parse_metadata_sync("flowchart TD\n  A")
+            .expect("materialize a Dark theme with an explicit background");
+        let config = metadata.effective_config;
+
+        assert_eq!(
+            config.get_str("themeVariables.xyChart.backgroundColor"),
+            Some("#123456")
+        );
+        assert!(
+            config.config_path_overrides_typed_default("themeVariables.xyChart.backgroundColor"),
+            "the derived XY background must retain ownership from the explicit root background"
+        );
+        assert!(
+            !config.config_path_overrides_typed_default("themeVariables.xyChart.plotColorPalette"),
+            "one derived object field must not claim its constructor-owned siblings"
+        );
+        assert!(
+            !config.config_path_overrides_typed_default("themeVariables.xyChart.titleColor"),
+            "field-local ownership must not widen to the whole XY theme object"
+        );
+    }
+
+    #[test]
+    fn staged_theme_interface_matches_upstream_stage_oracles_and_ownership() {
+        let mut mismatches = Vec::new();
+        for case in &generated_theme_oracles().stage_oracle_cases {
+            let theme_name = case.get("theme").and_then(Value::as_str).unwrap();
+            let theme = MermaidThemeId::parse(theme_name).unwrap();
+            let id = case.get("id").and_then(Value::as_str).unwrap();
+            let program = *ThemeProgram::resolve(theme);
+            let Some(staged_program) = program.staged_program() else {
+                mismatches.push(format!(
+                    "{theme_name}/{id}: stage oracle targets a non-staged theme program"
+                ));
+                continue;
+            };
+            let raw = case
+                .get("overrides")
+                .and_then(Value::as_object)
+                .unwrap()
+                .clone();
+            let explicit = program.normalize_overrides(raw);
+            let resolution = staged::Resolution::execute(
+                staged_program,
+                program.prepared_constructor(),
+                &explicit,
+            )
+            .unwrap();
+            let trace = resolution.trace();
+            let actual_stages = [
+                ("constructorPrepared", &trace.constructor_prepared),
+                ("overridesApplied", &trace.overrides_applied),
+                ("afterUpdate", &trace.after_update),
+                ("explicitReplay", &trace.explicit_replay),
+                ("finalResolved", &trace.final_resolved),
+            ];
+            let expected_stages = case.get("stages").and_then(Value::as_object).unwrap();
+            for (stage_name, actual) in actual_stages {
+                let expected = expected_stages
+                    .get(stage_name)
+                    .and_then(Value::as_object)
+                    .unwrap();
+                let actual = Value::Object(actual.variables.clone());
+                for (path, observation) in expected {
+                    let state = observation.get("state").and_then(Value::as_str).unwrap();
+                    let actual_value = value_at_path(&actual, path);
+                    match state {
+                        "missing" if actual_value.is_some() => mismatches.push(format!(
+                            "{theme_name}/{id}/{stage_name}/{path}: expected missing, found {}",
+                            actual_value.unwrap()
+                        )),
+                        "value" if actual_value != observation.get("value") => {
+                            mismatches.push(format!(
+                                "{theme_name}/{id}/{stage_name}/{path}: expected {}, found {}",
+                                observation.get("value").unwrap(),
+                                actual_value
+                                    .map(Value::to_string)
+                                    .unwrap_or_else(|| "missing".to_string())
+                            ));
+                        }
+                        "missing" | "value" => {}
+                        other => panic!("unexpected stage observation state `{other}`"),
+                    }
+                }
+            }
+
+            match id {
+                "node-border-finalize" => {
+                    assert_ne!(
+                        trace.explicit_replay.variables["useGradient"],
+                        trace.final_resolved.variables["useGradient"]
+                    );
+                    assert!(trace.final_resolved.depends_on("useGradient", "nodeBorder"));
+                }
+                "node-border-explicit-gradient" => {
+                    assert!(
+                        trace
+                            .final_resolved
+                            .depends_on("useGradient", "useGradient")
+                    );
+                    assert!(!trace.final_resolved.depends_on("useGradient", "nodeBorder"));
+                }
+                "partial-objects" | "nested-object-replay" => {
+                    assert!(
+                        trace.final_resolved.variables["radar"]
+                            .get("axisColor")
+                            .is_some()
+                    );
+                    assert!(
+                        trace.final_resolved.variables["radar"]
+                            .get("curveOpacity")
+                            .is_some()
+                    );
+                }
+                "secondary-border" | "falsy-container-stroke" => {
+                    assert!(
+                        trace
+                            .after_update
+                            .depends_on("flowContainerStroke", "secondaryBorderColor")
+                    );
+                }
+                "primary-and-derived-replay" => {
+                    assert!(
+                        trace.after_update.depends_on("fillType0", "primaryColor"),
+                        "{theme_name} Journey fill must inherit primaryColor ownership"
+                    );
+                    assert!(
+                        !trace.after_update.depends_on("mainBkg", "primaryColor"),
+                        "{theme_name} constructor-owned mainBkg must remain independent"
+                    );
+                    match theme {
+                        MermaidThemeId::Dark => {
+                            assert!(trace.after_update.depends_on("cScale0", "primaryColor"));
+                            assert!(!trace.after_update.depends_on("cScale2", "primaryColor"));
+                        }
+                        MermaidThemeId::Forest => {
+                            assert!(trace.after_update.depends_on("cScale0", "primaryColor"));
+                            assert!(!trace.after_update.depends_on("cScale2", "primaryColor"));
+                            assert!(trace.after_update.depends_on("cScale3", "primaryColor"));
+                        }
+                        MermaidThemeId::Neutral => {
+                            for target in ["cScale0", "cScale2", "cScale3"] {
+                                assert!(
+                                    !trace.after_update.depends_on(target, "primaryColor"),
+                                    "Neutral {target} is constructor/update constant"
+                                );
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+                "color-limit-and-tag-replay" => {
+                    for target in ["cScaleInv8", "cScalePeer8", "cScaleLabel8"] {
+                        assert!(
+                            !trace.after_update.depends_on(target, target),
+                            "{theme_name} {target} must be replaced inside the active loop bound"
+                        );
+                        assert!(
+                            !trace.after_update.depends_on(target, "THEME_COLOR_LIMIT"),
+                            "loop control must not become value ownership for {theme_name} {target}"
+                        );
+                    }
+                    for target in ["cScaleInv9", "cScalePeer9", "cScaleLabel9"] {
+                        assert!(
+                            trace.after_update.depends_on(target, target),
+                            "{theme_name} {target} must remain the skipped explicit value"
+                        );
+                        assert!(
+                            !trace.after_update.depends_on(target, "THEME_COLOR_LIMIT"),
+                            "{theme_name} {target} must not be written beyond the loop bound"
+                        );
+                    }
+                    if theme == MermaidThemeId::Forest {
+                        for target in ["pie8", "pie9"] {
+                            assert!(!trace.after_update.depends_on(target, "THEME_COLOR_LIMIT"));
+                            assert!(!trace.after_update.depends_on(target, target));
+                            assert!(trace.explicit_replay.depends_on(target, target));
+                        }
+                    } else {
+                        assert!(!trace.after_update.depends_on("pie8", "pie8"));
+                        assert!(!trace.after_update.depends_on("pie8", "THEME_COLOR_LIMIT"));
+                        assert!(trace.after_update.depends_on("pie9", "pie9"));
+                        assert!(!trace.after_update.depends_on("pie9", "THEME_COLOR_LIMIT"));
+                    }
+                    assert!(
+                        !trace
+                            .after_update
+                            .depends_on("tagLabelBorder", "tagLabelBorder"),
+                        "the unconditional Tag assignment must replace explicit ownership"
+                    );
+                    assert!(
+                        trace
+                            .explicit_replay
+                            .depends_on("tagLabelBorder", "tagLabelBorder"),
+                        "explicit replay must restore Tag ownership"
+                    );
+                    if matches!(theme, MermaidThemeId::Dark | MermaidThemeId::Neutral) {
+                        assert!(
+                            trace.after_update.depends_on("scaleLabelColor", "darkMode"),
+                            "{theme_name} false darkMode branch must retain control provenance"
+                        );
+                    }
+                }
+                "falsy-or-chain" => {
+                    assert!(
+                        trace
+                            .after_update
+                            .depends_on("stateLabelColor", "primaryTextColor")
+                    );
+                    assert!(!trace.after_update.depends_on("stateLabelColor", "stateBkg"));
+                }
+                "operator-and-replay" => {
+                    for target in ["primaryBorderColor", "gradientStart", "pieOpacity", "venn1"] {
+                        assert!(trace.explicit_replay.depends_on(target, target));
+                    }
+                    assert!(
+                        !trace.after_update.depends_on("pieOpacity", "pieOpacity"),
+                        "JavaScript || must replace explicit numeric zero before replay"
+                    );
+                    assert!(
+                        trace.after_update.depends_on("venn1", "venn1"),
+                        "JavaScript ?? must retain explicit numeric zero"
+                    );
+                }
+                "null-elision" => {
+                    assert!(
+                        !trace.overrides_applied.depends_on("venn1", "venn1"),
+                        "public initialize semantics must elide a top-level null override"
+                    );
+                    assert!(!trace.explicit_replay.depends_on("venn1", "venn1"));
+                }
+                other => panic!("unexpected staged oracle `{theme_name}/{other}`"),
+            }
+        }
+
+        assert!(
+            mismatches.is_empty(),
+            "staged Mermaid theme mismatches:\n{}",
+            mismatches.join("\n")
+        );
+    }
+
+    #[test]
     fn theme_resolution_records_stage_and_final_value_provenance() {
-        let explicit = json!({
-            "fontFamily": "Inter, sans-serif",
-            "cScale0": "#abcdef"
-        })
-        .as_object()
-        .unwrap()
-        .clone();
+        let explicit = json!({"fontFamily": "Inter, sans-serif", "cScale0": "#abcdef"})
+            .as_object()
+            .unwrap()
+            .clone();
         let calculated = json!({
             "fontFamily": "Inter, sans-serif",
             "cScale0": "hsl(210, 68%, 70.3921568627%)",
@@ -4086,9 +6071,8 @@ flowchart TD
         .as_object()
         .unwrap()
         .clone();
-
-        let resolution = ThemeResolution::new("default", explicit, calculated).unwrap();
-
+        let resolution =
+            ThemeResolution::new(MermaidThemeId::Default, &explicit, calculated).unwrap();
         assert_eq!(
             resolution.default_snapshot.stage,
             ThemeResolutionStage::DefaultSnapshot
@@ -4105,14 +6089,12 @@ flowchart TD
             resolution.explicit_replay.stage,
             ThemeResolutionStage::ExplicitReplay
         );
-        assert_eq!(
-            resolution.explicit_replay.origins.get("fontFamily"),
-            Some(&ThemeValueOrigin::ExplicitOverride)
-        );
-        assert_eq!(
-            resolution.explicit_replay.origins.get("cScale0"),
-            Some(&ThemeValueOrigin::ExplicitOverride)
-        );
+        for key in ["fontFamily", "cScale0"] {
+            assert_eq!(
+                resolution.explicit_replay.origins.get(key),
+                Some(&ThemeValueOrigin::ExplicitOverride)
+            );
+        }
         assert_eq!(
             resolution.explicit_replay.origins.get("cScalePeer0"),
             Some(&ThemeValueOrigin::DefaultSnapshot)
@@ -4247,26 +6229,26 @@ flowchart TD
     }
 
     #[test]
-    fn unknown_theme_falls_back_to_default_theme_variables() {
-        let mut cfg = MermaidConfig::from_value(json!({
-            "theme": "unknown"
-        }));
-        apply_theme_defaults(&mut cfg).unwrap();
+    fn raw_mermaid_config_preserves_upstream_unsupported_theme_fallback() {
+        for requested in ["unknown", "null"] {
+            let mut config = MermaidConfig::from_value(json!({
+                "theme": requested
+            }));
+            assert!(MermaidThemeId::parse(requested).is_err());
+            apply_theme_defaults(&mut config).unwrap();
 
-        let tv = cfg
-            .as_value()
-            .get("themeVariables")
-            .and_then(|v| v.as_object())
-            .unwrap();
+            let variables = config
+                .as_value()
+                .get("themeVariables")
+                .and_then(Value::as_object)
+                .unwrap();
 
-        assert_eq!(
-            tv.get("primaryColor").and_then(|v| v.as_str()),
-            Some("#ECECFF")
-        );
-        assert_eq!(
-            tv.get("classText").and_then(|v| v.as_str()),
-            Some("#131300")
-        );
+            assert_eq!(
+                variables,
+                ThemeProgram::resolve(MermaidThemeId::Default).resolved_without_overrides()
+            );
+            assert_eq!(config.get_str("theme"), Some(requested));
+        }
     }
 
     #[test]

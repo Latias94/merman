@@ -322,7 +322,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
             let (count, unique) = projected_node_labels(semantic)?;
             (
                 semantic.diagram_type() == DIAGRAM_TYPE,
-                semantic.semantic_kind() == "flowchart",
+                semantic.family_id() == Some(merman::DiagramFamilyId::FLOWCHART),
                 semantic.metadata().effective_config.get_bool("htmlLabels") == Some(false),
                 count,
                 unique,

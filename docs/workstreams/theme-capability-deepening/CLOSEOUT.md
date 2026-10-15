@@ -2,6 +2,12 @@
 
 Status: Closed
 Date: 2026-06-04
+Last reviewed: 2026-08-25
+
+> Historical closeout note (2026-08-25): this document preserves the June verification record.
+> The later portable-theme convergence work supersedes the uncommitted-state note below; use
+> [`docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md`](../../plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md)
+> for the current implementation and gate status.
 
 ## Result
 
@@ -65,11 +71,13 @@ Open narrower follow-ons for:
 - public bindings, playground UX, or schema surfaces;
 - host-specific styling policy, which remains an SVG postprocessor boundary.
 
-## Commit State
+## Historical Commit State
 
-Not committed yet. Repo policy requires user confirmation before committing.
+The June closeout was recorded before its follow-on commits were created. Subsequent theme
+architecture work has committed the relevant implementation; this section is retained only to
+preserve the original closeout chronology.
 
-Suggested Conventional Commit message:
+The original closeout recorded the following suggested Conventional Commit message:
 
 ```text
 refactor(merman-render): add render-side theme capability seams

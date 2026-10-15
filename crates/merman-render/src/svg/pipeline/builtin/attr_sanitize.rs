@@ -5,7 +5,7 @@ use std::borrow::Cow;
 use std::convert::Infallible;
 
 use super::css_sanitize::sanitize_css_value_with_checkpoints;
-use super::presentation_fallback::is_mermaid_missing_amount_hsl;
+use super::quadrant_resvg_fallback::is_mermaid_missing_amount_hsl;
 use super::util::{
     SvgTagScanner, checkpoint_loop, escape_xml_attr, find_with_checkpoints, next_svg_quoted_attr,
     next_svg_quoted_attr_with_checkpoints, start_tag_name,
@@ -1201,7 +1201,7 @@ mod tests {
         let svg = r#"<svg><text style="font-family:&quot;a;b&quot;,sans-serif;--data:url(data:image/png;base64,AAAA);stroke:#333"/></svg>"#;
 
         let out = sanitize_element_attributes(svg);
-        roxmltree::Document::parse(&out).expect("sanitized style must remain valid XML");
+        crate::xml_dom::Document::parse(&out).expect("sanitized style must remain valid XML");
 
         assert!(
             out.contains("font-family:&quot;a;b&quot;,sans-serif"),

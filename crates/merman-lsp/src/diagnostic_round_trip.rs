@@ -344,14 +344,7 @@ fn unavailable_uri_digest(uri: &Uri) -> String {
     let mut hasher = Sha256::new();
     hasher.update(UNAVAILABLE_URI_DIGEST_DOMAIN);
     hasher.update(uri.as_str().as_bytes());
-    use std::fmt::Write as _;
-
-    let digest = hasher.finalize();
-    let mut output = String::with_capacity(digest.len() * 2);
-    for byte in digest {
-        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
-    }
-    output
+    data_encoding::HEXLOWER.encode(&hasher.finalize())
 }
 
 impl UnavailableDiagnosticSource {

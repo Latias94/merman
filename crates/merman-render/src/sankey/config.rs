@@ -62,15 +62,23 @@ impl<'a> SankeyConfigView<'a> {
             show_values: self.show_values(),
             prefix: self.configured_string("prefix").unwrap_or_default(),
             suffix: self.configured_string("suffix").unwrap_or_default(),
-            link_color: self
-                .configured_string("linkColor")
-                .unwrap_or_else(|| DEFAULT_LINK_COLOR.to_string()),
-            outlined_labels: self
-                .configured_string("labelStyle")
-                .unwrap_or_else(|| DEFAULT_LABEL_STYLE.to_string())
-                == "outlined",
+            #[cfg(test)]
+            link_color: self.link_color(),
+            #[cfg(test)]
+            outlined_labels: self.outlined_labels(),
             node_colors: self.configured_object("nodeColors"),
         }
+    }
+
+    pub(super) fn link_color(&self) -> String {
+        self.configured_string("linkColor")
+            .unwrap_or_else(|| DEFAULT_LINK_COLOR.to_string())
+    }
+
+    pub(super) fn outlined_labels(&self) -> bool {
+        self.configured_string("labelStyle")
+            .unwrap_or_else(|| DEFAULT_LABEL_STYLE.to_string())
+            == "outlined"
     }
 
     fn show_values(&self) -> bool {
@@ -130,7 +138,9 @@ pub(crate) struct SankeyRenderSettings<'a> {
     pub(crate) show_values: bool,
     pub(crate) prefix: String,
     pub(crate) suffix: String,
+    #[cfg(test)]
     pub(crate) link_color: String,
+    #[cfg(test)]
     pub(crate) outlined_labels: bool,
     pub(crate) node_colors: Option<&'a Map<String, Value>>,
 }

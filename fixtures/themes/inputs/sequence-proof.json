@@ -1,0 +1,34 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-sequence-proof",
+  "tokens": {
+    "background": "#f7f3e8",
+    "surface": "#ffffff",
+    "primary": "#facc15",
+    "text": "#111111"
+  },
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [
+    {
+      "kind": "solid",
+      "color": "#f7f3e8"
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

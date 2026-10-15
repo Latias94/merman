@@ -1225,13 +1225,13 @@ mod tests {
     }
 
     #[test]
-    fn complete_layout_and_math_capabilities_render_in_rustdoc_mode() {
+    fn available_layout_and_math_capabilities_render_in_rustdoc_mode() {
         let root = tempfile::tempdir().unwrap();
         let source = concat!(
             "```mermaid\n",
             "architecture-beta\n  group api(cloud)[API]\n  service server(server)[Server] in api\n",
             "```\n",
-            "```mermaid\nflowchart-elk TD\n  A --> B\n```\n",
+            "```mermaid\nflowchart TD\n  A --> B\n```\n",
             "```mermaid\nflowchart TD\n  A[\"$$x^2$$\"] --> B\n```\n",
         );
         let config = write_config(root.path(), source, "hide");
@@ -1242,6 +1242,9 @@ mod tests {
         assert_eq!(bundle.diagrams(), 3);
         assert_eq!(output.matches("data-merman-rustdoc=\"true\"").count(), 3);
         assert!(!output.contains("$$x^2$$"));
+        assert!(!output.contains("<template"), "{output}");
+        assert!(!output.contains("<foreignObject"), "{output}");
+        assert!(output.contains("merman-prepared-math-native"), "{output}");
     }
 
     #[test]
@@ -1282,7 +1285,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_suffix_selectors_survive_id_rebasing() {
+    fn sequence_marker_selectors_follow_rebased_terminal_ids() {
         let root = tempfile::tempdir().unwrap();
         let config = write_config(
             root.path(),
@@ -1293,8 +1296,25 @@ mod tests {
         let bundle = generate_test(&config, &resources(), &stderr()).unwrap();
         let output = std::str::from_utf8(bundle.fragments()[0].bytes()).unwrap();
 
-        assert!(output.contains("[id$=&quot;-arrowhead&quot;]"), "{output}");
-        assert!(!output.contains("[id$=&quot;merman-rustdoc-"), "{output}");
+        let document = roxmltree::Document::parse(output.trim()).expect("valid generated fragment");
+        let markers = document
+            .descendants()
+            .filter(|node| node.has_tag_name("marker"))
+            .filter_map(|node| node.attribute("id"))
+            .filter(|id| id.ends_with("-arrowhead"))
+            .collect::<Vec<_>>();
+        assert!(!markers.is_empty(), "{output}");
+        for marker in markers {
+            assert!(marker.starts_with("merman-rustdoc-"), "{marker}");
+            assert!(
+                output.contains(&format!("[id=&quot;{marker}&quot;]")),
+                "{output}"
+            );
+        }
+        assert!(
+            !output.contains("[id=&quot;merman-arrowhead&quot;]"),
+            "{output}"
+        );
     }
 
     #[test]

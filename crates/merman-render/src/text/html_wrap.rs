@@ -81,6 +81,10 @@ impl NormalizedHtmlText {
         self.text.is_empty()
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.text.len()
+    }
+
     pub(crate) fn inline_boundary(&mut self, depth: usize, mode: HtmlWhiteSpace) {
         if let Some((offset, previous_depth, previous_mode)) = self.boundaries.last_mut()
             && *offset == self.text.len()
@@ -174,6 +178,8 @@ pub(crate) struct PlannedHtmlLine {
     pub(crate) text: String,
     pub(crate) width: f64,
     pub(crate) alignment_width: f64,
+    pub(crate) source_range: Range<usize>,
+    pub(crate) selected_hyphen: bool,
 }
 
 fn separator(ch: char) -> bool {
@@ -187,6 +193,7 @@ fn separator(ch: char) -> bool {
 /// receive the complete visible candidate, including a conditional hyphen when selected.
 struct Candidate {
     text: String,
+    source_start: Option<usize>,
     width: Option<BuiltinHtmlLineWidth>,
     trimmed: usize,
     non_hanging: usize,
@@ -197,6 +204,7 @@ struct Candidate {
 
 struct CandidateSnapshot {
     len: usize,
+    source_start: Option<usize>,
     trimmed: usize,
     non_hanging: usize,
     width: Option<BuiltinHtmlLineWidth>,
@@ -209,6 +217,7 @@ impl Candidate {
     fn snapshot(&self) -> CandidateSnapshot {
         CandidateSnapshot {
             len: self.text.len(),
+            source_start: self.source_start,
             trimmed: self.trimmed,
             non_hanging: self.non_hanging,
             width: self.width.clone(),
@@ -220,6 +229,7 @@ impl Candidate {
 
     fn restore(&mut self, snapshot: CandidateSnapshot) {
         self.text.truncate(snapshot.len);
+        self.source_start = snapshot.source_start;
         self.trimmed = snapshot.trimmed;
         self.non_hanging = snapshot.non_hanging;
         self.width = snapshot.width;
@@ -233,6 +243,7 @@ impl Candidate {
         }
         Self {
             text: String::new(),
+            source_start: None,
             trimmed: 0,
             non_hanging: 0,
             trimmed_width: width.clone(),
@@ -260,12 +271,14 @@ impl Candidate {
             self.append_regular(
                 &text[regular_start..relative],
                 source.mode_at(offset + relative.saturating_sub(1)),
+                offset + regular_start,
             );
             regular_start = relative + ch.len_utf8();
             let mode = source.mode_at(offset + relative);
             if self.text.is_empty() && ch == ' ' && !mode.preserves_spaces() {
                 continue;
             }
+            self.source_start.get_or_insert(offset + relative);
             self.text.push(ch);
             if let Some(width) = &mut self.width {
                 width.push_text(ch.encode_utf8(&mut [0; 4]));
@@ -290,14 +303,16 @@ impl Candidate {
         self.append_regular(
             &text[regular_start..],
             source.mode_at(offset + text.len().saturating_sub(1)),
+            offset + regular_start,
         );
         checkpoint()
     }
 
-    fn append_regular(&mut self, text: &str, mode: HtmlWhiteSpace) {
+    fn append_regular(&mut self, text: &str, mode: HtmlWhiteSpace, offset: usize) {
         if text.is_empty() {
             return;
         }
+        self.source_start.get_or_insert(offset);
         // SHY has no unselected glyph, but its control boundary still participates in shaping.
         // Removing it here would join otherwise independent combining or ZWJ sequences.
         self.text.push_str(text);
@@ -316,7 +331,7 @@ impl Candidate {
         end: usize,
         state: &Option<BuiltinHtmlLineWidth>,
         hyphen: bool,
-        measure: &mut impl FnMut(&str) -> Result<f64, E>,
+        measure: &mut impl FnMut(&str, Range<usize>, bool) -> Result<f64, E>,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<f64, E> {
         checkpoint()?;
@@ -327,9 +342,15 @@ impl Candidate {
             }
             width.width_px()
         } else if hyphen {
-            measure(&html_line_text_with_break(&self.text[..end], true))?
+            let start = self.source_start.unwrap_or(0);
+            measure(
+                &html_line_text_with_break(&self.text[..end], true),
+                start..start + end,
+                true,
+            )?
         } else {
-            measure(&self.text[..end])?
+            let start = self.source_start.unwrap_or(0);
+            measure(&self.text[..end], start..start + end, false)?
         };
         checkpoint()?;
         Ok(result)
@@ -338,7 +359,7 @@ impl Candidate {
     fn fit_width<E>(
         &self,
         hyphen: bool,
-        measure: &mut impl FnMut(&str) -> Result<f64, E>,
+        measure: &mut impl FnMut(&str, Range<usize>, bool) -> Result<f64, E>,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<f64, E> {
         self.measured(
@@ -355,10 +376,12 @@ impl Candidate {
         soft: bool,
         hyphen: bool,
         limit: Option<f64>,
-        measure: &mut impl FnMut(&str) -> Result<f64, E>,
+        measure: &mut impl FnMut(&str, Range<usize>, bool) -> Result<f64, E>,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<PlannedHtmlLine, E> {
         self.text.truncate(self.trimmed);
+        let start = self.source_start.unwrap_or(0);
+        let source_range = start..start + self.text.len();
         if hyphen {
             if self.text.ends_with('\u{00ad}') {
                 self.text.truncate(self.text.len() - '\u{00ad}'.len_utf8());
@@ -367,7 +390,7 @@ impl Candidate {
         }
         // Final measurement uses the same backend contract as natural-width measurement.
         checkpoint()?;
-        let width = measure(&self.text)?;
+        let width = measure(&self.text, source_range.clone(), hyphen)?;
         checkpoint()?;
         let conditional = self.retained_mode == HtmlWhiteSpace::PreWrap && !soft;
         let hangs = !hyphen
@@ -388,6 +411,8 @@ impl Candidate {
             text: self.text,
             width,
             alignment_width,
+            source_range,
+            selected_hyphen: hyphen,
         })
     }
 }
@@ -398,6 +423,23 @@ pub(crate) fn plan_html_lines<E>(
     max_width: Option<f64>,
     builtin: Option<BuiltinHtmlLineWidth>,
     measure: &mut impl FnMut(&str) -> Result<f64, E>,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Vec<PlannedHtmlLine>, E> {
+    plan_html_lines_with_ranges(
+        source,
+        max_width,
+        builtin,
+        &mut |text, _, _| measure(text),
+        checkpoint,
+    )
+}
+
+/// Retains exact normalized-source ranges for consumers that preserve inline text styles.
+pub(crate) fn plan_html_lines_with_ranges<E>(
+    source: &NormalizedHtmlText,
+    max_width: Option<f64>,
+    builtin: Option<BuiltinHtmlLineWidth>,
+    measure: &mut impl FnMut(&str, Range<usize>, bool) -> Result<f64, E>,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Vec<PlannedHtmlLine>, E> {
     let limit = max_width.filter(|width| width.is_finite() && *width > 0.0);
@@ -759,6 +801,42 @@ mod tests {
         }
         assert_eq!(plan(&[("a\n ", HtmlWhiteSpace::PreLine)], 100.0).len(), 1);
         assert_eq!(plan(&[("a\n ", HtmlWhiteSpace::PreWrap)], 100.0).len(), 2);
+    }
+
+    #[test]
+    fn range_aware_lines_bind_repeated_unicode_text_and_discretionary_breaks() {
+        let text = "  中 中\naa\u{00ad}bb cc";
+        let source = NormalizedHtmlText::single_mode(text, HtmlWhiteSpace::PreLine);
+        let mut probes = Vec::new();
+        let lines = plan_html_lines_with_ranges(
+            &source,
+            Some(30.0),
+            None,
+            &mut |candidate, range, selected| {
+                assert_eq!(
+                    candidate,
+                    html_line_text_with_break(&text[range.clone()], selected)
+                );
+                probes.push(range);
+                Ok::<_, Infallible>(
+                    candidate.chars().filter(|ch| *ch != '\u{00ad}').count() as f64 * 10.0,
+                )
+            },
+            &mut || Ok(()),
+        )
+        .unwrap();
+        assert!(!probes.is_empty());
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.selected_hyphen && line.text == "aa-")
+        );
+        for line in lines {
+            assert_eq!(
+                line.text,
+                html_line_text_with_break(&text[line.source_range], line.selected_hyphen)
+            );
+        }
     }
 
     #[test]

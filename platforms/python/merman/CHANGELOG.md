@@ -26,6 +26,12 @@ Version `0.9.0` retains UniFFI API 7 from 0.8.0. Keep the generated wrapper and 
 
 See the [package guide](README.md) and [upgrade guide](../../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
 
+### Breaking changes
+
+- Regenerate the direct UniFFI bindings and native library together for typed-theme authoring and diagnostics. UniFFI API `7` is unchanged; that number does not make wrappers from different releases interchangeable.
+- Replace `presentation_catalog_json()` with `theme_catalog_json()` for versioned theme catalog discovery and the shared theme authoring operations; errors retain their structured `theme_authoring` diagnostic envelope.
+- Advance Options JSON from schema `2` to `3`: use the closed top-level `theme` preset-or-spec group, `raster.matte`, and `pdf.page_paint`. Removed `presentation` paths and host-owned CSS/security fields are rejected; update saved options alongside the generated bindings.
+
 ## [0.8.0] - 2026-10-06
 
 This entry consolidates the 0.7.0-to-0.8.0 package migration across the alphas. Version 0.8.0 was published on PyPI on 2026-10-06.

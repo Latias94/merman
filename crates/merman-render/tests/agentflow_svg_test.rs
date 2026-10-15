@@ -6,6 +6,64 @@ use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use serde_json::json;
 
 #[test]
+fn agentflow_eager_hierarchy_markers_match_upstream_definitions() {
+    let fixtures = [
+        (
+            include_str!("../../../fixtures/agentflow/basic.mmd"),
+            include_str!("../../../fixtures/upstream-svgs/agentflow/basic.svg"),
+        ),
+        (
+            include_str!("../../../fixtures/agentflow/container-and-shapes.mmd"),
+            include_str!("../../../fixtures/upstream-svgs/agentflow/container-and-shapes.svg"),
+        ),
+    ];
+    for backend in ["elk", "dagre"] {
+        for (source, upstream) in fixtures {
+            let (_, svg) = render_agentflow_config_probe(source, json!({"layout": backend}), false);
+            let actual = roxmltree::Document::parse(&svg).unwrap();
+            let expected = roxmltree::Document::parse(upstream).unwrap();
+            let mut ids = std::collections::BTreeSet::new();
+            for id in actual.descendants().filter_map(|node| node.attribute("id")) {
+                assert!(ids.insert(id), "{backend}: duplicate SVG id {id}");
+            }
+            let markers = actual
+                .descendants()
+                .filter(|node| node.has_tag_name("marker"))
+                .collect::<Vec<_>>();
+            assert_eq!(markers.len(), 14, "{backend}: eager marker registry");
+            let scope = markers[0]
+                .attribute("id")
+                .unwrap()
+                .strip_suffix("-pointEnd")
+                .unwrap();
+            for suffix in ["hierarchyEnd", "hierarchyStart"] {
+                let marker_id = format!("{scope}-{suffix}");
+                let marker = markers
+                    .iter()
+                    .find(|node| node.attribute("id") == Some(marker_id.as_str()))
+                    .expect("hierarchy marker shares the document marker namespace");
+                let reference = expected
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("marker")
+                            && node.attribute("id").is_some_and(|id| id.ends_with(suffix))
+                    })
+                    .unwrap();
+                for attribute in reference.attributes().filter(|attr| attr.name() != "id") {
+                    assert_eq!(marker.attribute(attribute.name()), Some(attribute.value()));
+                }
+                let path = marker.children().find(|node| node.is_element()).unwrap();
+                let reference_path = reference.children().find(|node| node.is_element()).unwrap();
+                assert!(path.has_tag_name("path"));
+                for attribute in reference_path.attributes() {
+                    assert_eq!(path.attribute(attribute.name()), Some(attribute.value()));
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn agentflow_domain_model_projects_through_shared_svg_layout() {
     let input = r#"agentflow-beta LR
 flow planner[Planner]
@@ -127,7 +185,7 @@ fn agentflow_nested_collapse_keeps_pinned_dagre_segments_and_label_dom_order() {
         end_marker: bool,
         commands: String,
     }
-    fn signature(svg: &str) -> (Vec<EdgeSignature>, Vec<String>) {
+    fn signature(svg: &str, canonical_ids: bool) -> (Vec<EdgeSignature>, Vec<String>) {
         let document = roxmltree::Document::parse(svg).unwrap();
         let paths = document
             .descendants()
@@ -167,16 +225,52 @@ fn agentflow_nested_collapse_keeps_pinned_dagre_segments_and_label_dom_order() {
                 }
             })
             .collect();
-        for helper in ["inner---inner---1", "inner---inner---2"] {
-            let helper = document
-                .descendants()
-                .find(|node| node.attribute("id") == Some(helper))
-                .unwrap();
+        let mut helper_dom_ids = std::collections::HashSet::new();
+        for helper_id in ["inner---inner---1", "inner---inner---2"] {
+            let mut matches = document.descendants().filter(|node| {
+                if canonical_ids {
+                    node.attribute("data-id") == Some(helper_id)
+                        && node.attribute("data-et") == Some("edge-label")
+                } else {
+                    node.attribute("id") == Some(helper_id)
+                }
+            });
+            let helper = matches.next().expect("self-loop helper occurrence");
+            assert!(
+                matches.next().is_none(),
+                "duplicate self-loop helper occurrence"
+            );
+            let dom_id = helper.attribute("id").unwrap();
+            assert!(helper_dom_ids.insert(dom_id));
+            if canonical_ids {
+                let prefix = format!(
+                    "{}-merman-flowchart-document-synthetic-label-",
+                    document.root_element().attribute("id").unwrap(),
+                );
+                let ordinal = dom_id
+                    .strip_prefix(&prefix)
+                    .expect("helper DOM identity belongs to its canonical document owner");
+                assert!(!ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit()));
+            }
             assert_eq!(helper.attribute("class"), Some("label edgeLabel"));
             let rect = helper.children().find(roxmltree::Node::is_element).unwrap();
             assert!(rect.has_tag_name("rect"));
             assert_eq!(rect.attribute("width"), Some("0.1"));
             assert_eq!(rect.attribute("height"), Some("0.1"));
+        }
+        if canonical_ids {
+            let ids = document
+                .descendants()
+                .filter_map(|node| node.attribute("id"))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                ids.len(),
+                ids.iter()
+                    .copied()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
+                "duplicate document DOM IDs"
+            );
         }
         (paths, labels)
     }
@@ -184,8 +278,8 @@ fn agentflow_nested_collapse_keeps_pinned_dagre_segments_and_label_dom_order() {
     let upstream =
         include_str!("../../../fixtures/upstream-svgs/agentflow/local_nested_collapse_routes.svg");
     let (layout, svg) = render_agentflow_config_probe(input, json!({}), false);
-    let (paths, labels) = signature(&svg);
-    assert_eq!((paths.clone(), labels.clone()), signature(upstream));
+    let (paths, labels) = signature(&svg, true);
+    assert_eq!((paths.clone(), labels.clone()), signature(upstream, false));
     assert_eq!(
         paths
             .iter()
@@ -312,6 +406,21 @@ fn agentflow_parallel_dagre_loops_replace_metadata_without_moving_the_first_slot
         visible, "second loop",
         "last loop metadata owns the existing helper slots"
     );
+    for id in ["A-cyclic-special-1", "A-cyclic-special-2"] {
+        let helper_label = labels
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some(id))
+            .unwrap();
+        let visible: String = helper_label
+            .descendants()
+            .filter(roxmltree::Node::is_text)
+            .filter_map(|node| node.text())
+            .collect();
+        assert!(
+            visible.is_empty(),
+            "only the middle self-loop segment owns its label"
+        );
+    }
     assert!(!svg.contains("first loop"));
 }
 
@@ -424,16 +533,11 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
     for (source, expected) in [
         (
             "agentflow-beta\nA\nA\nB --> C --> D\n",
-            &[
-                "agentflow-A-0",
-                "agentflow-B-2",
-                "agentflow-C-3",
-                "agentflow-D-4",
-            ][..],
+            &[("A", 0), ("B", 2), ("C", 3), ("D", 4)][..],
         ),
         (
             "agentflow-beta\nA[Old]@{shape: task}\nstyle A fill:red\nconnector A[API]\nconnector A[Again]\nA@{instruction: call}\nB\n",
-            &["agentflow-A-3", "agentflow-B-5"][..],
+            &[("A", 3), ("B", 5)][..],
         ),
     ] {
         for backend in ["elk", "dagre"] {
@@ -450,13 +554,18 @@ fn agentflow_svg_uses_parser_assigned_dom_ordinals() {
                 .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
                 .unwrap();
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-            for id in expected {
-                let id = format!("merman-{id}");
+            for (id, ordinal) in expected {
+                let node = document
+                    .descendants()
+                    .find(|node| {
+                        node.attribute("data-id") == Some(*id)
+                            && node.attribute("data-et") == Some("node")
+                    })
+                    .unwrap_or_else(|| panic!("{backend}: missing {id}"));
                 assert!(
-                    document
-                        .descendants()
-                        .any(|node| node.attribute("id") == Some(id.as_str())),
-                    "{backend}: missing {id}"
+                    node.attribute("id")
+                        .is_some_and(|value| value.ends_with(&format!("-node-{ordinal}"))),
+                    "{backend}: {id} must retain parser ordinal {ordinal}: {node:?}"
                 );
             }
         }

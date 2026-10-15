@@ -42,7 +42,7 @@ Grok Build shows useful terminal presentation behavior, but those choices belong
 
 #### Theme and composition
 
-- **R4.** Host theme values map through the existing semantic `HostTheme`/presentation and `AsciiTerminalPalette`/`AsciiColorTheme` boundaries without importing terminal or SVG implementation details across layers.
+- **R4.** Host theme values map through the existing semantic `ThemeDefinitionV1` → `CompiledDiagramTheme` and `AsciiTerminalPalette`/`AsciiColorTheme` boundaries without importing terminal or SVG implementation details across layers.
 - **R5.** Any new public option or metadata field is added only when an existing composition cannot express a documented integration scenario, and then is exposed through capability and all affected bindings atomically.
 
 #### Integration confidence
@@ -61,7 +61,7 @@ Grok Build shows useful terminal presentation behavior, but those choices belong
 
 - **F1. Terminal host:** host detects terminal facts, constructs explicit ASCII/Unicode options and viewport policy, then renders a typed result and decides how to display it.
 - **F2. Agent/log host:** host requests plain output and machine metadata, branches on width/fallback/error state, and never parses layout from text.
-- **F3. Themed browser host:** host resolves presentation/theme and selects the SVG pipeline independently from ASCII color policy.
+- **F3. Themed browser host:** host compiles a diagram theme and selects the SVG pipeline independently from ASCII color policy.
 - **F4. Raster host:** host requests validated SVG-to-PNG/JPEG/PDF export and owns file or viewer behavior.
 
 ### Acceptance Examples
@@ -84,7 +84,7 @@ Grok Build shows useful terminal presentation behavior, but those choices belong
 #### In scope
 
 - Documentation and examples for existing library contracts.
-- A focused audit of theme/presentation composition and output presets already present in the public API.
+- A focused audit of compiled-theme composition and output presets already present in the public API.
 - Tests that prove the recipes and preserve capability/error/metadata behavior.
 - Clarifications to support matrices, README guidance, ADR addenda, and binding usage documentation.
 
@@ -107,7 +107,7 @@ Grok Build shows useful terminal presentation behavior, but those choices belong
 - `docs/adr/0003-workspace-structure.md` — reusable headless crate boundary.
 - `docs/adr/0008-async-and-runtime.md` — runtime neutrality and host-owned scheduling/isolation.
 - `docs/adr/0065-ascii-output-boundary.md` — first-class ASCII target and explicit viewport/fallback boundary.
-- `docs/rendering/presentation-themes.md` — existing semantic host theme and presentation layering.
+- `docs/rendering/presentation-themes.md` — current compiled-theme authoring, ownership, and migration guidance.
 - `docs/rendering/ASCII_SUPPORT_MATRIX.md` — capability admission and structured fallback contract.
 - `repo-ref/grok-build/crates/codegen/xai-grok-pager/src/scrollback/blocks/mermaid_content.rs` — pager affordances and product-owned image behavior.
 - `repo-ref/grok-build/crates/codegen/xai-grok-pager/src/app/mermaid_worker.rs` — product-owned subprocess isolation and limits.
@@ -124,7 +124,7 @@ Grok Build shows useful terminal presentation behavior, but those choices belong
 - **KTD2. Keep host policy outside the library.** Examples may show a host resolving terminal width, color capability, or product theme, but Merman receives explicit values and never discovers them itself.
 - **KTD3. Use recipes as the first integration seam.** A small set of copyable examples and a decision table is more reusable across CLI, editor, blog, WASM, and SDK hosts than a product-specific orchestration layer.
 - **KTD4. Preserve semantic fallback and explicit lossiness.** Do not import Grok's fixed truncation or raw-source fallback into the renderer; hosts may choose their own presentation after receiving Merman's typed result.
-- **KTD5. Keep SVG and terminal theme mappings independent but semantically named.** Existing `HostTheme`/presentation and `AsciiColorTheme` roles can share host concepts through documentation and adapter code without making one output's CSS or terminal encoding the authority for the other.
+- **KTD5. Keep SVG and terminal theme mappings independent but semantically named.** Existing `ThemeDefinitionV1` → `CompiledDiagramTheme` and `AsciiColorTheme` roles can share host concepts through documentation and adapter code without making one output's CSS or terminal encoding the authority for the other.
 - **KTD6. Make public-contract changes conditional.** If the audit finds no gap, the implementation is documentation/examples/tests only. If it finds a gap, isolate it as a separately reviewable API unit with capability, binding, and migration impact explicitly listed.
 
 ### High-Level Technical Design
@@ -166,7 +166,7 @@ The library boundary ends at `RenderOutput` and its typed metadata/errors. The h
 2. Record any missing composition as a concrete reproducible gap rather than an abstract desire for convenience.
 3. Keep all terminal detection, cache, UI, and OS actions outside the candidate library surface.
 
-**Patterns to follow:** Existing `render_terminal.rs`, `custom_presentation_theme.rs`, `custom_svg_pipeline.rs`, `AsciiRequest`, capability admission, and operation metadata tests.
+**Patterns to follow:** Existing `render_terminal.rs`, `custom_diagram_theme.rs`, `custom_svg_pipeline.rs`, `AsciiRequest`, capability admission, and operation metadata tests.
 
 **Test scenarios:**
 
@@ -186,7 +186,7 @@ The library boundary ends at `RenderOutput` and its typed metadata/errors. The h
 
 **Dependencies:** U1
 
-**Files:** `crates/merman/examples/render_terminal.rs`, `crates/merman/examples/custom_presentation_theme.rs`, `crates/merman/examples/custom_svg_pipeline.rs`, `crates/merman/examples/render_agent_log.rs`, `crates/merman/examples/README.md`, `crates/merman/Cargo.toml`
+**Files:** `crates/merman/examples/render_terminal.rs`, `crates/merman/examples/custom_diagram_theme.rs`, `crates/merman/examples/custom_svg_pipeline.rs`, `crates/merman/examples/render_agent_log.rs`, `crates/merman/examples/README.md`, `crates/merman/Cargo.toml`
 
 **Approach:**
 

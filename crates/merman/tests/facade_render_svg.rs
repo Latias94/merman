@@ -1,8 +1,11 @@
 #![cfg(feature = "svg")]
 
-use merman::{OperationControl, RenderError, RenderOutput, RenderRequest, Renderer, SvgRequest};
+use merman::{
+    DiagramFamilyId, OperationControl, RenderError, RenderOutput, RenderRequest, Renderer,
+    SvgRequest,
+};
 
-fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, RenderError> {
+fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, Box<RenderError>> {
     let request = SvgRequest {
         options: merman::svg::SvgRenderOptions {
             diagram_id: diagram_id.map(str::to_owned),
@@ -13,11 +16,35 @@ fn render(source: &str, diagram_id: Option<&str>) -> Result<merman::SvgOutput, R
     let output =
         Renderer::new().render(RenderRequest::svg(source, OperationControl::new(), request))?;
     let RenderOutput::Svg(Some(svg)) = output else {
-        return Err(RenderError::UnsupportedTarget(
+        return Err(Box::new(RenderError::UnsupportedTarget(
             "no Mermaid diagram detected",
-        ));
+        )));
     };
     Ok(svg)
+}
+
+fn fallback_content<'a, 'input>(
+    instance: roxmltree::Node<'a, 'input>,
+) -> roxmltree::Node<'a, 'input> {
+    let reference = instance
+        .children()
+        .find(|node| node.has_tag_name("use"))
+        .and_then(|node| node.attribute("href"))
+        .expect("fallback instance references its definition");
+    let id = reference
+        .strip_prefix('#')
+        .expect("same-document fallback reference");
+    let definition = instance
+        .document()
+        .descendants()
+        .find(|node| node.attribute("id") == Some(id))
+        .expect("fallback definition exists");
+    assert!(
+        definition
+            .parent()
+            .is_some_and(|node| node.has_tag_name("defs"))
+    );
+    definition
 }
 
 #[test]
@@ -27,13 +54,15 @@ fn typed_facade_renders_a_mermaid_diagram() {
     assert!(svg.svg().contains("<svg"));
     assert!(svg.svg().contains("Start"));
     assert!(svg.svg().contains("Done"));
-    assert_eq!(svg.evidence().execution_path().as_str(), "renderer");
+    assert_eq!(svg.evidence().family_id(), DiagramFamilyId::FLOWCHART);
 }
 
 #[test]
 fn typed_facade_preserves_detected_diagram_errors() {
-    let error = render("flowchart TD\nA -->", None).expect_err("invalid Mermaid must fail");
-    assert!(matches!(error, RenderError::Parse(_)));
+    let error = render("flowchart TD\nA -->", None)
+        .map(|_| ())
+        .expect_err("invalid Mermaid must fail");
+    assert!(matches!(*error, RenderError::Parse(_)));
 }
 
 #[test]
@@ -220,11 +249,11 @@ flowchart TD
             .descendants()
             .find(|node| node.attribute("id") == source_node.attribute("id"))
             .expect("converted flowchart node");
-        let fallback = document
+        let fallback = node
             .descendants()
             .find(|node| {
                 node.attribute("data-merman-foreignobject") == Some("fallback")
-                    && node
+                    && fallback_content(*node)
                         .descendants()
                         .filter(|child| child.has_tag_name("text"))
                         .filter_map(|child| child.text())
@@ -232,7 +261,60 @@ flowchart TD
                         == label
             })
             .expect("fallback preserves the label");
-        let rows: Vec<_> = fallback
+        assert!(
+            fallback
+                .attribute("data-merman-source-classes")
+                .is_some_and(|classes| classes
+                    .split_whitespace()
+                    .any(|class| class == "nodeLabel"))
+        );
+        assert!(
+            fallback
+                .ancestors()
+                .any(|ancestor| ancestor.attribute("id") == source_node.attribute("id"))
+        );
+        let content = fallback_content(fallback);
+        let instance = fallback
+            .children()
+            .find(|child| child.has_tag_name("use"))
+            .unwrap();
+        for coordinate in ["x", "y"] {
+            let expected = source_label
+                .attribute(coordinate)
+                .unwrap_or("0")
+                .parse::<f64>()
+                .unwrap();
+            let actual = instance
+                .attribute(coordinate)
+                .unwrap()
+                .parse::<f64>()
+                .unwrap();
+            assert_eq!(
+                actual, expected,
+                "fallback instance {coordinate} retains its source position"
+            );
+        }
+        let viewport = content
+            .children()
+            .find(|child| child.has_tag_name("svg"))
+            .unwrap();
+        assert_eq!(viewport.attribute("x"), Some("0"));
+        assert_eq!(viewport.attribute("y"), Some("0"));
+        for dimension in ["width", "height"] {
+            assert_eq!(
+                viewport
+                    .attribute(dimension)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap(),
+                source_label
+                    .attribute(dimension)
+                    .unwrap()
+                    .parse::<f64>()
+                    .unwrap()
+            );
+        }
+        let rows: Vec<_> = content
             .descendants()
             .filter(|child| child.has_tag_name("text"))
             .map(|child| child.text().unwrap_or(""))

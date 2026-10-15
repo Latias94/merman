@@ -1,79 +1,97 @@
-//! Flowchart edge helpers (markers, class attr, marker-color resolution).
+//! Flowchart edge marker and class helpers.
 
-use indexmap::IndexMap;
+use super::FlowchartCompiledStyles;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(in crate::svg::parity::flowchart) enum FlowchartMarkerBase {
+    PointStart,
+    PointEnd,
+    CircleStart,
+    CircleEnd,
+    CrossStart,
+    CrossEnd,
+}
+
+impl FlowchartMarkerBase {
+    pub(in crate::svg::parity::flowchart) const fn id_suffix(self) -> &'static str {
+        match self {
+            Self::PointStart => "pointStart",
+            Self::PointEnd => "pointEnd",
+            Self::CircleStart => "circleStart",
+            Self::CircleEnd => "circleEnd",
+            Self::CrossStart => "crossStart",
+            Self::CrossEnd => "crossEnd",
+        }
+    }
+}
 
 pub(super) fn flowchart_edge_marker_end_base(
     edge: &crate::flowchart::FlowEdge,
-) -> Option<&'static str> {
+) -> Option<FlowchartMarkerBase> {
     match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some("pointEnd"),
-        Some("double_arrow_circle") => Some("circleEnd"),
-        Some("double_arrow_cross") => Some("crossEnd"),
-        Some("arrow_point") => Some("pointEnd"),
-        Some("arrow_cross") => Some("crossEnd"),
-        Some("arrow_circle") => Some("circleEnd"),
+        Some("double_arrow_point") => Some(FlowchartMarkerBase::PointEnd),
+        Some("double_arrow_circle") => Some(FlowchartMarkerBase::CircleEnd),
+        Some("double_arrow_cross") => Some(FlowchartMarkerBase::CrossEnd),
+        Some("arrow_point") => Some(FlowchartMarkerBase::PointEnd),
+        Some("arrow_cross") => Some(FlowchartMarkerBase::CrossEnd),
+        Some("arrow_circle") => Some(FlowchartMarkerBase::CircleEnd),
         Some("arrow_open") => None,
-        _ => Some("pointEnd"),
+        _ => Some(FlowchartMarkerBase::PointEnd),
     }
 }
 
 pub(super) fn flowchart_edge_marker_start_base(
     edge: &crate::flowchart::FlowEdge,
-) -> Option<&'static str> {
+) -> Option<FlowchartMarkerBase> {
     match edge.edge_type.as_deref() {
-        Some("double_arrow_point") => Some("pointStart"),
-        Some("double_arrow_circle") => Some("circleStart"),
-        Some("double_arrow_cross") => Some("crossStart"),
+        Some("double_arrow_point") => Some(FlowchartMarkerBase::PointStart),
+        Some("double_arrow_circle") => Some(FlowchartMarkerBase::CircleStart),
+        Some("double_arrow_cross") => Some(FlowchartMarkerBase::CrossStart),
         _ => None,
     }
 }
 
-pub(super) fn flowchart_resolve_stroke_for_marker(
-    class_defs: &IndexMap<String, Vec<String>>,
-    classes: &[String],
-    default_edge_style: &[String],
-    edge_style: &[String],
-) -> Option<String> {
-    // Marker ids only depend on the resolved `stroke` value, so avoid allocating the full
-    // `FlowchartCompiledStyles` (ordered map + joined style strings) here.
-    let mut stroke: Option<&str> = None;
-
-    for c in classes {
-        let Some(decls) = class_defs.get(c) else {
-            continue;
-        };
-        for d in decls {
-            let Some((k, v)) = super::parse_style_decl(d) else {
-                continue;
-            };
-            if k == "stroke" {
-                stroke = Some(v);
-            }
-        }
-    }
-
-    for d in default_edge_style.iter().chain(edge_style.iter()) {
-        let Some((k, v)) = super::parse_style_decl(d) else {
-            continue;
-        };
-        if k == "stroke" {
-            stroke = Some(v);
-        }
-    }
-
-    stroke.map(|s| s.to_string())
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::svg::parity::flowchart) struct FlowchartEdgeAnimationResolution {
+    generated_class: Option<&'static str>,
+    active: bool,
 }
 
-pub(super) fn flowchart_edge_is_animated(
-    ctx: &super::FlowchartRenderCtx<'_>,
-    edge: &crate::flowchart::FlowEdge,
-) -> bool {
-    edge.animate == Some(true)
-        || edge.animation.is_some()
-        || edge
-            .classes
-            .iter()
-            .filter_map(|class| ctx.class_defs.get(class))
-            .flatten()
-            .any(|declaration| declaration.contains("animation"))
+impl FlowchartEdgeAnimationResolution {
+    pub(in crate::svg::parity::flowchart) fn resolve(
+        edge: &crate::flowchart::FlowEdge,
+        styles: &FlowchartCompiledStyles,
+    ) -> Self {
+        // Mermaid 11.16.1 `edges.js` derives a fast class from `animate` and then lets the
+        // explicit `animation` speed replace it. In particular, `animate: false, animation: fast`
+        // is animated. Source declarations are resolved separately because their inline CSS can
+        // replace the computed animation name after the generated class is attached.
+        let explicit_animation = edge
+            .animation
+            .as_deref()
+            .map(str::trim)
+            .filter(|animation| !animation.is_empty());
+        let generated_class = match explicit_animation {
+            Some(animation) if animation.eq_ignore_ascii_case("slow") => {
+                Some("edge-animation-slow")
+            }
+            Some(_) => Some("edge-animation-fast"),
+            None if edge.animate == Some(true) => Some("edge-animation-fast"),
+            None => None,
+        };
+        Self {
+            active: styles
+                .edge_animation_active()
+                .unwrap_or(edge.animate == Some(true) || explicit_animation.is_some()),
+            generated_class,
+        }
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn class(self) -> Option<&'static str> {
+        self.generated_class
+    }
+
+    pub(in crate::svg::parity::flowchart) const fn is_active(self) -> bool {
+        self.active
+    }
 }

@@ -10,6 +10,11 @@ execution: code
 origin: "direct maintainer request after the 2026-08-04 Playground architecture review"
 ---
 
+> Supersession note (2026-08-18): the portable-theme convergence plan's KTD20 supersedes this
+> plan's `migrateLegacyHostTheme` preservation requirement. The alpha.4 `hostThemePreset` share
+> field was not published and is now rejected rather than translated. The remaining bounded,
+> atomic current-share decoding requirements in this plan are unchanged.
+
 # Playground Architecture and Tooling Simplification - Plan
 
 ## Goal Capsule

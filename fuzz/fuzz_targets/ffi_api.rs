@@ -8,9 +8,9 @@ use std::ptr;
 const MAX_FFI_INPUT_BYTES: usize = 16 * 1024;
 const MAX_OPTIONS_BYTES: usize = 256;
 const DEFAULT_URI: &[u8] = b"file:///fuzz.mmd";
-const FIXED_OPTIONS: &[u8] = br#"{"version":2,"fixed_today":"2025-01-01","fixed_local_offset_minutes":0,"resources":{"limits":{"max_source_bytes":16384,"max_svg_bytes":1048576,"max_model_items":2048,"max_model_text_bytes":65536,"max_layout_work_units":250000}}}"#;
+const FIXED_OPTIONS: &[u8] = br#"{"version":3,"fixed_today":"2025-01-01","fixed_local_offset_minutes":0,"resources":{"limits":{"max_source_bytes":16384,"max_svg_bytes":1048576,"max_model_items":2048,"max_model_text_bytes":65536,"max_layout_work_units":250000}}}"#;
 const MALFORMED_OPTIONS: &[u8] =
-    br#"{"version":2,"resources":{"limits":{"max_source_bytes":"bad"}}}"#;
+    br#"{"version":3,"resources":{"limits":{"max_source_bytes":"bad"}}}"#;
 const STALE_OPTIONS: &[u8] = br#"{"version":1}"#;
 
 fuzz_target!(|data: &[u8]| {

@@ -1,0 +1,39 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-dotted-canvas",
+  "tokens": null,
+  "typography": null,
+  "canvas": [
+    {
+      "kind": "radial-gradient",
+      "centerXPercent": 50,
+      "centerYPercent": 50,
+      "repetition": "tiled",
+      "tileWidthPx": 20,
+      "tileHeightPx": 20,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#64748b66"
+        },
+        {
+          "offsetPercent": 12,
+          "color": "#64748b66"
+        },
+        {
+          "offsetPercent": 13,
+          "color": "#64748b00"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#64748b00"
+        }
+      ]
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

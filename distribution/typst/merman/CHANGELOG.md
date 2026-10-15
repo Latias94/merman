@@ -2,6 +2,13 @@
 
 The Typst package has its own version axis; its bundled Merman version is recorded separately.
 
+## Unreleased theme branch
+
+- Advance the local plugin to ABI 3 and render options to schema 3 for compiled themes, catalog discovery, and theme authoring. Pair the source wrapper with its matching local plugin build.
+- Keep new theme schemas, recipes, and catalogs at version 1. These additions are absent from the independently submitted ABI 2 package `0.5.0`; the source package metadata remains a local development value until the next release is selected.
+
+The dated `0.5.0` entry below records the main submission checkpoint before these unmerged theme additions.
+
 ## [0.5.0] - 2026-10-13
 
 Bundles Merman 0.9.0. Existing rendering functions, figures, profiles, and raw-block handlers remain compatible with 0.4.0; plugin ABI 2, options schema 2, and minimum Typst 0.15.0 are unchanged. Update your import to `@preview/merman:0.5.0`. [PR #194](https://github.com/Latias94/merman/pull/194)

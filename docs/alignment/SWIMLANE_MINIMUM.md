@@ -9,7 +9,7 @@ by another terminal-lane separation pass. Title-band rail avoidance includes the
 and inherits the diagram direction when a lane has none. Explicit lane SVG IDs include the diagram
 prefix; the synthetic default lane retains the upstream fallback. Edge clipping follows the actual
 Swimlane renderer even when the configuration names another default layout. See
-[ADR-0093](../adr/0093-mermaid-12-2-upstream-transition.md) for source and regression ownership.
+[ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md) for source and regression ownership.
 
 Content-node preparation also applies the shared Flowchart minimum label width. Circle and
 double-circle retain their source-defined opt-out. Omitting this rule changes rounded/diamond

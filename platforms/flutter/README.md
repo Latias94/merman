@@ -108,7 +108,14 @@ try {
 
 ## Inspect Native Metadata
 
-The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and presentation catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Presentation IDs remain open strings so compatible producers can add presets, profiles, and aspects without requiring a Dart enum update.
+The typed metadata APIs expose the loaded artifact's diagram, ASCII, parser/render, lint, Mermaid theme, and compiled-theme catalogs. Results are copied into Dart-owned immutable values and cached on the `Merman` instance. Decoders require the documented fields while tolerating additive JSON fields from a compatible newer producer. Theme preset and descriptor IDs remain open strings so compatible producers can add values without requiring Dart enum updates.
+
+In the current source interface, `MermanThemePreset.familyDesigns` exposes the catalog's curated
+family treatment. Use a matching artifact that provides this metadata; a package version alone
+does not establish its availability. `base_only` is the shared base appearance with necessary family adaptations;
+`dedicated` is an intentional family design, and absent or unknown treatments remain unreviewed.
+Unknown values survive decoding. This metadata does not grant qualification or portability and
+must not cause an implicit switch to a different preset when the diagram family changes.
 
 ```dart
 final diagrams = merman.supportedDiagrams();
@@ -116,7 +123,7 @@ final ascii = merman.asciiCapabilities();
 final families = merman.diagramFamilyCapabilities();
 final lintRules = merman.lintRuleCatalog();
 final themes = merman.supportedThemes();
-final presentation = merman.presentationCatalog();
+final themeCatalog = merman.themeCatalog();
 final rawCatalog = merman.metadataJson('supported-diagrams');
 ```
 
@@ -130,7 +137,7 @@ One-shot `Merman` methods accept the complete options document for that operatio
 final engine = MermanEngine(
   optionsJson: '''
     {
-      "version": 2,
+      "version": 3,
       "resources": {"profile": "constrained"},
       "svg": {"pipeline": "resvg-safe"}
     }
@@ -256,9 +263,16 @@ flutter analyze
 dart run tool/abi3_contract_test.dart
 dart run example/main.dart
 dart run example/smoke.dart
+dart run tool/theme_authoring_smoke.dart
 ```
 
 CI regenerates the binding, rejects a stale checked-in result, runs analyzer and the ABI contract, then exercises the default Native Assets entry point against a real host library. `build-native.py all-desktop` assembles the complete Apple, Linux, and Windows release matrix on macOS; Android uses `platforms/android/build-android.py --artifact-profile flutter-android-native`. Native packaging is documented in the [Flutter/Dart FFI guide](https://github.com/Latias94/merman/blob/main/docs/bindings/FLUTTER_DART_FFI.md).
+
+The repository-only theme authoring smoke compares light/dark materialization, full support
+discovery responses, and structured authoring/resource errors against shared cross-transport
+fixtures. It runs through the bundled Native Assets library using both one-shot and reusable
+engines in platform verification and Flutter release/preflight CI. It does not qualify final
+application bundles or certify the C7a candidate.
 
 ## Documentation And Releases
 

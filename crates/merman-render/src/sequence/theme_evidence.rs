@@ -1,0 +1,964 @@
+mod observation;
+mod receipts;
+mod recorder;
+
+pub(crate) use receipts::{
+    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeReceipt,
+    SequenceLifelineThemeEmission, SequenceLifelineThemeReceipt, SequenceMessageThemeEmission,
+    SequenceMessageThemeReceipt, SequenceNumberLabelThemeEmission, SequenceNumberLabelThemeReceipt,
+    SequenceStaticRectThemeEmission, SequenceStaticRectThemeReceipt,
+    SequenceTypographyThemeReceipt,
+};
+pub(crate) use recorder::SequenceThemeEvidenceRecorder;
+
+#[cfg(test)]
+use crate::diagram_theme::{ResolvedStyleProperty, ThemeCapability, ThemeTarget, ThemeVariant};
+#[cfg(test)]
+use crate::family::FamilyThemeResidualReason;
+#[cfg(test)]
+use receipts::{SequenceRoleTypographyReceipt, record_style_winners};
+#[cfg(test)]
+use std::collections::BTreeSet;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::DiagramFamilyId;
+    use crate::diagram_theme::{
+        CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, Specified, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch,
+    };
+
+    #[test]
+    fn actor_effect_requires_resolved_ownership_and_every_terminal() {
+        use crate::diagram_theme::{
+            DiagramEffectSet, EffectBinding, EffectGraph, EffectInput, EffectPrimitive,
+            ThemeColorValue,
+        };
+        for binding in [false, true] {
+            let mut spec = DiagramThemeSpec::new();
+            let mut effects = DiagramEffectSet::default()
+                .with_graph(
+                    EffectGraph::new(
+                        "glow",
+                        [EffectPrimitive::DropShadow {
+                            input: EffectInput::SourceGraphic,
+                            offset_x: 0.0,
+                            offset_y: 0.0,
+                            blur_radius: 8.0,
+                            spread: 0.0,
+                            color: ThemeColorValue::parse("#00ffff").unwrap(),
+                        }],
+                    )
+                    .unwrap(),
+                )
+                .unwrap();
+            if binding {
+                effects = effects
+                    .with_binding(EffectBinding::new(ThemeTarget::Actor, "glow").unwrap())
+                    .unwrap();
+            } else {
+                spec = spec.with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Actor,
+                    ThemeStylePatch::default().with_effect("glow").unwrap(),
+                )));
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(spec.with_effects(effects))
+                .unwrap();
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            for emitted in [0, 1, 2] {
+                let mut receipt = SequenceActorThemeReceipt::default();
+                receipt.record_static_style(&resolved.style(
+                    ThemeTarget::Actor,
+                    ThemeVariant::Default,
+                    None,
+                ));
+                receipt.effect_requested = true;
+                receipt.effect_binding_used = binding;
+                receipt.record_geometry_candidate();
+                receipt.record_geometry_candidate();
+                for _ in 0..emitted {
+                    receipt.record_effect_rect();
+                }
+                let recorder = SequenceThemeEvidenceRecorder::default();
+                recorder
+                    .record_actor_emission(1, false, false, false, false, false, false, receipt);
+                let evidence = recorder.finish(Some(&resolved));
+                assert_eq!(evidence.applied().len(), usize::from(emitted == 2));
+                assert!(evidence.not_applicable_mechanisms().is_empty());
+            }
+            if binding {
+                let recorder = SequenceThemeEvidenceRecorder::default();
+                recorder.record_actor_emission(
+                    1,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    false,
+                    Default::default(),
+                );
+                let evidence = recorder.finish(Some(&resolved));
+                assert!(evidence.applied().is_empty());
+                assert!(
+                    evidence.not_applicable_mechanisms().is_empty(),
+                    "missing resolution cannot suppress a binding"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn actor_geometry_needs_every_expected_terminal_before_application() {
+        for emitted in [0, 1, 2] {
+            let mut patch = ThemeStylePatch::default().with_stroke_width(3.0).unwrap();
+            patch.geometry.radius = Specified::Value(10.0);
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Actor, patch)),
+                ))
+                .unwrap();
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            let mut receipt = SequenceActorThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Actor,
+                ThemeVariant::Default,
+                None,
+            ));
+            receipt.record_geometry_candidate();
+            receipt.record_geometry_candidate();
+            for _ in 0..emitted {
+                receipt.record_geometry_rect();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_actor_emission(1, false, false, false, false, false, false, receipt);
+            let evidence = recorder.finish(Some(&resolved));
+            assert_eq!(evidence.applied().len(), usize::from(emitted == 2));
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+        }
+    }
+
+    #[test]
+    fn actor_rule_is_not_applicable_when_terminal_model_has_no_actors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Actor,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence actor theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        let evidence = SequenceThemeEvidenceRecorder::default().finish(Some(&resolved));
+
+        assert_eq!(
+            evidence.not_applicable_mechanisms(),
+            [crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Actor,
+            }]
+        );
+        assert!(evidence.applied().is_empty());
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn note_winner_without_complete_rect_receipt_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Note,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Note theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for (note_count, emitted_rects) in [(1, 0), (2, 1)] {
+            let mut receipt = SequenceStaticRectThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Note,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..emitted_rects {
+                receipt.record_rect_emission();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_note_emission(SequenceStaticRectThemeEmission::from_terminal_writer(
+                note_count,
+                Some("#ef4444"),
+                false,
+                None,
+                false,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn message_winner_without_complete_line_receipt_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Message,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap())
+                                .with_stroke_width(4.0)
+                                .unwrap(),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Message theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for (line_candidates, emitted_lines) in [(1, 0), (2, 1)] {
+            let mut receipt = SequenceMessageThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Message,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..line_candidates {
+                receipt.record_line_candidate();
+            }
+            for _ in 0..emitted_lines {
+                receipt.record_line_emission();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_message_emission(SequenceMessageThemeEmission::from_terminal_writer(
+                Some("#2563eb"),
+                true,
+                false,
+                Some(crate::diagram_theme::ResolvedStyleProperty::Stroke),
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_role_fill_requires_both_stylesheet_and_native_text_receipts() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::MessageLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid("#123456")
+                                        .expect("valid Sequence message-label fill"),
+                                ),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        )
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ff00ff").unwrap()),
+                        )),
+                ),
+            )
+            .expect("compile Sequence message-label theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+
+        for (record_native_emission, expected_applied) in [(false, false), (true, true)] {
+            let mut message = SequenceRoleTypographyReceipt::default();
+            record_style_winners(
+                &mut message.static_winners,
+                &resolved.style(ThemeTarget::MessageLabel, ThemeVariant::Default, None),
+            );
+            message.record_stylesheet_emission(
+                crate::sequence::SequenceTextSurface::MessageLabel,
+                "#123456",
+                Some("#123456"),
+            );
+            message.record_candidate(crate::sequence::SequenceTextSurface::MessageLabel);
+            if record_native_emission {
+                message.record_emission(crate::sequence::SequenceTextSurface::MessageLabel);
+            }
+
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_typography_emission(SequenceTypographyThemeReceipt {
+                base: Default::default(),
+                actor: SequenceRoleTypographyReceipt::default(),
+                message,
+                note: SequenceRoleTypographyReceipt::default(),
+                loop_label: SequenceRoleTypographyReceipt::default(),
+            });
+
+            recorder
+                .record_unsupported_text_emission(
+                    Some(&resolved),
+                    false,
+                    &crate::resources::OperationWorkMeter::new(
+                        crate::RenderResourcePolicy::unbounded_for_trusted_input(),
+                    ),
+                )
+                .unwrap();
+            let evidence = recorder.finish(Some(&resolved));
+            assert_eq!(evidence.applied().len(), usize::from(expected_applied));
+            assert_eq!(
+                evidence.applied_capabilities(),
+                if expected_applied {
+                    BTreeSet::from([ThemeCapability::SolidPaint])
+                } else {
+                    BTreeSet::new()
+                }
+            );
+            assert_eq!(
+                evidence.not_applicable_mechanisms().len(),
+                usize::from(expected_applied)
+            );
+            assert_eq!(evidence.residuals().len(), usize::from(!expected_applied));
+        }
+    }
+
+    #[test]
+    fn sequence_role_unsupported_ordinal_is_applicable_only_inside_the_terminal_domain() {
+        for (ordinal, expected_not_applicable, expected_residual) in [(1, 0, 1), (2, 1, 0)] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::MessageLabel,
+                                ThemeStylePatch::default().with_fill(
+                                    CanvasPaint::solid("#123456")
+                                        .expect("valid Sequence ordinal message-label fill"),
+                                ),
+                            )
+                            .with_ordinal(
+                                OrdinalSelector::exact(ordinal)
+                                    .expect("valid Sequence message-label ordinal"),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .expect("compile Sequence ordinal message-label theme");
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            let mut message = SequenceRoleTypographyReceipt::default();
+            message.seed_complete_surface(
+                crate::sequence::SequenceTextSurface::MessageLabel,
+                "#123456",
+                None,
+            );
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_typography_emission(SequenceTypographyThemeReceipt {
+                base: Default::default(),
+                actor: SequenceRoleTypographyReceipt::default(),
+                message,
+                note: SequenceRoleTypographyReceipt::default(),
+                loop_label: SequenceRoleTypographyReceipt::default(),
+            });
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert_eq!(
+                evidence.not_applicable_mechanisms().len(),
+                expected_not_applicable,
+                "ordinal {ordinal}"
+            );
+            assert_eq!(
+                evidence.residuals().len(),
+                expected_residual,
+                "ordinal {ordinal}"
+            );
+        }
+    }
+
+    #[test]
+    fn sequence_loop_paints_require_stylesheet_and_actual_label_box_receipts() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::LoopLabelBackground,
+                            ThemeStylePatch::default()
+                                .with_fill(
+                                    CanvasPaint::solid("#123456")
+                                        .expect("valid Sequence Loop fill"),
+                                )
+                                .with_stroke(CanvasPaint::Transparent),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Loop paint theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+
+        for (record_surface_emission, expected_applied) in [(false, false), (true, true)] {
+            let mut receipt = SequenceControlThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::LoopLabelBackground,
+                ThemeVariant::Default,
+                None,
+            ));
+            receipt.record_stylesheet_emission(
+                "#123456",
+                Some("#123456"),
+                "transparent",
+                Some("transparent"),
+            );
+            receipt.record_surface_candidate();
+            if record_surface_emission {
+                receipt.record_surface_emission();
+            }
+
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_control_emission(
+                ThemeTarget::LoopLabelBackground,
+                SequenceControlThemeEmission::from_terminal_writer(
+                    Some("#123456"),
+                    false,
+                    Some("transparent"),
+                    false,
+                    receipt,
+                ),
+            );
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert_eq!(evidence.applied().len(), usize::from(expected_applied));
+            assert_eq!(
+                evidence.applied_capabilities(),
+                if expected_applied {
+                    BTreeSet::from([
+                        ThemeCapability::SolidPaint,
+                        ThemeCapability::TransparentPaint,
+                    ])
+                } else {
+                    BTreeSet::new()
+                }
+            );
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_number_label_fill_requires_a_complete_terminal_color_receipt() {
+        for (paint, css, capability) in [
+            (
+                CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
+                "#123456",
+                ThemeCapability::SolidPaint,
+            ),
+            (
+                CanvasPaint::Transparent,
+                "transparent",
+                ThemeCapability::TransparentPaint,
+            ),
+        ] {
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::SequenceNumberLabel,
+                                ThemeStylePatch::default().with_fill(paint),
+                            )
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                    ),
+                )
+                .expect("compile Sequence number label theme");
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            let mut receipt = SequenceNumberLabelThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::SequenceNumberLabel,
+                ThemeVariant::Default,
+                None,
+            ));
+            receipt.record_stylesheet_emission(css, Some(css));
+            for _ in 0..2 {
+                receipt.record_text_candidate();
+                receipt.record_text_emission(Some(css));
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_sequence_number_emission(
+                SequenceNumberLabelThemeEmission::from_terminal_writer(Some(css), false, receipt),
+            );
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert_eq!(evidence.applied().len(), 1);
+            assert_eq!(
+                evidence.applied_capabilities(),
+                BTreeSet::from([capability])
+            );
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_number_label_is_not_applicable_without_numbers_or_under_source_ownership() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::SequenceNumberLabel,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence number label theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+
+        for (has_number, overridden, final_fill, typed_fill) in [
+            (false, false, "#123456", Some("#123456")),
+            (true, true, "#fedcba", None),
+        ] {
+            let mut receipt = SequenceNumberLabelThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::SequenceNumberLabel,
+                ThemeVariant::Default,
+                None,
+            ));
+            receipt.record_stylesheet_emission(final_fill, typed_fill);
+            if has_number {
+                receipt.record_text_candidate();
+                receipt.record_text_emission(Some(final_fill));
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_sequence_number_emission(
+                SequenceNumberLabelThemeEmission::from_terminal_writer(
+                    typed_fill, overridden, receipt,
+                ),
+            );
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert_eq!(evidence.not_applicable_mechanisms().len(), 1);
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn sequence_number_label_color_mismatch_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::SequenceNumberLabel,
+                            ThemeStylePatch::default().with_fill(
+                                CanvasPaint::solid("#123456").expect("valid Sequence number fill"),
+                            ),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence number label theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        let mut receipt = SequenceNumberLabelThemeReceipt::default();
+        receipt.record_static_style(&resolved.style(
+            ThemeTarget::SequenceNumberLabel,
+            ThemeVariant::Default,
+            None,
+        ));
+        receipt.record_stylesheet_emission("#123456", Some("#123456"));
+        receipt.record_text_candidate();
+        receipt.record_text_emission(Some("#654321"));
+        let recorder = SequenceThemeEvidenceRecorder::default();
+        recorder.record_sequence_number_emission(
+            SequenceNumberLabelThemeEmission::from_terminal_writer(Some("#123456"), false, receipt),
+        );
+
+        let evidence = recorder.finish(Some(&resolved));
+        assert!(evidence.applied().is_empty());
+        assert!(evidence.not_applicable_mechanisms().is_empty());
+        assert!(evidence.residuals().is_empty());
+    }
+
+    #[test]
+    fn lifeline_winner_without_complete_actor_line_receipt_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Lifeline,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#2563eb").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Lifeline theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for (line_candidates, emitted_lines) in [(1, 0), (2, 1)] {
+            let mut receipt = SequenceLifelineThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Lifeline,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..line_candidates {
+                receipt.record_line_candidate();
+            }
+            for actor_index in 0..emitted_lines {
+                receipt.record_line_emission(actor_index, 10.0, 2.0, 10.0, 18.0, 0.5);
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+                Some("#2563eb"),
+                None,
+                false,
+                Some(ResolvedStyleProperty::Stroke),
+                false,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn lifeline_stroke_width_requires_complete_actor_line_receipt() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Lifeline,
+                            ThemeStylePatch::default()
+                                .with_stroke_width(2.0)
+                                .expect("valid Lifeline stroke width"),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Lifeline width theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+
+        for (line_candidates, emitted_lines, paint_overridden, expected_applied) in [
+            (1, 0, false, false),
+            (2, 1, false, false),
+            (2, 2, true, true),
+        ] {
+            let mut receipt = SequenceLifelineThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Lifeline,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..line_candidates {
+                receipt.record_line_candidate();
+            }
+            for actor_index in 0..emitted_lines {
+                receipt.record_line_emission(actor_index, 10.0, 2.0, 10.0, 18.0, 0.5);
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+                None,
+                Some(2.0),
+                true,
+                None,
+                paint_overridden,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert_eq!(evidence.applied().len(), usize::from(expected_applied));
+            assert_eq!(
+                evidence.applied_capabilities(),
+                if expected_applied {
+                    BTreeSet::from([ThemeCapability::BorderStyling])
+                } else {
+                    BTreeSet::new()
+                }
+            );
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+
+    #[test]
+    fn message_and_loop_unsupported_geometry_track_winners_without_typed_paint() {
+        for target in [ThemeTarget::Message, ThemeTarget::LoopLabelBackground] {
+            let mut first = ThemeStylePatch::default();
+            first.geometry.radius = Specified::Value(6.0);
+            let mut last = ThemeStylePatch::default();
+            last.geometry.radius = Specified::Value(8.0);
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(
+                                ThemeRule::new(target, first).for_family(DiagramFamilyId::SEQUENCE),
+                            )
+                            .with_rule(
+                                ThemeRule::new(target, last).for_family(DiagramFamilyId::SEQUENCE),
+                            ),
+                    ),
+                )
+                .expect("compile unsupported-only Sequence rules");
+            let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+            for has_terminal in [false, true] {
+                let style = resolved.style(target, ThemeVariant::Default, None);
+                let recorder = SequenceThemeEvidenceRecorder::default();
+                match target {
+                    ThemeTarget::Message => {
+                        let mut receipt = SequenceMessageThemeReceipt::default();
+                        receipt.record_static_style(&style);
+                        if has_terminal {
+                            receipt.record_line_candidate();
+                            receipt.record_line_emission();
+                        }
+                        recorder.record_message_emission(
+                            SequenceMessageThemeEmission::from_terminal_writer(
+                                None, false, true, None, receipt,
+                            ),
+                        );
+                    }
+                    ThemeTarget::LoopLabelBackground => {
+                        let mut receipt = SequenceControlThemeReceipt::default();
+                        receipt.record_static_style(&style);
+                        if has_terminal {
+                            receipt.record_surface_candidate();
+                            receipt.record_surface_emission();
+                        }
+                        recorder.record_control_emission(
+                            ThemeTarget::LoopLabelBackground,
+                            SequenceControlThemeEmission::from_terminal_writer(
+                                None, true, None, true, receipt,
+                            ),
+                        );
+                    }
+                    _ => unreachable!(),
+                }
+                let evidence = recorder.finish(Some(&resolved));
+                assert!(evidence.applied().is_empty());
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().len(),
+                    if has_terminal { 1 } else { 2 }
+                );
+                assert!(evidence.not_applicable_mechanisms().contains(
+                    &crate::diagram_theme::FamilyThemeMechanismKey::Rule { index: 0, target }
+                ));
+                if has_terminal {
+                    let [residual] = evidence.residuals() else {
+                        panic!("the winning geometry request must remain residual")
+                    };
+                    assert_eq!(
+                        residual.key(),
+                        &crate::diagram_theme::FamilyThemeMechanismKey::Rule { index: 1, target }
+                    );
+                    assert_eq!(
+                        residual.reason(),
+                        FamilyThemeResidualReason::UnsupportedGeometry
+                    );
+                } else {
+                    assert!(evidence.residuals().is_empty());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn lifeline_unsupported_geometry_tracks_winners_without_typed_paint() {
+        let mut first = ThemeStylePatch::default();
+        first.geometry.radius = Specified::Value(6.0);
+        let mut last = ThemeStylePatch::default();
+        last.geometry.radius = Specified::Value(8.0);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Lifeline, first)
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        )
+                        .with_rule(
+                            ThemeRule::new(ThemeTarget::Lifeline, last)
+                                .for_family(DiagramFamilyId::SEQUENCE),
+                        ),
+                ),
+            )
+            .expect("compile unsupported-only Lifeline rules");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for paint_overridden in [false, true] {
+            let mut receipt = SequenceLifelineThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Lifeline,
+                ThemeVariant::Default,
+                None,
+            ));
+            receipt.record_line_candidate();
+            receipt.record_line_emission(0, 10.0, 2.0, 10.0, 18.0, 0.5);
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+                None,
+                None,
+                false,
+                None,
+                paint_overridden,
+                receipt,
+            ));
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert_eq!(
+                evidence.not_applicable_mechanisms(),
+                &[crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                    index: 0,
+                    target: ThemeTarget::Lifeline,
+                }]
+            );
+            let [residual] = evidence.residuals() else {
+                panic!("the winning geometry request must remain residual")
+            };
+            assert_eq!(
+                residual.key(),
+                &crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                    index: 1,
+                    target: ThemeTarget::Lifeline,
+                }
+            );
+            assert_eq!(
+                residual.reason(),
+                FamilyThemeResidualReason::UnsupportedGeometry
+            );
+        }
+    }
+
+    #[test]
+    fn lifeline_mixed_typed_paint_and_unsupported_sibling_facets_remains_residual() {
+        let mut style = ThemeStylePatch::default()
+            .with_stroke(CanvasPaint::solid("#2563eb").expect("valid Lifeline stroke"));
+        style.geometry.radius = Specified::Value(6.0);
+        style.spacing.padding = Specified::Value(crate::diagram_theme::InsetsPx::all(4.0));
+        style.paint.opacity = Specified::Value(0.75);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(ThemeTarget::Lifeline, style)
+                            .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile mixed Sequence Lifeline theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        let mut receipt = SequenceLifelineThemeReceipt::default();
+        receipt.record_static_style(&resolved.style(
+            ThemeTarget::Lifeline,
+            ThemeVariant::Default,
+            None,
+        ));
+        receipt.record_line_candidate();
+        receipt.record_line_emission(0, 10.0, 2.0, 10.0, 18.0, 0.5);
+        let recorder = SequenceThemeEvidenceRecorder::default();
+        recorder.record_lifeline_emission(SequenceLifelineThemeEmission::from_terminal_writer(
+            Some("#2563eb"),
+            None,
+            false,
+            Some(ResolvedStyleProperty::Stroke),
+            false,
+            receipt,
+        ));
+
+        let evidence = recorder.finish(Some(&resolved));
+        assert!(evidence.applied().is_empty());
+        let [residual] = evidence.residuals() else {
+            panic!("mixed Lifeline rule must retain exactly one residual")
+        };
+        assert_eq!(
+            residual.key(),
+            &crate::diagram_theme::FamilyThemeMechanismKey::Rule {
+                index: 0,
+                target: ThemeTarget::Lifeline,
+            }
+        );
+        assert_eq!(
+            residual.reason(),
+            FamilyThemeResidualReason::UnsupportedGeometry
+        );
+    }
+
+    #[test]
+    fn activation_winner_without_complete_rect_receipt_remains_incomplete() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(
+                        ThemeRule::new(
+                            ThemeTarget::Activation,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap()),
+                        )
+                        .for_family(DiagramFamilyId::SEQUENCE),
+                    ),
+                ),
+            )
+            .expect("compile Sequence Activation theme");
+        let resolved = theme.resolve(DiagramFamilyId::SEQUENCE);
+        for (activation_count, emitted_rects) in [(1, 0), (2, 1)] {
+            let mut receipt = SequenceStaticRectThemeReceipt::default();
+            receipt.record_static_style(&resolved.style(
+                ThemeTarget::Activation,
+                ThemeVariant::Default,
+                None,
+            ));
+            for _ in 0..emitted_rects {
+                receipt.record_rect_emission();
+            }
+            let recorder = SequenceThemeEvidenceRecorder::default();
+            recorder.record_activation_emission(
+                SequenceStaticRectThemeEmission::from_terminal_writer(
+                    activation_count,
+                    Some("#ef4444"),
+                    false,
+                    None,
+                    false,
+                    receipt,
+                ),
+            );
+
+            let evidence = recorder.finish(Some(&resolved));
+            assert!(evidence.applied().is_empty());
+            assert!(evidence.not_applicable_mechanisms().is_empty());
+            assert!(evidence.residuals().is_empty());
+        }
+    }
+}

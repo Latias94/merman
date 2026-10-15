@@ -1,4 +1,7 @@
+import json
+
 import merman
+from theme_authoring import run_theme_authoring_smoke
 
 
 SOURCE = 'flowchart TD\nA@{ icon: "smoke:rocket", label: "Hello" } --> B[World]'
@@ -22,6 +25,28 @@ class Measurer(merman.MermanTextMeasurer):
 def main() -> None:
     api = merman.Merman()
     require(api.binding_api_version_v7() == 7, "unexpected UniFFI binding API version")
+
+    tiny_source_options = (
+        merman.ResourceOptionsBuilder()
+        .profile(merman.ResourceProfile.CONSTRAINED)
+        .limit(merman.ResourceOverrideId.MAX_SOURCE_BYTES, 1)
+        .build()
+        .to_options_json()
+    )
+    try:
+        api.render_svg(SOURCE, tiny_source_options)
+    except merman.MermanError.Binding as error:
+        require(
+            error.code_name == "MERMAN_RESOURCE_LIMIT_EXCEEDED"
+            and error.resource is not None
+            and error.resource.limit_id == "max_source_bytes"
+            and error.resource.phase == "source"
+            and error.resource.actual > error.resource.max
+            and error.resource.profile == "constrained",
+            "structured resource error smoke failed",
+        )
+    else:
+        raise RuntimeError("source limit unexpectedly accepted the smoke input")
 
     registry = merman.MermanIconRegistry.from_packs(
         [
@@ -72,6 +97,25 @@ def main() -> None:
     require('data-icon="python-smoke"' in svg, "icon service smoke failed")
     require(measurer.calls > 0, "host text measurer was not called")
     require("Hello" in engine.render_ascii(BASIC_SOURCE, None), "ASCII smoke failed")
+    ascii_result = api.render_ascii_result(
+        BASIC_SOURCE, '{"ascii":{"layout_profile":"auto","max_width":80,"overflow":"error"}}'
+    )
+    ascii_plan = ascii_result.metadata.output_plan.ascii
+    raw_plan = json.loads(ascii_result.metadata.output_plan.raw_json)
+    require(ascii_plan.schema_version == 3, "unexpected ASCII schema")
+    require(ascii_plan.requested_layout_profile == "auto", "requested layout lost")
+    require(ascii_plan.compact_attempted == raw_plan["compact_attempted"], "Compact metadata lost")
+    compact_source = "flowchart LR\nA --> B --> C --> D"
+    compact = api.render_ascii_result(
+        compact_source, '{"ascii":{"layout_profile":"compact"}}'
+    )
+    selected = api.render_ascii_result(compact_source, json.dumps({"ascii": {
+        "layout_profile": "auto", "max_width": compact.metadata.output_plan.ascii.primary_width,
+        "overflow": "error",
+    }}))
+    require(selected.metadata.output_plan.ascii.compact_attempted, "Compact attempt lost")
+    require(selected.metadata.output_plan.ascii.layout_profile == "compact", "effective layout lost")
+    require(selected.data == compact.data, "Auto did not preserve selected Compact output")
     require(engine.analyze_json(BASIC_SOURCE, None), "analysis smoke failed")
 
     for capability_id, operation in (
@@ -98,11 +142,15 @@ def main() -> None:
                 f"default native artifact unexpectedly supports {capability_id}"
             )
 
+    constrained_source_options = (
+        merman.ResourceOptionsBuilder()
+        .profile(merman.ResourceProfile.CONSTRAINED)
+        .limit(merman.ResourceOverrideId.MAX_SOURCE_BYTES, 8)
+        .build()
+        .to_options_json()
+    )
     try:
-        engine.render_svg(
-            SOURCE,
-            '{"version":2,"resources":{"profile":"constrained","limits":{"max_source_bytes":8}}}',
-        )
+        engine.render_svg(SOURCE, constrained_source_options)
     except merman.MermanError.Binding as error:
         require(
             error.code_name == "MERMAN_RESOURCE_LIMIT_EXCEEDED"
@@ -140,6 +188,7 @@ def main() -> None:
         raise RuntimeError("expired operation deadline did not cancel the request")
 
     engine.close()
+    run_theme_authoring_smoke()
     print("merman Python UniFFI smoke passed")
 
 

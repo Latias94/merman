@@ -1,8 +1,10 @@
 import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   asciiCapabilities,
   asciiSupportedDiagrams,
   createBrowserTextMeasurementSession,
   detectDiagramFacts,
+  diagramFamilyCapabilities,
   initMerman,
   isMermanInitialized,
   layoutJson,
@@ -11,7 +13,6 @@ import {
   MERMAN_WASM_URL,
   packageVersion,
   parseJson,
-  presentationCatalog,
   renderAscii,
   renderSvg,
   renderSvgWithTextMeasurer,
@@ -19,12 +20,15 @@ import {
   supportedDiagrams,
   supportedThemes,
   svgPlanJson,
+  themeCatalog,
+  exportThemePreset,
   UNAVAILABLE_DIAGRAM_DETECTION,
   validate,
   type HostTextMeasurer,
   type MermanWasmModule,
 } from "@mermanjs/web";
 
+import { themeRecipeOptionsJson } from "./merman-operation-input.ts";
 import { projectError } from "./error-projection.ts";
 import { projectNavigableInlineSvg } from "./render-artifact.ts";
 import type {
@@ -64,16 +68,21 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
   return {
     packageVersion: packageVersion(),
 
-    presentationCatalog,
     runtimeCatalog,
+    themeCatalog,
+    exportThemePreset,
+    validateThemeRecipe(recipeJson) {
+      svgPlanJson("flowchart LR\nA --> B", themeRecipeOptionsJson(
+        { version: BINDING_OPTIONS_SCHEMA_VERSION }, recipeJson,
+      ));
+      return JSON.stringify(JSON.parse(recipeJson));
+    },
+    diagramFamilyCapabilities,
 
     detectDiagram(input) {
       if (input.configurationError) return UNAVAILABLE_DIAGRAM_DETECTION;
       try {
-        return detectDiagramFacts(
-          input.configuredSource,
-          input.bindingOptions,
-        );
+        return detectDiagramFacts(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
       } catch {
         return UNAVAILABLE_DIAGRAM_DETECTION;
       }
@@ -90,14 +99,14 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
         ? layoutJsonWithTextMeasurer(
             input.configuredSource,
             measureText,
-            input.bindingOptions,
+            input.bindingOptionsJson ?? input.bindingOptions,
           )
-        : layoutJson(input.configuredSource, input.bindingOptions);
+        : layoutJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
     },
 
     parseJson(input) {
       assertConfiguredOperation(input);
-      return parseJson(input.configuredSource, input.bindingOptions);
+      return parseJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
     },
 
     render(input) {
@@ -118,9 +127,9 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
             ? renderSvgWithTextMeasurer(
                 input.configuredSource,
                 measureText,
-                input.bindingOptions,
+                input.bindingOptionsJson ?? input.bindingOptions,
               )
-            : renderSvg(input.configuredSource, input.bindingOptions);
+            : renderSvg(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
       } catch (error) {
         return {
           artifact: null,
@@ -159,7 +168,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
       try {
         return {
           ascii: renderAscii(input.configuredSource, {
-            version: 2,
+            version: BINDING_OPTIONS_SCHEMA_VERSION,
             site_config: input.bindingOptions.site_config,
           }),
           error: null,
@@ -176,7 +185,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
 
     svgPlan(input) {
       assertConfiguredOperation(input);
-      return svgPlanJson(input.configuredSource, input.bindingOptions);
+      return svgPlanJson(input.configuredSource, input.bindingOptionsJson ?? input.bindingOptions);
     },
 
     validate,
@@ -184,7 +193,7 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
 }
 
 function assertConfiguredOperation(
-  input: Parameters<MermanDomainFacade["render"]>[0]
+  input: Parameters<MermanDomainFacade["render"]>[0],
 ): void {
   if (input.configurationError) throw input.configurationError;
 }

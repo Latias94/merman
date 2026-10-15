@@ -129,13 +129,6 @@ fn execute_graphical_with_pipeline(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<ExecutedArtifact, CliError> {
-    #[cfg(not(any(
-        feature = "native-fonts",
-        feature = "png",
-        feature = "jpeg",
-        feature = "pdf"
-    )))]
-    let _ = stderr;
     #[cfg(feature = "native-fonts")]
     let font_context = prepared
         .font_context
@@ -199,8 +192,15 @@ fn execute_graphical_with_pipeline(
                     ));
                 }
             }
-            match (&prepared.output, output) {
+            match (graphical_output, output) {
                 (PreparedGraphicalOutput::Svg, merman::RenderOutput::Svg(Some(svg))) => {
+                    report_fallback_css_residual(
+                        prepared.quiet,
+                        svg.admission()
+                            .reasons()
+                            .contains(&merman::TargetAdmissionReason::FallbackCssResidual),
+                        stderr,
+                    );
                     let (svg, _evidence) = svg.into_parts();
                     #[cfg(feature = "markdown")]
                     let metadata = svg_metadata(&svg);
@@ -217,54 +217,116 @@ fn execute_graphical_with_pipeline(
                     Err(CliError::NoDiagram)
                 }
                 #[cfg(feature = "png")]
-                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Png(Some(output))) => {
-                    report_raster_plan(prepared.quiet, output.plan, stderr);
+                (
+                    PreparedGraphicalOutput::Png { options },
+                    merman::RenderOutput::Document(Some(document)),
+                ) => {
+                    #[cfg(feature = "markdown")]
+                    let metadata = svg_metadata(document.svg());
+                    let export = document.prepare_png_export(options, control.clone())?;
+                    let report = export.export_report();
+                    let actual_weight = super::admission::actual_raster_weight(
+                        report.raster(),
+                        report.embedded_images(),
+                        8,
+                    )?;
+                    prepared.admission.ensure_actual_weight(actual_weight)?;
+                    report_raster_plan(prepared.quiet, report.raster(), stderr);
+                    report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+                    report_native_export_quality(
+                        prepared.quiet,
+                        report.directional_filter_transform_residual(),
+                        false,
+                        report.fallback_css_residual(),
+                        stderr,
+                    );
+                    let output = export.encode()?;
                     Ok(ExecutedArtifact {
-                        bytes: output.bytes,
+                        bytes: output.into_bytes(),
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
-                        title: None,
+                        title: metadata.0,
                         #[cfg(feature = "markdown")]
-                        desc: None,
+                        desc: metadata.1,
                     })
                 }
                 #[cfg(feature = "png")]
-                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Png(None)) => {
+                (PreparedGraphicalOutput::Png { .. }, merman::RenderOutput::Document(None)) => {
                     Err(CliError::NoDiagram)
                 }
                 #[cfg(feature = "jpeg")]
                 (
-                    PreparedGraphicalOutput::Jpeg { .. },
-                    merman::RenderOutput::Jpeg(Some(output)),
+                    PreparedGraphicalOutput::Jpeg { options },
+                    merman::RenderOutput::Document(Some(document)),
                 ) => {
-                    report_raster_plan(prepared.quiet, output.plan, stderr);
+                    #[cfg(feature = "markdown")]
+                    let metadata = svg_metadata(document.svg());
+                    let export = document.prepare_jpeg_export(options, control.clone())?;
+                    let report = export.export_report();
+                    let actual_weight = super::admission::actual_raster_weight(
+                        report.raster(),
+                        report.embedded_images(),
+                        10,
+                    )?;
+                    prepared.admission.ensure_actual_weight(actual_weight)?;
+                    report_raster_plan(prepared.quiet, report.raster(), stderr);
+                    report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+                    report_native_export_quality(
+                        prepared.quiet,
+                        report.directional_filter_transform_residual(),
+                        false,
+                        report.fallback_css_residual(),
+                        stderr,
+                    );
+                    let output = export.encode()?;
                     Ok(ExecutedArtifact {
-                        bytes: output.bytes,
+                        bytes: output.into_bytes(),
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
-                        title: None,
+                        title: metadata.0,
                         #[cfg(feature = "markdown")]
-                        desc: None,
+                        desc: metadata.1,
                     })
                 }
                 #[cfg(feature = "jpeg")]
-                (PreparedGraphicalOutput::Jpeg { .. }, merman::RenderOutput::Jpeg(None)) => {
+                (PreparedGraphicalOutput::Jpeg { .. }, merman::RenderOutput::Document(None)) => {
                     Err(CliError::NoDiagram)
                 }
                 #[cfg(feature = "pdf")]
-                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Pdf(Some(output))) => {
-                    report_pdf_filter_plan(prepared.quiet, output.plan, stderr);
+                (
+                    PreparedGraphicalOutput::Pdf { options },
+                    merman::RenderOutput::Document(Some(document)),
+                ) => {
+                    #[cfg(feature = "markdown")]
+                    let metadata = svg_metadata(document.svg());
+                    let export = document.prepare_pdf_export(options, control.clone())?;
+                    let report = export.export_report();
+                    let actual_weight = super::admission::actual_pdf_weight(
+                        report.filters(),
+                        report.embedded_images(),
+                    )?;
+                    prepared.admission.ensure_actual_weight(actual_weight)?;
+                    report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
+                    report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+                    report_native_export_quality(
+                        prepared.quiet,
+                        report.directional_filter_transform_residual(),
+                        report.implicit_viewport_clipping_residual(),
+                        report.fallback_css_residual(),
+                        stderr,
+                    );
+                    let output = export.encode()?;
                     Ok(ExecutedArtifact {
-                        bytes: output.bytes,
+                        bytes: output.into_bytes(),
                         _permit: Some(permit),
                         #[cfg(feature = "markdown")]
-                        title: None,
+                        title: metadata.0,
                         #[cfg(feature = "markdown")]
-                        desc: None,
+                        desc: metadata.1,
                     })
                 }
                 #[cfg(feature = "pdf")]
-                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Pdf(None)) => {
+                (PreparedGraphicalOutput::Pdf { .. }, merman::RenderOutput::Document(None)) => {
                     Err(CliError::NoDiagram)
                 }
                 (_, _) => Err(CliError::InvalidOutput(
@@ -280,13 +342,13 @@ fn execute_graphical_with_pipeline(
             let svg = pipeline
                 .process_resvg_compatible(source, &session)
                 .map_err(merman::RenderError::from)?;
-            execute_encoded_svg(prepared, graphical_output, svg, permit, control, stderr)
+            execute_raw_svg(prepared, graphical_output, svg, permit, control, stderr)
         }
     }
 }
 
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-fn execute_encoded_svg(
+fn execute_raw_svg(
     prepared: &PreparedGraphicalRender,
     output: &PreparedGraphicalOutput,
     svg: merman::svg::ResvgCompatibleSvg,
@@ -305,13 +367,23 @@ fn execute_encoded_svg(
             let prepared_raster =
                 merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
                     .map_err(merman::RenderError::from)?;
+            let report =
+                prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Png);
             let actual_weight = super::admission::actual_raster_weight(
-                prepared_raster.plan(),
-                prepared_raster.embedded_image_plan(),
+                report.raster(),
+                report.embedded_images(),
                 8,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, prepared_raster.plan(), stderr);
+            report_raster_plan(prepared.quiet, report.raster(), stderr);
+            report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+            report_native_export_quality(
+                prepared.quiet,
+                report.directional_filter_transform_residual(),
+                false,
+                report.fallback_css_residual(),
+                stderr,
+            );
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_png()
@@ -328,13 +400,23 @@ fn execute_encoded_svg(
             let prepared_raster =
                 merman::svg::export::prepare_raster_controlled(&svg, options, control.clone())
                     .map_err(merman::RenderError::from)?;
+            let report =
+                prepared_raster.report_for_output(merman::svg::export::RasterOutputKind::Jpeg);
             let actual_weight = super::admission::actual_raster_weight(
-                prepared_raster.plan(),
-                prepared_raster.embedded_image_plan(),
+                report.raster(),
+                report.embedded_images(),
                 10,
             )?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_raster_plan(prepared.quiet, prepared_raster.plan(), stderr);
+            report_raster_plan(prepared.quiet, report.raster(), stderr);
+            report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+            report_native_export_quality(
+                prepared.quiet,
+                report.directional_filter_transform_residual(),
+                false,
+                report.fallback_css_residual(),
+                stderr,
+            );
             Ok(ExecutedArtifact {
                 bytes: prepared_raster
                     .encode_jpeg()
@@ -351,12 +433,19 @@ fn execute_encoded_svg(
             let prepared_pdf =
                 merman::svg::export::prepare_pdf_controlled(&svg, options, control.clone())
                     .map_err(merman::RenderError::from)?;
-            let actual_weight = super::admission::actual_pdf_weight(
-                prepared_pdf.filter_plan(),
-                prepared_pdf.embedded_image_plan(),
-            )?;
+            let report = prepared_pdf.report();
+            let actual_weight =
+                super::admission::actual_pdf_weight(report.filters(), report.embedded_images())?;
             prepared.admission.ensure_actual_weight(actual_weight)?;
-            report_pdf_filter_plan(prepared.quiet, prepared_pdf.filter_plan(), stderr);
+            report_pdf_filter_plan(prepared.quiet, report.filters(), stderr);
+            report_export_font_resolution(prepared.quiet, report.fonts(), stderr);
+            report_native_export_quality(
+                prepared.quiet,
+                report.directional_filter_transform_residual(),
+                report.implicit_viewport_clipping_residual(),
+                report.fallback_css_residual(),
+                stderr,
+            );
             Ok(ExecutedArtifact {
                 bytes: prepared_pdf.encode().map_err(merman::RenderError::from)?,
                 _permit: Some(permit),
@@ -366,6 +455,50 @@ fn execute_encoded_svg(
                 desc: metadata.1,
             })
         }
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn report_native_export_quality(
+    quiet: bool,
+    directional_filter_transform_residual: bool,
+    implicit_viewport_clipping_residual: bool,
+    fallback_css_residual: bool,
+    stderr: &SharedWriter,
+) {
+    let diagnostics = crate::diagnostics::DiagnosticSink::new(quiet, stderr);
+    if directional_filter_transform_residual {
+        diagnostics.info("warning: native_directional_filter_transform_residual: directional filter offsets may differ under rotation, shear or reflection; best-effort rendering may differ");
+    }
+    if implicit_viewport_clipping_residual {
+        diagnostics.info("warning: pdf_implicit_viewport_clipping_residual: the derived PDF viewport may clip painted content; specify an explicit SVG viewport to control clipping");
+    }
+    report_fallback_css_residual(quiet, fallback_css_residual, stderr);
+}
+
+#[cfg(feature = "svg")]
+fn report_fallback_css_residual(quiet: bool, residual: bool, stderr: &SharedWriter) {
+    if residual {
+        crate::diagnostics::DiagnosticSink::new(quiet, stderr).info("warning: fallback_css_residual: backend CSS may differ for converted HTML labels; best-effort rendering may differ");
+    }
+}
+
+#[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
+fn report_export_font_resolution(
+    quiet: bool,
+    fonts: merman::svg::export::ExportFontPlan,
+    stderr: &SharedWriter,
+) {
+    if fonts.unresolved_font_request()
+        || fonts.unresolved_glyph_fallback()
+        || fonts.notdef_glyph_count() != 0
+    {
+        crate::diagnostics::DiagnosticSink::new(quiet, stderr).info(format!(
+            "warning: native export font resolution is incomplete: unresolved font request={}; unresolved glyph fallback={}; .notdef glyphs={}; provide fonts covering the output text",
+            fonts.unresolved_font_request(),
+            fonts.unresolved_glyph_fallback(),
+            fonts.notdef_glyph_count(),
+        ));
     }
 }
 

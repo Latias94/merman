@@ -109,6 +109,7 @@ layout-cytoscape = ["svg", "merman-bindings-core/layout-cytoscape"]
 layout-elk = ["svg", "merman-bindings-core/layout-elk"]
 math = ["svg", "merman-bindings-core/math"]
 [dependencies]
+data-encoding.workspace = true
 merman-bindings-core.workspace = true
 merman.workspace = true
 serde_json.workspace = true

@@ -536,6 +536,8 @@ pub enum RenderSemanticModel {
 pub struct RenderSemanticContext {
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     flowchart: Option<crate::diagrams::flowchart::FlowchartRenderContext>,
+    #[cfg(feature = "diagram-class")]
+    class_style_precedence_facts: Option<crate::models::class_diagram::ClassStylePrecedenceFacts>,
 }
 
 impl RenderSemanticContext {
@@ -543,6 +545,19 @@ impl RenderSemanticContext {
     fn for_flowchart(context: crate::diagrams::flowchart::FlowchartRenderContext) -> Self {
         Self {
             flowchart: Some(context),
+            #[cfg(feature = "diagram-class")]
+            class_style_precedence_facts: None,
+        }
+    }
+
+    #[cfg(feature = "diagram-class")]
+    fn for_class(
+        style_precedence_facts: crate::models::class_diagram::ClassStylePrecedenceFacts,
+    ) -> Self {
+        Self {
+            class_style_precedence_facts: Some(style_precedence_facts),
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            flowchart: None,
         }
     }
 
@@ -564,17 +579,30 @@ impl RenderSemanticContext {
         self.flowchart.as_ref()
     }
 
+    /// Borrows ClassDiagram encounter-order style evidence owned by this parse operation.
+    #[doc(hidden)]
+    #[cfg(feature = "diagram-class")]
+    pub fn class_style_precedence_facts(
+        &self,
+    ) -> Option<&crate::models::class_diagram::ClassStylePrecedenceFacts> {
+        self.class_style_precedence_facts.as_ref()
+    }
+
     pub(crate) fn retained_text_bytes(&self) -> usize {
+        let bytes = 0usize;
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-        {
+        let bytes = bytes.saturating_add(
             self.flowchart
                 .as_ref()
-                .map_or(0, |context| context.retained_bytes())
-        }
-        #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
-        {
-            0
-        }
+                .map_or(0, |context| context.retained_bytes()),
+        );
+        #[cfg(feature = "diagram-class")]
+        let bytes = bytes.saturating_add(
+            self.class_style_precedence_facts
+                .as_ref()
+                .map_or(0, |facts| facts.retained_bytes()),
+        );
+        bytes
     }
 }
 
@@ -600,6 +628,17 @@ impl RenderSemanticParseOutput {
         Self {
             model: RenderSemanticModel::Flowchart(model),
             context: RenderSemanticContext::for_flowchart(context),
+        }
+    }
+
+    #[cfg(feature = "diagram-class")]
+    pub(crate) fn class(
+        model: crate::models::class_diagram::ClassDiagram,
+        style_precedence_facts: crate::models::class_diagram::ClassStylePrecedenceFacts,
+    ) -> Self {
+        Self {
+            model: RenderSemanticModel::Class(model),
+            context: RenderSemanticContext::for_class(style_precedence_facts),
         }
     }
 
@@ -1281,6 +1320,8 @@ impl RenderDiagramRegistry {
 pub struct ParsedDiagramRender {
     /// Diagram type and effective configuration extracted during preprocessing.
     meta: ParseMetadata,
+    /// Catalog-owned presentation family selected after effective appearance is resolved.
+    family_id: Option<crate::DiagramFamilyId>,
     /// Typed model consumed by layout and SVG renderers.
     model: RenderSemanticModel,
     /// Parser-owned render-only data paired with the typed model.
@@ -1289,8 +1330,10 @@ pub struct ParsedDiagramRender {
 
 impl ParsedDiagramRender {
     pub(crate) fn new(meta: ParseMetadata, model: RenderSemanticModel) -> Self {
+        let family_id = parsed_operation_family_id(&meta, &model);
         Self {
             meta,
+            family_id,
             model,
             context: RenderSemanticContext::default(),
         }
@@ -1301,8 +1344,10 @@ impl ParsedDiagramRender {
         output: RenderSemanticParseOutput,
     ) -> Self {
         let (model, context) = output.into_parts();
+        let family_id = parsed_operation_family_id(&meta, &model);
         Self {
             meta,
+            family_id,
             model,
             context,
         }
@@ -1316,6 +1361,15 @@ impl ParsedDiagramRender {
     /// Returns the typed render model paired with this metadata by the core parse pipeline.
     pub fn model(&self) -> &RenderSemanticModel {
         &self.model
+    }
+
+    /// Returns the catalog-owned presentation family selected for this render operation.
+    ///
+    /// Flowchart and Swimlane share consumers, so their effective layout can select a different
+    /// presentation family without changing the metadata's logical diagram identity or admitting
+    /// a disabled language. Custom registry models have no built-in presentation family.
+    pub const fn family_id(&self) -> Option<crate::DiagramFamilyId> {
+        self.family_id
     }
 
     /// Consumes the parsed diagram and returns its canonical metadata/model projection.
@@ -1345,6 +1399,25 @@ impl ParsedDiagramRender {
     ) -> Option<&crate::diagrams::flowchart::FlowchartRenderContext> {
         self.context.flowchart_render_context()
     }
+
+    /// Borrows parser-owned ClassDiagram encounter-order style evidence.
+    #[doc(hidden)]
+    #[cfg(feature = "diagram-class")]
+    pub fn class_style_precedence_facts(
+        &self,
+    ) -> Option<&crate::models::class_diagram::ClassStylePrecedenceFacts> {
+        self.context.class_style_precedence_facts()
+    }
+}
+
+fn parsed_operation_family_id(
+    meta: &ParseMetadata,
+    model: &RenderSemanticModel,
+) -> Option<crate::DiagramFamilyId> {
+    if matches!(model, RenderSemanticModel::CustomJson(_)) {
+        return None;
+    }
+    crate::family::operation_family_id(&meta.diagram_type, &meta.effective_config)
 }
 
 /// Parses with a registry entry while preserving the caller-owned parse control.

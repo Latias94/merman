@@ -626,7 +626,7 @@ fn materialize_yaml_controlled(
 
                 match yaml_node {
                     YamlNode::Scalar { value, .. } => {
-                        values.push(crate::config::clone_value_nonrecursive(value));
+                        values.push(crate::compatibility_json::clone_value_nonrecursive(value));
                     }
                     YamlNode::Sequence(items) => {
                         tasks.push(MaterializeTask::CompleteSequence { len: items.len() });
@@ -684,13 +684,13 @@ fn materialize_yaml_controlled(
                     {
                         drop_materialized_values(values);
                         drop_materialized_values(children.collect());
-                        crate::config::drop_value_nonrecursive(Value::Object(map));
+                        crate::compatibility_json::drop_value_nonrecursive(Value::Object(map));
                         return Err(cancelled);
                     }
                     let Some(value) = children.next() else {
                         drop_materialized_values(values);
                         drop_materialized_values(children.collect());
-                        crate::config::drop_value_nonrecursive(Value::Object(map));
+                        crate::compatibility_json::drop_value_nonrecursive(Value::Object(map));
                         return Ok(Err("invalid YAML materialization state".to_string()));
                     };
                     map.insert(key.clone(), value);
@@ -742,7 +742,7 @@ fn yaml_node_materialized_cost(node: &YamlNode) -> usize {
 
 fn drop_materialized_values(values: Vec<Value>) {
     for value in values {
-        crate::config::drop_value_nonrecursive(value);
+        crate::compatibility_json::drop_value_nonrecursive(value);
     }
 }
 

@@ -25,11 +25,11 @@ cargo run -p merman --example render_svg > diagram.svg
 | Inspect computed geometry and routes | [`inspect_layout.rs`](inspect_layout.rs) | Stops after typed layout and serializes the result. |
 | Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
 | Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
-| Apply a ready-made product presentation | [`presentation_profile.rs`](presentation_profile.rs) | Combines the `merman-modern` profile with a semantic editor theme. |
-| Map an application's own theme tokens | [`custom_presentation_theme.rs`](custom_presentation_theme.rs) | Builds a `HostTheme` from semantic roles instead of family-specific CSS. |
+| Apply a bundled diagram theme | [`theme_preset.rs`](theme_preset.rs) | Compiles the One Dark preset and applies it to one render request. |
+| Map an application's own theme tokens | [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | Compiles a typed theme definition from shared color tokens. |
 | Control consumer SVG cleanup and styling | [`custom_svg_pipeline.rs`](custom_svg_pipeline.rs) | Builds an explicit resvg-safe, background, and scoped-CSS pipeline. |
 
-Use `Renderer` with a typed `RenderRequest` for every source-to-target operation. SVG request IDs can be normalized with `merman::svg::sanitize_svg_id`; dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. The same request seam also carries layout, presentation, resource, pipeline, and cancellation policy.
+Use `Renderer` with a typed `RenderRequest` for every source-to-target operation. SVG request IDs can be normalized with `merman::svg::sanitize_svg_id`; dynamic integrations should use stable ASCII keys and ensure the normalized results are unique rather than deriving IDs only from display titles. The same request boundary also carries layout, compiled theme, resource, pipeline, and cancellation policy.
 
 ## Run By Task
 
@@ -63,12 +63,12 @@ cargo run -p merman --example inspect_layout
 cargo run -p merman --example deterministic_gantt
 ```
 
-Configure host defaults, presentation, and output policy:
+Configure host defaults, compiled themes, and output policy:
 
 ```sh
 cargo run -p merman --example configure_mermaid > configured.svg
-cargo run -p merman --example presentation_profile > presentation.svg
-cargo run -p merman --example custom_presentation_theme > custom-theme.svg
+cargo run -p merman --example theme_preset > preset.svg
+cargo run -p merman --example custom_diagram_theme > custom-theme.svg
 cargo run -p merman --example custom_svg_pipeline > consumer-safe.svg
 ```
 
@@ -83,7 +83,7 @@ These recipes compose existing APIs; they introduce no additional library preset
 | Terminal display | Charset, display-cell width, family layout, overflow | `AsciiRequest`; [`render_terminal.rs`](render_terminal.rs) | `AsciiOutput.text` and extents | Host decides where/how to print or scroll. |
 | Agent pipe or log | Plain encoding, explicit width, fallback permission | `AsciiOutput::report()`; [`render_agent_log.rs`](render_agent_log.rs) | One JSON object including text and metadata | Hard failures remain errors, not retry instructions. |
 | Themed terminal | Explicit palette and supported color encoding | `AsciiTerminalPalette`; [`terminal_palette.rs`](terminal_palette.rs) | TrueColor text with the same logical layout | Palette detection and styled-to-plain retry belong to the host. |
-| Browser/editor preview | Host theme, Mermaid overrides, diagram ID, SVG policy | `HostTheme`, `SvgRequest`; [`custom_presentation_theme.rs`](custom_presentation_theme.rs) | SVG artifact | Host performs DOM admission and insertion. |
+| Browser/editor preview | Compiled theme, Mermaid overrides, diagram ID, SVG policy | `RenderRequest::with_theme`, `SvgRequest`; [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | SVG artifact | Host performs DOM admission and insertion. |
 | Rust font integration | Final font and a function that measures complete strings | `DeterministicTextMeasurer::with_width_callback(...)`; [`render_svg_monospace.rs`](render_svg_monospace.rs) | SVG with Merman-owned wrapping | If measurement can fail or must vary by operation, use `HostTextMeasurer`. |
 | Image export | Fit box, scale, background, resource budget | `PngRequest`; [`render_png.rs`](render_png.rs) | Bytes and `RasterPlan` dimensions | Saving the example's file is application code after rendering. |
 
@@ -151,13 +151,13 @@ width refusal, but must keep that decision explicit and must not retry cancellat
 
 Rust maps colors through `AsciiColorTheme::from_terminal_palette`. Bindings expose the palette as
 `ascii.theme` in [Options JSON](../../../docs/bindings/OPTIONS_JSON.md). SVG uses the independent
-[semantic presentation theme](../../../docs/rendering/presentation-themes.md); selecting one does
+[compiled diagram theme](../../../docs/rendering/custom-diagram-themes.md); selecting one does
 not synchronize the other or select an SVG pipeline.
 
 ### Browser preview and image artifacts
 
 [`render_svg.rs`](render_svg.rs) demonstrates the default Mermaid-parity SVG target. For custom
-host roles, use [`custom_presentation_theme.rs`](custom_presentation_theme.rs): that example explicitly
+host colors, use [`custom_diagram_theme.rs`](custom_diagram_theme.rs): that example explicitly
 chooses resvg-safe output, so change the pipeline choice explicitly when adapting it for a browser.
 Parity may contain HTML labels. `readable` is a specialized text overlay and can duplicate those
 labels in a browser. `resvg-safe` addresses raster-consumer compatibility. None of these names replaces
@@ -169,7 +169,7 @@ bytes in memory, or save them without adding file/viewer actions to the library.
 the export path; callers do not need to build a separate product rendering backend.
 
 ```sh
-cargo run -p merman --no-default-features --features all-diagrams,svg --example custom_presentation_theme > custom-theme.svg
+cargo run -p merman --no-default-features --features all-diagrams,svg --example custom_diagram_theme > custom-theme.svg
 cargo run -p merman --no-default-features --features all-diagrams,png --example render_png -- target/diagram.png
 ```
 
@@ -221,8 +221,7 @@ The table lists output and engine requirements in addition to that family select
 | Examples | Additional capability selection |
 | --- | --- |
 | `inspect_semantics`, `deterministic_gantt` | None beyond the required diagram families |
-| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `custom_presentation_theme`, `custom_svg_pipeline` | `svg` |
-| `presentation_profile` | `layout-elk` (also enables `svg`) |
+| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
 | `render_png` | `png` (also enables `svg`) |
 

@@ -1,5 +1,6 @@
 import type { Page } from "playwright";
 
+export const ROOT_VIEWPORT_ORACLE_REVISION = "browser-root-paint-containment-v11";
 export const ROOT_VIEWPORT_QUANTIZATION_EPSILON_CSS_PX = 1 / 64;
 export const ROOT_VIEWPORT_PAINT_GUARD_CSS_PX = 16;
 export const ROOT_VIEWPORT_MAX_CAPTURE_DIMENSION_CSS_PX = 16_384;
@@ -64,6 +65,23 @@ export type RootViewportContainmentClassification =
   | "browser-owned-diagnostic"
   | "contained"
   | "upstream-inherited";
+
+export type RootViewportAuditFingerprintFacts = {
+  rootStatus: "present" | "missing";
+  paintStatus: PaintAuditSnapshot["status"];
+  rootWidthCssPx: number | null;
+  rootHeightCssPx: number | null;
+  guardCssPx: number;
+  captureWidthCssPx: number | null;
+  captureHeightCssPx: number | null;
+  indeterminateReasons: PaintAuditIndeterminateReason[];
+  structuralOverflowDepths: Array<{
+    edge: RootViewportEdge;
+    maxDepthCssPx: number;
+  }>;
+};
+
+const ROOT_VIEWPORT_EDGES: RootViewportEdge[] = ["top", "right", "bottom", "left"];
 
 type MountedSvgSnapshot = {
   root: RectSnapshot | null;
@@ -144,6 +162,26 @@ export function exactRootViewportResidualEvidenceIsEligible(
   );
 }
 
+export function rootViewportAuditFingerprintFacts(
+  audit: RootViewportAudit,
+): RootViewportAuditFingerprintFacts {
+  const structuralDepths = structuralOverflowDepths(audit);
+  return {
+    rootStatus: audit.root === null ? "missing" : "present",
+    paintStatus: audit.paintAudit.status,
+    rootWidthCssPx: audit.root?.width ?? null,
+    rootHeightCssPx: audit.root?.height ?? null,
+    guardCssPx: audit.paintAudit.guardCssPx,
+    captureWidthCssPx: audit.paintAudit.captureWidthCssPx,
+    captureHeightCssPx: audit.paintAudit.captureHeightCssPx,
+    indeterminateReasons: [...audit.paintAudit.indeterminateReasons].sort(),
+    structuralOverflowDepths: ROOT_VIEWPORT_EDGES.map((edge) => ({
+      edge,
+      maxDepthCssPx: structuralDepths[edge],
+    })),
+  };
+}
+
 function indeterminateEvidenceIsNoWorse(
   local: RootViewportAudit,
   upstream: RootViewportAudit,
@@ -202,29 +240,36 @@ function structuralEdgeDepthIsNoWorse(
   allowIndeterminateUpstream = false,
 ): boolean {
   if (local.root === null || upstream.root === null) return false;
-  const localRoot = local.root;
-  const upstreamRoot = upstream.root;
   if (
     (upstream.paintAudit.status !== "collected" &&
       !(allowIndeterminateUpstream && upstream.paintAudit.status === "indeterminate"))
   ) {
     return false;
   }
-  const upstreamDepths = new Map<RootViewportEdge, number>();
-  for (const violation of upstream.structuralViolations) {
-    upstreamDepths.set(
-      violation.edge,
-      Math.max(
-        upstreamDepths.get(violation.edge) ?? 0,
-        violationDepth(upstreamRoot, violation),
-      ),
+  const localDepths = structuralOverflowDepths(local);
+  const upstreamDepths = structuralOverflowDepths(upstream);
+  return ROOT_VIEWPORT_EDGES.every(
+    (edge) => localDepths[edge] <= upstreamDepths[edge],
+  );
+}
+
+function structuralOverflowDepths(
+  audit: RootViewportAudit,
+): Record<RootViewportEdge, number> {
+  const depths: Record<RootViewportEdge, number> = {
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+  };
+  if (audit.root === null) return depths;
+  for (const violation of audit.structuralViolations) {
+    depths[violation.edge] = Math.max(
+      depths[violation.edge],
+      violationDepth(audit.root, violation),
     );
   }
-  return local.structuralViolations.every(
-    (violation) =>
-      violationDepth(localRoot, violation) <=
-      (upstreamDepths.get(violation.edge) ?? 0),
-  );
+  return depths;
 }
 
 function violationDepth(

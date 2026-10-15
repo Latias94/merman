@@ -8,70 +8,70 @@
       "fixture": "upstream_pkgtests_statediagram_spec_024",
       "input_sha256": "76fd510b6693194ba0339c9d980c81417ec9eb099fb26cbb54e7b03dd7f194ce",
       "upstream_svg_sha256": "e514d1ef564e1be8b22d4392ad191b21ad544c012564be1302d9b54c608404a2",
-      "local_svg_sha256": "20a9beb44a37914c12c2dfd73449f8907c8be8dcadf55618844ad6fd75eaf5d3"
+      "local_svg_sha256": "eb77285917f4ba673a8b8edcecb5ca7b2f94a50f61c9ab17bd842b4a2fc241b6"
     },
     {
       "diagram": "error",
       "fixture": "upstream_pkgtests_statediagram_v2_spec_024",
       "input_sha256": "3523f6d7544be322caee5c5cb630e79a56791cd292cc42fa140f479a65ab4873",
       "upstream_svg_sha256": "487d87edad7bcaaf64b1e956462a45c9e201190640c817786eb66d5875761762",
-      "local_svg_sha256": "7b9b147146e03bb975243d92e4206400f56fc2d77bb72cb92b22c98f2e5e3a2f"
+      "local_svg_sha256": "0962aec4147980932c2f9505d812b467ae09c79ab23d3108fb45a32f66df7dfe"
     },
     {
       "diagram": "packet",
       "fixture": "upstream_docs_packet_bits_syntax_v11_7_0_002",
       "input_sha256": "6045c63b7d63a714553bab03c4f2ea186283727efb0f1b4d3fcfa2ac8431b7a0",
       "upstream_svg_sha256": "604f4d38cf1babf583caf4c3a3d3d9e91022a31913975241c7ea41cbf5774cf6",
-      "local_svg_sha256": "df83a02bf5c371050c0a65c88d58dc28ee06b5bf80b48e90e3305d7acbe47b12"
+      "local_svg_sha256": "5e5728eb59a9b74e820193c3e78542891057e0c09d0320f8b4ce0b10442a9c2e"
     },
     {
       "diagram": "packet",
       "fixture": "upstream_docs_packet_syntax_001",
       "input_sha256": "6c0a769be666e6a45d91fab44b5ebbeb9718ff2ea2cb290b21b7f3d166430714",
       "upstream_svg_sha256": "f841e73eeeb2eca5a4da339d997296705b96fecb79f061fd3de86c7d401f2252",
-      "local_svg_sha256": "0c565f0d7068d2ef79adacd7f455a416d5cd4365e850c05fb5468a9554bedd8c"
+      "local_svg_sha256": "1492209936249a2919b2b69984bf3b0e217fa42062d58ebf5f55db4ed4d58bcb"
     },
     {
       "diagram": "radar",
       "fixture": "upstream_docs_radar_axis_007",
       "input_sha256": "b71dd3545f380022b09e46278fb5f627fd6a5202e31e3d5a7443cc51625467f6",
       "upstream_svg_sha256": "77984854c0b7730cd3f9707c97a2cd518c7a8d48d46aa11ce31d7e6d855bcf21",
-      "local_svg_sha256": "dfe31e61d0b69245fd3de6e1fc83dfde26bcd92dcdf0cad0e77d04d4ef3d11de"
+      "local_svg_sha256": "cd585bf5e5d83288ad7060a962dfcffb9ccc365f48287c87afc828e6da77e0b0"
     },
     {
       "diagram": "radar",
       "fixture": "upstream_docs_radar_curve_008",
       "input_sha256": "4c5bc55b704ea6e368e48d24f1d9562cdcbf4048c2be560c7fabbae1e8b539cc",
       "upstream_svg_sha256": "4577fff9e8707fef7a1c2c283efddcbad9fe5635b37ffcd3f60b7b6dc62ec8d8",
-      "local_svg_sha256": "e843263e42af609e8fbffff4b008a1438311797ff8294afc79b4df1474157d83"
+      "local_svg_sha256": "a199d1c911af80ad5628023406e7a538a235ef549a1bf8c0e45c4ca5e928c0cb"
     },
     {
       "diagram": "radar",
       "fixture": "upstream_docs_radar_examples_005",
       "input_sha256": "5b830cbd36a04ebf82dd4d744c8a7cd8517568270edd8b70b2422aa405e29c9b",
       "upstream_svg_sha256": "ead778c495fda2790d4c59a0f11e45752614c3e355bce6f6c11dbbe498cab557",
-      "local_svg_sha256": "fc2101b4cff96bac1b19ba193016e8d1ebd555c4d31056571618b25dde5c7f0f"
+      "local_svg_sha256": "928bf54f0f9825c174aad143c4d4bc742486c0dbbf418a15976d158c21987c99"
     },
     {
       "diagram": "radar",
       "fixture": "upstream_docs_radar_options_009",
       "input_sha256": "6f8062be2324be9a28b316282613d02234f026b43af96178d66cd36aa1fdc023",
       "upstream_svg_sha256": "6317b5d91e1c4ffcbccfc6d966e85fad548c8a616ab4f60a6a87a91d4c881a4e",
-      "local_svg_sha256": "0274514fce67c920ca718933e7d949c7539ee18bc34798e4e72848bf99c8962b"
+      "local_svg_sha256": "4e47cc613b6bf0830edeebf960c455953b87cd220088fe23a1b6aa3e0fd956eb"
     },
     {
       "diagram": "radar",
       "fixture": "upstream_docs_radar_title_006",
       "input_sha256": "39d1fe2243dc4239c226e14824844b88d8453180932956a95aff12cc72846d7e",
       "upstream_svg_sha256": "cb329fb6d358d24310e27786f1f6541ff04308ca510a4d69748905804c5a8b35",
-      "local_svg_sha256": "d88121d3323581c586c8e6e1e49be76d334595541e885a3bb0ce25c77d2bd25b"
+      "local_svg_sha256": "8632c772350b9f1253bcf3abcc565bf78b0dd595bb46547c2144b0be980ef8d2"
     },
     {
       "diagram": "treemap",
       "fixture": "upstream_treemap_classdef_and_css_compiled_styles_db",
       "input_sha256": "c05c8ed2b9e0edfbfdd207413608219f71cb1a94e2a4dfe9d6d0899b05f7f4a3",
       "upstream_svg_sha256": "77487973f6c65d00c4d463629f2b2b0cfd0f4e1496bb87270fd0b158712fa522",
-      "local_svg_sha256": "ff42db05af0e3c3c501605c0b07369895638e156cfdd92c137dd8a1f49765bd1"
+      "local_svg_sha256": "a717f6bd59de7268f4689dd9aa34a09f328618bd6dfaa6b09820d53a05c09a46"
     }
   ]
 }

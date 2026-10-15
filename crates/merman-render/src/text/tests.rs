@@ -552,6 +552,43 @@ fn html_break_spaces_preserves_trailing_spaces() {
 }
 
 #[test]
+fn svg_markdown_images_do_not_reserve_html_image_boxes() {
+    let measurer = DeterministicTextMeasurer::default();
+    let style = TextStyle::default();
+    let markdown = "Text: ![alt](image.png)";
+    for mode in [WrapMode::SvgLike, WrapMode::SvgLikeSingleRun] {
+        let narrow = measure_wrapped_markdown_with_inline_styles(
+            &measurer,
+            markdown,
+            &style,
+            Some(1000.0),
+            mode,
+        );
+        let wide = measure_wrapped_markdown_with_inline_styles(
+            &measurer,
+            markdown,
+            &style,
+            Some(2000.0),
+            mode,
+        );
+        assert_same_metrics(narrow, wide);
+        assert!(narrow.width < 1000.0);
+        assert_eq!(narrow.line_count, 1);
+    }
+    let html = measure_markdown_with_inline_styles(
+        &measurer,
+        markdown,
+        &style,
+        Some(1000.0),
+        WrapMode::HtmlLike,
+    );
+    assert_eq!(
+        html.width, 1000.0,
+        "HTML images retain their full-width box"
+    );
+}
+
+#[test]
 fn markdown_inline_styles_delegate_to_operation_specific_font_variants() {
     let measurer = DeterministicTextMeasurer::default();
     let regular = TextStyle {

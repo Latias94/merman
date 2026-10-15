@@ -1,0 +1,33 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-er-semantic-capabilities",
+  "tokens": null,
+  "typography": null,
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [
+    {
+      "kind": "has-descendant",
+      "family": "er-diagram",
+      "target": "node",
+      "descendant": "attribute",
+      "apply": {
+        "fill": null,
+        "border": null,
+        "cornerRadiusPx": null,
+        "shadow": {
+          "offsetXPx": 3,
+          "offsetYPx": 3,
+          "blurPx": 0,
+          "spreadPx": 0,
+          "color": "#808080"
+        },
+        "textColor": null,
+        "fontWeight": null
+      }
+    }
+  ],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

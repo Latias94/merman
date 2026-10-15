@@ -8,9 +8,9 @@ pub enum MetadataKey {
     AsciiCapabilities,
     DiagramFamilyCapabilities,
     LintRuleCatalog,
-    PresentationCatalog,
     SupportedDiagrams,
     SupportedThemes,
+    ThemeCatalog,
 }
 
 impl MetadataKey {
@@ -18,9 +18,9 @@ impl MetadataKey {
         Self::AsciiCapabilities,
         Self::DiagramFamilyCapabilities,
         Self::LintRuleCatalog,
-        Self::PresentationCatalog,
         Self::SupportedDiagrams,
         Self::SupportedThemes,
+        Self::ThemeCatalog,
     ];
 
     #[must_use]
@@ -42,9 +42,9 @@ impl MetadataKey {
             Self::AsciiCapabilities => &METADATA_SPECS[0],
             Self::DiagramFamilyCapabilities => &METADATA_SPECS[1],
             Self::LintRuleCatalog => &METADATA_SPECS[2],
-            Self::PresentationCatalog => &METADATA_SPECS[3],
-            Self::SupportedDiagrams => &METADATA_SPECS[4],
-            Self::SupportedThemes => &METADATA_SPECS[5],
+            Self::SupportedDiagrams => &METADATA_SPECS[3],
+            Self::SupportedThemes => &METADATA_SPECS[4],
+            Self::ThemeCatalog => &METADATA_SPECS[5],
         }
     }
 }
@@ -85,9 +85,9 @@ pub(crate) enum MetadataHandlerKey {
     AsciiCapabilities,
     DiagramFamilyCapabilities,
     LintRuleCatalog,
-    PresentationCatalog,
     SupportedDiagrams,
     SupportedThemes,
+    ThemeCatalog,
 }
 
 const METADATA_SPECS: &[MetadataSpec] = &[
@@ -110,12 +110,6 @@ const METADATA_SPECS: &[MetadataSpec] = &[
         handler: MetadataHandlerKey::LintRuleCatalog,
     },
     MetadataSpec {
-        key: MetadataKey::PresentationCatalog,
-        id: "presentation-catalog",
-        required_capability: None,
-        handler: MetadataHandlerKey::PresentationCatalog,
-    },
-    MetadataSpec {
         key: MetadataKey::SupportedDiagrams,
         id: "supported-diagrams",
         required_capability: None,
@@ -126,6 +120,12 @@ const METADATA_SPECS: &[MetadataSpec] = &[
         id: "supported-themes",
         required_capability: None,
         handler: MetadataHandlerKey::SupportedThemes,
+    },
+    MetadataSpec {
+        key: MetadataKey::ThemeCatalog,
+        id: "theme-catalog",
+        required_capability: None,
+        handler: MetadataHandlerKey::ThemeCatalog,
     },
 ];
 

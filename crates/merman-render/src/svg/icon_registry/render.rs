@@ -1,9 +1,11 @@
-use super::IconRenderRequest;
 use super::ingest::ResolvedIcon;
 use super::xml::ValidatedIconBody;
+use super::{IconCurrentColorUse, IconRenderRequest, RenderedIcon};
 use crate::svg::pipeline::validate_well_formed_svg_with_controls;
 use merman_core::OperationPhase;
 use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
+use quick_xml::XmlVersion;
+use quick_xml::events::{BytesStart, Event};
 
 const WORK_BYTES_PER_UNIT: usize = 256;
 // lol_html serializes a literal double quote in an attribute value as `&quot;` (six bytes).
@@ -80,6 +82,21 @@ pub(super) fn render_resolved_icon(
     icon: &ResolvedIcon,
     request: &IconRenderRequest<'_>,
 ) -> crate::Result<String> {
+    render_resolved_icon_inner(icon, request, false).map(RenderedIcon::into_svg)
+}
+
+pub(super) fn render_resolved_icon_with_paint_fact(
+    icon: &ResolvedIcon,
+    request: &IconRenderRequest<'_>,
+) -> crate::Result<RenderedIcon> {
+    render_resolved_icon_inner(icon, request, true)
+}
+
+fn render_resolved_icon_inner(
+    icon: &ResolvedIcon,
+    request: &IconRenderRequest<'_>,
+    observe_paint_fact: bool,
+) -> crate::Result<RenderedIcon> {
     let width = render_dimension(request.width_px, "width")?;
     let height = render_dimension(request.height_px, "height")?;
     let transformed = transformed_icon(icon)?;
@@ -107,7 +124,12 @@ pub(super) fn render_resolved_icon(
         .ok_or_else(|| crate::Error::icon_processing("projected icon SVG size overflowed"))?;
     let sanitizer_ceiling =
         sanitizer_output_ceiling(projected_svg_bytes, icon.body.element_count())?;
-    let work_units = icon_render_work_units(icon, projected_svg_bytes, sanitizer_ceiling)?;
+    let work_units = icon_render_work_units(
+        icon,
+        projected_svg_bytes,
+        sanitizer_ceiling,
+        observe_paint_fact,
+    )?;
 
     // Both ledgers are charged before cloning the retained body or allocating the assembled SVG.
     request.work_meter.charge(work_units)?;
@@ -222,10 +244,18 @@ pub(super) fn render_resolved_icon(
             "sanitizer produced invalid SVG XML",
         ));
     }
+    let current_color_use = if observe_paint_fact {
+        observe_current_color_use(&sanitized, request.work_meter)?
+    } else {
+        IconCurrentColorUse::NotConsumed
+    };
     request
         .work_meter
         .reconcile_svg_bytes(reserved_svg_bytes, sanitized.len())?;
-    Ok(sanitized)
+    Ok(RenderedIcon {
+        svg: sanitized,
+        current_color_use,
+    })
 }
 
 fn sanitizer_output_ceiling(
@@ -247,6 +277,7 @@ fn icon_render_work_units(
     icon: &ResolvedIcon,
     projected_svg_bytes: usize,
     sanitizer_ceiling: usize,
+    observe_paint_fact: bool,
 ) -> crate::Result<usize> {
     let edit_work = icon
         .body
@@ -255,6 +286,11 @@ fn icon_render_work_units(
         .ok_or_else(|| crate::Error::icon_processing("icon edit work estimate overflowed"))?;
     let projected_work = ceil_div(projected_svg_bytes, WORK_BYTES_PER_UNIT);
     let sanitizer_work = ceil_div(sanitizer_ceiling, WORK_BYTES_PER_UNIT);
+    let paint_scan_work = if observe_paint_fact {
+        sanitizer_work
+    } else {
+        0
+    };
     let element_work = icon.body.element_count().checked_mul(3).ok_or_else(|| {
         crate::Error::icon_processing("icon sanitizer element work estimate overflowed")
     })?;
@@ -265,10 +301,278 @@ fn icon_render_work_units(
         })?)
         // The second sanitizer pass and final XML validation are bounded by the admitted output.
         .and_then(|work| work.checked_add(sanitizer_work.checked_mul(2)?))
+        // The optional paint-fact scan is only charged for callers that consume its result.
+        .and_then(|work| work.checked_add(paint_scan_work))
         .and_then(|work| work.checked_add(element_work))
         .and_then(|work| work.checked_add(edit_work))
         .and_then(|work| work.checked_add(1))
         .ok_or_else(|| crate::Error::icon_processing("icon render work estimate overflowed"))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IconPaintValue {
+    CurrentColor,
+    Fixed,
+    NoPaint,
+    Inherit,
+    Unverified,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct InlinePaintWinner {
+    value: IconPaintValue,
+    important: bool,
+}
+
+#[derive(Debug, Default)]
+struct IconCurrentColorObservation {
+    consumed: bool,
+    fixed: bool,
+    unverified: bool,
+}
+
+impl IconCurrentColorObservation {
+    const fn finish(self) -> IconCurrentColorUse {
+        if self.consumed && !self.fixed && !self.unverified {
+            IconCurrentColorUse::Consumed
+        } else if self.consumed || self.unverified {
+            IconCurrentColorUse::Unverified
+        } else {
+            IconCurrentColorUse::NotConsumed
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct IconPaintContext {
+    non_rendering: bool,
+    fill: IconPaintValue,
+    stroke: IconPaintValue,
+}
+
+impl Default for IconPaintContext {
+    fn default() -> Self {
+        Self {
+            non_rendering: false,
+            fill: IconPaintValue::Fixed,
+            stroke: IconPaintValue::NoPaint,
+        }
+    }
+}
+
+fn observe_current_color_use(
+    svg: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
+) -> crate::Result<IconCurrentColorUse> {
+    let mut reader = quick_xml::Reader::from_str(svg);
+    reader.config_mut().enable_all_checks(true);
+    let mut observation = IconCurrentColorObservation::default();
+    let mut paint_stack = Vec::new();
+    loop {
+        work_meter.checkpoint(OperationPhase::Postprocess)?;
+        match reader.read_event() {
+            Ok(Event::Start(element)) => {
+                let inherited = paint_stack.last().copied().unwrap_or_default();
+                let context =
+                    observe_icon_element(&element, inherited, work_meter, &mut observation)?;
+                paint_stack.push(context);
+            }
+            Ok(Event::Empty(element)) => {
+                let inherited = paint_stack.last().copied().unwrap_or_default();
+                observe_icon_element(&element, inherited, work_meter, &mut observation)?;
+            }
+            Ok(Event::End(_)) => {
+                paint_stack.pop().ok_or_else(|| {
+                    crate::Error::icon_processing(
+                        "validated icon SVG paint scan encountered an unmatched end tag",
+                    )
+                })?;
+            }
+            Ok(Event::Eof) => break,
+            Ok(_) => {}
+            Err(_) => {
+                return Err(crate::Error::icon_processing(
+                    "validated icon SVG paint scan failed",
+                ));
+            }
+        }
+    }
+    work_meter.checkpoint(OperationPhase::Postprocess)?;
+    Ok(observation.finish())
+}
+
+fn observe_icon_element(
+    element: &BytesStart<'_>,
+    inherited: IconPaintContext,
+    work_meter: &crate::resources::OperationWorkMeter,
+    observation: &mut IconCurrentColorObservation,
+) -> crate::Result<IconPaintContext> {
+    let tag = element.name().local_name();
+    let tag = tag.as_ref();
+    if tag.eq_ignore_ascii_case("style") || tag.eq_ignore_ascii_case("use") {
+        observation.unverified = true;
+    }
+
+    let mut fill = None;
+    let mut stroke = None;
+    let mut inline_fill = None;
+    let mut inline_stroke = None;
+    for attribute in element.attributes() {
+        let attribute = attribute.map_err(|_| {
+            crate::Error::icon_processing(
+                "validated icon SVG paint scan encountered an invalid attribute",
+            )
+        })?;
+        let name = attribute.key.local_name();
+        let name = name.as_ref();
+        let value = attribute
+            .normalized_value(XmlVersion::Implicit1_0)
+            .map_err(|_| {
+                crate::Error::icon_processing(
+                    "validated icon SVG paint scan could not decode an attribute",
+                )
+            })?;
+        let value = value.trim();
+        if name.eq_ignore_ascii_case("class") || name.eq_ignore_ascii_case("color") {
+            if !value.is_empty() {
+                observation.unverified = true;
+            }
+        } else if name.eq_ignore_ascii_case("fill") {
+            fill = Some(classify_icon_paint_value(value));
+        } else if name.eq_ignore_ascii_case("stroke") {
+            stroke = Some(classify_icon_paint_value(value));
+        } else if name.eq_ignore_ascii_case("style") {
+            observe_inline_paint(
+                value,
+                work_meter,
+                &mut inline_fill,
+                &mut inline_stroke,
+                observation,
+            )?;
+        }
+    }
+
+    let inherit = |paint: Option<IconPaintValue>, fallback| match paint {
+        None | Some(IconPaintValue::Inherit) => fallback,
+        Some(paint) => paint,
+    };
+    let context = IconPaintContext {
+        non_rendering: inherited.non_rendering || is_non_rendering_container(tag),
+        fill: inherit(
+            inline_fill.map(|winner| winner.value).or(fill),
+            inherited.fill,
+        ),
+        stroke: inherit(
+            inline_stroke.map(|winner| winner.value).or(stroke),
+            inherited.stroke,
+        ),
+    };
+    if is_direct_paint_terminal(tag) && !context.non_rendering {
+        // A line has no fill surface. Every other admitted direct terminal can paint
+        // an inherited fill; a missing fill therefore retains SVG's fixed black default.
+        for paint in [
+            (!tag.eq_ignore_ascii_case("line")).then_some(context.fill),
+            Some(context.stroke),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            match paint {
+                IconPaintValue::CurrentColor => observation.consumed = true,
+                IconPaintValue::Fixed => observation.fixed = true,
+                IconPaintValue::NoPaint => {}
+                IconPaintValue::Inherit | IconPaintValue::Unverified => {
+                    observation.unverified = true
+                }
+            }
+        }
+    }
+    Ok(context)
+}
+
+fn observe_inline_paint(
+    style: &str,
+    work_meter: &crate::resources::OperationWorkMeter,
+    fill: &mut Option<InlinePaintWinner>,
+    stroke: &mut Option<InlinePaintWinner>,
+    observation: &mut IconCurrentColorObservation,
+) -> crate::Result<()> {
+    crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+        style,
+        &mut || {
+            work_meter
+                .checkpoint(OperationPhase::Postprocess)
+                .map_err(crate::Error::from)
+        },
+        |boundary| {
+            let Some(declaration) = crate::mermaid_style::parse_style_declaration(boundary.raw())
+            else {
+                observation.unverified = true;
+                return Ok(true);
+            };
+            let destination = match declaration.property() {
+                "fill" => Some(&mut *fill),
+                "stroke" => Some(&mut *stroke),
+                "color" | "all" => {
+                    observation.unverified = true;
+                    None
+                }
+                _ => None,
+            };
+            if let Some(destination) = destination
+                && destination.is_none_or(|current| declaration.important() || !current.important)
+            {
+                *destination = Some(InlinePaintWinner {
+                    value: classify_icon_paint_value(declaration.value()),
+                    important: declaration.important(),
+                });
+            }
+            Ok(true)
+        },
+    )
+}
+
+fn classify_icon_paint_value(value: &str) -> IconPaintValue {
+    let value = value.trim();
+    if value.eq_ignore_ascii_case("currentcolor") {
+        IconPaintValue::CurrentColor
+    } else if value.eq_ignore_ascii_case("none") || value.eq_ignore_ascii_case("transparent") {
+        IconPaintValue::NoPaint
+    } else if value.eq_ignore_ascii_case("inherit") {
+        IconPaintValue::Inherit
+    } else if let Ok(color) = merman_core::theme_color::ThemeColor::parse(value) {
+        if color.rgba_channels().alpha == 0.0 {
+            IconPaintValue::NoPaint
+        } else {
+            IconPaintValue::Fixed
+        }
+    } else {
+        IconPaintValue::Unverified
+    }
+}
+
+fn is_direct_paint_terminal(tag: &str) -> bool {
+    [
+        "circle", "ellipse", "line", "path", "polygon", "polyline", "rect", "text", "tspan",
+    ]
+    .into_iter()
+    .any(|candidate| tag.eq_ignore_ascii_case(candidate))
+}
+
+fn is_non_rendering_container(tag: &str) -> bool {
+    [
+        "clipPath",
+        "defs",
+        "filter",
+        "linearGradient",
+        "marker",
+        "mask",
+        "pattern",
+        "radialGradient",
+        "symbol",
+    ]
+    .into_iter()
+    .any(|candidate| tag.eq_ignore_ascii_case(candidate))
 }
 
 const fn ceil_div(value: usize, divisor: usize) -> usize {

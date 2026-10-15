@@ -75,6 +75,32 @@ test("gallery retains its filters and scroll position across repeated openings",
   errors.assertNone();
 });
 
+test("gallery saves the visible position when closed before scroll events arrive", async ({ page }) => {
+  await page.setViewportSize({ width: 950, height: 600 });
+  const errors = monitorBrowserErrors(page);
+  await openPlayground(page);
+  const trigger = page.getByRole("button", { name: "Examples", exact: true });
+  await trigger.click();
+  const dialog = page.getByRole("dialog", { name: "Example Gallery" });
+  const search = dialog.getByRole("searchbox", { name: "Search examples" });
+  const viewport = dialog.locator("[data-radix-scroll-area-viewport]");
+  await search.fill("flow");
+  await viewport.evaluate((element) => {
+    // Reproduce closing before the browser delivers its queued scroll event.
+    document.addEventListener("scroll", (event) => {
+      if (event.target === element) event.stopPropagation();
+    }, { capture: true, once: true });
+    element.scrollTop = 700;
+  });
+  await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(700);
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await trigger.click();
+  await expect(search).toHaveValue("flow");
+  await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(700);
+  errors.assertNone();
+});
+
 test("gallery category and ASCII filters survive layout changes and selection", async ({ page }) => {
   await page.setViewportSize({ width: 950, height: 600 });
   const errors = monitorBrowserErrors(page);

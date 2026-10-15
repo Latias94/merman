@@ -1,5 +1,13 @@
 //! Shared RoughJS formatting and path-geometry helpers used by multiple parity renderers.
 
+#[cfg(any(
+    feature = "diagram-c4",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-agentflow"
+))]
+pub(in crate::svg::parity) mod paths;
+
 use std::fmt::Write as _;
 
 pub(in crate::svg::parity) fn parse_hex_color_to_srgba(s: &str) -> Option<roughr::Srgba> {

@@ -2,16 +2,21 @@ use super::builtin::{
     attr_sanitize::sanitize_element_attributes_cow_with_checkpoints,
     css_sanitize::apply_sanitize_style_elements,
     foreign_object::{
-        apply_drop_switch_native_fallbacks, apply_foreign_object_fallback,
+        apply_drop_switch_native_fallbacks, apply_foreign_object_fallback_with_outcome,
         apply_strip_foreign_objects, drop_native_duplicate_fallbacks_with_checkpoints,
     },
     id_suffix::apply_lower_id_suffix_selectors,
-    presentation_fallback::resolve_resvg_presentation_fallbacks_with_checkpoints,
+    prepared_math::project_prepared_math,
+    quadrant_resvg_fallback::resolve_quadrant_resvg_fallbacks_with_checkpoints,
 };
 use super::context::{SvgPostprocessExecution, SvgPostprocessMetadata};
 use super::final_validation::SvgStructureMetrics;
 use crate::Result;
 use crate::environment::TextMeasurementPhase;
+use crate::math::{
+    BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE, PREPARED_MATH_CLASS_ATTRIBUTE,
+    PreparedMathEvidenceLease,
+};
 use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -43,42 +48,66 @@ pub enum SvgPipelinePreset {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuiltinSvgStage {
+    PreparedMathProjection,
     ForeignObjectFallback,
     StripForeignObject,
     DropSwitchNativeFallbacks,
     SanitizeCss,
     LowerIdSuffixSelectors,
-    ResolvePresentationFallbacks,
+    ResolveQuadrantResvgFallbacks,
     SanitizeAttributes,
 }
 
 impl BuiltinSvgStage {
-    fn apply<'a>(
+    pub(super) fn apply<'a>(
         self,
         svg: Cow<'a, str>,
         metadata: &SvgPostprocessMetadata,
         execution: SvgPostprocessExecution<'_>,
         structure: SvgStructureMetrics,
-    ) -> Result<Cow<'a, str>> {
+        prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+    ) -> Result<(Cow<'a, str>, bool)> {
         let mut checkpoint = || execution.checkpoint();
         match self {
+            Self::PreparedMathProjection => {
+                if !svg.contains(PREPARED_MATH_CLASS_ATTRIBUTE)
+                    && !svg.contains(BROWSER_ONLY_MATH_NATIVE_UNAVAILABLE_ATTRIBUTE)
+                    && prepared_math_evidence.is_none_or(PreparedMathEvidenceLease::is_empty)
+                {
+                    return Ok((svg, false));
+                }
+                Ok((
+                    Cow::Owned(project_prepared_math(
+                        &svg,
+                        metadata.family_id(),
+                        prepared_math_evidence,
+                    )?),
+                    true,
+                ))
+            }
             Self::ForeignObjectFallback => {
                 let measurer = execution.controlled_text_measurer(TextMeasurementPhase::Wrap);
-                apply_foreign_object_fallback(svg, &measurer, execution, structure)
+                apply_foreign_object_fallback_with_outcome(svg, &measurer, execution, structure)
             }
-            Self::StripForeignObject => apply_strip_foreign_objects(svg, checkpoint),
-            Self::DropSwitchNativeFallbacks => apply_drop_switch_native_fallbacks(svg, checkpoint),
-            Self::SanitizeCss => apply_sanitize_style_elements(svg, checkpoint),
-            Self::LowerIdSuffixSelectors => apply_lower_id_suffix_selectors(svg, execution),
-            Self::ResolvePresentationFallbacks => {
-                resolve_resvg_presentation_fallbacks_with_checkpoints(
-                    svg,
-                    metadata,
-                    &mut checkpoint,
-                )
+            Self::StripForeignObject => {
+                apply_strip_foreign_objects(svg, checkpoint).map(|svg| (svg, true))
+            }
+            Self::DropSwitchNativeFallbacks => {
+                apply_drop_switch_native_fallbacks(svg, checkpoint).map(|svg| (svg, true))
+            }
+            Self::SanitizeCss => {
+                apply_sanitize_style_elements(svg, execution).map(|svg| (svg, true))
+            }
+            Self::LowerIdSuffixSelectors => {
+                apply_lower_id_suffix_selectors(svg, execution).map(|svg| (svg, true))
+            }
+            Self::ResolveQuadrantResvgFallbacks => {
+                resolve_quadrant_resvg_fallbacks_with_checkpoints(svg, metadata, &mut checkpoint)
+                    .map(|svg| (svg, true))
             }
             Self::SanitizeAttributes => {
                 sanitize_element_attributes_cow_with_checkpoints(svg, &mut checkpoint)
+                    .map(|svg| (svg, true))
             }
         }
     }
@@ -89,12 +118,13 @@ pub(crate) fn builtin_stages_for_preset(preset: SvgPipelinePreset) -> &'static [
         SvgPipelinePreset::Parity => &[],
         SvgPipelinePreset::Readable => &[BuiltinSvgStage::ForeignObjectFallback],
         SvgPipelinePreset::ResvgSafe => &[
+            BuiltinSvgStage::PreparedMathProjection,
             BuiltinSvgStage::ForeignObjectFallback,
             BuiltinSvgStage::StripForeignObject,
             BuiltinSvgStage::DropSwitchNativeFallbacks,
             BuiltinSvgStage::SanitizeCss,
             BuiltinSvgStage::LowerIdSuffixSelectors,
-            BuiltinSvgStage::ResolvePresentationFallbacks,
+            BuiltinSvgStage::ResolveQuadrantResvgFallbacks,
             BuiltinSvgStage::SanitizeAttributes,
         ],
     }
@@ -107,13 +137,24 @@ pub(crate) fn apply_preset_cow<'a>(
     execution: SvgPostprocessExecution<'_>,
     structure: SvgStructureMetrics,
     drop_native_duplicates: bool,
-) -> Result<Cow<'a, str>> {
+    prepared_math_evidence: Option<&PreparedMathEvidenceLease>,
+) -> Result<(Cow<'a, str>, bool)> {
+    let mut changed = false;
     for stage in builtin_stages_for_preset(preset) {
         execution.checkpoint()?;
-        current = stage.apply(current, metadata, execution, structure)?;
+        let (output, stage_changed) = stage.apply(
+            current,
+            metadata,
+            execution,
+            structure,
+            prepared_math_evidence,
+        )?;
+        current = output;
+        changed |= stage_changed;
         execution.checkpoint()?;
         execution.preflight_svg_byte_count(current.len())?;
         if *stage == BuiltinSvgStage::ForeignObjectFallback && drop_native_duplicates {
+            changed = true;
             current = Cow::Owned(drop_native_duplicate_fallbacks_with_checkpoints(
                 &current,
                 &mut || execution.checkpoint(),
@@ -122,7 +163,7 @@ pub(crate) fn apply_preset_cow<'a>(
             execution.preflight_svg_byte_count(current.len())?;
         }
     }
-    Ok(current)
+    Ok((current, changed))
 }
 
 #[cfg(test)]
@@ -139,12 +180,13 @@ mod tests {
         assert_eq!(
             builtin_stages_for_preset(SvgPipelinePreset::ResvgSafe),
             &[
+                BuiltinSvgStage::PreparedMathProjection,
                 BuiltinSvgStage::ForeignObjectFallback,
                 BuiltinSvgStage::StripForeignObject,
                 BuiltinSvgStage::DropSwitchNativeFallbacks,
                 BuiltinSvgStage::SanitizeCss,
                 BuiltinSvgStage::LowerIdSuffixSelectors,
-                BuiltinSvgStage::ResolvePresentationFallbacks,
+                BuiltinSvgStage::ResolveQuadrantResvgFallbacks,
                 BuiltinSvgStage::SanitizeAttributes
             ]
         );
@@ -162,13 +204,14 @@ mod tests {
         let structure =
             super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
                 .unwrap();
-        let expected = apply_preset_cow(
+        let (expected, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &SvgPostprocessMetadata::from_svg(svg),
             execution,
             structure,
             false,
+            None,
         )
         .unwrap();
 
@@ -176,8 +219,74 @@ mod tests {
     }
 
     #[test]
+    fn resvg_safe_rejects_browser_only_prepared_math_before_foreign_object_fallback() {
+        let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(
+            crate::DiagramFamilyId::FLOWCHART,
+            "node-label",
+            0,
+        );
+        let evidence = PreparedMathEvidenceLease::new(
+            vec![crate::math::PreparedMathExpectation::unavailable(
+                occurrence_id.clone(),
+                1,
+            )],
+            Vec::new(),
+        );
+        let svg = format!(
+            concat!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg">"#,
+                r#"<foreignObject width="10" height="10">"#,
+                r#"<div xmlns="http://www.w3.org/1999/xhtml">"#,
+                r#"<span class="merman-prepared-math" "#,
+                r#"data-merman-prepared-math-native="unavailable" "#,
+                r#"data-merman-prepared-math-occurrence="{}">"#,
+                r#"<svg><path d="M0 0h1v1z"/></svg></span></div>"#,
+                r#"</foreignObject></svg>"#,
+            ),
+            occurrence_id.as_str(),
+        );
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let execution = SvgPostprocessExecution::new(&session);
+        let metadata = SvgPostprocessMetadata::from_svg(&svg)
+            .with_family_id(crate::DiagramFamilyId::FLOWCHART);
+        let structure = super::super::final_validation::validate_well_formed_svg_with_execution(
+            &svg, execution,
+        )
+        .unwrap();
+
+        let error = apply_preset_cow(
+            SvgPipelinePreset::ResvgSafe,
+            Cow::Borrowed(&svg),
+            &metadata,
+            execution,
+            structure,
+            false,
+            Some(&evidence),
+        )
+        .expect_err("browser-only prepared math must not disappear from ResvgSafe output");
+
+        assert!(matches!(
+            error,
+            crate::Error::SvgPostprocess { ref pass, ref message }
+                if pass == "prepared-math-projection"
+                    && message.contains("native projection is unavailable")
+        ));
+
+        let error = super::super::finalize_resvg_svg(&svg, &session)
+            .expect_err("raw SVG must not mint a renderer-owned math projection");
+        assert!(matches!(
+            error,
+            crate::Error::SvgPostprocess { ref pass, ref message }
+                if pass == "prepared-math-projection"
+                    && message.contains("renderer-owned family metadata")
+        ));
+    }
+
+    #[test]
     fn resvg_safe_finalization_is_idempotent_after_resource_closure() {
-        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com"><text>docs</text></a><image href="../secret.png"/><use href="#shape"/><defs><path id="shape" d="M0 0H1V1H0z"/></defs><style>.safe{fill:url(#paint)}.external{background:url(/tmp/image.png)}</style></svg>"##;
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><a href="https://example.com"><text>docs</text></a><image href="../secret.png"/><use href="#shape"/><defs><path id="shape" d="M0 0H1V1H0z"/><linearGradient id="paint"/></defs><style>.safe{fill:url(#paint)}.external{background:url(/tmp/image.png)}</style></svg>"##;
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
@@ -203,13 +312,14 @@ mod tests {
             super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
                 .unwrap();
 
-        let output = apply_preset_cow(
+        let (output, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &metadata,
             execution,
             structure,
             false,
+            None,
         )
         .unwrap();
 
@@ -229,7 +339,7 @@ mod tests {
             .into_string();
 
         assert!(!out.contains("NaN"), "{out}");
-        let document = roxmltree::Document::parse(&out).expect("valid generic resvg-safe SVG");
+        let document = crate::xml_dom::Document::parse(&out).expect("valid generic resvg-safe SVG");
         let point = document
             .descendants()
             .find(|node| node.has_tag_name("circle"))
@@ -239,25 +349,26 @@ mod tests {
     }
 
     #[test]
-    fn explicit_typed_family_metadata_enables_quadrant_presentation_fallback() {
+    fn explicit_typed_family_metadata_enables_quadrant_resvg_fallback() {
         let svg = r#"<svg id="quadrant" aria-roledescription="quadrantChart"><g class="data-points"><g class="data-point"><circle fill="hsl(240, 100%, NaN%)" stroke="hsl(240, 100%, NaN%)"/></g></g></svg>"#;
         let session = crate::environment::RenderEnvironment::deterministic()
             .begin_session()
             .unwrap();
         let execution = SvgPostprocessExecution::new(&session);
         let metadata = SvgPostprocessMetadata::from_svg(svg)
-            .with_family_kind(crate::family::RenderFamilyKind::QuadrantChart);
+            .with_family_id(crate::DiagramFamilyId::QUADRANT_CHART);
         let structure =
             super::super::final_validation::validate_well_formed_svg_with_execution(svg, execution)
                 .unwrap();
 
-        let out = apply_preset_cow(
+        let (out, _) = apply_preset_cow(
             SvgPipelinePreset::ResvgSafe,
             Cow::Borrowed(svg),
             &metadata,
             execution,
             structure,
             false,
+            None,
         )
         .unwrap();
 

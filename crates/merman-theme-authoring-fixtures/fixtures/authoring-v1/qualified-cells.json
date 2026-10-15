@@ -1,0 +1,47 @@
+[
+  {
+    "id": "host-dependent",
+    "cell": {
+      "family_id": "state",
+      "output_id": "png",
+      "profile_id": "native-flowchart-state-sequence-system-fonts-v1",
+      "admission_status": "host_dependent"
+    }
+  },
+  {
+    "id": "future-profile-portable",
+    "cell": {
+      "family_id": "state",
+      "output_id": "png",
+      "profile_id": "future-profile",
+      "admission_status": "portable"
+    }
+  },
+  {
+    "id": "known-profile-future-admission",
+    "cell": {
+      "family_id": "state",
+      "output_id": "png",
+      "profile_id": "native-flowchart-state-sequence-system-fonts-v1",
+      "admission_status": "future-admission"
+    }
+  },
+  {
+    "id": "future-profile-future-admission",
+    "cell": {
+      "family_id": "state",
+      "output_id": "png",
+      "profile_id": "future-profile",
+      "admission_status": "future-admission"
+    }
+  },
+  {
+    "id": "all-future-identifiers",
+    "cell": {
+      "family_id": "future-family",
+      "output_id": "future-output",
+      "profile_id": "future-profile",
+      "admission_status": "future-admission"
+    }
+  }
+]

@@ -1,0 +1,85 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-c6-spotless-state",
+  "tokens": {
+    "background": "#ede8dc",
+    "surface": "#f5f1e8",
+    "primary": "#2c2416",
+    "text": "#1a1a1a"
+  },
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": 40,
+    "textTransform": "uppercase"
+  },
+  "canvas": [
+    {
+      "kind": "solid",
+      "color": "#ede8dc"
+    },
+    {
+      "kind": "linear-gradient",
+      "angleDegrees": 45,
+      "repetition": "repeating",
+      "tileWidthPx": 20,
+      "tileHeightPx": 20,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#2c241608"
+        },
+        {
+          "offsetPercent": 50,
+          "color": "#2c241608"
+        },
+        {
+          "offsetPercent": 51,
+          "color": "#2c24160d"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#2c24160d"
+        }
+      ]
+    },
+    {
+      "kind": "radial-gradient",
+      "centerXPercent": 50,
+      "centerYPercent": 50,
+      "repetition": "tiled",
+      "tileWidthPx": 20,
+      "tileHeightPx": 20,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#2c24162e"
+        },
+        {
+          "offsetPercent": 10,
+          "color": "#2c24162e"
+        },
+        {
+          "offsetPercent": 11,
+          "color": "#2c241600"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#2c241600"
+        }
+      ]
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

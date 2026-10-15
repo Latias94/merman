@@ -2,8 +2,8 @@
 
 - Status: accepted for transport separation; package and capability mapping superseded by ADR-0076
 - Date: 2026-06-10
-- Last amended: 2026-08-13 (Web transport API 4 requires the editor-owned completion trigger
-  export and adds operation-scoped deadlines and cooperative cancellation)
+- Last amended: 2026-08-20 (the unreleased Typst wrapper advances to plugin ABI 3 for one closed
+  shared theme-authoring dispatcher)
 
 ADR-0076 now owns Web artifact profiles, package mappings, Typst artifact mappings, and capability
 semantic IDs through `capabilities/feature-surface-v1.json`. The one-package/subpath and legacy
@@ -25,8 +25,9 @@ part of its intended contract.
 
 At the same time, `merman-typst-plugin` proves the Typst transport boundary through an exact
 profile descriptor, a closed ABI, and a profile-owned artifact. The publish artifact may import
-only the two `typst_env` wasm-minimal-protocol functions. Its callable surface is exactly the five
-Typst ABI-2 operations for version, capabilities, SVG render, and canonical analysis. Its non-callable
+only the two `typst_env` wasm-minimal-protocol functions. Its callable surface is exactly the six
+Typst ABI-3 operations for version, capabilities, SVG render, canonical analysis, and the shared
+theme-authoring dispatcher. Its non-callable
 support exports are exactly `memory` plus the immutable `i32` linker globals `__data_end` and
 `__heap_base` emitted by Rust's WebAssembly linker.
 
@@ -81,7 +82,7 @@ flowchart LR
      consume the same descriptor.
    - Package builds must pass the exact `typst-wasm` import/export gate and invoke every ABI
      operation through the wasmi smoke gate before assembly.
-   - The export gate distinguishes the five callable ABI operations from linker support metadata;
+   - The export gate distinguishes the six callable ABI operations from linker support metadata;
      only `memory` and the immutable `i32` globals `__data_end` and `__heap_base` may accompany
      those operations.
   - The publish/default plugin artifact enables `svg`, `analysis`, `layout-cytoscape`, and `layout-elk`; the public
@@ -112,8 +113,8 @@ flowchart LR
 | Browser profile evidence | All named browser profiles build and report accurate capabilities | `npm run build:surfaces --prefix platforms/web`, package smoke, and profile manifests |
 | Runtime capability discovery | Active artifact reports compiled capabilities | `bindingCapabilities()` returns booleans and legacy artifacts fall back to full capabilities |
 | Typst import boundary | Only the two `typst_env` protocol imports are present | `cargo run -p xtask -- profile-budget check-wasm --profile typst-wasm --wasm <plugin.wasm>` |
-| Typst export boundary | Exactly five callable ABI operations, `memory`, and immutable `i32` `__data_end`/`__heap_base` linker globals are present; every other export is rejected | The shared Wasmi module-surface validator used by `profile-budget check-wasm` and the Typst package builder |
-| Typst execution boundary | Plugin can be loaded by a Typst-compatible host and every Typst ABI-2 operation matches the selected profile | `cargo run -p xtask -- build-typst-package --profile publish`, followed by `cargo run -p xtask -- typst-package-smoke --profile publish --skip-wasm-build` |
+| Typst export boundary | Exactly six callable ABI operations, `memory`, and immutable `i32` `__data_end`/`__heap_base` linker globals are present; every other export is rejected | The shared Wasmi module-surface validator used by `profile-budget check-wasm` and the Typst package builder |
+| Typst execution boundary | Plugin can be loaded by a Typst-compatible host and every Typst ABI-3 operation matches the selected profile | `cargo run -p xtask -- build-typst-package --profile publish`, followed by `cargo run -p xtask -- typst-package-smoke --profile publish --skip-wasm-build` |
 | Surface documentation | Browser and Typst/pure-WASM surfaces are not conflated | `docs/release/PACKAGE_SURFACES.md`, `docs/FEATURES.md`, and README surface sections |
 
 ## Alternatives Considered

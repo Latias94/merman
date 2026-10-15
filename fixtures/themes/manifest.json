@@ -1,0 +1,1132 @@
+{
+  "schemaVersion": 2,
+  "sources": [
+    {
+      "id": "source-modern-mermaid",
+      "project": "gotoailab/modern_mermaid",
+      "revision": "a021cbce37fc0b07a9f4791c28e983101ea06f2d",
+      "upstreamLicensePath": "LICENSE",
+      "licensePath": "licenses/modern-mermaid-MIT.txt",
+      "licenseSha256": "4e7ef9d2fd6e8b957ede09ca1bffe1844740721ea273d226b79bca2a9b9f3198",
+      "snapshotPath": "evidence/modern-mermaid-theme-mechanisms.json",
+      "snapshotSha256": "2155a9a3826d8f795c3afda1f74a13626f0f2e957fb52ed5d2287c4273a8c482",
+      "evidence": [
+        {
+          "sourcePath": "src/utils/themes.ts",
+          "sha256": "9f1baf22457de1fbc5217437dc103840a14f15f2213eeaba45f91e306f6db92d"
+        },
+        {
+          "sourcePath": "src/components/Preview.tsx",
+          "sha256": "f3043d5b0b6d5c17f072da3a18b7cad19c9b7affa82d5f0d2f2e92542d7cac25"
+        },
+        {
+          "sourcePath": "src/fonts.css",
+          "sha256": "f15bf97d5b3ba371c93bbda5258acff9fb7ffeef25b57e8a328d49739b807de0"
+        }
+      ]
+    },
+    {
+      "id": "source-excalidraw",
+      "project": "excalidraw/excalidraw",
+      "revision": "e4ab626739f5f163c5eca56190f615643218b61c",
+      "upstreamLicensePath": "LICENSE",
+      "licensePath": "licenses/excalidraw-MIT.txt",
+      "licenseSha256": "1352d204fdb90d5e482c13139d848bc2c9300a9a7de358a0a558a23e72d0d8be",
+      "snapshotPath": "evidence/excalidraw-font-provenance.json",
+      "snapshotSha256": "fe7e234f3b065b78664d502417338f2b57a98c050434ed1913aa51165f1208c8",
+      "evidence": [
+        {
+          "sourcePath": "packages/common/src/constants.ts",
+          "sha256": "5d2baf2211dd409f7bd7451d50ec2ee3b9c75545df3fe2b3c59cfd495d332e13"
+        },
+        {
+          "sourcePath": "packages/common/src/font-metadata.ts",
+          "sha256": "8a7c8fe4a611042e4e7acd3db814f131632e3d3337d4b2672b85549632070f7e"
+        },
+        {
+          "sourcePath": "packages/excalidraw/fonts/ExcalidrawFontFace.ts",
+          "sha256": "ae795b3485ca46361f56e26fc84411a94a45d1c4c9909905c155af16a998eb58"
+        },
+        {
+          "sourcePath": "packages/excalidraw/fonts/Excalifont/index.ts",
+          "sha256": "57793f1c8aa1116de20fb0add878c6c143a29d505913699114008e8907372e8a"
+        },
+        {
+          "sourcePath": "packages/excalidraw/fonts/Fonts.ts",
+          "sha256": "955896c50b2067430e8c91ce84115f3841e63364b0a29c5818c9e53e0a102589"
+        },
+        {
+          "sourcePath": "packages/excalidraw/fonts/Xiaolai/index.ts",
+          "sha256": "92882c3762cd155663341f19f63b28dc9fe868d796a97176dabb84c0016223d6"
+        }
+      ]
+    },
+    {
+      "id": "source-mermaid",
+      "project": "mermaid-js/mermaid",
+      "revision": "dcb694ddb58dc5ad3502e7e903cac05fd812eac3",
+      "upstreamLicensePath": "LICENSE",
+      "licensePath": "licenses/mermaid-MIT.txt",
+      "licenseSha256": "ec9fb67dcb25eccc416ed56e1aab819222c805a2a4bfe4cb19e7556bf2ffde80",
+      "snapshotPath": "evidence/mermaid-style-precedence.json",
+      "snapshotSha256": "5656d4de20e42e925914ec6e010f05a93e22662a6316bc7dda10415fe6903c76",
+      "evidence": [
+        {
+          "sourcePath": "packages/mermaid/src/config.ts",
+          "sha256": "49f92451e4ca7652b54169007edb3714e40aa9da2a122601a98c0f7ed076da28"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/class/classDb.ts",
+          "sha256": "09d09f0b5f0bac34e8a640a8e7e9657b3ef57cfc6f6411fae0b7b90f690fc95e"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/class/classRenderer-v3-unified.ts",
+          "sha256": "db93bb9728f91e0546c9a273167e95c313d05ced253b2effb14220f724677cc7"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/class/shapeUtil.ts",
+          "sha256": "ed768affadef0163dce386f6bbeffdc0b49d0e8188d23d4c72a5132da581ed43"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/er/erDb.ts",
+          "sha256": "c048254a2fe1f3a294f41b901d8b9f73d0f6bbb1b999e8c9f82f7ba5b736aa69"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/er/parser/erDiagram.jison",
+          "sha256": "4f7c96b05d15bcc9c0e753bb106a5b8a67cfa4c8b2e13faab1d7098b92f9e5be"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/er/styles.ts",
+          "sha256": "57a9e8892bdaf6feea153af07b1cac55c0e56ba8ed7f2a0ee21755a47dafabc2"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/flowchart/flowDb.ts",
+          "sha256": "a37c7ec0fe29343e22b5785e7d8c3cf5f595d827e3a62ecaacfb159b617872a4"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/flowchart/parser/flow.jison",
+          "sha256": "b95d5a12271ece39b9be35fdc082801ed73c179e54f2903b472452394991e384"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/state/dataFetcher.ts",
+          "sha256": "96ade1b450d6843a7ac42b59f9d803aadeb66b087bb93da9685e72ce07441c92"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/state/parser/stateDiagram.jison",
+          "sha256": "94d4715707c3b35192b8586fa271e843f2c084e9ff70dd8db07c510c1a23e231"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/diagrams/state/stateDb.ts",
+          "sha256": "f135a0c6753d4656437b3ffa091f93bde7002f0213178f5546032f1e27e601cc"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/mermaidAPI.ts",
+          "sha256": "1908ef06ddf59b37dfb7664b44112d4e4c7f3ea0bb6ccdf22f94cf16acabcf3a"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/preprocess.ts",
+          "sha256": "62389f115e99bff90bf758453a06ae7638264530ff8ad96544541dd04dffdc77"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/rendering-util/rendering-elements/edges.js",
+          "sha256": "c65b94839cded66fc155279bc120df9e7efa0e342f34a4afc12743aa16a4b9ec"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/rendering-util/rendering-elements/shapes/classBox.ts",
+          "sha256": "800a1f14ae0123d9aae0675903eaff065ba3aa8f0843bfc9394067f8625a40ee"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/rendering-util/rendering-elements/shapes/erBox.ts",
+          "sha256": "661b2d73c63686bd3c2f1407c1319f11d47481bb8f9a5b96874db7eaf29b0520"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/rendering-util/rendering-elements/shapes/handDrawnShapeStyles.ts",
+          "sha256": "1ac5256a670bf956fe46bb4df1fbdd2f67fa1eedce5e1b3ca3868404c32872d6"
+        },
+        {
+          "sourcePath": "packages/mermaid/src/styles.ts",
+          "sha256": "2c6b17f84b2e0a88ebfd9591cb3df7dcb32d7d05561bdceabcd40f8888f327c1"
+        }
+      ]
+    }
+  ],
+  "assets": [
+    {
+      "id": "font-excalifont-latin",
+      "path": "assets/fonts/Excalifont-Regular-Latin.woff2",
+      "sha256": "e4423b318e11432aff2e6e865e300b7ca270f92321a3f56632268fede01c1b48",
+      "mediaType": "font-woff2",
+      "canonicalFamily": "Excalifont",
+      "family": "Excalifont",
+      "weight": 400,
+      "style": "normal",
+      "unicodeRange": "U+20-7e,U+a0-a3,U+a5-a6,U+a8-ab,U+ad-b1,U+b4,U+b6-b8,U+ba-ff,U+131,U+152-153,U+2bc,U+2c6,U+2da,U+2dc,U+304,U+308,U+2013-2014,U+2018-201a,U+201c-201e,U+2020,U+2022,U+2024-2026,U+2030,U+2039-203a,U+20ac,U+2122,U+2212",
+      "sourceId": "source-excalidraw",
+      "sourcePath": "packages/excalidraw/fonts/Excalifont/Excalifont-Regular-a88b72a24fb54c9f94e3b5fdaa7481c9.woff2",
+      "sourceSha256": "e4423b318e11432aff2e6e865e300b7ca270f92321a3f56632268fede01c1b48",
+      "licensePath": "licenses/OFL-1.1.txt",
+      "licenseSha256": "5b30e4804694fbb6e025a623d50561e7916825585c3645062bc379a77619bd55",
+      "noticePath": "licenses/Excalifont-NOTICE.txt",
+      "noticeSha256": "3d9d901366ab7bcc0fae9e244f137252511948601ea08113ce97289df2575331"
+    },
+    {
+      "id": "font-xiaolai-cjk-test",
+      "path": "assets/fonts/Xiaolai-Regular-CJK-Test.woff2",
+      "sha256": "6f78f52b32b85a686bae2602b6f4bd9197e508140a87c23eb38ced0fa501808e",
+      "mediaType": "font-woff2",
+      "canonicalFamily": "Xiaolai SC",
+      "family": "Xiaolai",
+      "weight": 400,
+      "style": "normal",
+      "unicodeRange": "U+4e03,U+4e30,U+4e34,U+4e45,U+4e60,U+4e70,U+4e88,U+4e91-4e92,U+4ea9,U+4eb2,U+4ec0,U+4ecb,U+4ecd,U+4ee4,U+4fee,U+5019,U+5047,U+50cf,U+5145,U+516d,U+5170,U+5175,U+5199,U+51cf,U+51fb,U+521a,U+5224,U+5267,U+52aa,U+5347-5348,U+534a,U+5356,U+5361,U+536b,U+5370,U+538b,U+53e4,U+53e6,U+5403,U+5426,U+5428,U+542c,U+5438,U+5668,U+56ed,U+56f4,U+56fe,U+57df,U+592a,U+5957,U+5b69,U+5b81,U+5b8f,U+5b98,U+5b9d,U+5ba1,U+5ba4,U+5bb3,U+5bc6,U+5bdf,U+5c3d,U+5c5e,U+5c81,U+5ddd,U+5de8,U+5dee,U+5e0c,U+5e86,U+5e8f,U+5e93,U+5e95,U+5e97,U+5ea7,U+5ead,U+5eb7,U+5f55,U+5f81,U+5f85,U+5ff5,U+6001,U+613f,U+6258,U+6267,U+6269,U+626c,U+627e,U+62db,U+62ec,U+6325,U+635f,U+6362,U+6388,U+6392,U+63a2,U+63a7,U+63aa,U+641e,U+6545,U+6597,U+65e2,U+65e9,U+661f,U+665a,U+666e-666f,U+66fe,U+6728,U+67d0,U+6811,U+6838,U+6865,U+697c,U+6b22,U+6b27,U+6b4c,U+6b62,U+6b66,U+6b7b,U+6bdb,U+6c47,U+6c49,U+6c7d,U+6c99,U+6cfd,U+6d0b,U+6d25,U+6d32,U+6d3e,U+6d4b,U+6e29,U+6e56,U+6e7e,U+6f14,U+6fc0,U+706b,U+70c8,U+7247,U+72af,U+72b6,U+72ec,U+732e,U+73ed,U+7403,U+7533,U+753b,U+7559,U+7565,U+7597,U+767b,U+773c,U+7763,U+77ed,U+77ff,U+7968,U+798f,U+79bb,U+79c0-79c1,U+7ad9,U+7ae0,U+7b51,U+7b7e,U+7cae,U+7d22,U+7ea2,U+7eb3,U+7eb7,U+7ec3,U+7ec8,U+7ecd,U+7edd,U+7efc,U+7f16,U+7f3a,U+7f51,U+7f57,U+7f6e,U+80dc,U+822a,U+8239,U+826f,U+82cf,U+82e6,U+8349,U+8363,U+83dc,U+8457,U+85cf,U+878d,U+8865,U+8a00,U+8b66,U+8ba2,U+8ba8,U+8bad,U+8bb2,U+8bc9,U+8bd5,U+8bfb,U+8d2b,U+8d35,U+8d37,U+8f7b,U+8f93,U+8fce,U+8fdd,U+9000-9002,U+9010,U+9047,U+9093,U+9152,U+9488,U+94a2,U+9633,U+9636,U+963f,U+9646,U+9648,U+964d,U+9664,U+9669,U+9760,U+97f3,U+987a,U+987e,U+9884,U+98de,U+9986,U+9ed1",
+      "sourceId": "source-excalidraw",
+      "sourcePath": "packages/excalidraw/fonts/Xiaolai/Xiaolai-Regular-79d494361ae093b69e74ee9dbe65bfd4.woff2",
+      "sourceSha256": "6f78f52b32b85a686bae2602b6f4bd9197e508140a87c23eb38ced0fa501808e",
+      "licensePath": "licenses/OFL-1.1.txt",
+      "licenseSha256": "5b30e4804694fbb6e025a623d50561e7916825585c3645062bc379a77619bd55",
+      "noticePath": "licenses/Xiaolai-NOTICE.txt",
+      "noticeSha256": "53b2a5df156fd9e4658e7f890f06f07bd7a26365c459644b9e4667b628a67d77"
+    }
+  ],
+  "fixtures": [
+    {
+      "id": "fixture-token-baseline",
+      "sourcePath": "sources/token-baseline.mmd",
+      "sourceSha256": "7e34f24f6fea93cc706e1930da50a20124024cc8448fa7b0ed96e86a5c5759b0",
+      "expectationPath": "expectations/token-baseline.json",
+      "expectationSha256": "acf5b000b5859f511a14952e76732dc623f55ed8cb96e8a3d98c2d6c25d30fc4",
+      "themeInputPath": "inputs/token-baseline.json",
+      "themeInputSha256": "3faed4b519d01cfc9eda8c95878fe0c3c0696cab585af2841684afb5c47d4825",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-c6-brutalist-state",
+      "sourcePath": "sources/c6-brutalist-state.mmd",
+      "sourceSha256": "e857c3b89942d25e5fcf1170b0e61b44add609e66abc0736ffc2373b6d9e00be",
+      "expectationPath": "expectations/c6-brutalist-state.json",
+      "expectationSha256": "86103f4fb27cbc221263076b8bbc47992f3fbe161f0da26525d8fb6c34411590",
+      "themeInputPath": "inputs/c6-brutalist-state.json",
+      "themeInputSha256": "12181d4b64a69fd6fddc798b61c89277b13f24dc74083375a53a9d0fb3793548",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-cyberpunk-state",
+      "sourcePath": "sources/c6-cyberpunk-state.mmd",
+      "sourceSha256": "98005feadb8f4091daf63cb36ae417577bb944489dd2a31594601fbcc4b91ad8",
+      "expectationPath": "expectations/c6-cyberpunk-state.json",
+      "expectationSha256": "33450d90c045d250b2df3ccb4263548dc089e3f98293004c4952e8a9cd53a4de",
+      "themeInputPath": "inputs/c6-cyberpunk-state.json",
+      "themeInputSha256": "601c080ba7cb219eb8d4739d5d49128cb322b5b788d33eb5e458b4ac167c74e7",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-cyberpunk-flowchart",
+      "sourcePath": "sources/c6-cyberpunk-flowchart.mmd",
+      "sourceSha256": "a2bb8cc673f1202592eb6d273b7e22d21e5682bd52a7d86763b0f2afd078e500",
+      "expectationPath": "expectations/c6-cyberpunk-flowchart.json",
+      "expectationSha256": "1593023743594d0899b0edd5ad0818146f369ae15d5fe5e07ff02e72d08e572f",
+      "themeInputPath": "inputs/c6-cyberpunk-flowchart.json",
+      "themeInputSha256": "4f0ec258c20cfe0b444d2c998d0dd2b888cff068e3020e7289f257e0bf3a2b17",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-cyberpunk-sequence",
+      "sourcePath": "sources/c6-cyberpunk-sequence.mmd",
+      "sourceSha256": "1f215578de05d71a02d22fff376c55a88ed71c7c36df909b5a5ff6a31a8583e8",
+      "expectationPath": "expectations/c6-cyberpunk-sequence.json",
+      "expectationSha256": "5fdea53228c718318935761e381570d1ccff7056b9553f662f5b7b3a2ebfe689",
+      "themeInputPath": "inputs/c6-cyberpunk-sequence.json",
+      "themeInputSha256": "ae0bd0b3aa37435bff5b3e306f690ba3a6ec7bb10cb623574ef56fc7556baeff",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-spotless-state",
+      "sourcePath": "sources/c6-spotless-state.mmd",
+      "sourceSha256": "695c0e0badd4e5d8c6f6546a0004315b19a3b018aa2a1da370455c86873120d6",
+      "expectationPath": "expectations/c6-spotless-state.json",
+      "expectationSha256": "7d3590d1493f58ee7a33875790e55d03e8e252488535d49031d516ed6324b046",
+      "themeInputPath": "inputs/c6-spotless-state.json",
+      "themeInputSha256": "9fe23046cfeeca228d3858c6da41ff8d0b3f37f65fa8ec812c5d16c62c5796c6",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-spotless-sequence",
+      "sourcePath": "sources/sequence-proof.mmd",
+      "sourceSha256": "dbac54565c93b5e2d733b350e4cde7ecb7b464a79daf28d1ed6a0dc51b367d91",
+      "expectationPath": "expectations/c6-spotless-sequence.json",
+      "expectationSha256": "6e4cad331b2089515a332bf730e1d6f77fe305ef9363318cbbdc074248bbdc23",
+      "themeInputPath": "inputs/c6-spotless-sequence.json",
+      "themeInputSha256": "96ae066cc1bc4a277958cdae5e4f661a37a376312ec8934dff1fe3e9e232cedb",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-c6-spotless-flowchart",
+      "sourcePath": "sources/c6-spotless-flowchart.mmd",
+      "sourceSha256": "c0046985be91d0cfda91786625b03d543f4e70e2f634abc9727f776204b80590",
+      "expectationPath": "expectations/c6-spotless-flowchart.json",
+      "expectationSha256": "1a603d205af99c35689b6829ef29f4d32382e2e547c32d91cd2c5dac2d97c50b",
+      "themeInputPath": "inputs/c6-spotless-flowchart.json",
+      "themeInputSha256": "48ebd3194a3f7516b03ba70efd1bbeb1ef7bad502705e6f35dd13e61ed2904e6",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-sequence-proof",
+      "sourcePath": "sources/sequence-proof.mmd",
+      "sourceSha256": "dbac54565c93b5e2d733b350e4cde7ecb7b464a79daf28d1ed6a0dc51b367d91",
+      "expectationPath": "expectations/sequence-proof.json",
+      "expectationSha256": "8e53f5b56e3f4b642cdcf8733cfc39db96159a704093a581a5107f6f0f4f68e7",
+      "themeInputPath": "inputs/sequence-proof.json",
+      "themeInputSha256": "9c15e75de9f29949cf4c628330a7f1afa36f11ecaadb8a26f7ba63ce1f1db49a",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-mixed-script-typography",
+      "sourcePath": "sources/mixed-script-typography.mmd",
+      "sourceSha256": "201786b42c1e09c7357c60e0a7ae0854f2d746a0be659b4d9c1fa6b508a2d9df",
+      "expectationPath": "expectations/mixed-script-typography.json",
+      "expectationSha256": "b60d01b3b6acb0fc9c9818900dbb122207d0526f896224c2a89144cb13a4bc3b",
+      "themeInputPath": "inputs/mixed-script-typography.json",
+      "themeInputSha256": "ea4edb0d7dd635f8bbe661c5ebab0d386ced6923d38765b36cd9abc8634b32a3",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin",
+        "font-xiaolai-cjk-test"
+      ]
+    },
+    {
+      "id": "fixture-ordinal-palette",
+      "sourcePath": "sources/ordinal-palette.mmd",
+      "sourceSha256": "55ea0bb4e826da54d31289834d374524cbf622fcaca54d084215a7b09514cb85",
+      "expectationPath": "expectations/ordinal-palette.json",
+      "expectationSha256": "84df0efbd45976d6919baf8fc82421e08784c23ad8c055efa60712f8e1397d64",
+      "themeInputPath": "inputs/ordinal-palette.json",
+      "themeInputSha256": "525b6c15230070d2db5170f03bc18624024ef80418ea04a93f418b3506531ae6",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-layered-canvas",
+      "sourcePath": "sources/layered-canvas.mmd",
+      "sourceSha256": "ea77086162dfe1983e41d12a04716d7256633a3daf2e59b0f3a16f61f50c4863",
+      "expectationPath": "expectations/layered-canvas.json",
+      "expectationSha256": "9286d4228c0911424e52cd67e0a768eca961e0978fe0e3339602cf107f17d1b7",
+      "themeInputPath": "inputs/layered-canvas.json",
+      "themeInputSha256": "160cb8003122b1ac89aa4250a27225d79218216e4dadbc37297b14fbb84ca4b9",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-hand-drawn-effects",
+      "sourcePath": "sources/hand-drawn-effects.mmd",
+      "sourceSha256": "2821e480efe4a14867235088b27297c93ba1695b06b0ffd001fe725fd1dbb008",
+      "expectationPath": "expectations/hand-drawn-effects.json",
+      "expectationSha256": "d62f3dc0627234840069cf1703939992d5c42216317f81b5cd2ece217fd7bb03",
+      "themeInputPath": "inputs/hand-drawn-effects.json",
+      "themeInputSha256": "db920ed6b3ec3ac93139bf6303fdcb20c6787c88e0007c420cee855abe353332",
+      "evidenceSourceIds": [
+        "source-excalidraw",
+        "source-modern-mermaid"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    {
+      "id": "fixture-aurora-residual",
+      "sourcePath": "sources/aurora-residual.mmd",
+      "sourceSha256": "9e857a66a032fc11eb28df195d33ca351515111434b9c44349f13cab3840f866",
+      "expectationPath": "expectations/aurora-residual.json",
+      "expectationSha256": "1498a3e33802458d1870d83a5849f7e8aee6c3b3578812b1659ede279caca231",
+      "themeInputPath": "inputs/aurora-residual.json",
+      "themeInputSha256": "fe5ee2d3cfa8e4a3c39cb20e08e388a6d68affa3a8b3b9ffa3002b3002404450",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-style-precedence",
+      "sourcePath": "sources/style-precedence.mmd",
+      "sourceSha256": "3c4113d9d9d1854717fa366d631485bd07734f1075fa935cc9ddafcaa6e33df6",
+      "expectationPath": "expectations/style-precedence.json",
+      "expectationSha256": "7e334edbc9e21fd0ee6b58fc6546526e2b36b47473652c0901e701b0b1550ea4",
+      "evidenceSourceIds": [
+        "source-mermaid",
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-frontmatter-style-precedence",
+      "sourcePath": "sources/frontmatter-style-precedence.mmd",
+      "sourceSha256": "c14641cbc3e79ce9525c8e1d4f2fc0c732900c1a54d89446db6d3c1f3f6963a6",
+      "expectationPath": "expectations/frontmatter-style-precedence.json",
+      "expectationSha256": "1ed96e347f5768d49b8e94c03cbdf730f18f6137dbeeebfa2ea79f03fbbf0142",
+      "evidenceSourceIds": [
+        "source-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-semantic-style-capabilities",
+      "sourcePath": "sources/semantic-style-capabilities.mmd",
+      "sourceSha256": "86cbbc23d056f0941906996d4488f1f14b2f094434d392236c3b4dd49ba34247",
+      "expectationPath": "expectations/semantic-style-capabilities.json",
+      "expectationSha256": "09efc7a4813649a453ce1db361aeb7197efdb2446bbe685360ce7e35966ba798",
+      "themeInputPath": "inputs/semantic-style-capabilities.json",
+      "themeInputSha256": "d420671004d128f5a5175b9245a50c79c10b7c2f4533427cdf1e136ebea758d8",
+      "evidenceSourceIds": [
+        "source-mermaid",
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-class-assignment-before-definition",
+      "sourcePath": "sources/class-assignment-before-definition.mmd",
+      "sourceSha256": "ff0bd7318504280840532e04a3eb3ec2f989e06914ceb7c4a42c7f437caac734",
+      "expectationPath": "expectations/class-assignment-before-definition.json",
+      "expectationSha256": "ae14bc6bb36bb53b45f639a3e5182a9a471dec6ffff3f099ec7b1d26d8a6bef1",
+      "evidenceSourceIds": [
+        "source-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-class-definition-before-assignment",
+      "sourcePath": "sources/class-definition-before-assignment.mmd",
+      "sourceSha256": "3c121ccccb415b6f5dded018502a4634e6bb0eaeeb5ed9463a34fe46b7ef4b2d",
+      "expectationPath": "expectations/class-definition-before-assignment.json",
+      "expectationSha256": "9157b908ce9a98103da411633fbe5b04efe44a5f1d18bbe2330f8ec2e93d6f5f",
+      "evidenceSourceIds": [
+        "source-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-dotted-canvas",
+      "sourcePath": "sources/dotted-canvas.mmd",
+      "sourceSha256": "ed3a05e0c920ae0428f2f6f056cdd6f8738d3899c4189fc1720996c67e41bf87",
+      "expectationPath": "expectations/dotted-canvas.json",
+      "expectationSha256": "f37467408b6bbaa57eeb9ee7b15928e5f9627f7062a783879b2777ea33380287",
+      "themeInputPath": "inputs/dotted-canvas.json",
+      "themeInputSha256": "1584ca5bf45d2fe14b3a65df86c5031a30d8d02b84c09ebd15b54fe31589093e",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-striped-canvas",
+      "sourcePath": "sources/striped-canvas.mmd",
+      "sourceSha256": "04e11ec94eca6345b2ad0495cb930f056d60041994812b3297d50fbe6a29bd8b",
+      "expectationPath": "expectations/striped-canvas.json",
+      "expectationSha256": "9879f303170fc362593d6976112f648bda654c267bb82a01dc7cf6edfac09d73",
+      "themeInputPath": "inputs/striped-canvas.json",
+      "themeInputSha256": "bef294865d31ef6795e19bf8b41f4eed483d6fae09ae9c05f35c6cf2935c980e",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-class-semantic-capabilities",
+      "sourcePath": "sources/class-semantic-capabilities.mmd",
+      "sourceSha256": "4bf682e2ec8281a4115174c144c1600c01ed27acc21a553ea2c6d8c0bcd551e6",
+      "expectationPath": "expectations/class-semantic-capabilities.json",
+      "expectationSha256": "50be62d030e9cc36aa74fcdefd987adb2075c4a6889079f7ec6e42ead88be159",
+      "themeInputPath": "inputs/class-semantic-capabilities.json",
+      "themeInputSha256": "32c904b399656d08c88c3bc24daeae2b878fa31603f818bc6e7dc796f17b20bb",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-er-semantic-capabilities",
+      "sourcePath": "sources/er-semantic-capabilities.mmd",
+      "sourceSha256": "95c8e8242827025269e1958e3ded513b75b7520bb781612b1565e773ab4496ff",
+      "expectationPath": "expectations/er-semantic-capabilities.json",
+      "expectationSha256": "842b7c02c12283c8737f51dd7d5740b08f53f6a8a88810ac6defc97c401862fd",
+      "themeInputPath": "inputs/er-semantic-capabilities.json",
+      "themeInputSha256": "ead28c183187c1b8fcaa55c6b6cf33357a1a77ca51cac5aafa4132bddad7dba3",
+      "evidenceSourceIds": [
+        "source-modern-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-er-style-precedence",
+      "sourcePath": "sources/er-style-precedence.mmd",
+      "sourceSha256": "89a9b1c3248c6efa7c99d684c1621141f840e3034567af7d1c000fa10e0ff88e",
+      "expectationPath": "expectations/er-style-precedence.json",
+      "expectationSha256": "7f73910d5f1075846dfe6a32fd64faf8b11ccf6deabe1ff052863ca190c63ec6",
+      "evidenceSourceIds": [
+        "source-mermaid"
+      ],
+      "assetIds": []
+    },
+    {
+      "id": "fixture-state-style-precedence",
+      "sourcePath": "sources/state-style-precedence.mmd",
+      "sourceSha256": "e390fa1fe7ed08bc0cf8e84ae678c21cca9e52e324132bf11278f1f3f309fe7d",
+      "expectationPath": "expectations/state-style-precedence.json",
+      "expectationSha256": "5917b46fe028d2197823de38939d6a94935e80bb70a31f3a4fbaa627a13859af",
+      "evidenceSourceIds": [
+        "source-mermaid"
+      ],
+      "assetIds": []
+    }
+  ],
+  "mechanismTranslations": [
+    {
+      "source": "backdrop-filter",
+      "disposition": "residual",
+      "capabilities": []
+    },
+    {
+      "source": "canvas-blend",
+      "disposition": "capability",
+      "capabilities": [
+        "blend-mode"
+      ]
+    },
+    {
+      "source": "canvas-gradient",
+      "disposition": "capability",
+      "capabilities": [
+        "gradient-paint"
+      ]
+    },
+    {
+      "source": "canvas-layering",
+      "disposition": "capability",
+      "capabilities": [
+        "layered-canvas"
+      ]
+    },
+    {
+      "source": "canvas-pattern",
+      "disposition": "capability",
+      "capabilities": [
+        "pattern-paint"
+      ]
+    },
+    {
+      "source": "canvas-solid",
+      "disposition": "capability",
+      "capabilities": [
+        "solid-paint"
+      ]
+    },
+    {
+      "source": "css-filter",
+      "disposition": "capability",
+      "capabilities": [
+        "shadow"
+      ]
+    },
+    {
+      "source": "css-letter-spacing",
+      "disposition": "capability",
+      "capabilities": [
+        "letter-spacing"
+      ]
+    },
+    {
+      "source": "css-text-transform",
+      "disposition": "capability",
+      "capabilities": [
+        "text-transform"
+      ]
+    },
+    {
+      "source": "dash-array",
+      "disposition": "capability",
+      "capabilities": [
+        "dash-styling"
+      ]
+    },
+    {
+      "source": "external-svg-filter-reference",
+      "disposition": "capability",
+      "capabilities": [
+        "displacement",
+        "noise",
+        "svg-filter"
+      ]
+    },
+    {
+      "source": "font-stack",
+      "disposition": "capability",
+      "capabilities": [
+        "typography"
+      ]
+    },
+    {
+      "source": "has-selector",
+      "disposition": "capability",
+      "capabilities": [
+        "semantic-rules"
+      ]
+    },
+    {
+      "source": "not-selector",
+      "disposition": "capability",
+      "capabilities": [
+        "semantic-rules"
+      ]
+    },
+    {
+      "source": "nth-child-selector",
+      "disposition": "capability",
+      "capabilities": [
+        "ordinal-palette"
+      ]
+    },
+    {
+      "source": "rounded-corners",
+      "disposition": "capability",
+      "capabilities": [
+        "rounded-geometry"
+      ]
+    },
+    {
+      "source": "stroke-styling",
+      "disposition": "capability",
+      "capabilities": [
+        "border-styling"
+      ]
+    },
+    {
+      "source": "theme-variables",
+      "disposition": "capability",
+      "capabilities": [
+        "semantic-tokens"
+      ]
+    }
+  ],
+  "themes": [
+    {
+      "id": "theme-linear-light",
+      "referenceName": "linearLight",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-dotted-canvas",
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-linear-dark",
+      "referenceName": "linearDark",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-dotted-canvas",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-notion",
+      "referenceName": "notion",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-ghibli",
+      "referenceName": "ghibli",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-spotless",
+      "referenceName": "spotless",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-c6-spotless-flowchart",
+        "fixture-c6-spotless-sequence",
+        "fixture-c6-spotless-state",
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-semantic-style-capabilities",
+        "fixture-striped-canvas",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-brutalist",
+      "referenceName": "brutalist",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-c6-brutalist-state",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-ordinal-palette",
+        "fixture-sequence-proof",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-glassmorphism",
+      "referenceName": "glassmorphism",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-memphis",
+      "referenceName": "memphis",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-ordinal-palette",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-soft-pop",
+      "referenceName": "softPop",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-cyberpunk",
+      "referenceName": "cyberpunk",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-c6-cyberpunk-flowchart",
+        "fixture-c6-cyberpunk-sequence",
+        "fixture-c6-cyberpunk-state",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-monochrome",
+      "referenceName": "monochrome",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-dark-minimal",
+      "referenceName": "darkMinimal",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-wireframe",
+      "referenceName": "wireframe",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-hand-drawn",
+      "referenceName": "handDrawn",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-dotted-canvas",
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-grafana",
+      "referenceName": "grafana",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-noir",
+      "referenceName": "noir",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-semantic-style-capabilities",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-material",
+      "referenceName": "material",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-semantic-style-capabilities",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-aurora",
+      "referenceName": "aurora",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-aurora-residual",
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-semantic-style-capabilities",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "unverified",
+          "residuals": [
+            {
+              "id": "browser-backdrop-blur",
+              "sourceMechanism": "backdrop-filter",
+              "reason": "Aurora uses CSS backdrop-filter; the native SVG and raster/PDF paths do not have a portable equivalent."
+            }
+          ]
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-win95",
+      "referenceName": "win95",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-class-semantic-capabilities",
+        "fixture-er-semantic-capabilities",
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-semantic-style-capabilities",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-doodle",
+      "referenceName": "doodle",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-ordinal-palette",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-organic",
+      "referenceName": "organic",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-ordinal-palette",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-hightech",
+      "referenceName": "hightech",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-ordinal-palette",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-kawaii",
+      "referenceName": "kawaii",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    },
+    {
+      "id": "theme-geometric-collage",
+      "referenceName": "geometricCollage",
+      "sourceId": "source-modern-mermaid",
+      "fixtureIds": [
+        "fixture-hand-drawn-effects",
+        "fixture-layered-canvas",
+        "fixture-mixed-script-typography",
+        "fixture-ordinal-palette",
+        "fixture-striped-canvas",
+        "fixture-token-baseline"
+      ],
+      "targetPolicy": {
+        "default": {
+          "grade": "portable",
+          "residuals": []
+        },
+        "overrides": {}
+      }
+    }
+  ]
+}

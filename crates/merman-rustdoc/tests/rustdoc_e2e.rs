@@ -1,17 +1,16 @@
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use tempfile::TempDir;
 
 mod support;
 use support::proc_macro_artifact;
 
 #[test]
 fn rustdoc_outputs_inline_svg_for_mermaid_fence() {
-    let temp = unique_temp_dir();
-    let source = temp.join("lib.rs");
-    let out_dir = temp.join("doc");
-    fs::create_dir_all(&temp).unwrap();
+    let temp = TempDir::new().expect("create unique test directory");
+    let source = temp.path().join("lib.rs");
+    let out_dir = temp.path().join("doc");
     fs::write(
         &source,
         r####"
@@ -135,8 +134,7 @@ pub mod tree_scope {
         .arg("merman_rustdoc_e2e")
         .arg("--extern")
         .arg(format!("merman_rustdoc={}", macro_artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
+        .args(support::dependency_args(&deps_dir))
         .arg("-o")
         .arg(&out_dir)
         .arg(&source)
@@ -195,17 +193,14 @@ pub mod tree_scope {
             .unwrap();
     assert!(tolerant_html.contains("missing.mmd"));
     assert!(!tolerant_html.contains(r#"class="merman-rustdoc-diagram""#));
-
-    let _ = fs::remove_dir_all(temp);
 }
 
 #[test]
 fn rustdoc_reexports_preserve_upstream_inline_svg() {
-    let temp = unique_temp_dir();
-    fs::create_dir_all(&temp).unwrap();
+    let temp = TempDir::new().expect("create unique test directory");
 
-    let upstream_source = temp.join("upstream.rs");
-    let upstream_rlib = temp.join("libupstream_docs.rlib");
+    let upstream_source = temp.path().join("upstream.rs");
+    let upstream_rlib = temp.path().join("libupstream_docs.rlib");
     fs::write(
         &upstream_source,
         r####"
@@ -230,8 +225,7 @@ pub struct ReexportedDiagram;
         .arg("upstream_docs")
         .arg("--extern")
         .arg(format!("merman_rustdoc={}", macro_artifact.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
+        .args(support::dependency_args(&deps_dir))
         .arg("-o")
         .arg(&upstream_rlib)
         .arg(&upstream_source)
@@ -247,8 +241,8 @@ pub struct ReexportedDiagram;
         );
     }
 
-    let downstream_source = temp.join("downstream.rs");
-    let out_dir = temp.join("doc");
+    let downstream_source = temp.path().join("downstream.rs");
+    let out_dir = temp.path().join("doc");
     fs::write(
         &downstream_source,
         r#"
@@ -265,8 +259,7 @@ pub use upstream_docs::ReexportedDiagram;
         .arg("downstream_docs")
         .arg("--extern")
         .arg(format!("upstream_docs={}", upstream_rlib.display()))
-        .arg("-L")
-        .arg(format!("dependency={}", deps_dir.display()))
+        .args(support::dependency_args(&deps_dir))
         .arg("-o")
         .arg(&out_dir)
         .arg(&downstream_source)
@@ -283,8 +276,6 @@ pub use upstream_docs::ReexportedDiagram;
     }
 
     assert_doc_contains_svg(&out_dir, "downstream_docs/struct.ReexportedDiagram.html");
-
-    let _ = fs::remove_dir_all(temp);
 }
 
 fn assert_doc_contains_svg(out_dir: &Path, relative: &str) {
@@ -296,12 +287,4 @@ fn assert_doc_contains_svg(out_dir: &Path, relative: &str) {
         "expected merman-rustdoc wrapper in {relative}"
     );
     assert!(html.contains("<svg"), "expected inline SVG in {relative}");
-}
-
-fn unique_temp_dir() -> PathBuf {
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_nanos();
-    std::env::temp_dir().join(format!("merman-rustdoc-e2e-{}-{now}", std::process::id()))
 }

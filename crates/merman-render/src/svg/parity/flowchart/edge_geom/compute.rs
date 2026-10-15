@@ -8,13 +8,14 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
 ) -> Option<ClippedEdgeRoute> {
     let FlowchartEdgePathGeomRequest {
         ctx,
+        key,
         edge,
         origin_x,
         origin_y,
         trace_enabled: _,
     } = request;
 
-    let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    let le = ctx.layout_edges_by_key.get(&key)?;
     let mut label = ctx.uses_elk_adapter_dom.then(|| le.label.clone()).flatten();
     if let Some(label) = label.as_mut() {
         label.x += ctx.tx - origin_x;
@@ -25,7 +26,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_edge_route(
         // raw layout empty so a real two-point section still follows the routed-edge path.
         let points = missing_section_points(ctx, edge, origin_x, origin_y)?;
         if let Some(label) = label.as_mut()
-            && let Some(midpoint) = missing_section_label_position(ctx, le, origin_x, origin_y)
+            && let Some(midpoint) = missing_section_label_position(ctx, key, le, origin_x, origin_y)
         {
             label.x = midpoint.x;
             label.y = midpoint.y;
@@ -212,12 +213,13 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
 ) -> Option<FlowchartEdgePathGeom> {
     let FlowchartEdgePathGeomRequest {
         ctx,
+        key,
         edge,
         origin_x,
         origin_y,
         trace_enabled,
     } = request;
-    let le = ctx.layout_edges_by_id.get(edge.id.as_str())?;
+    let le = ctx.layout_edges_by_key.get(&key)?;
     let is_elk_layout = ctx.uses_elk_adapter_dom;
     let ClippedEdgeRoute {
         base_points,
@@ -308,7 +310,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     // and the D3 curve generator operate on the separate `lineData` copy below.
     let label_path_points = if ctx
         .model
-        .edge_label_for_render(edge)
+        .edge_label_for_occurrence(key, edge)
         .is_some_and(|label| !label.is_empty())
     {
         points_for_render.clone()
@@ -378,6 +380,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
     } else {
         line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
     };
+
     let (d, raw_pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,
         interpolate,

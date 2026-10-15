@@ -1,0 +1,1 @@
+merman profile field `css-override-policy` was removed; CSS override policy is restricted to trusted Rust or native CLI hosts

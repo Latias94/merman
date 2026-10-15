@@ -9,9 +9,15 @@ import { loadTypeScriptContract } from "./typescript-contract.mjs";
 test("reads the resolved TypeScript contract instead of matching source spelling", () => {
   withProject(
     {
+      "catalog.ts": `
+        export type ThemeName = "default" | "neo";
+      `,
       "index.ts": `
+        import type { ThemeName } from "./catalog.js";
+
         export interface RuntimeModule {
           readonly version: 2;
+          readonly theme?: ThemeName;
           render(source: string): string;
         }
         export type Operation = "measure" | "bbox-x";
@@ -46,11 +52,27 @@ test("reads the resolved TypeScript contract instead of matching source spelling
       ]);
       assert.deepEqual(
         [...contract.exportedTypePropertyNames(entry, "RuntimeModule")].sort(),
-        ["render", "version"],
+        ["render", "theme", "version"],
       );
       assert.equal(
         contract.exportedTypePropertyText(entry, "RuntimeModule", "version"),
         "2",
+      );
+      assert.equal(
+        contract.exportedTypePropertyAnnotationText(
+          entry,
+          "RuntimeModule",
+          "version",
+        ),
+        "2",
+      );
+      assert.equal(
+        contract.exportedTypePropertyAnnotationText(
+          entry,
+          "RuntimeModule",
+          "theme",
+        ),
+        "ThemeName",
       );
       assert.deepEqual(
         [...contract.exportedStringLiteralMembers(entry, "Operation")].sort(),

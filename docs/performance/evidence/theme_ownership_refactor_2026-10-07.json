@@ -1,0 +1,187 @@
+{
+  "format": "merman-performance-evidence-summary-v1",
+  "description": "Human-readable summary, not the full compare-self-v2 comparator receipt. Decompress the archive before using tools that require the original receipt schema.",
+  "generated_at": "2026-10-07T12:19:18.837401+08:00",
+  "archive": {
+    "path": "theme_ownership_refactor_2026-10-07.json.gz",
+    "compression": "gzip; level=9; mtime=0; empty original filename",
+    "sha256": "985aadd3313ce4a60b90c629a73e8c1236d55ea5f7c95054f743326de91b0f2d",
+    "bytes": 88241,
+    "uncompressed_sha256": "e2e708b6a37df34bbbc292d81588d839111067d527f033de294142723435fe88",
+    "uncompressed_bytes": 1099801,
+    "uncompressed_lines": 24985,
+    "receipt_schema": "compare-self-v2",
+    "receipt_schema_version": 2
+  },
+  "revisions": {
+    "baseline": "97ed7fcb9ab97538384ebcd0aa5a808cf01cd258",
+    "candidate": "ab91b43963088734e163b667a07d0a49e2305ff2"
+  },
+  "scope": {
+    "public_operation": "render-svg",
+    "transport": "native",
+    "engine_lifecycle": "reused-engine",
+    "process_lifecycle": "reused-process",
+    "suite": null,
+    "filter": "end_to_end/(class_medium|mindmap_medium|flowchart_medium|sequence_medium)",
+    "features": [
+      "svg",
+      "all-diagrams",
+      "layout-cytoscape",
+      "layout-elk",
+      "math"
+    ],
+    "limitations": "Historical measurements for these revisions only; no claims for current code, browser/WASM, CLI startup, memory, allocations, or export throughput."
+  },
+  "harness": {
+    "bytes": 166043,
+    "path": "<local-worktrees>/theme-ownership-performance/tools/bench/compare_self.py",
+    "schema": "compare-self-v2",
+    "sha256": "fad3f112d08071a5490076730e6ebe1a6d510f7a5aa9e2ac54ab0200303245b1"
+  },
+  "environment": {
+    "cpu": "Apple M4 Pro",
+    "machine": "arm64",
+    "os": "macOS-27.0-arm64-arm-64bit-Mach-O",
+    "python": "3.14.7",
+    "rust": "rustc 1.95.0 (59807616e 2026-04-14)\nbinary: rustc\ncommit-hash: 59807616e1fa2540724bfbac14d7976d7e4a3860\ncommit-date: 2026-04-14\nhost: aarch64-apple-darwin\nrelease: 1.95.0\nLLVM version: 22.1.2"
+  },
+  "method": {
+    "evidence_mode": "confirmation",
+    "preset": "long",
+    "calibration_pairs": 8,
+    "pair_count": 8,
+    "max_pairs": 64,
+    "bootstrap_resamples": 10000,
+    "confidence_level": 0.95,
+    "relative_threshold_percent": 10.0,
+    "absolute_threshold_us": 50.0
+  },
+  "summary": {
+    "comparable": 4,
+    "confirmed_improvements": 3,
+    "confirmed_regressions": 0,
+    "contract_failures": 0,
+    "exit_code": 0,
+    "inconclusive": 0,
+    "outcome": "confirmed_non_regression"
+  },
+  "workloads": [
+    {
+      "benchmark": "end_to_end/class_medium",
+      "base_ns": 1324250.0,
+      "head_ns": 1144312.5,
+      "pair_count": 8,
+      "outcome": "confirmed_non_regression",
+      "improvement_outcome": "confirmed_improvement",
+      "output_identity": {
+        "base": {
+          "benchmark": "end_to_end/class_medium",
+          "output_bytes": 77444,
+          "output_kind": "svg",
+          "output_sha256": "d3c416e4722dd17a5401085673061d29b49d9d3c907f5e5052dc998dae7a1ee9",
+          "schema_version": 1,
+          "svg_elements": 576
+        },
+        "head": {
+          "benchmark": "end_to_end/class_medium",
+          "output_bytes": 77444,
+          "output_kind": "svg",
+          "output_sha256": "d3c416e4722dd17a5401085673061d29b49d9d3c907f5e5052dc998dae7a1ee9",
+          "schema_version": 1,
+          "svg_elements": 576
+        },
+        "status": "matched"
+      },
+      "paired_delta_ns": -179937.5,
+      "candidate_relative_percent": -13.58753569928299
+    },
+    {
+      "benchmark": "end_to_end/mindmap_medium",
+      "base_ns": 383485.0,
+      "head_ns": 378540.0,
+      "pair_count": 8,
+      "outcome": "confirmed_non_regression",
+      "improvement_outcome": "confirmed_non_improvement",
+      "output_identity": {
+        "base": {
+          "benchmark": "end_to_end/mindmap_medium",
+          "output_bytes": 37585,
+          "output_kind": "svg",
+          "output_sha256": "bf421a2d7080e742ad119b5da92741a7f35a1aaa265a1c6eb1ef11d4b6f81fcb",
+          "schema_version": 1,
+          "svg_elements": 179
+        },
+        "head": {
+          "benchmark": "end_to_end/mindmap_medium",
+          "output_bytes": 37585,
+          "output_kind": "svg",
+          "output_sha256": "bf421a2d7080e742ad119b5da92741a7f35a1aaa265a1c6eb1ef11d4b6f81fcb",
+          "schema_version": 1,
+          "svg_elements": 179
+        },
+        "status": "matched"
+      },
+      "paired_delta_ns": -4945.0,
+      "candidate_relative_percent": -1.2929737113980257
+    },
+    {
+      "benchmark": "end_to_end/flowchart_medium",
+      "base_ns": 1666612.5,
+      "head_ns": 1502675.0,
+      "pair_count": 8,
+      "outcome": "confirmed_non_regression",
+      "improvement_outcome": "confirmed_improvement",
+      "output_identity": {
+        "base": {
+          "benchmark": "end_to_end/flowchart_medium",
+          "output_bytes": 82455,
+          "output_kind": "svg",
+          "output_sha256": "093779f07c42ba4b514edb28ae456f22117f744e10fb3fc726dc354f62dab147",
+          "schema_version": 1,
+          "svg_elements": 463
+        },
+        "head": {
+          "benchmark": "end_to_end/flowchart_medium",
+          "output_bytes": 82455,
+          "output_kind": "svg",
+          "output_sha256": "093779f07c42ba4b514edb28ae456f22117f744e10fb3fc726dc354f62dab147",
+          "schema_version": 1,
+          "svg_elements": 463
+        },
+        "status": "matched"
+      },
+      "paired_delta_ns": -163937.5,
+      "candidate_relative_percent": -9.837261142263062
+    },
+    {
+      "benchmark": "end_to_end/sequence_medium",
+      "base_ns": 682491.25,
+      "head_ns": 514785.0,
+      "pair_count": 8,
+      "outcome": "confirmed_non_regression",
+      "improvement_outcome": "confirmed_improvement",
+      "output_identity": {
+        "base": {
+          "benchmark": "end_to_end/sequence_medium",
+          "output_bytes": 34169,
+          "output_kind": "svg",
+          "output_sha256": "af2d3645c80e9e0b56ebdbe50968738c8b9ce7afe6ca3f76fefdea6b561e1548",
+          "schema_version": 1,
+          "svg_elements": 129
+        },
+        "head": {
+          "benchmark": "end_to_end/sequence_medium",
+          "output_bytes": 34169,
+          "output_kind": "svg",
+          "output_sha256": "af2d3645c80e9e0b56ebdbe50968738c8b9ce7afe6ca3f76fefdea6b561e1548",
+          "schema_version": 1,
+          "svg_elements": 129
+        },
+        "status": "matched"
+      },
+      "paired_delta_ns": -167706.25000000003,
+      "candidate_relative_percent": -24.572449393588
+    }
+  ]
+}

@@ -168,7 +168,9 @@ export type RenderFailedState = CompletedBatchBase &
   );
 
 export type CompletedRenderBatch =
-  RenderSuccessState | RenderPartialState | RenderFailedState;
+  | RenderSuccessState
+  | RenderPartialState
+  | RenderFailedState;
 
 export type RenderCoordinatorState =
   | { readonly status: "empty" }
@@ -709,10 +711,8 @@ function sameScheduledOperationInput(
     left.workspace.code === right.workspace.code &&
     left.workspace.mermaidConfig === right.workspace.mermaidConfig &&
     left.workspace.diagramTheme === right.workspace.diagramTheme &&
-    left.workspace.presentationThemePresetId ===
-      right.workspace.presentationThemePresetId &&
-    left.workspace.presentationProfileId ===
-      right.workspace.presentationProfileId &&
+    left.workspace.themePresetId === right.workspace.themePresetId &&
+    left.workspace.themeRecipeJson === right.workspace.themeRecipeJson &&
     left.workspace.svgPipeline === right.workspace.svgPipeline &&
     left.workspace.textMeasurementMode ===
       right.workspace.textMeasurementMode &&
@@ -724,7 +724,7 @@ function collectSvgPlan(
   facade: MermanDomainFacade,
   operation: FrozenRenderOperation,
 ): SvgPlanResult | null {
-  if (!operation.presentationProfileId) {
+  if (!operation.themePresetId && !operation.themeRecipeJson) {
     return null;
   }
 
@@ -1006,17 +1006,12 @@ function freezeDetection(
 }
 
 function freezeSvgPlan(plan: SvgPlanResult): SvgPlanResult {
-  const presentationAspects = plan.presentation_aspects.map((aspect) =>
-    Object.freeze({ ...aspect }),
-  );
   const requiredCapabilityIds = [...plan.required_capability_ids];
   const missingCapabilityIds = [...plan.missing_capability_ids];
-  Object.freeze(presentationAspects);
   Object.freeze(requiredCapabilityIds);
   Object.freeze(missingCapabilityIds);
   return Object.freeze({
     ...plan,
-    presentation_aspects: presentationAspects,
     required_capability_ids: requiredCapabilityIds,
     missing_capability_ids: missingCapabilityIds,
   });

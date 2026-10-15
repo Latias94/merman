@@ -1,0 +1,6 @@
+stateDiagram-v2
+    [*] --> Ready
+    Ready --> Review: submit
+    Review --> Done: approve
+    Done --> Archive: archive
+    Archive --> [*]

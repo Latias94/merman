@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -6,6 +7,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
@@ -13,7 +15,7 @@ import path from "node:path";
 import { describe, it } from "node:test";
 import { fileURLToPath } from "node:url";
 
-import { initMerman as initMermanCore } from "../dist/runtime-core.js";
+import { initMerman as initMermanCore, WEB_TRANSPORT_API_VERSION } from "../dist/runtime-core.js";
 import { bindSurfaceRuntime } from "../dist/surface-runtime.js";
 import { packageEntrySource, replaceDirectory } from "./build-surface-packages.mjs";
 import {
@@ -25,6 +27,19 @@ import { loadTypeScriptContract } from "./typescript-contract.mjs";
 const webRoot = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 describe("browser package assembly", () => {
+  it("executes its command through directory aliases", (context) => {
+    const temporary = mkdtempSync(path.join(os.tmpdir(), "merman-web-entrypoint-"));
+    context.after(() => rmSync(temporary, { recursive: true, force: true }));
+    const alias = path.join(temporary, "scripts-alias");
+    symlinkSync(path.join(webRoot, "scripts"), alias,
+      process.platform === "win32" ? "junction" : "dir");
+    const result = spawnSync(process.execPath,
+      [path.join(alias, "build-surface-packages.mjs")], { encoding: "utf8" });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 2, "invalid inputs must fail rather than skip main");
+    assert.match(result.stderr, /usage: node scripts\/build-surface-packages/);
+  });
+
   it("projects generated resource discovery values from every public package", () => {
     for (const descriptor of webPackages) {
       for (const name of resourceContractValueExportNames) {
@@ -133,7 +148,7 @@ describe("browser package assembly", () => {
       async default(input) {
         receivedInput = input;
       },
-      transportApiVersion: () => 5,
+      transportApiVersion: () => WEB_TRANSPORT_API_VERSION,
     };
     const runtime = bindSurfaceRuntime(
       async () => {

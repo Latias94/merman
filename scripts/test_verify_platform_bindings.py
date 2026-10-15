@@ -41,6 +41,8 @@ class NativeSdkRecipeTests(unittest.TestCase):
         self.assertIn("DynamicLoadingBundled", hook)
         self.assertIn("native/android", hook)
         self.assertIn("native/ios", hook)
+        pubignore = (root / ".pubignore").read_text(encoding="utf-8")
+        self.assertIn("/tool/theme_authoring_smoke.dart", pubignore)
         for legacy_path in (
             "android/build.gradle",
             "ios/merman.podspec",

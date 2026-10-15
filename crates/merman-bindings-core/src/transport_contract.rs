@@ -1,5 +1,11 @@
 use crate::{BindingPayloadSchemaKey, ConstructorServiceKey, TargetKey};
 
+/// Compatibility epoch for the generated JavaScript/WASM transport surface.
+///
+/// The Web package generator and the WASM producer share this value so a wrapper built for one
+/// incompatible surface cannot silently initialize another.
+pub const WEB_TRANSPORT_API_VERSION: u32 = 6;
+
 /// Feature-independent facade exposure projected into one concrete artifact selection.
 ///
 /// The registry owns the payload schemas and constructor-service candidates that a maintained
@@ -111,6 +117,11 @@ const FULL_NATIVE_SDK_SERVICES: &[ConstructorServiceKey] = &[
     ConstructorServiceKey::HostTextMeasurement,
     ConstructorServiceKey::IconRegistry,
 ];
+const RUST_SERVICES: &[ConstructorServiceKey] = &[
+    ConstructorServiceKey::HostTextMeasurement,
+    ConstructorServiceKey::IconRegistry,
+    ConstructorServiceKey::NativeFontContext,
+];
 
 define_binding_transports! {
     AndroidJni => {
@@ -135,7 +146,7 @@ define_binding_transports! {
         id: "rust",
         targets: NATIVE_TARGET,
         payload_schemas: COMMON_JSON_PAYLOAD_SCHEMAS,
-        constructor_service_candidates: FULL_NATIVE_SDK_SERVICES,
+        constructor_service_candidates: RUST_SERVICES,
     },
     Typst => {
         id: "typst",
@@ -172,6 +183,7 @@ mod tests {
 
     #[test]
     fn transport_exposure_registry_is_bijective_and_sorted() {
+        assert_eq!(WEB_TRANSPORT_API_VERSION, 6);
         assert_eq!(
             BindingTransportKey::ALL.len(),
             TRANSPORT_EXPOSURE_SPECS.len()

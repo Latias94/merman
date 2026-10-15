@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-c6-cyberpunk-sequence",
+  "evidenceKind": "typed-capability",
+  "intent": "Prove the Cyberpunk Sequence native C6 slice with typed surfaces, role typography, lifeline width, and local markers."
+}

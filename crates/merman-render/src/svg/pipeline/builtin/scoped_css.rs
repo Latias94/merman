@@ -290,6 +290,23 @@ mod tests {
             .unwrap()
     }
 
+    fn scoped_selector(selector: &str) -> String {
+        let session = render_session();
+        let execution = SvgPostprocessExecution::new(&session);
+        let mut output = String::new();
+        rewrite::materialize_css(
+            &format!("{selector}{{color:red;}}"),
+            Some("#diagram"),
+            &mut output,
+            execution,
+        )
+        .expect("valid scoped selector");
+        output
+            .split_once(" {")
+            .map(|(selector, _)| selector.to_string())
+            .expect("materialized selector and declaration block")
+    }
+
     #[test]
     fn scoped_css_injects_after_root_svg_tag_when_no_style_exists() {
         let svg = r#"<svg id="diagram"><rect class="node"/></svg>"#;
@@ -386,23 +403,6 @@ mod tests {
 
     #[test]
     fn scoped_css_matches_mermaid_namespace_boundary_rules() {
-        fn normalize_css_whitespace(value: &str) -> String {
-            let mut normalized = String::with_capacity(value.len());
-            let mut pending_space = false;
-            for character in value.chars() {
-                if matches!(character, ' ' | '\n' | '\r' | '\t' | '\u{000C}') {
-                    pending_space = true;
-                    continue;
-                }
-                if pending_space && !normalized.is_empty() {
-                    normalized.push(' ');
-                }
-                pending_space = false;
-                normalized.push(character);
-            }
-            normalized
-        }
-
         let cases = [
             ("& ~ *", "color: red;", "#diagram #diagram ~ *"),
             (
@@ -429,19 +429,121 @@ mod tests {
 
         for (selector, body, expected) in cases {
             let css = format!("{selector}{{{body}}}");
-            let svg = r#"<svg id="diagram"><g/></svg>"#;
             let session = render_session();
-            let out = SvgPipeline::parity()
-                .with_postprocessor(ScopedCssPostprocessor::new(css))
-                .process_to_string(svg, &session)
-                .unwrap();
-            let normalized_output = normalize_css_whitespace(&out);
-            let normalized_expected = normalize_css_whitespace(&format!("{expected} {{{body}}}"));
-            assert!(
-                normalized_output.contains(&normalized_expected),
-                "selector: {selector:?}; output: {out}"
+            let mut out = String::new();
+            rewrite::materialize_css(
+                &css,
+                Some("#diagram"),
+                &mut out,
+                SvgPostprocessExecution::new(&session),
+            )
+            .expect("CSS namespace rewriting admits all CSS whitespace");
+            assert_eq!(
+                out,
+                format!("{expected} {{{body}}}"),
+                "selector: {selector:?}"
             );
         }
+    }
+
+    #[test]
+    fn scoped_css_pipeline_preserves_xml_whitespace_and_rejects_form_feed() {
+        let svg = r#"<svg id="diagram"><g/></svg>"#;
+        let session = render_session();
+        let out = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                "& \n\t \r \r\n + *{color: red;}",
+            ))
+            .process_to_string(svg, &session)
+            .expect("XML-compatible CSS whitespace should remain injectable");
+        assert!(out.contains("#diagram #diagram \n\t \r \r\n + * {color: red;}"));
+        crate::xml_dom::Document::parse(&out).expect("injected CSS must remain valid XML");
+
+        let error = SvgPipeline::parity()
+            .with_postprocessor(ScopedCssPostprocessor::new(
+                "& \n\t \r \u{000C} \r\n + *{color: red;}",
+            ))
+            .process_to_string(svg, &session)
+            .expect_err("CSS form feed cannot be emitted as literal XML 1.0 text");
+        assert!(
+            matches!(
+                &error,
+                Error::SvgPostprocess { pass, message }
+                    if pass == "validate-well-formed-svg"
+                        && message.contains("U+000C")
+                        && message.contains("forbidden in XML 1.0")
+            ),
+            "{error}"
+        );
+    }
+
+    #[test]
+    fn scoped_css_preserves_root_svg_selector_qualifiers() {
+        assert_eq!(
+            scoped_selector(
+                r#"svg[aria-roledescription="classDiagram"] g.classGroup rect, svg > g, :root, svg-icon"#,
+            ),
+            r#"#diagram[aria-roledescription="classDiagram"] g.classGroup rect, #diagram svg > g, #diagram, #diagram svg-icon"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_does_not_escape_through_root_siblings_or_id_prefixes() {
+        assert_eq!(
+            scoped_selector(
+                "svg + .outside, svg ~ .outside, svg:has(+ .outside), #diagram-other .node",
+            ),
+            "#diagram svg + .outside, #diagram svg ~ .outside, #diagram svg:has(+ .outside), #diagram #diagram-other .node"
+        );
+    }
+
+    #[test]
+    fn scoped_css_parses_repeated_and_escaped_root_attributes() {
+        assert_eq!(
+            scoped_selector(r#"svg[data-label="a]b"][data-path="a\"b"] .node"#),
+            r#"#diagram[data-label="a]b"][data-path="a\"b"] .node"#
+        );
+    }
+
+    #[test]
+    fn scoped_css_keeps_ambiguous_root_suffixes_inside_the_scope() {
+        assert_eq!(
+            scoped_selector(
+                "svg[data-x] + .outside, svg[data-x]~.outside, svg[data-x] /* guard */ + .outside",
+            ),
+            "#diagram svg[data-x] + .outside, #diagram svg[data-x]~.outside, #diagram svg[data-x] /* guard */ + .outside"
+        );
+    }
+
+    #[test]
+    fn scoped_css_fails_closed_for_attribute_comments_and_sibling_suffixes() {
+        assert_eq!(
+            scoped_selector(
+                "svg[data-x/* ] */] + .outside, svg[data-x]/*guard*/+.outside, svg[a][b] + .outside, svg[a][b] ~ .outside",
+            ),
+            "#diagram svg[data-x/* ] */] + .outside, #diagram svg[data-x]/*guard*/+.outside, #diagram svg[a][b] + .outside, #diagram svg[a][b] ~ .outside"
+        );
+    }
+
+    #[test]
+    fn scoped_css_handles_escaped_brackets_and_rejects_unclosed_attributes() {
+        assert_eq!(
+            scoped_selector(r"svg[data-label=a\]b] .node"),
+            r"#diagram[data-label=a\]b] .node"
+        );
+
+        let session = render_session();
+        let execution = SvgPostprocessExecution::new(&session);
+        let mut output = String::new();
+        let error = rewrite::materialize_css(
+            "svg[a][b{color:red;}",
+            Some("#diagram"),
+            &mut output,
+            execution,
+        )
+        .expect_err("unclosed root attributes must fail before CSS injection");
+        assert!(error.to_string().contains("invalid scoped CSS"));
+        assert!(output.is_empty());
     }
 
     #[test]

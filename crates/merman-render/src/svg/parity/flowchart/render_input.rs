@@ -5,57 +5,155 @@ use std::collections::BTreeSet;
 
 use rustc_hash::{FxHashMap, FxHashSet};
 
+#[derive(Debug)]
+pub(in crate::svg::parity::flowchart) struct FlowchartRenderEdge<'a> {
+    pub(in crate::svg::parity::flowchart) key: crate::flowchart::FlowchartEdgeKey,
+    pub(in crate::svg::parity::flowchart) edge: Cow<'a, crate::flowchart::FlowEdge>,
+}
+
+impl FlowchartRenderEdge<'_> {
+    pub(in crate::svg::parity::flowchart) fn as_ref(&self) -> FlowchartRenderEdgeRef<'_> {
+        FlowchartRenderEdgeRef {
+            key: self.key,
+            edge: self.edge.as_ref(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(in crate::svg::parity) struct FlowchartRenderEdgeRef<'a> {
+    pub(in crate::svg::parity::flowchart) key: crate::flowchart::FlowchartEdgeKey,
+    pub(in crate::svg::parity::flowchart) edge: &'a crate::flowchart::FlowEdge,
+}
+
+impl std::ops::Deref for FlowchartRenderEdgeRef<'_> {
+    type Target = crate::flowchart::FlowEdge;
+
+    fn deref(&self) -> &Self::Target {
+        self.edge
+    }
+}
+
 pub(in crate::svg::parity::flowchart) struct FlowchartRenderInputs<'a> {
-    pub render_edges: Vec<Cow<'a, crate::flowchart::FlowEdge>>,
+    pub render_edges: Vec<FlowchartRenderEdge<'a>>,
     pub extra_nodes: Vec<crate::flowchart::FlowNode>,
+}
+
+pub(super) fn flowchart_helper_node_ids(
+    model: &crate::flowchart::FlowchartModel,
+    render_context: &crate::flowchart::FlowchartRenderContext,
+    owners: &crate::flowchart::FlowchartEdgeOwners,
+    uses_elk: bool,
+) -> BTreeSet<String> {
+    if uses_elk {
+        return BTreeSet::new();
+    }
+    owners
+        .iter()
+        .filter_map(|owner| model.edges.get(owner.semantic_index()))
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge_endpoints(edge, render_context))
+        .filter(|(from, to)| from == to)
+        .flat_map(|(from, _)| {
+            [
+                format!("{from}---{from}---1"),
+                format!("{from}---{from}---2"),
+            ]
+        })
+        .collect()
 }
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
     render_context: &crate::flowchart::FlowchartRenderContext,
+    layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
-    let projected_edges = model
+    let merge_self_loops = uses_elk_adapter_dom
+        || crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
+    let renderable_edges: FxHashSet<usize> = layout_edge_owners
+        .iter()
+        .map(crate::flowchart::FlowchartEdgeKey::semantic_index)
+        .collect();
+    let renderable_self_loop_nodes: FxHashSet<&str> = layout_edge_owners
+        .iter()
+        .filter_map(|owner| model.edges.get(owner.semantic_index()))
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge_endpoints(edge, render_context))
+        .filter(|(from, to)| from == to)
+        .map(|(from, _)| from)
+        .collect();
+    let semantic_edges = model
         .edges
         .iter()
-        .filter_map(|edge| crate::flowchart::project_flowchart_edge(edge, render_context))
-        .collect::<Vec<_>>();
+        .enumerate()
+        .filter_map(|(semantic_index, edge)| {
+            let projected = crate::flowchart::project_flowchart_edge(edge, render_context)?;
+            // Earlier overwritten helper triples still establish Graphlib's insertion slot.
+            // Their later surviving owner replaces the complete value at that same slot.
+            if !renderable_edges.contains(&semantic_index)
+                && (merge_self_loops
+                    || projected.from != projected.to
+                    || !renderable_self_loop_nodes.contains(projected.from.as_str()))
+            {
+                return None;
+            }
+            let edge = if projected.from == edge.from && projected.to == edge.to {
+                Cow::Borrowed(edge)
+            } else {
+                Cow::Owned(projected)
+            };
+            Some(FlowchartRenderEdge {
+                key: crate::flowchart::FlowchartEdgeKey::new(semantic_index),
+                edge,
+            })
+        });
     if uses_elk_adapter_dom {
         return FlowchartRenderInputs {
-            render_edges: projected_edges.into_iter().map(Cow::Owned).collect(),
+            render_edges: semantic_edges.collect(),
             extra_nodes: Vec::new(),
         };
     }
 
-    let merge_self_loops =
-        crate::flowchart::flowchart_dagre_merges_self_loop_segments(&model.keyword);
     // Dagre always inserts helper nodes. Only the source's selected diagram types merge their
     // three segments back into a logical self-loop; Agentflow paints the helper edges directly.
-    let mut self_loop_label_node_ids: BTreeSet<String> = BTreeSet::new();
-    for edge in &projected_edges {
-        if edge.from != edge.to {
-            continue;
-        }
-        self_loop_label_node_ids.insert(format!("{}---{}---1", edge.from, edge.from));
-        self_loop_label_node_ids.insert(format!("{}---{}---2", edge.from, edge.from));
-    }
-    let mut render_edges: Vec<Cow<'a, crate::flowchart::FlowEdge>> = Vec::new();
+    let self_loop_label_node_ids = flowchart_helper_node_ids(
+        model,
+        render_context,
+        layout_edge_owners,
+        uses_elk_adapter_dom,
+    );
+    let mut render_edges: Vec<FlowchartRenderEdge<'a>> = Vec::new();
     let mut helper_indexes: FxHashMap<String, usize> = FxHashMap::default();
-    for edge in projected_edges {
-        if !merge_self_loops && edge.from == edge.to {
-            let helpers = crate::flowchart::flowchart_self_loop_helper_edges(&edge);
+    for edge in semantic_edges {
+        if !merge_self_loops && edge.edge.from == edge.edge.to {
+            let mut helpers = crate::flowchart::flowchart_self_loop_helper_edges(&edge.edge);
+            helpers.edge_mid.label = render_context
+                .edge_label_for_render(edge.key.semantic_index(), &edge.edge)
+                .map(str::to_owned);
             // Graphlib overwrites an existing helper triple for parallel self-loops while
-            // retaining its first insertion position. Replace the values in place as well.
-            for helper in [helpers.edge1, helpers.edge_mid, helpers.edge2] {
+            // retaining its first insertion position. Keep each segment's semantic owner too.
+            for (order, helper) in [helpers.edge1, helpers.edge_mid, helpers.edge2]
+                .into_iter()
+                .enumerate()
+            {
+                let key = crate::flowchart::FlowchartEdgeKey::self_loop_segment(
+                    edge.key.semantic_index(),
+                    order as u8,
+                );
                 if let Some(&index) = helper_indexes.get(helper.id.as_str()) {
-                    render_edges[index] = Cow::Owned(helper);
+                    render_edges[index] = FlowchartRenderEdge {
+                        key,
+                        edge: Cow::Owned(helper),
+                    };
                 } else {
                     helper_indexes.insert(helper.id.clone(), render_edges.len());
-                    render_edges.push(Cow::Owned(helper));
+                    render_edges.push(FlowchartRenderEdge {
+                        key,
+                        edge: Cow::Owned(helper),
+                    });
                 }
             }
         } else {
-            render_edges.push(Cow::Owned(edge));
+            render_edges.push(edge);
         }
     }
 
@@ -76,11 +174,10 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         .map(|sg| sg.id.as_str())
         .collect();
     if !cluster_ids_with_children.is_empty() && render_edges.len() >= 2 {
-        let mut normal: Vec<Cow<'a, crate::flowchart::FlowEdge>> =
-            Vec::with_capacity(render_edges.len());
-        let mut cluster: Vec<Cow<'a, crate::flowchart::FlowEdge>> = Vec::new();
+        let mut normal: Vec<FlowchartRenderEdge<'a>> = Vec::with_capacity(render_edges.len());
+        let mut cluster: Vec<FlowchartRenderEdge<'a>> = Vec::new();
         for e in render_edges {
-            let edge = e.as_ref();
+            let edge = e.edge.as_ref();
             if cluster_ids_with_children.contains(edge.from.as_str())
                 || cluster_ids_with_children.contains(edge.to.as_str())
             {
@@ -99,7 +196,7 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
         let mut regular = Vec::with_capacity(render_edges.len());
         let mut self_loops = Vec::new();
         for edge in render_edges {
-            if edge.from == edge.to {
+            if edge.edge.from == edge.edge.to {
                 self_loops.push(edge);
             } else {
                 regular.push(edge);

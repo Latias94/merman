@@ -3,7 +3,7 @@
 
 import 'dart:convert';
 
-const int mermanBindingOptionsSchemaVersion = 2;
+const int mermanBindingOptionsSchemaVersion = 3;
 
 enum MermanResourceProfile {
   interactive('interactive'),
@@ -41,8 +41,20 @@ final class MermanResourceLimitId {
     true,
     1,
   );
+  static const maxOptionsJsonBytes = MermanResourceLimitId._known(
+    'max_options_json_bytes',
+    'options-json-preflight',
+    false,
+    1,
+  );
   static const maxLayoutWorkUnits = MermanResourceLimitId._known(
     'max_layout_work_units',
+    'layout_model',
+    true,
+    1,
+  );
+  static const maxPreparedTextRetainedBytes = MermanResourceLimitId._known(
+    'max_prepared_text_retained_bytes',
     'layout_model',
     true,
     1,
@@ -200,7 +212,9 @@ final class MermanResourceLimitId {
     maxModelItems,
     maxModelTextBytes,
     maxModelNestingDepth,
+    maxOptionsJsonBytes,
     maxLayoutWorkUnits,
+    maxPreparedTextRetainedBytes,
     maxSvgBytes,
     maxSvgElements,
     svgBackendTreeNodes,
@@ -279,6 +293,7 @@ enum MermanResourceOverrideId {
   maxModelTextBytes('max_model_text_bytes', 1),
   maxModelNestingDepth('max_model_nesting_depth', 1),
   maxLayoutWorkUnits('max_layout_work_units', 1),
+  maxPreparedTextRetainedBytes('max_prepared_text_retained_bytes', 1),
   maxSvgBytes('max_svg_bytes', 1),
   maxSvgElements('max_svg_elements', 1),
   maxDocumentDiagrams('max_document_diagrams', 0),
@@ -351,7 +366,7 @@ class MermanResourceOptions {
         },
     };
     return jsonEncode(<String, Object?>{
-      'version': 2,
+      'version': 3,
       if (resources.isNotEmpty) 'resources': resources,
     });
   }

@@ -136,9 +136,16 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-swimlane")]
     fn actual_swimlane_renderer_clips_two_point_routes_when_config_names_elk() {
         use crate::environment::RenderEnvironment;
         use crate::model::{FlowchartLayout, LayoutNode, SwimlaneDirection, SwimlaneLayout};
+        use crate::svg::parity::flowchart::node_inventory::{
+            FlowchartNodeLayoutView, FlowchartPreparedNodes,
+        };
+        use crate::svg::parity::flowchart::render_config::{
+            flowchart_node_label_fill_config_override, prepare_flowchart_render_config,
+        };
         use crate::svg::parity::flowchart::svg_emit::{
             FlowchartSvgModelRequest, render_flowchart_svg_model,
         };
@@ -185,6 +192,7 @@ mod tests {
                 }))
                 .unwrap(),
             ],
+            edge_owners: crate::flowchart::FlowchartEdgeOwners::from_semantic_indices([0]),
             clusters: Vec::new(),
             bounds: None,
             dom_node_order_by_root: std::collections::HashMap::from([(
@@ -198,16 +206,78 @@ mod tests {
             nodes: Vec::new(),
             lanes: Vec::new(),
             edges: Vec::new(),
+            edge_owners: Default::default(),
             bounds: None,
         };
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let options = SvgRenderOptions::default();
         let debug = SvgDebugOptions::default();
-        let execution = SvgExecution::new(&options, &debug, &session).unwrap();
+        let execution = SvgExecution::unthemed_for_test(
+            &options,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::SWIMLANE,
+        )
+        .unwrap();
         let sidecar = crate::flowchart::FlowchartSvgLabelSidecar::default();
+        let prepared_theme = crate::flowchart::FlowchartPreparedTheme::resolve(
+            None,
+            &metadata.effective_config,
+            flowchart_node_label_fill_config_override(&metadata.effective_config),
+            execution.work_meter(),
+        )
+        .expect("prepared theme");
+        let edge_theme =
+            crate::flowchart::FlowchartEdgeThemeStyle::resolve(None, execution.work_meter())
+                .expect("prepared edge theme");
+        let render_config = prepare_flowchart_render_config(
+            &model,
+            &metadata.effective_config,
+            &prepared_theme.compatibility,
+            layout.uses_elk_adapter_dom,
+            sidecar.base_typography(),
+            sidecar.edge_label_padding(),
+        );
+        let edge_style_plan = crate::svg::FlowchartEdgeStylePlan::prepare_for_model(
+            &model,
+            &metadata.effective_config,
+            true,
+            execution.work_meter(),
+        )
+        .expect("edge style plan")
+        .with_resolved_stroke_widths(
+            &model,
+            &edge_theme,
+            &metadata.effective_config,
+            &prepared_theme.compatibility,
+            execution.work_meter(),
+        )
+        .expect("prepared stroke widths")
+        .with_typography_work_meter(std::sync::Arc::clone(session.work_meter()));
+        edge_style_plan
+            .bind_terminal_typography(&render_config.text_style, true)
+            .expect("terminal Swimlane edge typography");
+        let prepared_nodes = FlowchartPreparedNodes::prepare(
+            &model,
+            &render_context,
+            FlowchartNodeLayoutView::Flowchart(&layout),
+            &sidecar,
+            None,
+            &metadata.effective_config,
+            &prepared_theme,
+            &render_config,
+            session.work_meter(),
+        )
+        .expect("prepared fixed-layout nodes");
+        let theme_evidence = crate::flowchart::FlowchartThemeEvidenceRecorder::default();
+        let effect_evidence = crate::diagram_theme::SvgShadowEvidenceRecorder::default();
+        let expected_effect_applications = std::cell::Cell::new(0);
         let mut painted_edges = Vec::new();
         render_flowchart_svg_model(
             FlowchartSvgModelRequest {
+                render_config: &render_config,
+                prepared_nodes: &prepared_nodes,
+                prepared_theme: &prepared_theme,
                 layout: &layout,
                 swimlane_layout: Some(&swimlane_layout),
                 model: &model,
@@ -215,8 +285,12 @@ mod tests {
                 effective_config: &metadata.effective_config,
                 diagram_type: metadata.diagram_type.as_str(),
                 diagram_title: None,
-                presentation_policy: None,
                 svg_label_sidecar: &sidecar,
+                theme_evidence: &theme_evidence,
+                effect_evidence: &effect_evidence,
+                expected_effect_applications: &expected_effect_applications,
+                edge_style_plan: &edge_style_plan,
+                edge_theme: &edge_theme,
             },
             &execution,
             Some(&mut painted_edges),

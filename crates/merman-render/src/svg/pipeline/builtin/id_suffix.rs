@@ -346,7 +346,7 @@ mod tests {
     fn expands_actual_ids_and_keeps_selector_context_and_declarations() {
         let svg = r#"<svg><style>defs [id$='-arrowhead'] path,[id$='-missing'],.fallback{fill:transparent!important;stroke:red}</style><g id='b-arrowhead'/><g id='a-arrowhead'/></svg>"#;
         let out = lower(svg);
-        let doc = roxmltree::Document::parse(&out).unwrap();
+        let doc = crate::xml_dom::Document::parse(&out).unwrap();
         let css = doc
             .descendants()
             .find(|n| n.has_tag_name("style"))
@@ -381,7 +381,7 @@ mod tests {
     fn handles_cdata_entities_and_escaped_id_values() {
         let svg = r#"<svg><style><![CDATA[[id$='-end']{fill:red}]]></style><path id='a&quot;&amp;-end'/></svg>"#;
         let out = lower(svg);
-        let doc = roxmltree::Document::parse(&out).unwrap();
+        let doc = crate::xml_dom::Document::parse(&out).unwrap();
         let css = doc
             .descendants()
             .find(|n| n.has_tag_name("style"))
@@ -410,7 +410,7 @@ mod tests {
             .with_postprocessor(ScopedCssPostprocessor::new(css))
             .process_to_string(svg, &session)
             .unwrap();
-        let doc = roxmltree::Document::parse(&safe).unwrap();
+        let doc = crate::xml_dom::Document::parse(&safe).unwrap();
         let css = doc
             .descendants()
             .find(|n| n.has_tag_name("style"))
@@ -474,7 +474,7 @@ mod tests {
             .with_rebased_ids("embed")
             .process_to_string(svg, &session)
             .unwrap();
-        let doc = roxmltree::Document::parse(&out).unwrap();
+        let doc = crate::xml_dom::Document::parse(&out).unwrap();
         let id = doc
             .descendants()
             .find(|n| n.has_tag_name("path"))

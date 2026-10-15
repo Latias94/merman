@@ -233,6 +233,21 @@ embed fonts; viewers need the same fonts. Raw SVG conversion uses supplied fonts
 for painting only and cannot relayout existing geometry. See
 [font support and limitations](../../docs/FEATURES.md#optional-cli-fonts).
 
+Deterministic layout can size a fixed HTML label viewport more narrowly than the
+font used by PNG/PDF painting. For example, Mindmap labels can clip even when the
+outer node has padding. Use explicit fonts and native measurement to keep the
+layout and export metrics together; changing `fontFamily` alone does not do this.
+Supply every face needed by bold, italic, and mixed labels. A successful native
+export with unresolved fonts or glyphs reports a warning with the actual missing
+resolution state and `.notdef` glyph count; `--quiet` suppresses that diagnostic.
+Best-effort export remains permissive, while strict portability admission retains
+its existing rejection policy.
+
+Known native backend differences also produce specific warnings: directional filter offsets
+under rotation, shear or reflection; CSS effects on converted HTML labels; and implicit PDF
+viewports that may clip painted content. These fidelity diagnostics preserve default output.
+Use explicit SVG dimensions or a `viewBox` to control PDF clipping. `--quiet` suppresses warnings.
+
 ## Command Dialects And Root Compatibility
 
 Root-level render flags no longer belong to the advertised command tree. Keeping native and compatibility arguments in separate parsers gives each workflow its own defaults, validation, help, completion output, input rules, and publication guarantees without breaking existing root-level `mmdc` scripts.
@@ -255,6 +270,8 @@ Bare root inputs and native-only root options exit `2` with a targeted message p
 Native `render` and `batch` use `-f/--format`; their former `-e` aliases are removed in 0.9.0. The separate `merman-cli mmdc -e/--outputFormat` interface remains part of the pinned compatibility contract. See the [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md) when migrating native scripts from 0.8.x.
 
 The `mmdc` subcommand is a release-pinned compatibility snapshot. This release follows the supported command behavior of `@mermaid-js/mermaid-cli@11.16.0`; future changes are tied to an explicit Mermaid baseline update. See the [compatibility register](https://github.com/Latias94/merman/blob/main/docs/alignment/CLI_COMPATIBILITY.md) for exact coverage and deliberate browserless divergences.
+
+`mmdc -t/--theme` remains the official Mermaid CLI selector and accepts only `default`, `forest`, `dark`, and `neutral`; omitting the option value selects `default`, matching mmdc. Native theme selection belongs only to `render` and `batch`: use `--theme-definition` for a compact, shareable `ThemeDefinitionV1` JSON file, `--theme-preset` for a built-in compiled theme, or `--theme-file` for a versioned `ThemeRecipeV1` document or a selection such as `{"preset":"editor-dark"}`. A selection contains exactly one `preset` or `spec` member; a recipe keeps its `schema_version`, `kind`, and matching `definition` or `complete_spec` payload. These three inputs are mutually exclusive. `mmdc` and `layout` intentionally reject them; use the official `--theme` or `--configFile` on `mmdc`. The removed `--presentation-profile` and `merman-modern` inputs are not compatibility aliases.
 
 ## Markdown Batches
 
@@ -471,7 +488,7 @@ cargo install merman-cli --version 0.9.0 --locked \
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 6`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately. Contract 6 describes compiled native/system font support separately from runtime selection: ordinary Mermaid graphical output defaults to deterministic measurement without native-context system discovery. Codec painting may still load system fonts. Explicit font sources enable native measurement with a closed set; `--font-measurement native` without sources or `--font-system on` requests system discovery when available. It preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 6`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately. Contract 6 adds `theme_presets` for SVG-enabled artifacts, using the same compiler-policy discovery as bindings; its alpha entries have empty built-in qualification scope, while archive qualification is a separate host-scoped companion. It also describes compiled native/system font support separately from runtime selection: ordinary Mermaid graphical output defaults to deterministic measurement without native-context system discovery, although codec painting may still load system fonts. Explicit font sources enable native measurement with a closed set; `--font-measurement native` without sources or `--font-system on` requests system discovery when available. It preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
 

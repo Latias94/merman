@@ -1,0 +1,7 @@
+stateDiagram-v2
+    direction TB
+    [*] --> Boot
+    Boot --> Scan: acquire target
+    Scan --> Breach: bypass firewall
+    Breach --> Escape: exfiltrate
+    Escape --> [*]

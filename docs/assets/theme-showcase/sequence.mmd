@@ -1,0 +1,10 @@
+sequenceDiagram
+    participant Client
+    participant API
+    Client->>API: Request data
+    activate API
+    Note right of API: Verify token
+    loop Each request
+        API-->>Client: Return data
+    end
+    deactivate API

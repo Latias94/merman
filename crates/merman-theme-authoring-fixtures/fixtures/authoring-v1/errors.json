@@ -1,0 +1,74 @@
+[
+  {
+    "id": "empty-font-stack",
+    "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{},\"styles\":[{\"kind\":\"rule\",\"target\":\"node\",\"style\":{\"typography\":{\"font_stack\":[]}}}]}",
+    "code_name": "MERMAN_INVALID_ARGUMENT",
+    "typst_status_code": 1,
+    "typst_error_kind": "generic",
+    "theme_authoring": {
+      "schema_version": 1,
+      "diagnostics": [
+        {
+          "code": "theme-authoring.invalid-token-value",
+          "severity": "error",
+          "path": "/styles/0/style/typography/font_stack",
+          "details": {
+            "expected_domain_id": "font-stack"
+          }
+        }
+      ]
+    },
+    "native_status_name": "invalid-argument"
+  },
+  {
+    "id": "empty-series",
+    "source": "{\"authoring_schema_version\":1,\"expansion_version\":1,\"tokens\":{\"series\":[]}}",
+    "code_name": "MERMAN_INVALID_ARGUMENT",
+    "typst_status_code": 1,
+    "typst_error_kind": "generic",
+    "theme_authoring": {
+      "schema_version": 1,
+      "diagnostics": [
+        {
+          "code": "theme-authoring.empty-series",
+          "severity": "error",
+          "path": "/tokens/series",
+          "details": {}
+        }
+      ]
+    },
+    "native_status_name": "invalid-argument"
+  },
+  {
+    "id": "encoded-byte-limit",
+    "source": "{}",
+    "options_json": "{\"resources\":{\"profile\":\"constrained\",\"limits\":{\"max_theme_encoded_bytes\":1}}}",
+    "code_name": "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+    "typst_status_code": 10,
+    "typst_error_kind": "generic",
+    "theme_authoring": {
+      "schema_version": 1,
+      "diagnostics": [
+        {
+          "code": "theme-authoring.resource-limit-exceeded",
+          "severity": "error",
+          "path": "",
+          "details": {
+            "limit_id": "max_theme_encoded_bytes",
+            "actual": 2,
+            "max": 1
+          }
+        }
+      ]
+    },
+    "native_status_name": "resource-limit-exceeded",
+    "resource": {
+      "cause": "ceiling",
+      "limit_id": "max_theme_encoded_bytes",
+      "phase": "theme_input",
+      "actual": 2,
+      "max": 1,
+      "profile": "constrained"
+    }
+  }
+]

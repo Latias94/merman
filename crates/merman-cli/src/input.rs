@@ -109,7 +109,8 @@ pub(crate) fn read_bytes(
     )
 }
 
-#[cfg(feature = "icons")]
+/// Reads a bounded binary auxiliary input, checking operation control around each chunk.
+#[cfg(feature = "svg")]
 pub(crate) fn read_bytes_with_limit_controlled(
     reader: impl Read,
     resource: impl Into<String>,
@@ -368,6 +369,56 @@ mod tests {
 
         assert!(matches!(error, InputReadError::Cancelled(cancelled)
             if cancelled.phase == merman::OperationPhase::Admission));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn controlled_binary_read_stops_when_control_changes_during_a_chunk() {
+        struct InterruptAfterChunk<'a> {
+            control: &'a merman::OperationControl,
+            reason: merman::CancelReason,
+            reads: usize,
+        }
+
+        impl Read for InterruptAfterChunk<'_> {
+            fn read(&mut self, destination: &mut [u8]) -> io::Result<usize> {
+                self.reads += 1;
+                assert_eq!(self.reads, 1, "must stop before reading the next chunk");
+                destination.fill(b'x');
+                match self.reason {
+                    merman::CancelReason::Requested => self.control.cancel(),
+                    merman::CancelReason::DeadlineExceeded => {
+                        assert!(self.control.set_deadline(std::time::Duration::ZERO));
+                    }
+                }
+                Ok(destination.len())
+            }
+        }
+
+        for reason in [
+            merman::CancelReason::Requested,
+            merman::CancelReason::DeadlineExceeded,
+        ] {
+            let control = merman::OperationControl::new();
+            let mut reader = InterruptAfterChunk {
+                control: &control,
+                reason,
+                reads: 0,
+            };
+            let error = super::read_bytes_with_limit_controlled(
+                &mut reader,
+                "theme file",
+                InputLimit::new("max_theme_encoded_bytes", Some(super::IO_CHUNK_BYTES * 2)),
+                None,
+                &control,
+            )
+            .expect_err("control changes during a read must stop binary acquisition");
+
+            assert!(matches!(error, InputReadError::Cancelled(cancelled)
+                if cancelled.phase == merman::OperationPhase::Admission
+                    && cancelled.reason == reason));
+            assert_eq!(reader.reads, 1);
+        }
     }
 
     struct ShortReader {

@@ -67,7 +67,7 @@ fn flowchart_look_selects_complete_colored_marker_definitions() {
             assert_eq!(
                 rect.attribute("rx"),
                 None,
-                "process rounding belongs to theme CSS"
+                "Neo does not add native SVG radii to ordinary process rectangles"
             );
             assert_eq!(rect.attribute("ry"), None);
         }

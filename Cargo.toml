@@ -5,6 +5,9 @@ members = [
     "crates/merman-analysis",
     "crates/merman-editor-core",
     "crates/merman-fixture-render-context",
+    "crates/merman-theme-authoring-fixtures",
+    "crates/merman-theme-contract",
+    "crates/merman-theme-acceptance",
     "crates/merman-core",
     "crates/merman-doc",
     "crates/merman-ascii",
@@ -54,6 +57,7 @@ data-url = "0.3.2"
 brotli = "9.0.0"
 clap_mangen = "0.3.3"
 ctrlc = "3.5.2"
+data-encoding = "2.11.1"
 euclid = "0.22.14"
 flate2 = "1.1.10"
 fontique = { version = "0.12.0", default-features = false, features = ["system"] }
@@ -91,6 +95,7 @@ tokio = { version = "1.53.2", default-features = false }
 granit-parser = { version = "1.3.0", default-features = false, features = ["error_messages"] }
 serde-saphyr = { version = "1.3.0", default-features = false }
 toml = "1.1.8"
+serde_json_canonicalizer = "0.3.2"
 json5 = "1.3.1"
 jsonschema = { version = "0.58.6", default-features = false }
 kurbo = "0.13.1"
@@ -100,6 +105,7 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["fmt"] }
 uniffi = { version = "0.32.2", default-features = false }
 futures = { version = "0.3.34", default-features = false }
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std", "variable-fonts"] }
 hashbrown = { version = "0.17.1", default-features = false, features = ["equivalent"] }
 hickory-resolver = { version = "0.26.3", default-features = false, features = ["tokio", "system-config"] }
 lol_html = "3.0.1"
@@ -123,6 +129,7 @@ svgtypes = "0.16.1"
 tiny-skia = "0.12.0"
 krilla = { version = "0.8.2", default-features = false }
 krilla-svg = { version = "0.8.1", default-features = false }
+lopdf = { version = "0.44.0", default-features = false }
 unicode-width = { version = "0.2.2", default-features = false }
 unicode-linebreak = { package = "merman-unicode-linebreak", path = "crates/merman-unicode-linebreak", version = "0.9.0" }
 unicode-segmentation = { version = "1.13.3", default-features = false }
@@ -160,6 +167,7 @@ merman-cli = { path = "crates/merman-cli", version = "0.9.0" }
 dugong = { path = "crates/dugong", version = "0.9.0" }
 dugong-graphlib = { path = "crates/dugong-graphlib", version = "0.9.0" }
 manatee = { path = "crates/manatee", version = "0.9.0" }
+merman-theme-contract = { path = "crates/merman-theme-contract", version = "0.9.0" }
 
 # The profile that 'dist' will build with
 [profile.dist]

@@ -1,11 +1,5 @@
 use crate::{OperationControl, OperationControlResult};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-#[cfg(any(
-    test,
-    feature = "diagram-mindmap",
-    feature = "diagram-state",
-    feature = "diagram-usecase"
-))]
 use serde_json::Number;
 use serde_json::{Map, Value};
 use std::collections::HashMap;
@@ -318,12 +312,6 @@ impl<'de> Deserialize<'de> for ManagedSemanticJson {
     }
 }
 
-#[cfg(any(
-    test,
-    feature = "diagram-mindmap",
-    feature = "diagram-state",
-    feature = "diagram-usecase"
-))]
 pub(crate) fn number_value(value: f64) -> Value {
     if value.is_finite()
         && value.fract() == 0.0

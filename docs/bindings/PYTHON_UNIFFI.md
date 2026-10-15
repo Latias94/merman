@@ -95,7 +95,7 @@ validation = api.validate("flowchart TD\nA[Hello] --> B[World]", None)
 diagrams = api.supported_diagrams()
 ascii_capabilities = api.ascii_capabilities()
 themes = api.supported_themes()
-presentation_catalog = json.loads(api.presentation_catalog_json())
+theme_catalog = json.loads(api.theme_catalog_json())
 family_capabilities = api.diagram_family_capabilities()
 lint_rules = api.lint_rule_catalog()
 
@@ -158,7 +158,7 @@ callbacks and single-call encoders can only be checked before and after invocati
 process isolation for hard preemption.
 The optional `options_json` argument uses the shared contract documented in
 [`docs/bindings/OPTIONS_JSON.md`](https://github.com/Latias94/merman/blob/main/docs/bindings/OPTIONS_JSON.md).
-`ResourceOptionsBuilder` emits Options JSON schema `2`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
+`ResourceOptionsBuilder` emits Options JSON schema `3`; omit its profile for a reusable request that must inherit the constructor ceiling, and use `ResourceOverrideId` rather than the full catalog-only `ResourceLimitId` when adding overrides.
 `Merman.lint_rule_catalog()` returns structured analyzer rule metadata, including evidence
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.
@@ -169,9 +169,9 @@ flat schema `1`, artifact identity, sorted stable IDs, and local output/operatio
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
 names or copy an ID table into Python; inspect the loaded catalog instead.
 
-When migrating from API 6, replace `binding_api_version_v6()` with
+When migrating from API 6/7/8, replace the old version probe with
 `binding_api_version_v7()` and regenerate the complete package with its matching native library.
-API 7 adds `requested_layout_profile` and `compact_attempted` to the schema-3
+API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in the schema-3
 `MermanAsciiOutputPlan`; `layout_profile` is the selected Canonical or Compact geometry. The symbol
 change makes stale generated bindings fail before decoding the revised record. API 6 introduced
 the capability admission arrays and output encoding; older consumers must also regenerate the

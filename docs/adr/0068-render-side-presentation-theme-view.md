@@ -1,8 +1,30 @@
-# ADR 0068: Ordered Theme Resolution And Render Presentation Views
+# ADR 0068: Ordered Theme Resolution And Family Theme Views
 
 - Status: accepted
 - Date: 2026-06-03
-- Last amended: 2026-08-27
+- Last amended: 2026-10-09
+
+## Amendment: Prepared Family Bindings
+
+The October 9, 2026 theme-path refactor retires the temporary compatibility bridge and the
+shared `SvgTheme`/`MermaidThemeAdapter` visual readers described by the earlier migration.
+Family bindings now own Mermaid compatibility values, including requests without a compiled
+theme, rather than repeating visual JSON lookups. The remaining retirement work moves final
+typed/source property selection into each family's existing preparation artifact. Some bindings
+require measured layout identities; their preparation boundary follows layout and precedes SVG
+emission. Removal of the shared reader does not by itself establish that every family has
+completed that final selection migration.
+
+Mermaid `theme` and `themeVariables` input, ordered core derivation, and source/site precedence
+remain supported. Raw CSS tokens retain their emission semantics; optional native interpretation,
+measurement, resource admission and evidence retain their separate contracts. A prepared binding
+does not make an unsupported typed target portable. Mermaid look/layout and output policy remain
+independent owners. The temporary bridge and raw reader allowance in decision 5 below records
+the earlier migration stage, not a current extension point.
+
+Current user interfaces are documented by the [theme guide](../rendering/custom-diagram-themes.md);
+the [retirement record](../knowledge/engineering/verification/2026-10-09-theme-retirement-gate-removal.md)
+preserves the removed authorization's historical evidence. The original decision follows.
 
 ## Context
 
@@ -54,11 +76,13 @@ boundaries or change emitted SVG.
    is identical, but they may not silently broaden or narrow their protocol. In particular,
    Railroad's CSS whitelist and the hex-only RoughJS boundary are not Khroma theme operations.
 
-5. `merman-render` exposes `PresentationTheme` and focused family views. They convert resolved
-   tokens into typography, surfaces, borders, lines, notes, labels, and diagram-specific roles.
-   Direct raw JSON access is reserved for exact Mermaid tokens that cannot be represented by an
-   existing role; repeated fallback logic should deepen the shared view instead. Raw value accessors
-   use `theme_token` terminology so they cannot be confused with color evaluation.
+5. `merman-render` compiles each `DiagramThemeSpec` into a cached, family-local theme program and
+   resolves a crate-private `ResolvedDiagramTheme` for the detected family. Typed family adapters
+   consume semantic targets, typography, ordinal palettes, and source-style provenance directly.
+   Families not yet cut over use a temporary compatibility bridge whose residuals remain visible;
+   the bridge is not a second public theme API. Direct raw JSON access is reserved for exact
+   Mermaid tokens that have not yet been moved to typed targets. Raw value accessors retain
+   `theme_token` terminology so they cannot be confused with color evaluation.
 
 6. Theme changes are verified in separate lanes:
    - a compact runtime artifact records the pinned Mermaid package hash, source tag, source commit,
@@ -74,9 +98,9 @@ boundaries or change emitted SVG.
 
    `cargo run -p xtask -- gen-theme-snapshot` is the only supported refresh path. It executes the
    content-pinned Mermaid runtime once and writes both artifacts from that projection.
-   `verify-theme-snapshot` plus the umbrella `verify-generated` command compare both generated
-   files with a format-sensitive comparison after line-ending and trailing-newline normalization,
-   and reject provenance, formatting, or behavior drift.
+   `verify-theme-snapshot` plus the umbrella `verify-generated` command compare both generated files
+   after line-ending and trailing-newline normalization, and reject provenance, formatting, or
+   behavior drift.
 
 7. Host or product styling remains outside parity rendering. Host theme profiles and postprocessors
    may map product roles, but they do not mutate Mermaid's resolved theme state or redefine family
@@ -94,8 +118,9 @@ share one evaluated theme. Other theme classes retain their own source-specific 
 ## Consequences
 
 - Override order and value provenance are testable instead of implicit in mutation order.
-- Release snapshots and executable semantics have separate ownership: generated JSON supplies
-  exact constants and oracle evidence, while Rust owns runtime evaluation without JavaScript.
+- Release snapshots and executable semantics have separate ownership: the compact generated JSON
+  supplies exact constants and lightweight integrity data, while the repository-level audit artifact
+  carries oracle evidence and Rust owns runtime evaluation without JavaScript.
 - Runtime artifacts carry only data needed for evaluation and lightweight integrity checks; larger
   behavior-oracle evidence stays outside published crates and linked products.
 - Font-only and partial overrides preserve upstream palettes across all consumers.
@@ -103,8 +128,9 @@ share one evaluated theme. Other theme classes retain their own source-specific 
   compatibility fallbacks.
 - Browser inheritance and export fallbacks can differ intentionally without comparator
   normalization or family-specific patches.
-- Renderer views remain deep only when they remove shared policy or meaningful duplication; layout
-  constants and truly family-local semantics stay with the family.
+- Family theme programs remain deep only when they remove shared policy or meaningful duplication;
+  layout constants and truly family-local semantics stay with the family. The former
+  `PresentationTheme` name is removed and is not a public compatibility alias.
 
 ## Rejected Alternatives
 

@@ -5,14 +5,14 @@ use std::hint::black_box;
 
 const SOURCE: &[u8] = include_bytes!("fixtures/info_fixed_cost.mmd");
 const BASE_OPTIONS: &[u8] = br#"{
-  "version": 2,
+  "version": 3,
   "runtime_policy": "deterministic",
   "resources": {"profile": "trusted-native"}
 }"#;
 const EMPTY_OPTIONS: &[u8] = b"";
-const VERSION_ONLY_OPTIONS: &[u8] = br#"{"version":2}"#;
+const VERSION_ONLY_OPTIONS: &[u8] = br#"{"version":3}"#;
 const RESOURCE_OVERRIDE_OPTIONS: &[u8] =
-    br#"{"version":2,"resources":{"limits":{"max_source_bytes":4096}}}"#;
+    br#"{"version":3,"resources":{"limits":{"max_source_bytes":4096}}}"#;
 
 fn execute(engine: &BindingEngine, options_json: &'static [u8]) -> BindingOperationResult {
     engine

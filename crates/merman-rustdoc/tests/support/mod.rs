@@ -1,14 +1,26 @@
-use std::ffi::OsStr;
+use std::collections::BTreeSet;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 
-pub fn proc_macro_artifact() -> (PathBuf, PathBuf) {
-    static ARTIFACT: OnceLock<(PathBuf, PathBuf)> = OnceLock::new();
+pub fn proc_macro_artifact() -> (Vec<PathBuf>, PathBuf) {
+    static ARTIFACT: OnceLock<(Vec<PathBuf>, PathBuf)> = OnceLock::new();
     ARTIFACT.get_or_init(build_proc_macro).clone()
 }
 
-fn build_proc_macro() -> (PathBuf, PathBuf) {
+pub fn dependency_args(directories: &[PathBuf]) -> Vec<OsString> {
+    directories
+        .iter()
+        .flat_map(|directory| {
+            let mut search_path = OsString::from("dependency=");
+            search_path.push(directory);
+            [OsString::from("-L"), search_path]
+        })
+        .collect()
+}
+
+fn build_proc_macro() -> (Vec<PathBuf>, PathBuf) {
     let features = [
         ("all-diagrams", cfg!(feature = "all-diagrams")),
         ("diagram-agentflow", cfg!(feature = "diagram-agentflow")),
@@ -63,13 +75,34 @@ fn build_proc_macro() -> (PathBuf, PathBuf) {
     .filter_map(|(name, enabled)| enabled.then_some(name))
     .collect::<Vec<_>>()
     .join(",");
-    let executable = std::env::current_exe().expect("current rustdoc integration test executable");
-    let target_dir = executable
-        .ancestors()
-        .nth(3)
-        .expect("test executable must be inside a Cargo profile's deps directory");
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let manifest = Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
-    let output = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
+    let metadata = Command::new(&cargo)
+        .current_dir(env!("CARGO_MANIFEST_DIR"))
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version=1",
+            "--locked",
+            "--offline",
+        ])
+        .arg("--manifest-path")
+        .arg(&manifest)
+        .output()
+        .expect("run Cargo to locate its configured target directory");
+    assert!(
+        metadata.status.success(),
+        "Cargo metadata failed: {}\nstdout:\n{}\nstderr:\n{}",
+        metadata.status,
+        String::from_utf8_lossy(&metadata.stdout),
+        String::from_utf8_lossy(&metadata.stderr)
+    );
+    let metadata: serde_json::Value =
+        serde_json::from_slice(&metadata.stdout).expect("Cargo metadata JSON");
+    let target_dir = metadata["target_directory"]
+        .as_str()
+        .expect("Cargo metadata must report its configured target directory");
+    let output = Command::new(&cargo)
         .current_dir(env!("CARGO_MANIFEST_DIR"))
         .args([
             "build",
@@ -95,35 +128,39 @@ fn build_proc_macro() -> (PathBuf, PathBuf) {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    let artifact = String::from_utf8(output.stdout)
+    let mut artifact = None;
+    let mut dependencies = BTreeSet::new();
+    for line in String::from_utf8(output.stdout)
         .expect("Cargo JSON must be UTF-8")
         .lines()
-        .map(|line| serde_json::from_str::<serde_json::Value>(line).expect("Cargo JSON message"))
-        .filter(|message| {
-            message["reason"] == "compiler-artifact"
-                && message["target"]["name"] == "merman_rustdoc"
-                && message["target"]["kind"]
-                    .as_array()
-                    .is_some_and(|kinds| kinds.iter().any(|kind| kind == "proc-macro"))
-        })
-        .find_map(|message| {
-            message["filenames"]
-                .as_array()?
-                .iter()
-                .find_map(|filename| {
-                    let path = PathBuf::from(filename.as_str()?);
-                    (path.extension() == Some(OsStr::new(std::env::consts::DLL_EXTENSION)))
-                        .then_some(path)
-                })
-        })
-        .expect("Cargo must report the matching merman-rustdoc proc-macro library");
-    let artifact_dir = artifact
-        .parent()
-        .expect("proc-macro artifact must have a parent directory");
-    let dependencies = if artifact_dir.file_name() == Some(OsStr::new("deps")) {
-        artifact_dir.to_path_buf()
-    } else {
-        artifact_dir.join("deps")
-    };
-    (dependencies, artifact)
+    {
+        let message: serde_json::Value = serde_json::from_str(line).expect("Cargo JSON message");
+        if message["reason"] != "compiler-artifact" {
+            continue;
+        }
+        let is_proc_macro = message["target"]["name"] == "merman_rustdoc"
+            && message["target"]["kind"]
+                .as_array()
+                .is_some_and(|kinds| kinds.iter().any(|kind| kind == "proc-macro"));
+        for filename in message["filenames"]
+            .as_array()
+            .expect("Cargo compiler artifact filenames")
+        {
+            let path = PathBuf::from(filename.as_str().expect("Cargo artifact filename"));
+            dependencies.insert(
+                path.parent()
+                    .expect("Cargo artifact must have a parent directory")
+                    .to_path_buf(),
+            );
+            if is_proc_macro
+                && path.extension() == Some(OsStr::new(std::env::consts::DLL_EXTENSION))
+            {
+                artifact = Some(path);
+            }
+        }
+    }
+    (
+        dependencies.into_iter().collect(),
+        artifact.expect("Cargo must report the matching merman-rustdoc proc-macro library"),
+    )
 }

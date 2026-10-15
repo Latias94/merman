@@ -107,7 +107,7 @@ flat schema-1 JSON catalog. This abridged example shows every top-level field:
   "schema_version": 1,
   "transport_api_version": 3,
   "package_version": "...",
-  "options_schema_versions": [2],
+  "options_schema_versions": [3],
   "payload_schemas": [
     { "id": "binding-result", "version": 1 },
     { "id": "operation-metadata", "version": 1 }
@@ -146,8 +146,11 @@ hand-written capability table. The returned JSON is not wrapped in a native-only
 `api.metadata_collect` accepts one borrowed UTF-8 metadata ID and writes its JSON document to
 `MermanNativeResult.metadata_or_error_json`. The current IDs are `supported-diagrams`,
 `ascii-capabilities`, `diagram-family-capabilities`, `lint-rule-catalog`, `supported-themes`, and
-`presentation-catalog`. This generic appended slot restores catalog access without adding
-direct exports or placing large detail catalogs in the runtime catalog.
+`theme-catalog`. The theme catalog describes the selected artifact's typed semantic-theme surface.
+Every built-in preset row carries an explicit open-string maturity; the initial inventory is
+`alpha`, so catalog presence alone is not a stable preset or cross-target portability promise. This
+generic appended slot restores catalog access without adding direct exports or placing large detail
+catalogs in the runtime catalog.
 
 A successful metadata result uses operation `MERMAN_NATIVE_OPERATION_NONE`, has empty `data`, and
 owns a nonzero allocation token. Unknown IDs return `MERMAN_NATIVE_STATUS_INVALID_ARGUMENT` with a

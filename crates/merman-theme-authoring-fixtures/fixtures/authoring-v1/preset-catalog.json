@@ -1,0 +1,302 @@
+[
+  {
+    "id": "editor-light",
+    "display_name": "Editor Light",
+    "appearance": "light",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  },
+  {
+    "id": "editor-dark",
+    "display_name": "Editor Dark",
+    "appearance": "dark",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  },
+  {
+    "id": "one-dark",
+    "display_name": "One Dark",
+    "appearance": "dark",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  },
+  {
+    "id": "gruvbox-light",
+    "display_name": "Gruvbox Light",
+    "appearance": "light",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  },
+  {
+    "id": "gruvbox-dark",
+    "display_name": "Gruvbox Dark",
+    "appearance": "dark",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  },
+  {
+    "id": "ayu-light",
+    "display_name": "Ayu Light",
+    "appearance": "light",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  },
+  {
+    "id": "ayu-dark",
+    "display_name": "Ayu Dark",
+    "appearance": "dark",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  },
+  {
+    "id": "brutalist",
+    "display_name": "Brutalist",
+    "appearance": "light",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "dedicated"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "dedicated"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "dedicated"
+      }
+    ]
+  },
+  {
+    "id": "spotless",
+    "display_name": "Spotless",
+    "appearance": "light",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "dedicated"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "dedicated"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "dedicated"
+      }
+    ]
+  },
+  {
+    "id": "cyberpunk",
+    "display_name": "Cyberpunk",
+    "appearance": "dark",
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "qualified_cells": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "complete_spec",
+    "family_designs": [
+      {
+        "family_id": "class",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "flowchart",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "sequence",
+        "treatment": "base_only"
+      },
+      {
+        "family_id": "xychart",
+        "treatment": "base_only"
+      }
+    ]
+  }
+]

@@ -1,6 +1,11 @@
-use crate::text::html_wrap::{NormalizedHtmlText, PlannedHtmlLine, plan_html_lines};
-use crate::text::{HtmlWhiteSpace, TextMeasurer, TextStyle};
+#[cfg(test)]
+use crate::text::html_wrap::plan_html_lines;
+use crate::text::html_wrap::{NormalizedHtmlText, PlannedHtmlLine, plan_html_lines_with_ranges};
+use crate::text::{HtmlWhiteSpace, TextMeasurer, TextStyle, resolve_css_font_weight};
 use std::borrow::Cow;
+use std::ops::Range;
+
+use super::cascade::ResolvedFallbackTypography;
 
 use super::css::{extract_style_property_with_checkpoints, parse_css_px_value};
 use crate::svg::pipeline::{
@@ -11,11 +16,174 @@ use crate::svg::pipeline::{
 pub(super) enum HtmlTextFragment {
     Text {
         text: String,
+        typography: ResolvedFallbackTypography,
         white_space: HtmlWhiteSpace,
         // Common ancestry depth and mode at the boundary with the previous text leaf.
         boundary_white_space: Option<(usize, HtmlWhiteSpace)>,
     },
     HardBreak,
+}
+
+#[derive(Debug)]
+struct StyledRange {
+    range: Range<usize>,
+    typography: ResolvedFallbackTypography,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct NormalizedFallbackText {
+    source: NormalizedHtmlText,
+    runs: Vec<StyledRange>,
+}
+
+pub(super) struct FallbackTextRun<'a> {
+    pub(super) text: &'a str,
+    pub(super) typography: &'a ResolvedFallbackTypography,
+    offset: usize,
+}
+
+impl NormalizedFallbackText {
+    pub(super) fn is_empty(&self) -> bool {
+        self.source.is_empty()
+    }
+
+    fn push_range(&mut self, start: usize, typography: &ResolvedFallbackTypography) {
+        let end = self.source.len();
+        if start == end {
+            return;
+        }
+        if let Some(previous) = self.runs.last_mut()
+            && previous.range.end == start
+            && previous.typography == *typography
+        {
+            previous.range.end = end;
+        } else {
+            self.runs.push(StyledRange {
+                range: start..end,
+                typography: typography.clone(),
+            });
+        }
+    }
+
+    fn runs_for_range<'a>(
+        &'a self,
+        text: &'a str,
+        range: Range<usize>,
+        selected_hyphen: bool,
+    ) -> impl Iterator<Item = FallbackTextRun<'a>> {
+        let source_start = range.start;
+        let source_end = range.end;
+        let first = self
+            .runs
+            .partition_point(|run| run.range.end <= source_start);
+        self.runs[first..]
+            .iter()
+            .take_while(move |run| run.range.start < source_end)
+            .filter_map(move |run| {
+                let start = run.range.start.max(source_start) - source_start;
+                let end = if selected_hyphen && run.range.end >= source_end {
+                    text.len()
+                } else {
+                    run.range.end.min(source_end) - source_start
+                };
+                if start >= end {
+                    return None;
+                }
+                Some(FallbackTextRun {
+                    text: &text[start..end],
+                    typography: &run.typography,
+                    offset: start,
+                })
+            })
+    }
+
+    pub(super) fn line_runs<'a>(
+        &'a self,
+        line: &'a PlannedHtmlLine,
+    ) -> impl Iterator<Item = FallbackTextRun<'a>> {
+        self.runs_for_range(&line.text, line.source_range.clone(), line.selected_hyphen)
+    }
+
+    pub(super) fn has_inline_styles(
+        &self,
+        line: &PlannedHtmlLine,
+        base: &ResolvedFallbackTypography,
+    ) -> bool {
+        self.line_runs(line)
+            .any(|run| !same_font(run.typography, base) || run.typography.fill != base.fill)
+    }
+
+    pub(super) fn wrap<E>(
+        &self,
+        max_width: Option<f64>,
+        measurer: &dyn TextMeasurer,
+        fallback: &TextStyle,
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
+    ) -> Result<Vec<PlannedHtmlLine>, E> {
+        let uniform = self
+            .runs
+            .windows(2)
+            .all(|runs| same_font(&runs[0].typography, &runs[1].typography));
+        let uniform_style = self
+            .runs
+            .first()
+            .map(|run| run.typography.text_style())
+            .unwrap_or_else(|| fallback.clone());
+        let builtin = if uniform {
+            measurer.begin_html_line_width(&uniform_style)
+        } else {
+            None
+        };
+        plan_html_lines_with_ranges(
+            &self.source,
+            max_width,
+            builtin,
+            &mut |text, range, selected_hyphen| {
+                let mut width = 0.0;
+                let mut group: Option<(&ResolvedFallbackTypography, usize, usize)> = None;
+                for run in self.runs_for_range(text, range, selected_hyphen) {
+                    let start = run.offset;
+                    let end = start + run.text.len();
+                    match group {
+                        Some((typography, previous_start, previous_end))
+                            if previous_end == start && same_font(typography, run.typography) =>
+                        {
+                            group = Some((typography, previous_start, end));
+                        }
+                        previous => {
+                            if let Some((typography, start, end)) = previous {
+                                width += measurer.measure_html_line_width_px(
+                                    &text[start..end],
+                                    &typography.text_style(),
+                                );
+                            }
+                            group = Some((run.typography, start, end));
+                        }
+                    }
+                }
+                if let Some((typography, start, end)) = group {
+                    width += measurer
+                        .measure_html_line_width_px(&text[start..end], &typography.text_style());
+                } else {
+                    width = measurer.measure_html_line_width_px(text, fallback);
+                }
+                Ok(width)
+            },
+            checkpoint,
+        )
+    }
+}
+
+fn same_font(left: &ResolvedFallbackTypography, right: &ResolvedFallbackTypography) -> bool {
+    left.font_family == right.font_family
+        && left.font_size.to_bits() == right.font_size.to_bits()
+        && resolve_css_font_weight(left.font_weight.as_deref().unwrap_or("normal"), 400)
+            == resolve_css_font_weight(right.font_weight.as_deref().unwrap_or("normal"), 400)
+        && left
+            .font_style
+            .as_deref()
+            .unwrap_or("normal")
+            .eq_ignore_ascii_case(right.font_style.as_deref().unwrap_or("normal"))
 }
 
 fn replace_with_checkpoint<E>(
@@ -119,29 +287,34 @@ fn normalize_html_source_newlines<E>(
 pub(super) fn normalized_foreign_object_text<E>(
     fragments: &[HtmlTextFragment],
     checkpoint: &mut impl FnMut() -> Result<(), E>,
-) -> Result<NormalizedHtmlText, E> {
-    let mut normalized = NormalizedHtmlText::default();
+) -> Result<NormalizedFallbackText, E> {
+    let mut normalized = NormalizedFallbackText::default();
     for (index, fragment) in fragments.iter().enumerate() {
         checkpoint_loop(index, checkpoint)?;
         match fragment {
-            HtmlTextFragment::HardBreak => normalized.hard_break(),
+            HtmlTextFragment::HardBreak => normalized.source.hard_break(),
             HtmlTextFragment::Text {
                 text,
                 white_space,
                 boundary_white_space,
+                typography,
             } => {
                 if let Some((depth, mode)) = boundary_white_space {
-                    normalized.inline_boundary(*depth, *mode);
+                    normalized.source.inline_boundary(*depth, *mode);
                 }
                 // HTML parsing normalizes literal source CR before resolving character references.
                 let text = normalize_html_source_newlines(text, checkpoint)?;
                 // Mermaid's literal escape is an explicit break independently of CSS mode.
                 for (part_index, part) in text.split("\\n").enumerate() {
                     if part_index > 0 {
-                        normalized.hard_break();
+                        normalized.source.hard_break();
                     }
                     let decoded = decode_html_entities(part, checkpoint)?;
-                    normalized.append(&decoded, *white_space, checkpoint)?;
+                    let start = normalized.source.len();
+                    normalized
+                        .source
+                        .append(&decoded, *white_space, checkpoint)?;
+                    normalized.push_range(start, typography);
                 }
             }
         }
@@ -150,6 +323,7 @@ pub(super) fn normalized_foreign_object_text<E>(
     Ok(normalized)
 }
 
+#[cfg(test)]
 pub(super) fn wrap_html_text<E>(
     text: &NormalizedHtmlText,
     max_width: Option<f64>,

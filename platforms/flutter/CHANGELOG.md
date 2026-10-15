@@ -8,6 +8,8 @@ Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and 
 
 - SVG-capable operations add `edge-geometry-json` for Flowchart, Swimlane, and Agentflow clipped edge points and painted label centers. `layout-json` keeps its pre-paint coordinates; inspect the installed operation catalog. [PR #174](https://github.com/Latias94/merman/pull/174), [PR #177](https://github.com/Latias94/merman/pull/177)
 - Flowchart, Swimlane, and State ASCII/Unicode node padding accepts independent X/Y overrides, including zero, separately from graph spacing. [PR #188](https://github.com/Latias94/merman/pull/188)
+- Added shared theme materialization, support-query and preset-export operations with structured authoring diagnostics and theme-specific resource budgets. Both one-shot and reusable consumers retain the same admission contract; catalog availability does not grant Portable support.
+- Generated resource options now include `maxPreparedTextRetainedBytes`, whose defaults are 24 MiB for `interactive`, 12 MiB for `constrained`, 128 MiB for `trusted-native`, and unlimited for trusted unbounded input.
 
 ### Upgrade
 
@@ -21,6 +23,10 @@ Version `0.9.0` retains native ABI 3 from 0.8.0. Keep the generated wrapper and 
 - ASCII/Unicode output preserves loop-back contacts, transition labels, compound frames, Sequence spacing, and diamond shoulders. Resource ceilings retain their existing meanings. [PR #179](https://github.com/Latias94/merman/pull/179), [PR #188](https://github.com/Latias94/merman/pull/188)
 
 See the [package guide](README.md) and [upgrade guide](../../docs/release/V080_TO_V090_UPGRADE_GUIDE.md#binding-artifacts-and-callbacks).
+
+### Breaking changes
+
+- Advance Options JSON from schema `2` to `3`: move visual styling from `presentation.theme` to the closed `theme` preset-or-spec group, and use `raster.matte` and `pdf.page_paint` for export backgrounds. Removed presentation-profile inputs are rejected. Regenerate Dart helpers and replace presentation discovery with `themeCatalog()`.
 
 ## [0.8.0] - 2026-10-06
 
@@ -78,7 +84,8 @@ This section describes alpha.6, published to pub.dev on 2026-09-04 after the com
 
 ### Breaking changes
 
-- Analysis facts now use schema 2 and remove the unused Flowchart-only rich graph; regenerate facts consumers together with the matching native artifact.
+- The current ABI 3 table appends `operation_control_new`, `operation_control_cancel`, `operation_control_release`, and `execute_collect_controlled`; the Dart wrapper now requires the complete table through slot 10 and maps status 17 to structured cancellation details. Upgrade the Dart package and native artifacts together.
+- Analysis facts now use schema 2 and no longer include the unused Flowchart-only rich graph. Regenerate facts consumers together with the matching native artifact.
 - ASCII capability records now expose independent semantic coverage and primary projection fields, and rename `summaryFallback` to `structuredTextFallback`. Structured ASCII resource and diagnostic payloads follow the expanded six-phase renderer contract; upgrade Dart and bundled native artifacts together.
 
 ## 0.8.0-alpha.5 - 2026-08-12

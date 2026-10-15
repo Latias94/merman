@@ -94,8 +94,7 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
     let engine = svg_compare_engine_with_site_config(serde_json::json!({ "handDrawnSeed": 1 }));
     let layout_opts = svg_compare_layout_opts();
     let environment = merman::SvgEnvironment::deterministic();
-    let observed_operations = ObservedRenderOperations::from_environment(&environment)
-        .map_err(CompareRunFailure::without_evidence)?;
+    let observed_operations = ObservedRenderOperations::from_environment(&environment);
     let renderer = merman::Renderer::new()
         .with_engine(engine)
         .with_parse_options(fact.parse_policy.options());
@@ -186,11 +185,19 @@ fn run_er_compare(fact: DiagramVerificationFact, request: ErCompareRequest) -> C
                     }
                 };
 
-            if semantic.semantic_kind() != "er" {
+            let family_id = merman_core::diagram_type_family_id(semantic.diagram_type())
+                .ok_or_else(|| {
+                    format!(
+                        "unknown render family for {}: {}",
+                        input.fixture_path.display(),
+                        semantic.diagram_type()
+                    )
+                })?;
+            if family_id != merman_core::DiagramFamilyId::ER {
                 return Err(format!(
                     "unexpected render family for {}: {}",
                     input.fixture_path.display(),
-                    semantic.semantic_kind()
+                    family_id
                 ));
             }
 

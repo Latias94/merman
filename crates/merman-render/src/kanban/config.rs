@@ -1,15 +1,10 @@
-use crate::config::{
-    DiagramLook, config_bool, config_diagram_look, config_f64, config_string,
-    config_theme_or_root_font_size_px,
-};
+use crate::config::{DiagramLook, config_bool, config_diagram_look, config_f64, config_string};
 use crate::text::TextStyle;
 use serde_json::Value;
 
 const DEFAULT_SECTION_WIDTH: f64 = 200.0;
 const DEFAULT_VIEWBOX_PADDING: f64 = 8.0;
 const DEFAULT_USE_MAX_WIDTH: bool = true;
-const DEFAULT_FONT_FAMILY: &str = "\"trebuchet ms\", verdana, arial, sans-serif";
-const DEFAULT_FONT_SIZE: f64 = 16.0;
 
 pub(crate) struct KanbanConfigView<'a> {
     effective_config: &'a Value,
@@ -26,12 +21,31 @@ impl<'a> KanbanConfigView<'a> {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn layout_settings(&self) -> KanbanLayoutSettings {
+        let config = merman_core::MermaidConfig::from_value(self.effective_config.clone());
+        let typography = super::KanbanTypographyPlan::resolve(None, &config);
+        self.layout_settings_with_resolved_typography(
+            typography.font_family_css(),
+            typography.font_size_px(),
+        )
+    }
+
+    pub(crate) fn layout_settings_with_resolved_typography(
+        &self,
+        font_family: &str,
+        font_size_px: f64,
+    ) -> KanbanLayoutSettings {
         KanbanLayoutSettings {
             section_width: self.section_width(),
             viewbox_padding: self.viewbox_padding(),
             use_max_width: self.use_max_width(),
-            text_style: self.text_style(),
+            text_style: TextStyle {
+                font_family: Some(font_family.to_owned()),
+                font_size: font_size_px.max(1.0),
+                font_weight: None,
+                font_style: None,
+            },
         }
     }
 
@@ -65,19 +79,6 @@ impl<'a> KanbanConfigView<'a> {
             .or_else(|| config_bool(self.kanban_config, &["useMaxWidth"]))
             .unwrap_or(DEFAULT_USE_MAX_WIDTH)
     }
-
-    fn text_style(&self) -> TextStyle {
-        let font_family = config_string(self.effective_config, &["fontFamily"])
-            .or_else(|| config_string(self.effective_config, &["themeVariables", "fontFamily"]))
-            .unwrap_or_else(|| DEFAULT_FONT_FAMILY.to_string());
-        TextStyle {
-            font_family: Some(font_family),
-            font_size: config_theme_or_root_font_size_px(self.effective_config, DEFAULT_FONT_SIZE)
-                .max(1.0),
-            font_weight: None,
-            font_style: None,
-        }
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -105,10 +106,10 @@ mod tests {
         assert_eq!(settings.section_width, DEFAULT_SECTION_WIDTH);
         assert_eq!(settings.viewbox_padding, DEFAULT_VIEWBOX_PADDING);
         assert!(settings.use_max_width);
-        assert_eq!(settings.text_style.font_size, DEFAULT_FONT_SIZE);
+        assert_eq!(settings.text_style.font_size, 16.0);
         assert_eq!(
             settings.text_style.font_family.as_deref(),
-            Some(DEFAULT_FONT_FAMILY)
+            Some(r#""trebuchet ms",verdana,arial,sans-serif"#)
         );
     }
 
@@ -130,9 +131,40 @@ mod tests {
         assert!(!settings.use_max_width);
         assert_eq!(
             settings.text_style.font_family.as_deref(),
-            Some("Inter, sans-serif")
+            Some("Inter,sans-serif")
         );
         assert_eq!(settings.text_style.font_size, 20.0);
+    }
+
+    #[test]
+    fn configured_theme_font_uses_the_production_parser() {
+        let config = json!({
+            "fontFamily": "RootFallback, serif",
+            "themeVariables": {"fontFamily": "Configured, sans-serif", "fontSize": "22px"}
+        });
+        let settings = KanbanConfigView::new(&config).layout_settings();
+        assert_eq!(
+            settings.text_style.font_family.as_deref(),
+            Some("Configured,sans-serif")
+        );
+        assert_eq!(settings.text_style.font_size, 22.0);
+    }
+
+    #[test]
+    fn kanban_layout_settings_can_use_resolved_typography() {
+        let cfg = json!({
+            "fontFamily": "Configured, sans-serif",
+            "kanban": { "sectionWidth": 240 }
+        });
+        let settings = KanbanConfigView::new(&cfg)
+            .layout_settings_with_resolved_typography("Typed, sans-serif", 24.0);
+
+        assert_eq!(settings.section_width, 240.0);
+        assert_eq!(
+            settings.text_style.font_family.as_deref(),
+            Some("Typed, sans-serif")
+        );
+        assert_eq!(settings.text_style.font_size, 24.0);
     }
 
     #[test]

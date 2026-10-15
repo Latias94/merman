@@ -12,6 +12,8 @@ use merman_core::{
 };
 
 use crate::render::{RenderError, ResourceLimitCause, ResourceLimitExceeded};
+#[cfg(feature = "svg")]
+use merman_render::diagram_theme::DiagramTheme;
 
 /// Immutable operation-owned values shared by every target adapter.
 #[derive(Debug)]
@@ -20,6 +22,8 @@ pub(crate) struct Operation {
     pub(crate) control: OperationControl,
     pub(crate) context: OperationContext,
     resources: InputResourcePolicy,
+    #[cfg(feature = "svg")]
+    theme: Option<DiagramTheme>,
 }
 
 impl Operation {
@@ -28,6 +32,7 @@ impl Operation {
         source: &str,
         control: OperationControl,
         resources: InputResourcePolicy,
+        #[cfg(feature = "svg")] theme: Option<DiagramTheme>,
     ) -> Result<Self, RenderError> {
         checkpoint(&control, OperationPhase::Admission)?;
         if let Err(error) = resources.check_source_bytes(source) {
@@ -44,6 +49,8 @@ impl Operation {
             control,
             context,
             resources,
+            #[cfg(feature = "svg")]
+            theme,
         })
     }
 
@@ -85,6 +92,8 @@ impl Operation {
                     control: self.control,
                     #[cfg(any(feature = "svg", feature = "ascii"))]
                     context: self.context,
+                    #[cfg(feature = "svg")]
+                    theme: self.theme,
                 },
             }),
         }))
@@ -173,6 +182,8 @@ pub(crate) struct OperationExecution {
     pub(crate) control: OperationControl,
     #[cfg(any(feature = "svg", feature = "ascii"))]
     pub(crate) context: OperationContext,
+    #[cfg(feature = "svg")]
+    pub(crate) theme: Option<DiagramTheme>,
 }
 
 /// A format-neutral semantic artifact paired with the operation that produced it.
@@ -204,6 +215,12 @@ impl SemanticArtifact {
     /// Returns the typed Mermaid diagram id selected during preprocessing.
     pub fn diagram_type(&self) -> &str {
         &self.metadata().diagram_type
+    }
+
+    /// Returns the catalog-owned family selected after detection defaults and configuration
+    /// effects were applied for this canonical operation.
+    pub fn family_id(&self) -> Option<merman_core::DiagramFamilyId> {
+        self.state.parsed.family_id()
     }
 
     pub(crate) fn parsed(&self) -> &ParsedDiagramRender {

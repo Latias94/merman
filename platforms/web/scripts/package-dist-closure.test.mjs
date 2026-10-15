@@ -104,6 +104,24 @@ test("package dist closure allows only the owned WASM dynamic import", () => {
   }
 });
 
+test("package closure retains the shared JSON encoder without exporting it", () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-json-closure-"));
+  try {
+    writeClosureFixture(root);
+    write(
+      root,
+      "runtime-core.js",
+      'import { encodeJsonInput } from "./json-input.js";\nexport const core = encodeJsonInput({});\n',
+    );
+    write(root, "json-input.js", "export const encodeJsonInput = JSON.stringify;\n");
+    const closure = packageDistClosure(root, "analysis");
+    assert.ok(closure.javascriptModules.includes("json-input.js"));
+    assert.ok(!closure.declarationModules.includes("json-input.d.ts"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("package dist closure rejects modules declared for another surface", () => {
   const root = mkdtempSync(path.join(os.tmpdir(), "merman-web-dist-closure-"));
   try {

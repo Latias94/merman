@@ -16,10 +16,8 @@
   "toolbar": {
     "examples": "Examples",
     "theme": "Theme",
-    "mermaidTheme": "Mermaid themes",
-    "presentation": "Presentation",
-    "presentationTheme": "Presentation theme",
-    "presentationProfile": "Presentation profile",
+    "mermaidTheme": "Mermaid compatibility theme",
+    "themePreset": "Merman visual preset",
     "svgOutput": "SVG output",
     "renderSettings": "Render settings",
     "textMeasurement": "Text measurement",
@@ -102,7 +100,9 @@
     "copied": "Copied!",
     "copyFailed": "Copy failed",
     "openMermaidLive": "Open in Mermaid Live",
-    "openMermaidLiveDesc": "Official editor"
+    "openMermaidLiveDesc": "Official editor",
+    "externalThemeLimit": "Mermaid.ink and Mermaid Live links omit Merman visual presets and custom themes.",
+    "themeNotIncluded": "Merman theme was not included. Use a workspace link or export SVG to preserve it."
   },
   "bench": {
     "title": "Browser Benchmark",
@@ -344,8 +344,7 @@
     "editorLanguage": "Editor",
     "renderTime": "Render",
     "theme": "Theme",
-    "presentationTheme": "Presentation theme",
-    "presentationProfile": "Profile",
+    "themePreset": "Merman theme",
     "svgOutput": "SVG",
     "measurement": "Measure",
     "font": "Font",
@@ -366,7 +365,7 @@
     "base": "Base",
     "system": "System"
   },
-  "presentationThemes": {
+  "themePresets": {
     "none": "None",
     "editor-light": "Editor Light",
     "editor-dark": "Editor Dark",
@@ -374,11 +373,19 @@
     "gruvbox-light": "Gruvbox Light",
     "gruvbox-dark": "Gruvbox Dark",
     "ayu-light": "Ayu Light",
-    "ayu-dark": "Ayu Dark"
+    "ayu-dark": "Ayu Dark",
+    "brutalist": "Brutalist",
+    "spotless": "Spotless",
+    "cyberpunk": "Cyberpunk"
   },
-  "presentationProfiles": {
-    "none": "None",
-    "merman-modern": "Merman Modern"
+  "themeDesign": {
+    "dedicated": "Designed for this diagram family",
+    "base_only": "Base styling",
+    "unreviewed": "Design not yet reviewed",
+    "unavailable": "Unavailable in this runtime",
+    "visibleDiagram": "Visible diagram: {{family}}",
+    "unknownFamily": "not detected",
+    "explanation": "Design scope does not certify export results. Your selected preset is retained."
   },
   "svgPipelines": {
     "parity": "Mermaid SVG (default)",
@@ -394,15 +401,6 @@
     "advanced": "Advanced",
     "browserWarning": "Text fallback SVG keeps HTML labels and adds SVG text. Both can appear in this browser preview and overlap.",
     "useParity": "Use Mermaid SVG"
-  },
-  "presentationStatus": {
-    "none": "No presentation profile selected.",
-    "pending": "Checking {{profile}} for the current render.",
-    "fully-available": "{{profile}} is fully available.",
-    "missing-but-inapplicable": "{{profile}} is available for this diagram; missing capabilities are not applicable ({{capabilities}}).",
-    "inactive-by-explicit-renderer": "{{profile}} is available with the selected renderer; unavailable default-renderer features are inactive ({{capabilities}}).",
-    "blocked-for-current-operation": "{{profile}} is blocked for this render by missing capabilities: {{capabilities}}.",
-    "unknown-future-id": "{{profile}} is not in this runtime catalog; the ID is preserved for a future runtime."
   },
   "uiThemes": {
     "light": "Light",
@@ -443,5 +441,26 @@
     "treeView": "TreeView",
     "requirement": "Requirement",
     "unknown": "Unknown"
+  },
+  "customTheme": {
+    "title": "Custom Merman theme",
+    "open": "Custom theme…",
+    "edit": "Edit custom theme…",
+    "active": "Applied",
+    "description": "Edit a theme recipe, start from a preset, or import a JSON file. Your diagram changes only after validation succeeds.",
+    "new": "New recipe",
+    "usePreset": "Use selected preset",
+    "import": "Import JSON",
+    "download": "Download JSON",
+    "recipeLabel": "Theme recipe JSON",
+    "help": "A versioned recipe contains a definition (tokens and styles) or a complete_spec. Workspace links include the applied recipe.",
+    "limitations": "Alpha format: future releases may require migration. Fonts must be available on the receiving device. Styling support varies by diagram family and output; validation does not certify every export.",
+    "cancel": "Cancel",
+    "apply": "Validate and apply",
+    "applied": "Custom theme applied",
+    "importing": "Reading theme…",
+    "tooLarge": "Theme JSON must be {{limit}} KiB or smaller.",
+    "diagnosticDetails": "Diagnostic details",
+    "unchanged": "The applied theme has not changed."
   }
 }

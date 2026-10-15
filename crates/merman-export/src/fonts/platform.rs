@@ -330,18 +330,23 @@ impl PlatformCatalog {
         font: &usvg::Font,
         explicit: &Database,
         control: &OperationControl,
-    ) -> Result<Option<FontCandidate>, NativeFontError> {
+    ) -> Result<Option<super::resolver::FontSelection>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         let weight = Weight(font.weight());
         let stretch = font.stretch().into();
         let style = font.style().into();
-        for family in font
+        for (index, family) in font
             .families()
             .iter()
             .chain(std::iter::once(&usvg::FontFamily::Serif))
+            .enumerate()
         {
+            let family_fallback_used = index == font.families().len();
             if let Some(face) = explicit_face(explicit, family, weight, stretch, style) {
-                return Ok(Some(FontCandidate::Loaded(face)));
+                return Ok(Some(super::resolver::FontSelection {
+                    candidate: FontCandidate::Loaded(face),
+                    family_fallback_used,
+                }));
             }
             let name = match family {
                 usvg::FontFamily::Named(name) => Some(name.as_str()),
@@ -359,7 +364,12 @@ impl PlatformCatalog {
                 .into_iter()
                 .next()
             {
-                return candidate(selected).map(Some);
+                return candidate(selected).map(|candidate| {
+                    Some(super::resolver::FontSelection {
+                        candidate,
+                        family_fallback_used,
+                    })
+                });
             }
         }
         Ok(None)

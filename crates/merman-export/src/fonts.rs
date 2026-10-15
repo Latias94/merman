@@ -17,6 +17,7 @@ use std::fmt;
 use std::fs;
 use std::io::Read;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 #[cfg(feature = "experimental-system-font-query")]
@@ -139,6 +140,8 @@ impl NativeFontOptions {
             }
         }
         #[cfg(feature = "experimental-system-font-query")]
+        let explicit_face_count = loader.database.faces().count();
+        #[cfg(feature = "experimental-system-font-query")]
         let platform = if self.system_fonts && platform_requested {
             let mut explicit = loader.database.clone();
             super::configure_fontdb_generic_families(&mut explicit);
@@ -153,6 +156,14 @@ impl NativeFontOptions {
         #[cfg(not(feature = "experimental-system-font-query"))]
         let _ = platform_requested;
         super::configure_fontdb_generic_families(&mut loader.database);
+        #[cfg(feature = "experimental-system-font-query")]
+        let initial_system_faces = if platform.is_some() && explicit_face_count == 0 {
+            loader.database.faces().map(|face| face.id).collect()
+        } else {
+            BTreeSet::new()
+        };
+        #[cfg(not(feature = "experimental-system-font-query"))]
+        let initial_system_faces = BTreeSet::new();
         #[cfg(feature = "system-fonts")]
         let system = if self.system_fonts && !platform_requested {
             Some(system::SystemCatalog::discover(&loader, control)?)
@@ -206,6 +217,7 @@ impl NativeFontOptions {
         );
         Ok(NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(loader.database),
+            initial_system_faces,
             #[cfg(feature = "system-fonts")]
             discovery,
             #[cfg(feature = "system-fonts")]
@@ -249,6 +261,100 @@ pub enum NativeFontError {
 #[derive(Clone)]
 pub struct NativeFontContext(Arc<FontContextInner>);
 
+/// Operation-local evidence emitted by the exact resolver installed into usvg.
+///
+/// This tracks the admission provenance for the exact font database used by one export parse.
+/// Initial context faces are caller-owned; the discovery resolver records later admissions.
+#[derive(Clone)]
+pub(crate) struct NativeExportFontObserver {
+    admitted_faces: Arc<Mutex<BTreeMap<usvg::fontdb::ID, NativeExportFontSource>>>,
+    family_fallback: Arc<AtomicBool>,
+    glyph_fallback: Arc<AtomicBool>,
+    unresolved_font: Arc<AtomicBool>,
+    unresolved_glyph: Arc<AtomicBool>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NativeExportFontSource {
+    Caller,
+    System,
+}
+
+impl NativeExportFontObserver {
+    fn new(
+        database: &usvg::fontdb::Database,
+        initial_system_faces: &BTreeSet<usvg::fontdb::ID>,
+    ) -> Self {
+        Self {
+            admitted_faces: Arc::new(Mutex::new(
+                database
+                    .faces()
+                    .map(|face| {
+                        (
+                            face.id,
+                            if initial_system_faces.contains(&face.id) {
+                                NativeExportFontSource::System
+                            } else {
+                                NativeExportFontSource::Caller
+                            },
+                        )
+                    })
+                    .collect(),
+            )),
+            family_fallback: Arc::new(AtomicBool::new(false)),
+            glyph_fallback: Arc::new(AtomicBool::new(false)),
+            unresolved_font: Arc::new(AtomicBool::new(false)),
+            unresolved_glyph: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub(crate) fn admit(&self, id: usvg::fontdb::ID, source: NativeExportFontSource) {
+        if let Ok(mut faces) = self.admitted_faces.lock() {
+            // A system catalog can point at an already-explicit face. Its caller ownership wins.
+            faces.entry(id).or_insert(source);
+        }
+    }
+
+    pub(crate) fn admitted_faces(&self) -> BTreeMap<usvg::fontdb::ID, NativeExportFontSource> {
+        self.admitted_faces
+            .lock()
+            .map(|faces| faces.clone())
+            .unwrap_or_default()
+    }
+
+    pub(crate) fn mark_family_fallback(&self) {
+        self.family_fallback.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn family_fallback_used(&self) -> bool {
+        self.family_fallback.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn mark_glyph_fallback(&self) {
+        self.glyph_fallback.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn glyph_fallback_used(&self) -> bool {
+        self.glyph_fallback.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn mark_unresolved_font(&self) {
+        self.unresolved_font.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn unresolved_font_request(&self) -> bool {
+        self.unresolved_font.load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn mark_unresolved_glyph(&self) {
+        self.unresolved_glyph.store(true, Ordering::Relaxed);
+    }
+
+    pub(crate) fn unresolved_glyph_fallback(&self) -> bool {
+        self.unresolved_glyph.load(Ordering::Relaxed)
+    }
+}
+
 impl PartialEq for NativeFontContext {
     fn eq(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.0, &other.0)
@@ -265,6 +371,7 @@ impl fmt::Debug for NativeFontContext {
 
 struct FontContextInner {
     database: Arc<usvg::fontdb::Database>,
+    initial_system_faces: BTreeSet<usvg::fontdb::ID>,
     #[cfg(feature = "system-fonts")]
     discovery: Option<resolver::DiscoveryProvider>,
     #[cfg(feature = "system-fonts")]
@@ -348,16 +455,46 @@ impl NativeFontContext {
         options.font_resolver = super::browser_like_font_resolver();
         #[cfg(feature = "system-fonts")]
         if self.0.discovery.is_some() {
-            options.font_resolver = resolver::resolver(self.clone(), control.clone());
+            options.font_resolver = resolver::resolver(self.clone(), control.clone(), None);
         }
         #[cfg(not(feature = "system-fonts"))]
         let _ = control;
+    }
+
+    /// Installs this context once for export and returns evidence from that same resolver.
+    pub(crate) fn apply_to_usvg_options_for_export(
+        &self,
+        options: &mut usvg::Options<'_>,
+        control: &OperationControl,
+    ) -> NativeExportFontObserver {
+        let observer =
+            NativeExportFontObserver::new(&self.0.database, &self.0.initial_system_faces);
+        options.fontdb = Arc::clone(&self.0.database);
+        options.font_family.clone_from(&self.0.default_family);
+        options.font_resolver = native_export_font_resolver(observer.clone());
+        #[cfg(feature = "system-fonts")]
+        if self.0.discovery.is_some() {
+            options.font_resolver =
+                resolver::resolver(self.clone(), control.clone(), Some(observer.clone()));
+        }
+        #[cfg(not(feature = "system-fonts"))]
+        let _ = control;
+        observer
+    }
+
+    /// Shares the exact database installed into an export's usvg options with its receipt.
+    /// The caller must still install the matching resolver through
+    /// [`Self::apply_to_usvg_options_controlled`]; this accessor exists only so the receipt can
+    /// classify faces from that same parse, never from a second font database.
+    pub(crate) fn fontdb_for_export(&self) -> Arc<usvg::fontdb::Database> {
+        Arc::clone(&self.0.database)
     }
 
     /// Reuses font metadata without inheriting operation failures or measurement counts.
     pub fn for_operation(&self, control: &OperationControl) -> Self {
         Self(Arc::new(FontContextInner {
             database: Arc::clone(&self.0.database),
+            initial_system_faces: self.0.initial_system_faces.clone(),
             #[cfg(feature = "system-fonts")]
             discovery: self.0.discovery.clone(),
             #[cfg(feature = "system-fonts")]
@@ -404,6 +541,46 @@ impl NativeFontContext {
             .control
             .terminal_checkpoint_at(OperationPhase::Layout)?;
         Ok(())
+    }
+}
+
+impl Eq for NativeFontContext {}
+
+fn native_export_font_resolver(observer: NativeExportFontObserver) -> usvg::FontResolver<'static> {
+    let select_observer = observer.clone();
+    let fallback_observer = observer.clone();
+    usvg::FontResolver {
+        select_font: Box::new(move |font, fontdb| {
+            if let Some(id) = super::select_requested_font_case_insensitively(font, fontdb.as_ref())
+            {
+                return Some(id);
+            }
+            let selected = super::query_font_family(
+                fontdb.as_ref(),
+                usvg::fontdb::Family::Serif,
+                usvg::fontdb::Weight(font.weight()),
+                font.stretch().into(),
+                font.style().into(),
+            )
+            .or_else(|| super::query_browser_like_fallback_font(font, fontdb.as_ref()))
+            .or_else(|| fontdb.faces().next().map(|face| face.id));
+            if selected.is_some() {
+                select_observer.mark_family_fallback();
+            } else {
+                select_observer.mark_unresolved_font();
+            }
+            selected
+        }),
+        select_fallback: Box::new(move |character, excluded, fontdb| {
+            let selected =
+                (usvg::FontResolver::default_fallback_selector())(character, excluded, fontdb);
+            if selected.is_some() {
+                fallback_observer.mark_glyph_fallback();
+            } else {
+                fallback_observer.mark_unresolved_glyph();
+            }
+            selected
+        }),
     }
 }
 
@@ -1114,6 +1291,7 @@ mod tests {
         };
         let context = NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(usvg::fontdb::Database::new()),
+            initial_system_faces: BTreeSet::new(),
             #[cfg(feature = "system-fonts")]
             discovery: None,
             #[cfg(feature = "system-fonts")]

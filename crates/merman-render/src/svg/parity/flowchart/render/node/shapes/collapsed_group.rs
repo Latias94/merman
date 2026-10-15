@@ -1,7 +1,5 @@
 //! Mermaid 11.17 collapsed Flowchart subgraph shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::escape_attr;
 use crate::svg::parity::{fmt, fmt_display};
 
@@ -50,7 +48,7 @@ fn rounded_rect_path_d(x: f64, y: f64, width: f64, height: f64, radius: f64) -> 
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_body(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -58,6 +56,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
 ) -> CollapsedGroupGeometry {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,
@@ -76,28 +75,16 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
     let (radius, fill, border, stroke_width, class) = if is_agentflow_flow {
         (
             10.0,
-            "none".to_owned(),
-            crate::svg::parity::util::theme_token(
-                ctx.config.as_value(),
-                "flowContainerStroke",
-                &crate::svg::parity::util::theme_token(
-                    ctx.config.as_value(),
-                    "secondaryBorderColor",
-                    "#aaaa33",
-                ),
-            ),
+            "none",
+            ctx.compatibility.collapsed_agentflow_stroke.as_str(),
             0.75,
             "flow-collapsed",
         )
     } else {
         (
             RADIUS,
-            crate::svg::parity::util::theme_token(ctx.config.as_value(), "clusterBkg", "#ffffde"),
-            crate::svg::parity::util::theme_token(
-                ctx.config.as_value(),
-                "clusterBorder",
-                "#aaaa33",
-            ),
+            ctx.compatibility.cluster_bkg.as_str(),
+            ctx.compatibility.cluster_border.as_str(),
             common.stroke_width as f64,
             "collapsed-group",
         )
@@ -124,10 +111,10 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
                 out,
                 r#"<g class="basic label-container {class}"><path d="{}" stroke="none" stroke-width="0" fill="{}" style="{}"/><path d="{}" stroke="{}" stroke-width="{}" fill="none" stroke-dasharray="{}" style="{}"/></g>"#,
                 escape_attr(&fill_d),
-                escape_attr(&fill),
+                escape_attr(fill),
                 escape_attr(common.style),
                 escape_attr(&stroke_d),
-                escape_attr(&border),
+                escape_attr(border),
                 fmt_display(effective_stroke_width as f64),
                 escape_attr(common.stroke_dasharray),
                 escape_attr(common.style),
@@ -135,8 +122,11 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
         } else {
             let _ = write!(
                 out,
-                r#"<path class="basic label-container {class}" d="{}" style="{}"/>"#,
+                r#"<path class="basic label-container {class}" d="{}" fill="{}" stroke="{}" stroke-width="{}" style="{}"/>"#,
                 escape_attr(&path),
+                escape_attr(fill),
+                escape_attr(border),
+                fmt_display(stroke_width),
                 escape_attr(common.style),
             );
         }
@@ -151,8 +141,8 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
             fmt(top),
             fmt(width),
             fmt(height),
-            escape_attr(&fill),
-            escape_attr(&border),
+            escape_attr(fill),
+            escape_attr(border),
             if is_agentflow_flow {
                 format!(r#" stroke-width="{}px""#, fmt(stroke_width))
             } else {
@@ -168,12 +158,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_bo
         left,
         width,
         separator_y,
-        border,
+        border: border.to_owned(),
     }
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_collapsed_group_indicators(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     geometry: CollapsedGroupGeometry,
 ) {
     let CollapsedGroupGeometry {

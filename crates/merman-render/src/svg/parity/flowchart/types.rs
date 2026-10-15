@@ -4,6 +4,8 @@
 //! are used across flowchart SVG emission (rendering + viewBox computation).
 
 use super::super::*;
+use super::FlowchartEdgeStylePlan;
+use super::render_input::FlowchartRenderEdgeRef;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 #[derive(Clone, Copy)]
@@ -24,6 +26,16 @@ impl<'a> FlowchartEmitCheckpoint<'a> {
 }
 
 pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
+    pub(in crate::svg::parity::flowchart) prepared_nodes:
+        &'a super::node_inventory::FlowchartPreparedNodes,
+    pub(in crate::svg::parity::flowchart) label_effects:
+        std::cell::OnceCell<super::label_effect::FlowchartLabelEffects>,
+    pub(in crate::svg::parity::flowchart) node_effects:
+        std::cell::OnceCell<super::node_effect::FlowchartNodeEffects>,
+    pub(in crate::svg::parity::flowchart) edge_effects:
+        std::cell::OnceCell<super::edge_effect::FlowchartEdgeEffects>,
+    pub(in crate::svg::parity::flowchart) effect_evidence:
+        &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(in crate::svg::parity::flowchart) model: &'a crate::flowchart::FlowchartRenderModelRef<'a>,
     pub(in crate::svg::parity::flowchart) diagram_id: SvgDiagramId<'a>,
     pub(in crate::svg::parity::flowchart) diagram_type: &'a str,
@@ -31,38 +43,58 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) ty: f64,
     pub(in crate::svg::parity::flowchart) measurer: &'a dyn TextMeasurer,
     pub(in crate::svg::parity::flowchart) config: &'a merman_core::MermaidConfig,
+    pub(in crate::svg::parity::flowchart) compatibility:
+        &'a crate::flowchart::FlowchartCompatibilityBinding,
+    pub(in crate::svg::parity::flowchart) effect_eligibility:
+        &'a crate::flowchart::FlowchartEffectEligibility,
     pub(in crate::svg::parity::flowchart) hand_drawn_seed: roughr::core::RoughRandomness,
     pub(in crate::svg::parity::flowchart) work_meter: &'a crate::resources::OperationWorkMeter,
+    pub(in crate::svg::parity::flowchart) resolved_theme:
+        Option<&'a crate::diagram_theme::ResolvedDiagramTheme>,
+    pub(in crate::svg::parity::flowchart) text_surface_paint:
+        &'a crate::flowchart::FlowchartTextSurfacePaintPlan,
+    pub(in crate::svg::parity::flowchart) theme_evidence:
+        &'a crate::flowchart::FlowchartThemeEvidenceRecorder,
     pub(in crate::svg::parity::flowchart) emit: FlowchartEmitCheckpoint<'a>,
     pub(in crate::svg::parity::flowchart) math_renderer:
         Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(in crate::svg::parity::flowchart) svg_label_sidecar:
         Option<&'a crate::flowchart::FlowchartSvgLabelSidecar>,
     pub(in crate::svg::parity::flowchart) icon_registry: Option<&'a crate::svg::IconRegistry>,
-    pub(in crate::svg::parity::flowchart) icon_scope_prefix:
-        Option<crate::svg::icon_registry::IconIdScopePrefix>,
     pub(in crate::svg::parity::flowchart) security_level_loose: bool,
     pub(in crate::svg::parity::flowchart) node_html_labels: bool,
     pub(in crate::svg::parity::flowchart) edge_html_labels: bool,
     pub(in crate::svg::parity::flowchart) swimlane_title_html_labels: bool,
     pub(in crate::svg::parity::flowchart) uses_elk_adapter_dom: bool,
     pub(in crate::svg::parity::flowchart) class_defs: &'a IndexMap<String, Vec<String>>,
-    pub(in crate::svg::parity::flowchart) node_border_color: String,
-    pub(in crate::svg::parity::flowchart) node_fill_color: String,
+    pub(in crate::svg::parity::flowchart) edge_style_plan: &'a FlowchartEdgeStylePlan,
+    pub(in crate::svg::parity::flowchart) document_ids:
+        &'a super::document_ids::FlowchartDocumentIds<'a>,
+    pub(in crate::svg::parity::flowchart) node_border_color: &'a String,
+    pub(in crate::svg::parity::flowchart) node_stroke_width: f32,
+    pub(in crate::svg::parity::flowchart) node_typography_config_ownership:
+        crate::flowchart::FlowchartTypographyConfigOwnership,
+    pub(in crate::svg::parity::flowchart) node_label_fill_config_override: bool,
+    pub(in crate::svg::parity::flowchart) node_border_config_override: bool,
+    pub(in crate::svg::parity::flowchart) node_fill_config_override: bool,
+    pub(in crate::svg::parity::flowchart) node_stroke_width_config_override: bool,
+    pub(in crate::svg::parity::flowchart) edge_stroke_config_override: bool,
+    pub(in crate::svg::parity::flowchart) node_corner_radius_config_override: bool,
     pub(in crate::svg::parity::flowchart) edge_corner_radius: f64,
-    pub(in crate::svg::parity::flowchart) edge_label_padding: f64,
+    pub(in crate::svg::parity::flowchart) edge_label_padding:
+        crate::flowchart::FlowchartEdgeLabelPadding,
     pub(in crate::svg::parity::flowchart) compact_edge_corners: bool,
-    pub(in crate::svg::parity::flowchart) default_edge_interpolate: String,
-    pub(in crate::svg::parity::flowchart) default_edge_style: Vec<String>,
+    pub(in crate::svg::parity::flowchart) default_edge_interpolate: &'a String,
+    pub(in crate::svg::parity::flowchart) default_edge_style: &'a Vec<String>,
+    pub(in crate::svg::parity::flowchart) edge_theme: &'a crate::flowchart::FlowchartEdgeThemeStyle,
     pub(in crate::svg::parity::flowchart) trace_edge_id: Option<&'a str>,
     pub(in crate::svg::parity::flowchart) trace_collector:
         Option<&'a crate::svg::FlowchartEdgeTraceCollector>,
-    pub(in crate::svg::parity::flowchart) subgraph_order: Vec<&'a str>,
-    pub(in crate::svg::parity::flowchart) edge_order: Vec<&'a str>,
+    pub(in crate::svg::parity::flowchart) edge_order: Vec<FlowchartRenderEdgeRef<'a>>,
+    pub(in crate::svg::parity::flowchart) edges_by_key:
+        FxHashMap<crate::flowchart::FlowchartEdgeKey, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) nodes_by_id:
         FxHashMap<&'a str, &'a crate::flowchart::FlowNode>,
-    pub(in crate::svg::parity::flowchart) edges_by_id:
-        FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
     pub(in crate::svg::parity::flowchart) subgraphs_by_id:
         FxHashMap<&'a str, &'a crate::flowchart::FlowSubgraph>,
     pub(in crate::svg::parity::flowchart) subgraph_indices_by_id: FxHashMap<&'a str, usize>,
@@ -71,8 +103,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) recursive_clusters: FxHashSet<&'a str>,
     pub(in crate::svg::parity::flowchart) parent: FxHashMap<&'a str, &'a str>,
     pub(in crate::svg::parity::flowchart) layout_nodes_by_id: FxHashMap<&'a str, &'a LayoutNode>,
-    pub(in crate::svg::parity::flowchart) layout_edges_by_id:
-        FxHashMap<&'a str, &'a crate::model::LayoutEdge>,
+    pub(in crate::svg::parity::flowchart) layout_edges_by_key:
+        FxHashMap<crate::flowchart::FlowchartEdgeKey, &'a crate::model::LayoutEdge>,
     pub(in crate::svg::parity::flowchart) layout_clusters_by_id:
         FxHashMap<&'a str, &'a LayoutCluster>,
     pub(in crate::svg::parity::flowchart) swimlane_direction:
@@ -80,21 +112,33 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
     pub(in crate::svg::parity::flowchart) swimlane_lanes_by_id:
         FxHashMap<&'a str, &'a crate::model::SwimlaneLaneLayout>,
     pub(in crate::svg::parity::flowchart) swimlane_edge_label_edges_by_node_id:
-        FxHashMap<&'a str, &'a crate::flowchart::FlowEdge>,
-    pub(in crate::svg::parity::flowchart) dom_node_order_by_root:
-        &'a std::collections::HashMap<String, Vec<String>>,
+        FxHashMap<&'a str, FlowchartRenderEdgeRef<'a>>,
     pub(in crate::svg::parity::flowchart) node_dom_index: FxHashMap<&'a str, usize>,
     pub(in crate::svg::parity::flowchart) node_padding: f64,
     pub(in crate::svg::parity::flowchart) wrapping_width: f64,
     pub(in crate::svg::parity::flowchart) node_wrap_mode: WrapMode,
     pub(in crate::svg::parity::flowchart) edge_wrap_mode: WrapMode,
-    pub(in crate::svg::parity::flowchart) text_style: TextStyle,
-    pub(in crate::svg::parity::flowchart) html_label_text_style: TextStyle,
+    pub(in crate::svg::parity::flowchart) text_style: &'a TextStyle,
+    pub(in crate::svg::parity::flowchart) html_label_text_style: &'a TextStyle,
 }
 
 impl FlowchartRenderCtx<'_> {
     pub(in crate::svg::parity::flowchart) fn subgraph_has_children(&self, id: &str) -> bool {
         self.subgraph_ids_with_children.contains(id)
+    }
+
+    pub(in crate::svg::parity::flowchart) fn record_base_typography_label_emission(
+        &self,
+        emission: crate::flowchart::FlowchartBaseTypographyLabelEmission,
+    ) {
+        let Some(plan) = self
+            .svg_label_sidecar
+            .and_then(crate::flowchart::FlowchartSvgLabelSidecar::base_typography)
+            .filter(|plan| plan.requires_terminal_evidence())
+        else {
+            return;
+        };
+        plan.record_label_emission(emission);
     }
 
     pub(in crate::svg::parity::flowchart) fn is_subgraph_collapsed(&self, id: &str) -> bool {
@@ -121,7 +165,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
     pub(in crate::svg::parity::flowchart) node_label_html: std::time::Duration,
     pub(in crate::svg::parity::flowchart) node_label_html_calls: u32,
     pub(in crate::svg::parity::flowchart) nested_roots: std::time::Duration,
-    pub(in crate::svg::parity::flowchart) viewbox_edge_curve_lca: std::time::Duration,
+    pub(in crate::svg::parity::flowchart) viewbox_edge_root_lookup: std::time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_offsets: std::time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_geom: std::time::Duration,
     pub(in crate::svg::parity::flowchart) viewbox_edge_curve_bbox_union: std::time::Duration,
@@ -132,7 +176,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
 #[derive(Default)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg::parity::flowchart) json: String,
-    pub(in crate::svg::parity::flowchart) edge_style: String,
+    pub(in crate::svg::parity::flowchart) edge_class_attr: String,
+    pub(in crate::svg::parity::flowchart) edge_marker_attrs: String,
     pub(in crate::svg::parity::flowchart) ryu: ryu_js::Buffer,
     pub(in crate::svg::parity::flowchart) local_points: Vec<crate::model::LayoutPoint>,
     pub(in crate::svg::parity::flowchart) tmp_points_a: Vec<crate::model::LayoutPoint>,

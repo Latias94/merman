@@ -1,6 +1,7 @@
 # Choosing Merman capabilities
 
 This page documents Merman `0.9.0` capabilities. Explicit family selection and default facade ELK remain as in 0.8.0; use the [upgrade guide](release/V080_TO_V090_UPGRADE_GUIDE.md) for changed models and output defaults. Workspace path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md) for host integration.
+Compiled-theme authoring remains experimental and requires a matching artifact; registry channels publish independently.
 
 Choose the diagram families your application accepts and the operations it performs. Positive
 `diagram-*` Cargo features select built-in parser, model, and output implementations. Selected

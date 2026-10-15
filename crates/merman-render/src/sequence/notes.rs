@@ -2,11 +2,10 @@ use super::SequenceLayoutCheckpoints;
 use super::constants::SEQUENCE_FRAME_GEOM_PAD_PX;
 use super::metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
-    measure_sequence_label_for_layout, measure_svg_like_with_html_br,
+    measure_sequence_label_for_layout_with_prepared, measure_svg_like_with_html_br,
     wrap_sequence_label_like_mermaid_lines,
 };
 use crate::Result;
-use crate::math::MathRenderer;
 use crate::model::LayoutNode;
 use crate::text::{TextMeasurer, TextStyle};
 use merman_core::MermaidConfig;
@@ -32,7 +31,9 @@ pub(super) struct SequenceNoteHorizontalContext<'a> {
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) note_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
+    pub(super) message_index: usize,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
@@ -86,13 +87,19 @@ pub(super) fn sequence_note_horizontal_model(
     let should_wrap = msg.wrap && !text.is_empty();
     let is_math_note = text.contains("$$");
     let placement = msg.placement.unwrap_or(2);
-    let mut text_width = if is_math_note {
-        measure_sequence_label_for_layout(
+    let mut text_width = if is_math_note && !should_wrap {
+        let prepared_math = ctx.math_sidecar.prepare_or_get(
+            super::SequenceMathOccurrence::Note(ctx.message_index),
+            text,
+            ctx.math_terminal_style,
+        );
+        measure_sequence_label_for_layout_with_prepared(
+            prepared_math.as_deref(),
             ctx.measurer,
             text,
             ctx.note_text_style,
             ctx.math_config,
-            ctx.math_renderer,
+            None,
             SequenceMathHeightMode::Bound,
             ctx.checkpoints.text(),
         )?
@@ -123,7 +130,7 @@ pub(super) fn sequence_note_horizontal_model(
         .0
     }
     .max(0.0);
-    if !matches!(placement, 0 | 1) && from == to {
+    if !matches!(placement, 0 | 1) && from == to && (!is_math_note || should_wrap) {
         let measured_text = if should_wrap {
             wrap_sequence_label_like_mermaid_lines(
                 text,
@@ -170,6 +177,13 @@ pub(super) fn sequence_note_horizontal_model(
     } else {
         text.to_string()
     };
+    if is_math_note && should_wrap {
+        ctx.math_sidecar.prepare_or_get(
+            super::SequenceMathOccurrence::Note(ctx.message_index),
+            &effective_text,
+            ctx.math_terminal_style,
+        );
+    }
 
     Ok(Some(SequenceNoteHorizontalModel {
         start_x: geometry.start_x,
@@ -234,8 +248,11 @@ pub(super) struct SequenceNoteLayoutContext<'a> {
     pub(super) cursor_y: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) note_text_style: &'a TextStyle,
+    pub(super) note_terminal_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
+    pub(super) message_index: usize,
     pub(super) checkpoints: SequenceLayoutCheckpoints<'a>,
 }
 
@@ -264,7 +281,9 @@ pub(super) fn layout_sequence_note(
             measurer: ctx.measurer,
             note_text_style: ctx.note_text_style,
             math_config: ctx.math_config,
-            math_renderer: ctx.math_renderer,
+            math_terminal_style: ctx.math_terminal_style,
+            math_sidecar: ctx.math_sidecar,
+            message_index: ctx.message_index,
             checkpoints: ctx.checkpoints,
         },
     )?
@@ -273,12 +292,18 @@ pub(super) fn layout_sequence_note(
     };
     let is_math_note = horizontal.effective_text.contains("$$");
     let (_, height) = if is_math_note {
-        measure_sequence_label_for_layout(
+        let prepared_math = ctx.math_sidecar.prepare_or_get(
+            super::SequenceMathOccurrence::Note(ctx.message_index),
+            &horizontal.effective_text,
+            ctx.math_terminal_style,
+        );
+        measure_sequence_label_for_layout_with_prepared(
+            prepared_math.as_deref(),
             ctx.measurer,
             &horizontal.effective_text,
             ctx.note_text_style,
             ctx.math_config,
-            ctx.math_renderer,
+            None,
             SequenceMathHeightMode::Draw,
             ctx.checkpoints.text(),
         )?
@@ -286,7 +311,7 @@ pub(super) fn layout_sequence_note(
         measure_drawn_svg_like_with_html_br(
             ctx.measurer,
             &horizontal.effective_text,
-            ctx.note_text_style,
+            ctx.note_terminal_text_style,
             SequenceDrawnTextNode::Tspan,
             ctx.math_config,
             ctx.checkpoints.text(),
@@ -337,7 +362,9 @@ mod tests {
     use crate::text::{TextMeasurer, TextMetrics, TextStyle};
     use merman_core::MermaidConfig;
     use merman_core::diagrams::sequence::{SequenceMessage, SequenceMessagePayload};
+    use std::cell::RefCell;
     use std::collections::HashMap;
+    use std::sync::Arc;
 
     #[test]
     fn note_horizontal_model_uses_actor_margin_and_actor_widths() {
@@ -410,6 +437,7 @@ mod tests {
             font_size: 90.0,
             ..TextStyle::default()
         };
+        let math_sidecar = crate::sequence::SequenceMathSidecar::default();
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
         let model = sequence_note_horizontal_model(
@@ -425,7 +453,14 @@ mod tests {
                 measurer: &FontSizeMeasurer,
                 note_text_style: &note_style,
                 math_config: &MermaidConfig::default(),
-                math_renderer: None,
+                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &note_style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                math_sidecar: &math_sidecar,
+                message_index: 0,
                 checkpoints: crate::sequence::SequenceLayoutCheckpoints::new(&meter),
             },
         )
@@ -434,5 +469,155 @@ mod tests {
 
         assert_eq!(model.width, 110.0);
         assert_eq!(model.start_x, 135.0);
+    }
+
+    #[derive(Default)]
+    struct RecordingMathStore {
+        sources: RefCell<Vec<String>>,
+    }
+
+    impl crate::sequence::SequenceMathArtifactStore for RecordingMathStore {
+        fn prepare_or_get(
+            &self,
+            occurrence: crate::sequence::SequenceMathOccurrence,
+            source: &str,
+            _terminal: crate::sequence::SequenceTerminalTextStyle<'_>,
+        ) -> Option<Arc<crate::math::PreparedMathLabel>> {
+            assert_eq!(occurrence, crate::sequence::SequenceMathOccurrence::Note(7));
+            self.sources.borrow_mut().push(source.to_string());
+            None
+        }
+    }
+
+    struct CharacterWidthMeasurer;
+
+    impl TextMeasurer for CharacterWidthMeasurer {
+        fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: text.chars().count() as f64 * 10.0,
+                height: 16.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    struct FixedMathStore {
+        prepared: Arc<crate::math::PreparedMathLabel>,
+    }
+
+    impl crate::sequence::SequenceMathArtifactStore for FixedMathStore {
+        fn prepare_or_get(
+            &self,
+            occurrence: crate::sequence::SequenceMathOccurrence,
+            _source: &str,
+            _terminal: crate::sequence::SequenceTerminalTextStyle<'_>,
+        ) -> Option<Arc<crate::math::PreparedMathLabel>> {
+            assert_eq!(occurrence, crate::sequence::SequenceMathOccurrence::Note(3));
+            Some(Arc::clone(&self.prepared))
+        }
+    }
+
+    #[test]
+    fn self_over_math_note_keeps_the_prepared_width() {
+        let message = SequenceMessage {
+            id: "math-note".to_string(),
+            from: Some("A".to_string()),
+            to: Some("A".to_string()),
+            message_type: 2,
+            message: SequenceMessagePayload::Text("$$x$$".to_string()),
+            wrap: false,
+            activate: false,
+            placement: Some(2),
+            central_connection: 0,
+        };
+        let actor_index = HashMap::from([("A", 0)]);
+        let style = TextStyle::default();
+        let store = FixedMathStore {
+            prepared: Arc::new(crate::math::PreparedMathLabel::for_test(TextMetrics {
+                width: 300.0,
+                height: 24.0,
+                line_count: 1,
+            })),
+        };
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let model = sequence_note_horizontal_model(
+            &message,
+            SequenceNoteHorizontalContext {
+                actor_index: &actor_index,
+                actor_centers_x: &[100.0],
+                actor_widths: &[80.0],
+                actor_margin: 70.0,
+                note_default_width: 150.0,
+                note_margin: 10.0,
+                wrap_padding: 10.0,
+                measurer: &CharacterWidthMeasurer,
+                note_text_style: &style,
+                math_config: &MermaidConfig::default(),
+                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                math_sidecar: &store,
+                message_index: 3,
+                checkpoints: crate::sequence::SequenceLayoutCheckpoints::new(&meter),
+            },
+        )
+        .expect("self-over math note geometry")
+        .expect("self-over math note geometry");
+
+        assert_eq!(model.width, 320.0);
+        assert_eq!(model.start_x, -60.0);
+    }
+
+    #[test]
+    fn wrapped_math_note_prepares_only_its_final_effective_source() {
+        let message = SequenceMessage {
+            id: "wrapped-note".to_string(),
+            from: Some("A".to_string()),
+            to: Some("B".to_string()),
+            message_type: 2,
+            message: SequenceMessagePayload::Text("$$alpha$$ plus $$beta$$ plus gamma".to_string()),
+            wrap: true,
+            activate: false,
+            placement: Some(1),
+            central_connection: 0,
+        };
+        let actor_index = HashMap::from([("A", 0), ("B", 1)]);
+        let style = TextStyle::default();
+        let store = RecordingMathStore::default();
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+
+        let model = sequence_note_horizontal_model(
+            &message,
+            SequenceNoteHorizontalContext {
+                actor_index: &actor_index,
+                actor_centers_x: &[100.0, 200.0],
+                actor_widths: &[80.0, 120.0],
+                actor_margin: 70.0,
+                note_default_width: 120.0,
+                note_margin: 10.0,
+                wrap_padding: 10.0,
+                measurer: &CharacterWidthMeasurer,
+                note_text_style: &style,
+                math_config: &MermaidConfig::default(),
+                math_terminal_style: crate::sequence::SequenceTerminalTextStyle {
+                    text_style: &style,
+                    foreground: "#333",
+                    foreground_provenance:
+                        crate::sequence::SequenceTerminalForegroundProvenance::MermaidConfig,
+                },
+                math_sidecar: &store,
+                message_index: 7,
+                checkpoints: crate::sequence::SequenceLayoutCheckpoints::new(&meter),
+            },
+        )
+        .expect("wrapped note geometry")
+        .expect("wrapped note geometry");
+
+        assert!(model.effective_text.contains("<br/>"));
+        assert_eq!(store.sources.borrow().as_slice(), [model.effective_text]);
     }
 }

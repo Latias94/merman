@@ -1,0 +1,20 @@
+{
+  "authoring_schema_version": 1,
+  "expansion_version": 1,
+  "tokens": {
+    "canvas": "#fffdf5",
+    "surface": "#fef3c7",
+    "surface_alt": "#fde68a",
+    "surface_muted": "#fef9c3",
+    "text": "#3f2d20",
+    "border": "#b45309",
+    "line": "#92400e",
+    "accent": "#c2410c",
+    "series": ["#f59e0b", "#84cc16", "#06b6d4"],
+    "typography": {
+      "font_stack": ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+      "font_size_px": 17,
+      "font_weight": 500
+    }
+  }
+}

@@ -60,7 +60,7 @@ use a streaming XML parser for built-in passes, but exposing that shape would pr
 lifetimes, dependencies, and ordering semantics into the public API.
 
 The resvg-safe pipeline may materialize a presentation fallback only when the typed render artifact
-identifies the owning diagram through the closed `RenderFamilyKind` context and pinned source
+retains the catalog-owned `DiagramFamilyId` selected by the core parse operation and pinned source
 behavior defines the browser result. A diagram-type string alone cannot authorize a fallback.
 Mermaid 11.16 Quadrant points are the current example: raw parity retains the invalid
 `hsl(..., NaN%)` fill/stroke emitted by upstream; browsers ignore those presentation attributes and

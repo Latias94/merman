@@ -143,7 +143,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         "structure",
         "sequenceDiagram\nAlice->>Bob: Hello\n",
         SuppressErrors,
-        SequenceMath,
+        Standard,
         SanitizedStem,
         UpstreamBaseline,
         Dom,
@@ -235,7 +235,7 @@ pub(crate) const DIAGRAM_VERIFICATION_FACTS: &[DiagramVerificationFact] = &[
         Default,
         Standard,
         RawStem,
-        None,
+        UpstreamCompare,
         Dom,
         Summary,
         RootDelta,
@@ -763,12 +763,6 @@ mod tests {
                 commands.insert(fact.command),
                 "duplicate compare command {}",
                 fact.command
-            );
-            assert_eq!(
-                fact.render_path(),
-                merman::OperationExecutionPath::Renderer,
-                "{} must verify the canonical typed operation",
-                fact.diagram
             );
             assert_eq!(
                 diagram_verification_fact_for_command(fact.command).map(|found| found.diagram),

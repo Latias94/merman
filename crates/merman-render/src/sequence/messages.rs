@@ -4,11 +4,10 @@ use super::constants::SEQUENCE_MESSAGE_WRAP_PADDING_SIDES;
 use super::message_metrics::SequenceMessageBoundMetrics;
 use super::metrics::{
     SequenceDrawnTextNode, SequenceMathHeightMode, measure_drawn_svg_like_with_html_br,
-    measure_sequence_label_for_layout, measure_svg_like_with_html_br,
+    measure_sequence_label_for_layout_with_prepared, measure_svg_like_with_html_br,
 };
 use super::wrap_sequence_label_like_mermaid_lines;
 use crate::Result;
-use crate::math::MathRenderer;
 use crate::model::{LayoutEdge, LayoutLabel, LayoutPoint};
 use crate::text::{TextMeasurer, TextStyle, split_html_br_lines};
 use merman_core::MermaidConfig;
@@ -219,8 +218,10 @@ pub(super) struct SequenceMessageLayoutContext<'a> {
     pub(super) cursor_y: f64,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) msg_text_style: &'a TextStyle,
+    pub(super) msg_terminal_text_style: &'a TextStyle,
     pub(super) math_config: &'a MermaidConfig,
-    pub(super) math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
+    pub(super) math_terminal_style: super::SequenceTerminalTextStyle<'a>,
+    pub(super) math_sidecar: &'a dyn super::SequenceMathArtifactStore,
     pub(super) premeasured_bound: Option<SequenceMessageBoundMetrics>,
     pub(super) created_actor_index: Option<usize>,
     pub(super) destroyed_from_index: Option<usize>,
@@ -304,6 +305,15 @@ pub(super) fn layout_sequence_message(
         &ctx,
     )?;
     let effective_text = wrapped_text.as_deref().unwrap_or(text);
+    let prepared_math = is_math_message
+        .then(|| {
+            ctx.math_sidecar.prepare_or_get(
+                super::SequenceMathOccurrence::Message(ctx.msg_idx),
+                effective_text,
+                ctx.math_terminal_style,
+            )
+        })
+        .flatten();
 
     let premeasured_bound = if wrapped_text.is_none() && !is_math_message {
         ctx.premeasured_bound
@@ -315,6 +325,7 @@ pub(super) fn layout_sequence_message(
         is_math_message,
         is_self,
         premeasured_bound,
+        prepared_math.as_deref(),
         &ctx,
     )?;
 
@@ -326,6 +337,7 @@ pub(super) fn layout_sequence_message(
         x1,
         x2,
         vertical.label_y,
+        prepared_math.as_deref(),
         &ctx,
     )?;
 
@@ -535,6 +547,7 @@ fn message_vertical_geometry(
     is_math_message: bool,
     is_self: bool,
     premeasured_bound: Option<SequenceMessageBoundMetrics>,
+    prepared_math: Option<&crate::math::PreparedMathLabel>,
     ctx: &SequenceMessageLayoutContext<'_>,
 ) -> Result<SequenceMessageVerticalGeometry> {
     let (text_width, text_height) = if effective_text.is_empty() {
@@ -542,12 +555,13 @@ fn message_vertical_geometry(
     } else if let Some(metrics) = premeasured_bound {
         (metrics.width(), metrics.height())
     } else {
-        measure_sequence_label_for_layout(
+        measure_sequence_label_for_layout_with_prepared(
+            prepared_math,
             ctx.measurer,
             effective_text,
             ctx.msg_text_style,
             ctx.math_config,
-            ctx.math_renderer,
+            None,
             SequenceMathHeightMode::Bound,
             ctx.checkpoints.text(),
         )?
@@ -610,6 +624,7 @@ fn message_label(
     x1: f64,
     x2: f64,
     label_y: f64,
+    prepared_math: Option<&crate::math::PreparedMathLabel>,
     ctx: &SequenceMessageLayoutContext<'_>,
 ) -> Result<Option<LayoutLabel>> {
     if effective_text.is_empty() {
@@ -624,12 +639,13 @@ fn message_label(
     }
 
     let (w, h) = if is_math_message {
-        measure_sequence_label_for_layout(
+        measure_sequence_label_for_layout_with_prepared(
+            prepared_math,
             ctx.measurer,
             effective_text,
             ctx.msg_text_style,
             ctx.math_config,
-            ctx.math_renderer,
+            None,
             SequenceMathHeightMode::Draw,
             ctx.checkpoints.text(),
         )?
@@ -640,7 +656,7 @@ fn message_label(
         measure_drawn_svg_like_with_html_br(
             ctx.measurer,
             effective_text,
-            ctx.msg_text_style,
+            ctx.msg_terminal_text_style,
             SequenceDrawnTextNode::Direct,
             ctx.math_config,
             ctx.checkpoints.text(),

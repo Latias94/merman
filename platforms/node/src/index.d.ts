@@ -5,10 +5,11 @@ export type MermanResourceProfile =
   | "unbounded-for-trusted-input";
 
 export interface MermanBindingOptions {
-  version?: 2;
+  version?: 3;
   runtime_policy?: "deterministic";
   environment?: {
-    text_measurement?: "deterministic";
+    theme_portability?: "best-effort" | "require-portable";
+    text_measurement?: "deterministic" | null;
     [key: string]: unknown;
   };
   resources?: {
@@ -257,6 +258,8 @@ export declare class MermanOperationError extends MermanError {
   readonly codeName: string | null;
   readonly kind: "generic" | "unknown-operation" | "missing-capability" | string;
   readonly capabilityId: string | null;
+  /** Complete core-owned details, including versioned theme_authoring diagnostics. */
+  readonly details: Readonly<Record<string, unknown>> | null;
   readonly resourceDetails: MermanResourceErrorDetails | null;
   readonly diagnosticDetails: MermanDiagnosticErrorDetails | null;
   readonly cancellationDetails: MermanCancellationErrorDetails | null;

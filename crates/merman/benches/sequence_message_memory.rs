@@ -359,7 +359,7 @@ fn execute_probe() -> Result<ProbeResponse, ProbeError> {
         match semantic.as_ref() {
             Some(semantic) => (
                 semantic.diagram_type() == DIAGRAM_TYPE,
-                semantic.semantic_kind() == "sequence",
+                semantic.family_id() == Some(merman::DiagramFamilyId::SEQUENCE),
                 projected_message_count(semantic)? == message_count,
             ),
             None => (false, false, false),

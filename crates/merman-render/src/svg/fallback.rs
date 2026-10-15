@@ -9,6 +9,7 @@ mod cascade;
 mod context;
 mod css;
 mod html;
+mod transform;
 
 use crate::svg::pipeline::{
     SvgPostprocessExecution, SvgStructureMetrics, SvgTagScanner, checkpoint_loop, end_tag_name,
@@ -17,13 +18,25 @@ use crate::svg::pipeline::{
     find_with_checkpoints, rfind_with_checkpoints, start_tag_name,
 };
 use crate::text::TextMeasurer;
+use std::collections::HashSet;
 use std::convert::Infallible;
 use std::fmt::{self, Write};
 
 use attr::is_self_closing;
 use cascade::{CascadeIndex, Namespace, SourceElement};
-use context::{GFrame, source_class_attr_tokens, sum_translate};
-use html::{foreign_object_html_wrapping, normalized_foreign_object_text, wrap_html_text};
+use context::{SourceFrame, attribute, source_class_attr_tokens};
+use html::{foreign_object_html_wrapping, normalized_foreign_object_text};
+
+/// A writer's glyph-only HTML filter request; the matching paragraph is checked before projection.
+pub(crate) const FALLBACK_TEXT_FILTER_DATA_ATTR: &str = "data-merman-fallback-text-filter";
+
+pub(crate) const PREPARED_TEXT_LABEL_DATA_ATTR: &str = "data-merman-prepared-text-label";
+/// Writer-owned terminal fill for a single fallback background occurrence.
+pub(crate) const FALLBACK_BACKGROUND_FILL_DATA_ATTR: &str = "data-merman-fallback-background-fill";
+/// Stable occurrence identity paired with [`FALLBACK_BACKGROUND_FILL_DATA_ATTR`].
+pub(crate) const FALLBACK_OCCURRENCE_DATA_ATTR: &str = "data-merman-fallback-occurrence";
+/// Advisory compatibility evidence; this never grants native or portable admission.
+pub(crate) const FALLBACK_CSS_RESIDUAL_DATA_ATTR: &str = "data-merman-fallback-css-residual";
 
 /// Adds a best-effort `<text>/<tspan>` overlay extracted from Mermaid label `<foreignObject>`
 /// content.
@@ -44,7 +57,8 @@ pub fn foreign_object_label_fallback_svg_text(
         text_measurer,
         &mut checkpoint,
         &mut |_, _| Ok::<(), Infallible>(()),
-        &mut |_, _| Ok::<(), Infallible>(()),
+        &mut |_, _, _| Ok::<(), Infallible>(()),
+        &mut |_| Ok::<(), Infallible>(()),
     ) {
         Ok(output) => output,
         Err(error) => match error {},
@@ -67,12 +81,18 @@ pub(crate) fn foreign_object_label_fallback_svg_text_controlled(
         text_measurer,
         &mut || execution.checkpoint(),
         &mut |actual, maximum| Err(execution.selector_index_limit(actual, maximum)),
-        &mut |projected_bytes, generated_elements| {
+        &mut |projected_bytes, generated_elements, generated_depth| {
             execution.preflight_svg_byte_count(projected_bytes)?;
             execution.preflight_svg_structure(
                 structure.elements.saturating_add(generated_elements),
-                structure.max_tree_depth.max(2),
+                structure.max_tree_depth.max(generated_depth),
             )
+        },
+        &mut |message| {
+            Err(crate::Error::SvgPostprocess {
+                pass: "foreign-object-fallback".to_string(),
+                message: message.to_string(),
+            })
         },
     )
 }
@@ -82,8 +102,7 @@ fn parse_attr_f64<E>(
     name: &str,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<f64>, E> {
-    let Some(value) = extract_exact_double_quoted_attr_with_checkpoints(tag, name, checkpoint)?
-    else {
+    let Some(value) = attribute(tag, name, checkpoint)? else {
         return Ok(None);
     };
     checkpoint()?;
@@ -97,7 +116,8 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     text_measurer: &dyn TextMeasurer,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
     selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
-    preflight_generated: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    preflight_generated: &mut impl FnMut(usize, usize, usize) -> Result<(), E>,
+    invalid_geometry: &mut impl FnMut(&str) -> Result<(), E>,
 ) -> Result<String, E> {
     checkpoint()?;
     if find_with_checkpoints(svg, "<foreignObject", checkpoint)?.is_none() {
@@ -105,11 +125,14 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     }
 
     let close_tag = "</foreignObject>";
-    preflight_generated(svg.len(), 0)?;
+    preflight_generated(svg.len(), 0, 0)?;
     let mut out = String::with_capacity(svg.len());
     let mut overlays = String::new();
+    let (mut identifiers, namespace) = collect_svg_ids(svg, checkpoint)?;
+    let mut fallback_index = 0usize;
+    let mut instance_bytes = 0usize;
     let mut generated_elements = 0usize;
-    let mut g_stack: Vec<GFrame> = Vec::new();
+    let mut geometry_stack: Vec<SourceFrame> = Vec::new();
     let mut source_stack: Vec<SourceElement> = Vec::new();
     let mut source_stack_overflow_depth = 0usize;
     let mut cascade_index = None;
@@ -137,9 +160,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
         }
 
         if let Some(name) = end_tag_name(tag) {
-            if name.eq_ignore_ascii_case("g") {
-                let _ = g_stack.pop();
-            }
+            geometry_stack.pop();
             if source_stack_overflow_depth > 0 {
                 source_stack_overflow_depth -= 1;
             } else if source_stack
@@ -174,23 +195,25 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
 
             let width = parse_attr_f64(tag, "width", checkpoint)?.unwrap_or(0.0);
             let height = parse_attr_f64(tag, "height", checkpoint)?.unwrap_or(0.0);
+            if !width.is_finite() || !height.is_finite() {
+                invalid_geometry("foreignObject dimensions must be finite")?;
+                i = i_next;
+                continue;
+            }
             if width > 0.0 && height > 0.0 {
                 let x = parse_attr_f64(tag, "x", checkpoint)?.unwrap_or(0.0);
                 let y = parse_attr_f64(tag, "y", checkpoint)?.unwrap_or(0.0);
-                let base = sum_translate(&g_stack, checkpoint)?;
-
-                let abs_x = base.x + x;
-                let abs_y = base.y + y;
-                let (anchor, text_x) = match extract_exact_double_quoted_attr_with_checkpoints(
-                    tag,
-                    "text-anchor",
-                    checkpoint,
-                )? {
-                    Some("start") => ("start", abs_x),
-                    Some("end") => ("end", abs_x + width),
-                    _ => ("middle", abs_x + width / 2.0),
+                if !x.is_finite() || !y.is_finite() {
+                    invalid_geometry("foreignObject coordinates must be finite")?;
+                    i = i_next;
+                    continue;
+                }
+                let (anchor, text_x) = match attribute(tag, "text-anchor", checkpoint)?.as_deref() {
+                    Some("start") => ("start", x),
+                    Some("end") => ("end", x + width),
+                    _ => ("middle", x + width / 2.0),
                 };
-                let text_y = abs_y + height / 2.0;
+                let text_y = y + height / 2.0;
 
                 checkpoint()?;
                 let cascade = match cascade_index.as_mut() {
@@ -210,117 +233,537 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
                     checkpoint,
                     selector_limit,
                 )?;
+                let css_transform = resolved
+                    .paint
+                    .iter()
+                    .find(|(property, _)| property == "transform")
+                    .map(|(_, value)| value);
+                let effective_tag = if let Some(css_transform) =
+                    css_transform.filter(|value| !value.contains("px") && !value.contains('%'))
+                {
+                    let escaped = escape_xml_attr_with_checkpoints(css_transform, checkpoint)?;
+                    format!(r#"<g transform="{escaped}"/>"#)
+                } else {
+                    tag.to_string()
+                };
+                let matrix = match geometry_stack.last() {
+                    Some(frame) => frame.foreign_object_transform(&effective_tag, checkpoint)?,
+                    None => transform::Affine::from_tag(&effective_tag, checkpoint)?,
+                };
+                let Some(matrix) = matrix else {
+                    invalid_geometry(
+                        "foreignObject transform or viewport cannot be resolved to a finite SVG matrix",
+                    )?;
+                    i = i_next;
+                    continue;
+                };
+                if !matrix.maps_finite_rect(x, y, width, height) {
+                    invalid_geometry("foreignObject coordinates must be finite")?;
+                    i = i_next;
+                    continue;
+                }
                 let normalized = normalized_foreign_object_text(&resolved.fragments, checkpoint)?;
                 if !normalized.is_empty() {
                     let typography = resolved.typography;
+                    let writer_background = if inner.contains("labelBkg") {
+                        writer_owned_fallback_background(tag, checkpoint)?
+                    } else {
+                        None
+                    };
+                    let text_filter = writer_owned_fallback_text_filter(tag, inner, checkpoint)?;
+                    let occurrence_attr = writer_background
+                        .map(|(occurrence, _)| {
+                            escape_xml_attr_with_checkpoints(occurrence, checkpoint).map(|value| {
+                                format!(r#" {FALLBACK_OCCURRENCE_DATA_ATTR}="{value}""#)
+                            })
+                        })
+                        .transpose()?
+                        .unwrap_or_default();
+                    // Terminal admission must still observe a forged reserved marker after
+                    // resvg cleanup removes the original HTML branch.
+                    let reserved_text_attr = extract_exact_double_quoted_attr_with_checkpoints(
+                        tag,
+                        PREPARED_TEXT_LABEL_DATA_ATTR,
+                        checkpoint,
+                    )?
+                    .map(|value| {
+                        escape_xml_attr_with_checkpoints(value, checkpoint)
+                            .map(|value| format!(r#" {PREPARED_TEXT_LABEL_DATA_ATTR}="{value}""#))
+                    })
+                    .transpose()?
+                    .unwrap_or_default();
                     let source_attr = if from_switch {
                         r#" data-merman-foreignobject-source="switch-native-fallback""#
                     } else {
                         ""
                     };
-                    let source_classes = source_class_attr_tokens(&g_stack, inner, checkpoint)?;
+                    let source_classes =
+                        source_class_attr_tokens(&geometry_stack, tag, inner, checkpoint)?;
                     let source_classes_attr = source_classes
                         .as_deref()
                         .map(|classes| format!(r#" data-merman-source-classes="{classes}""#))
                         .unwrap_or_default();
+                    let measure_style = typography.text_style();
+                    let wrapping = foreign_object_html_wrapping(tag, inner, checkpoint)?;
+                    let lines =
+                        normalized.wrap(wrapping, text_measurer, &measure_style, checkpoint)?;
+                    let line_height = typography.line_height;
+                    let y0 = text_y - line_height * (lines.len() as f64 - 1.0) / 2.0;
+                    let mut positions = Vec::with_capacity(lines.len());
+                    let mut valid = true;
+                    for (idx, line) in lines.iter().enumerate() {
+                        checkpoint_loop(idx, checkpoint)?;
+                        let anchor_factor = match anchor {
+                            "middle" => 0.5,
+                            "end" => 1.0,
+                            _ => 0.0,
+                        };
+                        let line_x = text_x + (line.width - line.alignment_width) * anchor_factor;
+                        let y_line = y0 + idx as f64 * line_height;
+                        checkpoint()?;
+                        // Emitted rows are decoded SVG text, not a new HTML label.
+                        let (bbox_width, bbox_height) = if normalized
+                            .has_inline_styles(line, &typography)
+                        {
+                            let mut width = 0.0;
+                            let mut height = 0.0_f64;
+                            for run in normalized.line_runs(line) {
+                                checkpoint()?;
+                                let style = run.typography.text_style();
+                                width += text_measurer
+                                    .measure_svg_raw_text_bbox_width_px(run.text, &style);
+                                height = height.max(
+                                    text_measurer
+                                        .measure_svg_raw_text_bbox_height_px(run.text, &style),
+                                );
+                            }
+                            (width, height)
+                        } else {
+                            (
+                                text_measurer
+                                    .measure_svg_raw_text_bbox_width_px(&line.text, &measure_style),
+                                text_measurer.measure_svg_raw_text_bbox_height_px(
+                                    &line.text,
+                                    &measure_style,
+                                ),
+                            )
+                        };
+                        checkpoint()?;
+                        let measured_width = bbox_width.max(line.width);
+                        if !line_x.is_finite()
+                            || !y_line.is_finite()
+                            || !bbox_width.is_finite()
+                            || !bbox_height.is_finite()
+                            || bbox_width < 0.0
+                            || bbox_height < 0.0
+                            || !matrix.maps_finite_rect(
+                                line_x - measured_width * anchor_factor,
+                                y_line - bbox_height / 2.0,
+                                measured_width,
+                                bbox_height,
+                            )
+                        {
+                            invalid_geometry(
+                                "foreignObject fallback text geometry must be finite",
+                            )?;
+                            valid = false;
+                            break;
+                        }
+                        positions.push((line_x, y_line));
+                    }
+                    if !valid {
+                        i = i_next;
+                        continue;
+                    }
+                    // Keep the actual source ancestors for opacity, masks, clipping and viewports.
+                    // Explicit styles isolate generated shapes from node/cluster CSS selectors.
+                    let local = transform::Affine::from_tag(tag, checkpoint)?.unwrap_or_default();
+                    let transform_attr = if local == transform::Affine::default() {
+                        String::new()
+                    } else {
+                        format!(
+                            r#" transform="matrix({} {} {} {} {} {})""#,
+                            local.a, local.b, local.c, local.d, local.e, local.f
+                        )
+                    };
+                    let mut paint_style = "opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none;".to_string();
+                    for (property, value) in resolved.paint.iter() {
+                        if property != "overflow" {
+                            write!(paint_style, " {property}: {value};")
+                                .expect("writing into a string");
+                        }
+                    }
+                    if !resolved
+                        .paint
+                        .iter()
+                        .any(|(property, _)| property == "transform")
+                    {
+                        write!(
+                            paint_style,
+                            " transform: matrix({} {} {} {} {} {});",
+                            local.a, local.b, local.c, local.d, local.e, local.f
+                        )
+                        .expect("writing into a string");
+                    }
+                    let escaped_paint = escape_xml_attr_with_checkpoints(&paint_style, checkpoint)?;
+                    let mut metadata = String::new();
+                    for name in [
+                        "role",
+                        "aria-label",
+                        "aria-labelledby",
+                        "aria-describedby",
+                        "aria-hidden",
+                    ] {
+                        if let Some(value) = attribute(tag, name, checkpoint)? {
+                            let value =
+                                escape_xml_attr_with_checkpoints(value.as_ref(), checkpoint)?;
+                            write!(metadata, r#" {name}="{value}""#)
+                                .expect("writing into a string");
+                        }
+                    }
+                    let overlay_start = overlays.len();
+                    let generated_depth = geometry_stack
+                        .len()
+                        .saturating_add(if text_filter.is_some() {
+                            4
+                        } else if writer_background.is_some() {
+                            3
+                        } else {
+                            2
+                        })
+                        .max(5)
+                        .saturating_add(usize::from(
+                            lines
+                                .iter()
+                                .any(|line| normalized.has_inline_styles(line, &typography)),
+                        ));
+                    let identifier = loop {
+                        let candidate = format!(
+                            "{}-foreignobject-label-{fallback_index}",
+                            namespace.as_deref().unwrap_or("merman")
+                        );
+                        fallback_index = fallback_index.saturating_add(1);
+                        if identifiers.insert(candidate.clone()) {
+                            break candidate;
+                        }
+                        checkpoint()?;
+                    };
                     push_generated_fmt(
                         &mut overlays,
                         format_args!(
-                            r#"<g data-merman-foreignobject="fallback"{source} class="merman-foreignobject-fallback"{source_classes}>"#,
-                            source = source_attr,
-                            source_classes = source_classes_attr,
+                            r#"<g data-merman-foreignobject="fallback"{source_attr} class="merman-foreignobject-fallback"{source_classes_attr}{transform_attr}{metadata}{occurrence_attr}{reserved_text_attr} style="{escaped_paint}">"#
                         ),
                         1,
-                        svg.len(),
+                        svg.len().saturating_add(instance_bytes),
+                        generated_depth,
                         &mut generated_elements,
                         preflight_generated,
                     )?;
-
-                    if let Some(label_bkg) = &typography.label_background {
+                    let inner_start = overlays.len();
+                    let inline_projection = text_filter.is_some() || writer_background.is_some();
+                    let viewport_x = if inline_projection { x } else { 0.0 };
+                    let viewport_y = if inline_projection { y } else { 0.0 };
+                    let overflow = resolved
+                        .paint
+                        .iter()
+                        .find(|(property, _)| property == "overflow")
+                        .map_or("hidden", |(_, value)| value.as_ref());
+                    let escaped_overflow = escape_xml_attr_with_checkpoints(overflow, checkpoint)?;
+                    let escaped_font_family =
+                        escape_xml_attr_with_checkpoints(&typography.font_family, checkpoint)?;
+                    push_generated_fmt(
+                        &mut overlays,
+                        format_args!(
+                            r#"<svg xmlns="http://www.w3.org/2000/svg" x="{viewport_x}" y="{viewport_y}" width="{width}" height="{height}" viewBox="0 0 {width} {height}" preserveAspectRatio="none" style="overflow: {escaped_overflow}; opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none; transform: none; font-family: {escaped_font_family}; font-size: {}px;">"#,
+                            typography.font_size,
+                        ),
+                        1,
+                        svg.len().saturating_add(instance_bytes),
+                        generated_depth,
+                        &mut generated_elements,
+                        preflight_generated,
+                    )?;
+                    if !inline_projection {
+                        // Preserve the source viewport's minimum geometric extent. Native glyph
+                        // bboxes can still enlarge objectBoundingBox paints (a browser text residual).
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!(
+                                r#"<rect x="0" y="0" width="{width}" height="{height}" fill="none" style="fill: none; stroke: none; opacity: 0; display: inline; transform: none;"/>"#
+                            ),
+                            1,
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth,
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
+                    }
+                    if let Some((occurrence, fill)) = writer_background {
+                        let occurrence = escape_xml_attr_with_checkpoints(occurrence, checkpoint)?;
+                        let fill = escape_xml_attr_with_checkpoints(fill, checkpoint)?;
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!(
+                                r#"<rect x="0" y="0" width="{width}" height="{height}" {FALLBACK_OCCURRENCE_DATA_ATTR}="{occurrence}" fill="{fill}" style="fill:{fill} !important; fill-opacity:1; stroke:none; opacity:1; display:inline; visibility:inherit; clip-path:none; mask:none; filter:none; transform:none;"/>"#
+                            ),
+                            1,
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth,
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
+                    } else if let Some(label_bkg) = &typography.label_background {
                         let escaped_label_bkg =
                             escape_xml_attr_with_checkpoints(label_bkg, checkpoint)?;
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
-                                r#"<rect x="{}" y="{}" width="{}" height="{}" fill="{}"/>"#,
-                                abs_x, abs_y, width, height, escaped_label_bkg,
+                                r#"<rect x="0" y="0" width="{width}" height="{height}" fill="{escaped_label_bkg}" style="fill:{escaped_label_bkg}; fill-opacity:1; stroke:none; opacity:1; display:inline; visibility:inherit; clip-path:none; mask:none; filter:none; transform:none;"/>"#
                             ),
                             1,
-                            svg.len(),
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth,
                             &mut generated_elements,
                             preflight_generated,
                         )?;
                     }
-
-                    let measure_style = typography.text_style();
-                    let wrapping = foreign_object_html_wrapping(tag, inner, checkpoint)?;
-                    // CSS whitespace has already been normalized per text run.
-                    let space_attr = r#" xml:space="preserve""#;
-                    let lines = wrap_html_text(
-                        &normalized,
-                        wrapping,
-                        text_measurer,
-                        &measure_style,
-                        checkpoint,
-                    )?;
-                    let line_height = typography.line_height;
-                    let n = lines.len() as f64;
-                    let y0 = text_y - (line_height * (n - 1.0)) / 2.0;
+                    let text_filter_attr =
+                        text_filter.map(|reference| format!(r#" filter="{reference}""#));
+                    if let Some(filter_attr) = &text_filter_attr {
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!("<g{filter_attr}>"),
+                            1,
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth,
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
+                    }
                     let mut text_style = format!(
-                        "text-anchor: {anchor}; font-size: {}px; font-family: {}; line-height: {}px;",
-                        typography.font_size, typography.font_family, typography.line_height,
+                        "text-anchor: {anchor}; font-size: {}px; font-family: {}; line-height: {}px; fill: {}; fill-opacity: 1; stroke: none; opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none; transform: none; white-space: pre; dominant-baseline: central; alignment-baseline: central;",
+                        typography.font_size,
+                        typography.font_family,
+                        typography.line_height,
+                        typography.fill,
                     );
-                    if let Some(font_weight) = &typography.font_weight {
-                        text_style.push_str(" font-weight: ");
-                        text_style.push_str(font_weight);
-                        text_style.push(';');
-                    }
-                    if let Some(font_style) = &typography.font_style {
-                        text_style.push_str(" font-style: ");
-                        text_style.push_str(font_style);
-                        text_style.push(';');
-                    }
+                    write!(
+                        text_style,
+                        " font-weight: {}; font-style: {};",
+                        typography.font_weight.as_deref().unwrap_or("normal"),
+                        typography.font_style.as_deref().unwrap_or("normal"),
+                    )
+                    .expect("writing into a string");
                     let escaped_fill =
                         escape_xml_attr_with_checkpoints(&typography.fill, checkpoint)?;
                     let escaped_style = escape_xml_attr_with_checkpoints(&text_style, checkpoint)?;
-                    for (idx, line) in lines.iter().enumerate() {
+                    let text_attributes = format!(
+                        r#" class="merman-foreignobject-fallback-text"{source_classes_attr}"#
+                    );
+                    for (idx, (line, (line_x, y_line))) in lines.iter().zip(positions).enumerate() {
                         checkpoint_loop(idx, checkpoint)?;
-                        let line_x = text_x
-                            + (line.width - line.alignment_width)
-                                * match anchor {
-                                    "middle" => 0.5,
-                                    "end" => 1.0,
-                                    _ => 0.0,
-                                };
-                        let y_line = y0 + (idx as f64) * line_height;
+                        let line_x = line_x - x;
+                        let y_line = y_line - y;
+                        if normalized.has_inline_styles(line, &typography) {
+                            push_generated_fmt(
+                                &mut overlays,
+                                format_args!(
+                                    r##"<text x="{line_x}" y="{y_line}" text-anchor="{anchor}" dominant-baseline="central" alignment-baseline="central" fill="{escaped_fill}"{text_attributes} xml:space="preserve" style="{escaped_style}">"##
+                                ),
+                                1,
+                                svg.len().saturating_add(instance_bytes),
+                                generated_depth,
+                                &mut generated_elements,
+                                preflight_generated,
+                            )?;
+                            for (run_index, run) in normalized.line_runs(line).enumerate() {
+                                checkpoint_loop(run_index, checkpoint)?;
+                                let text = escape_xml_text_with_checkpoints(run.text, checkpoint)?;
+                                let style = format!(
+                                    "font-family: {} !important; font-size: {}px !important; font-weight: {} !important; font-style: {} !important; fill: {} !important; fill-opacity: 1 !important; stroke: none !important; opacity: 1 !important; display: inline !important; visibility: inherit !important; clip-path: none !important; mask: none !important; filter: none !important; transform: none !important;",
+                                    run.typography.font_family,
+                                    run.typography.font_size,
+                                    run.typography.font_weight.as_deref().unwrap_or("normal"),
+                                    run.typography.font_style.as_deref().unwrap_or("normal"),
+                                    run.typography.fill,
+                                );
+                                let style = escape_xml_attr_with_checkpoints(&style, checkpoint)?;
+                                push_generated_fmt(
+                                    &mut overlays,
+                                    format_args!(r#"<tspan style="{style}">{text}</tspan>"#),
+                                    1,
+                                    svg.len().saturating_add(instance_bytes),
+                                    generated_depth,
+                                    &mut generated_elements,
+                                    preflight_generated,
+                                )?;
+                            }
+                            push_generated_fmt(
+                                &mut overlays,
+                                format_args!("</text>"),
+                                0,
+                                svg.len().saturating_add(instance_bytes),
+                                generated_depth,
+                                &mut generated_elements,
+                                preflight_generated,
+                            )?;
+                            continue;
+                        }
                         let text = escape_xml_text_with_checkpoints(&line.text, checkpoint)?;
                         push_generated_fmt(
                             &mut overlays,
                             format_args!(
-                                r##"<text x="{}" y="{}" dominant-baseline="central" alignment-baseline="central" fill="{}" class="merman-foreignobject-fallback-text"{}{} style="{}">{}</text>"##,
-                                line_x,
-                                y_line,
-                                escaped_fill,
-                                source_classes_attr,
-                                space_attr,
-                                escaped_style,
-                                text
+                                r##"<text x="{line_x}" y="{y_line}" text-anchor="{anchor}" dominant-baseline="central" alignment-baseline="central" fill="{escaped_fill}"{text_attributes} xml:space="preserve" style="{escaped_style}">{text}</text>"##
                             ),
                             1,
-                            svg.len(),
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth,
                             &mut generated_elements,
                             preflight_generated,
                         )?;
                     }
-
+                    if text_filter.is_some() {
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!("</g>"),
+                            0,
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth,
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
+                    }
                     push_generated_fmt(
                         &mut overlays,
-                        format_args!("</g>"),
+                        format_args!("</svg>"),
                         0,
-                        svg.len(),
+                        svg.len().saturating_add(instance_bytes),
+                        generated_depth,
                         &mut generated_elements,
                         preflight_generated,
                     )?;
+                    if inline_projection
+                        && lines
+                            .iter()
+                            .any(|line| normalized.has_inline_styles(line, &typography))
+                        && cascade.inline_text_css_residual(
+                            &source_stack,
+                            &overlays[overlay_start..],
+                            checkpoint,
+                            selector_limit,
+                        )?
+                    {
+                        let marker = format!(r#" {FALLBACK_CSS_RESIDUAL_DATA_ATTR}="true""#);
+                        preflight_generated(
+                            svg.len()
+                                .saturating_add(instance_bytes)
+                                .saturating_add(overlays.len())
+                                .saturating_add(marker.len()),
+                            generated_elements,
+                            generated_depth,
+                        )?;
+                        overlays.insert_str(overlay_start + "<g".len(), &marker);
+                    }
+                    if inline_projection {
+                        // Writer-owned evidence requires direct, inspectable terminal geometry
+                        // under the real ancestry. Ordinary labels use isolated definitions.
+                        let permitted = source_stack_overflow_depth == 0
+                            && (text_filter.is_none()
+                                || cascade.permits_html_text_filter(
+                                    &source_stack,
+                                    tag,
+                                    inner,
+                                    checkpoint,
+                                    selector_limit,
+                                )?)
+                            && cascade.permits_source_projection(
+                                &source_stack,
+                                tag,
+                                inner,
+                                checkpoint,
+                                selector_limit,
+                            )?
+                            && cascade.permits_in_place_fallback(
+                                &source_stack,
+                                &overlays[overlay_start..],
+                                checkpoint,
+                                selector_limit,
+                            )?;
+                        if !permitted
+                            && let Some(filter_attr) = &text_filter_attr
+                            && let Some(relative) = overlays[overlay_start..].find(filter_attr)
+                        {
+                            let start = overlay_start + relative;
+                            overlays.replace_range(start..start + filter_attr.len(), "");
+                        }
+                        push_generated_fmt(
+                            &mut overlays,
+                            format_args!("</g>"),
+                            0,
+                            svg.len().saturating_add(instance_bytes),
+                            generated_depth,
+                            &mut generated_elements,
+                            preflight_generated,
+                        )?;
+                        let projected_bytes = instance_bytes
+                            .saturating_add(overlays.len().saturating_sub(overlay_start));
+                        preflight_generated(
+                            svg.len()
+                                .saturating_add(overlay_start)
+                                .saturating_add(projected_bytes),
+                            generated_elements,
+                            generated_depth,
+                        )?;
+                        instance_bytes = projected_bytes;
+                        out.push_str(&overlays[overlay_start..]);
+                        overlays.truncate(overlay_start);
+                        i = i_next;
+                        continue;
+                    }
+                    let inner_end = overlays.len();
+                    let mut wrapper = overlays[overlay_start..inner_start].to_string();
+                    let inner = overlays[inner_start..inner_end].to_string();
+                    overlays.truncate(overlay_start);
+                    let isolated =
+                        format!(r#"<defs><g id="{identifier}"{source_attr}>{inner}</g></defs>"#);
+                    if lines
+                        .iter()
+                        .any(|line| normalized.has_inline_styles(line, &typography))
+                        && cascade.inline_text_css_residual(
+                            &source_stack[..source_stack.len().min(1)],
+                            &isolated,
+                            checkpoint,
+                            selector_limit,
+                        )?
+                    {
+                        wrapper.insert_str(
+                            "<g".len(),
+                            &format!(r#" {FALLBACK_CSS_RESIDUAL_DATA_ATTR}="true""#),
+                        );
+                    }
+                    push_generated_fmt(
+                        &mut overlays,
+                        format_args!("{isolated}"),
+                        2,
+                        svg.len().saturating_add(instance_bytes),
+                        generated_depth,
+                        &mut generated_elements,
+                        preflight_generated,
+                    )?;
+                    let instance = format!(
+                        r##"{wrapper}<use x="{x}" y="{y}" href="#{identifier}" style="opacity: 1; display: inline; visibility: inherit; clip-path: none; mask: none; filter: none; transform: none;"/></g>"##
+                    );
+                    let projected_instance_bytes = instance_bytes.saturating_add(instance.len());
+                    preflight_generated(
+                        svg.len()
+                            .saturating_add(overlays.len())
+                            .saturating_add(projected_instance_bytes),
+                        generated_elements.saturating_add(1),
+                        generated_depth,
+                    )?;
+                    generated_elements = generated_elements.saturating_add(1);
+                    instance_bytes = projected_instance_bytes;
+                    out.push_str(&instance);
                 }
             }
             i = i_next;
@@ -351,27 +794,31 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
             }
         }
 
-        if let Some(name) = start_name {
-            if name.eq_ignore_ascii_case("g") && !is_self_closing(tag) {
-                g_stack.push(GFrame::from_g_tag(tag, checkpoint)?);
+        if let Some(name) = start_name
+            && !is_self_closing(tag)
+        {
+            if source_stack_overflow_depth > 0 {
+                source_stack_overflow_depth = source_stack_overflow_depth.saturating_add(1);
+            } else if source_stack.len() >= cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
+                selector_limit(
+                    source_stack.len().saturating_add(1),
+                    cascade::MAX_SELECTOR_ANCESTRY_DEPTH,
+                )?;
+                source_stack_overflow_depth = 1;
+            } else {
+                source_stack.push(CascadeIndex::source_element(
+                    tag,
+                    Namespace::Svg,
+                    checkpoint,
+                )?);
             }
-            if !is_self_closing(tag) {
-                if source_stack_overflow_depth > 0 {
-                    source_stack_overflow_depth = source_stack_overflow_depth.saturating_add(1);
-                } else if source_stack.len() >= cascade::MAX_SELECTOR_ANCESTRY_DEPTH {
-                    selector_limit(
-                        source_stack.len().saturating_add(1),
-                        cascade::MAX_SELECTOR_ANCESTRY_DEPTH,
-                    )?;
-                    source_stack_overflow_depth = 1;
-                } else {
-                    source_stack.push(CascadeIndex::source_element(
-                        tag,
-                        Namespace::Svg,
-                        checkpoint,
-                    )?);
-                }
-            }
+            geometry_stack.push(SourceFrame::from_tag(
+                tag,
+                name,
+                geometry_stack.last(),
+                source_stack_overflow_depth == 0,
+                checkpoint,
+            )?);
         }
 
         out.push_str(tag);
@@ -382,22 +829,50 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
         out.push_str(&svg[i..]);
     }
 
-    if overlays.is_empty() {
-        checkpoint()?;
-        return Ok(out);
+    if !overlays.is_empty()
+        && let Some(close) = rfind_with_checkpoints(&out, "</svg>", checkpoint)?
+    {
+        preflight_generated(
+            out.len().saturating_add(overlays.len()),
+            generated_elements,
+            5,
+        )?;
+        out.insert_str(close, &overlays);
     }
-
-    let result = if let Some(idx) = rfind_with_checkpoints(&out, "</svg>", checkpoint)? {
-        let mut with_overlays = String::with_capacity(out.len() + overlays.len());
-        with_overlays.push_str(&out[..idx]);
-        with_overlays.push_str(&overlays);
-        with_overlays.push_str(&out[idx..]);
-        with_overlays
-    } else {
-        out
-    };
     checkpoint()?;
-    Ok(result)
+    Ok(out)
+}
+
+fn collect_svg_ids<E>(
+    svg: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<(HashSet<String>, Option<String>), E> {
+    let mut result = HashSet::new();
+    let mut namespace = None;
+    let mut saw_root = false;
+    let mut scanner = SvgTagScanner::new(svg);
+    while let Some(tag) = scanner.next_with_checkpoints(checkpoint)? {
+        if let Some(name) = start_tag_name(tag.raw()) {
+            let id = attribute(tag.raw(), "id", checkpoint)?;
+            if !saw_root && name.eq_ignore_ascii_case("svg") {
+                saw_root = true;
+                // Renderer roots carry document-unique, fragment-safe diagram IDs.
+                namespace = id
+                    .as_deref()
+                    .filter(|id| {
+                        !id.is_empty()
+                            && id
+                                .bytes()
+                                .all(|byte| byte.is_ascii_alphanumeric() || b"-_.:".contains(&byte))
+                    })
+                    .map(str::to_owned);
+            }
+            if let Some(id) = id {
+                result.insert(id.into_owned());
+            }
+        }
+    }
+    Ok((result, namespace))
 }
 
 #[derive(Default)]
@@ -417,8 +892,9 @@ fn push_generated_fmt<E>(
     arguments: fmt::Arguments<'_>,
     added_elements: usize,
     source_bytes: usize,
+    generated_depth: usize,
     generated_elements: &mut usize,
-    preflight_generated: &mut impl FnMut(usize, usize) -> Result<(), E>,
+    preflight_generated: &mut impl FnMut(usize, usize, usize) -> Result<(), E>,
 ) -> Result<(), E> {
     let mut counter = FmtByteCounter::default();
     counter
@@ -428,13 +904,165 @@ fn push_generated_fmt<E>(
         .saturating_add(output.len())
         .saturating_add(counter.bytes);
     let projected_elements = generated_elements.saturating_add(added_elements);
-    preflight_generated(projected_bytes, projected_elements)?;
+    preflight_generated(projected_bytes, projected_elements, generated_depth)?;
     output.reserve(counter.bytes);
     output
         .write_fmt(arguments)
         .expect("writing formatted SVG into a String cannot fail");
     *generated_elements = projected_elements;
     Ok(())
+}
+
+fn writer_owned_fallback_text_filter<'a, E>(
+    tag: &'a str,
+    inner: &str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<&'a str>, E> {
+    let Some(reference) = extract_exact_double_quoted_attr_with_checkpoints(
+        tag,
+        FALLBACK_TEXT_FILTER_DATA_ATTR,
+        checkpoint,
+    )?
+    else {
+        return Ok(None);
+    };
+    let Some(id) = reference
+        .strip_prefix("url(#")
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return Ok(None);
+    };
+    if id.is_empty()
+        || !id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+    {
+        return Ok(None);
+    }
+    // The annotation requests projection, not admission. Require its real HTML application;
+    // the downstream exporter still verifies the actual SVG definition and filtered glyphs.
+    checkpoint()?;
+    let Ok(document) = crate::xml_dom::Document::parse(inner) else {
+        return Ok(None);
+    };
+    checkpoint()?;
+    let div = document.root_element();
+    let mut children = div.children().filter(|node| node.is_element());
+    let Some(span) = children.next() else {
+        return Ok(None);
+    };
+    if children.next().is_some()
+        || !div.has_tag_name("div")
+        || div.attribute("class") != Some("labelBkg")
+        || !span.has_tag_name("span")
+        || span.attribute("class") != Some("edgeLabel")
+    {
+        return Ok(None);
+    }
+    let mut children = span.children().filter(|node| node.is_element());
+    let Some(paragraph) = children.next() else {
+        return Ok(None);
+    };
+    let expected_style = format!("background:transparent;filter:{reference};");
+    if children.next().is_some()
+        || !paragraph.has_tag_name("p")
+        || paragraph.attributes().len() != 1
+        || paragraph.attribute("style") != Some(expected_style.as_str())
+    {
+        return Ok(None);
+    }
+    for outer in [div, span] {
+        if outer
+            .attributes()
+            .any(|attribute| !matches!(attribute.name(), "class" | "style"))
+        {
+            return Ok(None);
+        }
+        let mut bounded = true;
+        crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
+            outer.attribute("style").unwrap_or_default(),
+            checkpoint,
+            |boundary| {
+                let raw = boundary.raw();
+                if raw.trim().trim_end_matches(';').trim().is_empty() {
+                    return Ok(true);
+                }
+                bounded &=
+                    crate::mermaid_style::parse_style_declaration(raw).is_some_and(
+                        |decl| match decl.property() {
+                            "color" | "fill" | "font-family" | "font-size" | "font-weight"
+                            | "font-style" => true,
+                            "background" => {
+                                crate::mermaid_style::is_supported_css_color_value(decl.value())
+                            }
+                            "display" => matches!(decl.value(), "table" | "table-cell"),
+                            "white-space" => matches!(decl.value(), "nowrap" | "break-spaces"),
+                            "line-height" => decl.value() == "1.5",
+                            "width" | "max-width" => decl.value() == "200px",
+                            "text-align" => decl.value() == "center",
+                            _ => false,
+                        },
+                    );
+                Ok(true)
+            },
+        )?;
+        if !bounded {
+            return Ok(None);
+        }
+    }
+    for node in document.descendants() {
+        checkpoint()?;
+        if node.is_element() && node.tag_name().namespace() != Some("http://www.w3.org/1999/xhtml")
+        {
+            return Ok(None);
+        }
+        if node == div || node == span || node == paragraph || node.is_root() {
+            continue;
+        }
+        if node.is_element()
+            && (!matches!(node.tag_name().name(), "span" | "br") || node.attributes().len() != 0)
+        {
+            return Ok(None);
+        }
+        if node.is_text()
+            && node.text().is_some_and(|text| !text.trim().is_empty())
+            && node
+                .parent()
+                .is_some_and(|parent| parent == div || parent == span || parent.is_root())
+        {
+            return Ok(None);
+        }
+    }
+    Ok(Some(reference))
+}
+
+fn writer_owned_fallback_background<'a, E>(
+    tag: &'a str,
+    checkpoint: &mut impl FnMut() -> Result<(), E>,
+) -> Result<Option<(&'a str, &'a str)>, E> {
+    let Some(occurrence) = extract_exact_double_quoted_attr_with_checkpoints(
+        tag,
+        FALLBACK_OCCURRENCE_DATA_ATTR,
+        checkpoint,
+    )?
+    else {
+        return Ok(None);
+    };
+    let Some(fill) = extract_exact_double_quoted_attr_with_checkpoints(
+        tag,
+        FALLBACK_BACKGROUND_FILL_DATA_ATTR,
+        checkpoint,
+    )?
+    else {
+        return Ok(None);
+    };
+    if occurrence.is_empty() || fill.is_empty() {
+        return Ok(None);
+    }
+    if crate::diagram_theme::ThemeColorValue::parse(fill).is_err() {
+        return Ok(None);
+    }
+    Ok(Some((occurrence, fill)))
 }
 
 fn is_foreign_object_switch_native_fallback<E>(
@@ -510,6 +1138,18 @@ mod tests {
     use super::foreign_object_label_fallback_svg_text as render_fallback;
     use crate::text::{DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle};
     use std::cell::RefCell;
+
+    fn has_background_rect(svg: &str, color: &str, width: &str, height: &str) -> bool {
+        let document = crate::xml_dom::Document::parse(svg).unwrap();
+        document.descendants().any(|node| {
+            node.has_tag_name("rect")
+                && node.attribute("fill") == Some(color)
+                && node.attribute("x") == Some("0")
+                && node.attribute("y") == Some("0")
+                && node.attribute("width") == Some(width)
+                && node.attribute("height") == Some(height)
+        })
+    }
 
     #[test]
     fn break_spaces_overlay_preserves_measured_trailing_spaces_in_svg_text() {
@@ -607,8 +1247,574 @@ mod tests {
         }
     }
 
+    #[test]
+    fn rich_text_fallback_preserves_html_emphasis_and_author_overrides() {
+        for (fragment, expected) in [
+            ("<b>Alpha</b>", "font-weight: 700"),
+            ("<strong>Alpha</strong>", "font-weight: 700"),
+            ("<i>Alpha</i>", "font-style: italic"),
+            ("<em>Alpha</em>", "font-style: italic"),
+            ("<code>Alpha</code>", "font-family: monospace"),
+            ("<b style='font-weight:400'>Alpha</b>", "font-weight: 400"),
+            (
+                "<i style='font-style:normal'>Alpha</i>",
+                "font-style: normal",
+            ),
+        ] {
+            let svg = format!(
+                "<svg><foreignObject width='200' height='24'><div>{fragment}</div></foreignObject></svg>"
+            );
+            let output = foreign_object_label_fallback_svg_text(&svg);
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                text.attribute("style").unwrap().contains(expected),
+                "{output}"
+            );
+            assert_eq!(text.text(), Some("Alpha"));
+        }
+    }
+
+    #[test]
+    fn rich_text_fallback_measures_and_emits_each_mixed_style_run() {
+        let svg = "<svg><foreignObject width='400' height='24'><div>Alpha <b>Beta</b> <i>Gamma</i> אבגד</div></foreignObject></svg>";
+        let measurer = RecordingMeasurer::default();
+        let output = render_fallback(svg, &measurer);
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(
+            text.descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>(),
+            "Alpha Beta Gamma אבגד"
+        );
+        for (label, declaration) in [
+            ("Beta", "font-weight: 700"),
+            ("Gamma", "font-style: italic"),
+        ] {
+            let run = text
+                .children()
+                .find(|node| node.has_tag_name("tspan") && node.text() == Some(label))
+                .expect("styled run is retained");
+            assert!(
+                run.attribute("style").unwrap().contains(declaration),
+                "{output}"
+            );
+        }
+        let styles = measurer.styles.borrow();
+        assert!(
+            styles
+                .iter()
+                .any(|style| style.font_weight.as_deref() == Some("700")),
+            "{styles:?}"
+        );
+        assert!(
+            styles
+                .iter()
+                .any(|style| style.font_style.as_deref() == Some("italic")),
+            "{styles:?}"
+        );
+    }
+
+    #[test]
+    fn rich_text_fallback_wraps_with_the_emitted_run_metrics() {
+        struct StyledMeasurer;
+        impl TextMeasurer for StyledMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                let factor = if style.font_weight.as_deref() == Some("700") {
+                    2.0
+                } else {
+                    1.0
+                };
+                TextMetrics {
+                    width: text.chars().count() as f64 * style.font_size * factor,
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+        }
+        let svg = r#"<svg style='font-size:10px'><foreignObject width='80' height='30'><div style="max-width:80px">aa <b>bb</b> cc</div></foreignObject></svg>"#;
+        let output = render_fallback(svg, &StyledMeasurer);
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        let rows = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .map(|node| {
+                node.descendants()
+                    .filter(|child| child.is_text())
+                    .filter_map(|child| child.text())
+                    .collect::<String>()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(rows, ["aa bb", "cc"], "{output}");
+    }
+
+    #[test]
+    fn rich_text_fallback_keeps_repeated_words_and_selected_hyphen_styles() {
+        let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, _| {
+            text.chars().filter(|ch| *ch != '\u{00ad}').count() as f64 * 10.0
+        });
+        let svg = r#"<svg><foreignObject width='40' height='100'><div style="max-width:40px"><b>aa&#173;bb</b> aa <i>aa</i></div></foreignObject></svg>"#;
+        let output = render_fallback(svg, measurer.as_ref());
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        let rows = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        let content = |node: crate::xml_dom::Node<'_, '_>| {
+            node.descendants()
+                .filter(|child| child.is_text())
+                .filter_map(|child| child.text())
+                .collect::<String>()
+        };
+        assert_eq!(
+            rows.iter().map(|row| content(*row)).collect::<Vec<_>>(),
+            ["aa\u{00ad}bb", "aa", "aa"]
+        );
+        assert!(
+            rows[0]
+                .children()
+                .find(|node| node.has_tag_name("tspan"))
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+                .contains("font-weight: 700")
+        );
+        assert!(
+            rows[2]
+                .children()
+                .find(|node| node.has_tag_name("tspan"))
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+                .contains("font-style: italic")
+        );
+
+        let svg = r#"<svg><foreignObject width='30' height='100'><div style="max-width:30px"><b>aa&#173;bb</b> cc</div></foreignObject></svg>"#;
+        let output = render_fallback(svg, measurer.as_ref());
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        let first = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert_eq!(content(first), "aa-");
+        assert!(
+            first
+                .children()
+                .find(|node| node.has_tag_name("tspan"))
+                .unwrap()
+                .attribute("style")
+                .unwrap()
+                .contains("font-weight: 700")
+        );
+    }
+
+    #[test]
+    fn rich_text_fallback_shapes_same_font_across_color_boundaries() {
+        struct KerningMeasurer;
+        impl TextMeasurer for KerningMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: text.chars().count() as f64 * 10.0
+                        - if text.contains("AV") { 5.0 } else { 0.0 },
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+        }
+        let svg = r#"<svg><foreignObject width='35' height='24'><div style="max-width:35px">A<span style='color:red'>V</span> B</div></foreignObject></svg>"#;
+        let output = render_fallback(svg, &KerningMeasurer);
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .count(),
+            1,
+            "{output}"
+        );
+        let red = document
+            .descendants()
+            .find(|node| node.has_tag_name("tspan") && node.text() == Some("V"))
+            .unwrap();
+        assert!(
+            red.attribute("style").unwrap().contains("fill: red"),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn rich_text_fallback_inherits_already_emphasized_measurement_styles() {
+        for (base, fragment, expected) in [
+            ("font-weight:600", "<b>Alpha</b>", "font-weight: 600"),
+            (
+                "font-weight:900",
+                "<strong>Alpha</strong>",
+                "font-weight: 900",
+            ),
+            (
+                "font-style:oblique",
+                "<em>Alpha</em>",
+                "font-style: oblique",
+            ),
+            (
+                "font-weight:900",
+                "<b style='font-weight:400'>Alpha</b>",
+                "font-weight: 400",
+            ),
+        ] {
+            let svg = format!(
+                "<svg><foreignObject width='200' height='24'><div style='{base}'>{fragment}</div></foreignObject></svg>"
+            );
+            let output = foreign_object_label_fallback_svg_text(&svg);
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                text.attribute("style").unwrap().contains(expected),
+                "{output}"
+            );
+        }
+    }
+
+    #[test]
+    fn rich_text_fallback_preserves_kerning_across_equivalent_font_spellings() {
+        struct KerningMeasurer;
+        impl TextMeasurer for KerningMeasurer {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                TextMetrics {
+                    width: text.chars().count() as f64 * 10.0
+                        - if text.contains("AV") { 5.0 } else { 0.0 },
+                    height: style.font_size,
+                    line_count: 1,
+                }
+            }
+        }
+        for spelling in ["normal", "400", "Normal"] {
+            let svg = format!(
+                r#"<svg><foreignObject width="35" height="24"><div style="max-width:35px"><span style="font-weight:{spelling};font-style:Normal">A</span>V B</div></foreignObject></svg>"#
+            );
+            let output = render_fallback(&svg, &KerningMeasurer);
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
+            assert_eq!(
+                document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .count(),
+                1,
+                "{output}"
+            );
+        }
+    }
+
+    #[test]
+    fn rich_text_fallback_isolates_generated_tspans_from_svg_only_css() {
+        let svg = r#"<svg><style>tspan{font-size:64px;opacity:0;stroke:red}</style><foreignObject width="200" height="24"><div>Alpha <b>Beta</b></div></foreignObject></svg>"#;
+        let output = foreign_object_label_fallback_svg_text(svg);
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        assert!(!output.contains(super::FALLBACK_CSS_RESIDUAL_DATA_ATTR));
+        let spans = document
+            .descendants()
+            .filter(|node| node.has_tag_name("tspan"))
+            .collect::<Vec<_>>();
+        assert_eq!(spans.len(), 2);
+        for span in spans {
+            let style = span.attribute("style").unwrap();
+            for expected in [
+                "font-size: 16px !important",
+                "opacity: 1 !important",
+                "stroke: none !important",
+            ] {
+                assert!(style.contains(expected), "{output}");
+            }
+        }
+        for declaration in ["dx:30px", "font-size:64px!important"] {
+            let unsupported = svg.replace("font-size:64px;opacity:0;stroke:red", declaration);
+            let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+                &unsupported,
+                &DeterministicTextMeasurer::default(),
+                &mut || Ok::<(), &'static str>(()),
+                &mut |_, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+                &mut |_| Err("quality residuals must not fail rendering"),
+            )
+            .unwrap();
+            assert!(
+                result.contains(&format!(
+                    r#"{}="true""#,
+                    super::FALLBACK_CSS_RESIDUAL_DATA_ATTR
+                )),
+                "{result}"
+            );
+            assert!(result.contains("<tspan"), "{result}");
+        }
+        for declaration in ["dx:30px", "letter-spacing:100px"] {
+            let source = svg.replace(
+                "tspan{font-size:64px;opacity:0;stroke:red}",
+                &format!("defs tspan{{{declaration}}}"),
+            );
+            let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+                &source,
+                &DeterministicTextMeasurer::default(),
+                &mut || Ok::<(), &'static str>(()),
+                &mut |_, _| Ok(()),
+                &mut |_, _, _| Ok(()),
+                &mut |_| Err("quality residuals must not fail rendering"),
+            )
+            .unwrap();
+            assert!(
+                result.contains(&format!(
+                    r#"{}="true""#,
+                    super::FALLBACK_CSS_RESIDUAL_DATA_ATTR
+                )),
+                "{result}"
+            );
+            assert!(result.contains("<tspan"), "{result}");
+        }
+    }
+
+    #[test]
+    fn rich_text_css_residual_marks_in_place_source_occurrences() {
+        for declaration in ["font-size:64px!important", "letter-spacing:30px"] {
+            let source = format!(
+                r##"<svg><style>tspan{{{declaration}}}</style><foreignObject width="200" height="24" data-merman-fallback-occurrence="test-label" data-merman-fallback-background-fill="#123456"><div class="labelBkg">Alpha <b>Beta</b></div></foreignObject></svg>"##
+            );
+            let output = foreign_object_label_fallback_svg_text(&source);
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
+            let fallback = document
+                .descendants()
+                .find(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
+                .unwrap();
+            assert_eq!(
+                fallback.attribute(super::FALLBACK_CSS_RESIDUAL_DATA_ATTR),
+                Some("true")
+            );
+            assert!(
+                fallback
+                    .descendants()
+                    .any(|node| node.has_tag_name("tspan")),
+                "{output}"
+            );
+        }
+    }
+
     fn foreign_object_label_fallback_svg_text(svg: &str) -> String {
         render_fallback(svg, &DeterministicTextMeasurer::default())
+    }
+
+    fn instance_for_text<'a, 'input>(
+        text: crate::xml_dom::Node<'a, 'input>,
+    ) -> crate::xml_dom::Node<'a, 'input> {
+        if let Some(definition) = text.ancestors().find(|node| {
+            node.has_tag_name("g")
+                && node
+                    .parent()
+                    .is_some_and(|parent| parent.has_tag_name("defs"))
+        }) {
+            let reference = format!("#{}", definition.attribute("id").unwrap());
+            return text
+                .document()
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("use") && node.attribute("href") == Some(reference.as_str())
+                })
+                .unwrap();
+        }
+        text
+    }
+
+    #[test]
+    fn filtered_foreign_object_keeps_local_coordinates_and_paint_order() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><defs><filter id="glow" filterUnits="userSpaceOnUse" x="-20" y="-20" width="100" height="80"><feDropShadow stdDeviation="4"/></filter></defs><g transform="translate(100,200)"><g filter="url(#glow)" transform="translate(7,9)"><foreignObject x="3" y="5" width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml">Alpha</div></foreignObject></g><rect id="later-paint" width="10" height="10"/></g><foreignObject x="400" width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml">Beta</div></foreignObject></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        let xml = crate::xml_dom::Document::parse(&out).unwrap();
+        let alpha = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Alpha"))
+            .unwrap();
+        assert!(
+            instance_for_text(alpha)
+                .ancestors()
+                .any(|node| node.attribute("filter") == Some("url(#glow)")),
+            "filter was lost: {out}"
+        );
+        assert_eq!(alpha.attribute("x"), Some("30"));
+        assert_eq!(instance_for_text(alpha).attribute("x"), Some("3"));
+        assert_eq!(alpha.attribute("y"), Some("15"));
+        assert_eq!(instance_for_text(alpha).attribute("y"), Some("5"));
+        let later = xml
+            .descendants()
+            .find(|node| node.attribute("id") == Some("later-paint"))
+            .unwrap();
+        assert!(
+            instance_for_text(alpha).range().start < later.range().start,
+            "fallback changed painter order"
+        );
+        let beta = xml
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.text() == Some("Beta"))
+            .unwrap();
+        assert!(
+            !instance_for_text(beta)
+                .ancestors()
+                .any(|node| node.attribute("filter").is_some())
+        );
+        assert_eq!(beta.attribute("x"), Some("20"));
+        assert_eq!(instance_for_text(beta).attribute("x"), Some("400"));
+    }
+
+    #[test]
+    fn unrelated_structural_selectors_do_not_hoist_filtered_text() {
+        for css in [
+            ".cluster:not(.swimlane) rect{fill:red}",
+            ".swimlane-title path:nth-of-type(2){stroke:red}",
+            ".swimlane-body path:first-of-type{stroke:red}",
+            ".other:first-child text{filter:none}",
+            "[data-other]:first-child text{filter:none}",
+            "[data-look=neo].node rect{filter:url(#other)}",
+            "[data-look=neo].node .outer-path{filter:url(#other)}",
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg"><style>{css}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                instance_for_text(text)
+                    .ancestors()
+                    .any(|node| node.attribute("filter") == Some("url(#glow)")),
+                "unrelated structural selector must retain the local effect: {css}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn isolated_definitions_preserve_ancestor_effects_under_uncertain_selectors() {
+        for css in [
+            ".node:not(.off) text{filter:none}",
+            ".node:first-child .nodeLabel{font-size:99px}",
+            ".node:first-child{font-size:99px}",
+            ".node .nodeLabel{filter:url(#other)}",
+            ".node{filter:url(#other)}",
+            "text:nth-of-type(2){filter:none}",
+            ":first-child{opacity:0}",
+            "text:is(.one,.two){filter:none}",
+            "text:where(.one){filter:none}",
+            "g:has(text){opacity:0}",
+            "text::before{content:'other'}",
+            r"te\78t:first-child{filter:none}",
+            r"te\78t{filter:url(#other)}",
+            "#id#id{filter:url(#other)}",
+            "[*|class]{filter:url(#other)}",
+            "text:first-child,#id#id{font-size:99px!important}",
+            "#id#id,text:first-child{font-size:99px!important}",
+        ] {
+            let svg = format!(
+                r##"<svg xmlns="http://www.w3.org/2000/svg"><style>{css}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##
+            );
+            let out = foreign_object_label_fallback_svg_text(&svg);
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
+            let text = document
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            assert!(
+                instance_for_text(text)
+                    .ancestors()
+                    .any(|node| node.attribute("filter") == Some("url(#glow)")),
+                "isolated glyph definitions must retain the source paint ancestry: {css}: {out}"
+            );
+        }
+    }
+
+    #[test]
+    fn isolated_definition_keeps_source_void_element_label_paint_ancestry() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.node div > .nodeLabel:last-child{font-size:99px}</style><g class="node" filter="url(#glow)"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><br><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        // Keep the HTML void element in the scanner input. Normalize the retained
+        // HTML only after fallback conversion, so strict XML can inspect its result.
+        let xml = out.replace("<br>", "<br/>");
+        let document = crate::xml_dom::Document::parse(&xml).unwrap();
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert!(
+            instance_for_text(text)
+                .ancestors()
+                .any(|node| { node.attribute("filter") == Some("url(#glow)") }),
+            "a void HTML element must not lose its label's paint ancestry: {out}"
+        );
+    }
+
+    #[test]
+    fn structural_projection_guards_never_enter_the_style_cascade() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.node:first-child .nodeLabel{font-size:99px}</style><g class="node"><foreignObject width="60" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(svg);
+        let document = crate::xml_dom::Document::parse(&out).unwrap();
+        let text = document
+            .descendants()
+            .find(|node| node.has_tag_name("text"))
+            .unwrap();
+        assert!(
+            text.attribute("style").unwrap().contains("font-size: 16px"),
+            "{out}"
+        );
+    }
+
+    #[test]
+    fn isolated_fallback_accounts_for_definitions_instances_and_nested_depth() {
+        let svg = r##"<svg xmlns="http://www.w3.org/2000/svg"><g filter="url(#glow)"><g><foreignObject width="60" height="30">Alpha</foreignObject><foreignObject width="60" height="30">Beta</foreignObject></g></g><foreignObject width="60" height="30">Gamma</foreignObject></svg>"##;
+        let mut projected_bytes = 0;
+        let mut projected_depth = 0;
+        let mut preflight = |bytes, _: usize, depth| {
+            // Projection can shrink when a temporary wrapper moves to a root definition.
+            projected_bytes = bytes;
+            projected_depth = projected_depth.max(depth);
+            Ok::<(), &'static str>(())
+        };
+        let output = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+            svg,
+            &DeterministicTextMeasurer::default(),
+            &mut || Ok(()),
+            &mut |_, _| Ok(()),
+            &mut preflight,
+            &mut |_| Ok(()),
+        )
+        .unwrap();
+        assert_eq!(projected_bytes, output.len());
+        assert_eq!(projected_depth, 5);
+
+        for (byte_limit, depth_limit) in [(output.len() - 1, usize::MAX), (usize::MAX, 4)] {
+            let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
+                svg,
+                &DeterministicTextMeasurer::default(),
+                &mut || Ok(()),
+                &mut |_, _| Ok(()),
+                &mut |bytes, _, depth| {
+                    if bytes > byte_limit || depth > depth_limit {
+                        Err("resource limit")
+                    } else {
+                        Ok(())
+                    }
+                },
+                &mut |_| Ok(()),
+            );
+            assert_eq!(result, Err("resource limit"));
+        }
     }
 
     #[test]
@@ -630,12 +1836,13 @@ mod tests {
         let svg = r#"<svg viewBox="90 -310 425 99" xmlns="http://www.w3.org/2000/svg"><g transform="translate(183.3046875, -300)"><foreignObject width="33.390625" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Todo</p></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
         assert!(
-            out.contains(r#"x="200""#),
-            "expected x=200 center placement"
+            out.contains(r#"transform="translate(183.3046875, -300)""#)
+                && out.contains(r#"x="16.6953125""#),
+            "the local center plus the parent matrix must place x at 200"
         );
         assert!(
-            out.contains(r#"y="-288""#),
-            "expected y=-288 center placement"
+            out.contains(r#"y="12""#),
+            "the local center plus the parent matrix must place y at -288"
         );
         assert!(
             out.contains(">Todo<"),
@@ -652,9 +1859,74 @@ mod tests {
             "expected labelBkg fill"
         );
         assert!(
-            out.contains(r#"<rect x="10" y="20" width="30" height="24""#),
+            out.contains(r#"<rect x="0" y="0" width="30" height="24""#)
+                && out.contains(r#"<use x="10" y="20""#),
             "expected rect with foreignObject bounds"
         );
+    }
+
+    #[test]
+    fn foreign_object_text_filter_keeps_background_outside_and_requires_the_real_reference() {
+        let source = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel rect{opacity:.5;fill:red}</style><g class="edgeLabel" transform="translate(20,30)"><foreignObject width="80" height="24" style="overflow: visible;" data-merman-fallback-text-filter="url(#glow)"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" style="background:rgba(255,0,0,0.7)"><span class="edgeLabel" style=";background:transparent"><p style="background:transparent;filter:url(#glow);">Hello</p></span></div></foreignObject></g></svg>"##;
+        let out = foreign_object_label_fallback_svg_text(source);
+        let document = crate::xml_dom::Document::parse(&out).unwrap();
+        let filtered = document
+            .descendants()
+            .find(|n| n.attribute("filter") == Some("url(#glow)"))
+            .unwrap();
+        assert!(filtered.descendants().any(|n| n.has_tag_name("text")));
+        assert!(!filtered.descendants().any(|n| n.has_tag_name("rect")));
+        let background = filtered
+            .parent()
+            .unwrap()
+            .children()
+            .find(|n| n.has_tag_name("rect"))
+            .unwrap();
+        assert_eq!(background.attribute("fill"), Some("rgba(255,0,0,0.7)"));
+        assert!(background.attribute("style").unwrap().contains("opacity:1"));
+        assert!(
+            filtered
+                .ancestors()
+                .any(|n| n.attribute("transform") == Some("translate(20,30)"))
+        );
+        for invalid in [
+            source.replace("overflow: visible;", "overflow: visible;filter:url(#other)"),
+            source.replace("<p style=", "<p xmlns=\"\" style="),
+            source.replace("<style>", "<style>foreignObject{filter:none!important}"),
+            source.replace("<style>", "<style>p{filter:none!important}"),
+            source.replace("<style>", "<style>.labelBkg{opacity:.2}"),
+            source.replace(
+                "background:transparent\"><p",
+                "background:transparent;transform:translateX(3px)\"><p",
+            ),
+            source.replace("filter:url(#glow);", "filter:url(#other);"),
+            source.replace("Hello</p>", "Hello</p><p>Other</p>"),
+            source.replace("Hello</p>", "Hello</p><span>Outside</span>"),
+            source.replace("Hello</p>", "Hello</p>Outside"),
+            source.replace("Hello</p>", "<span style='filter:none'>Hello</span></p>"),
+            source.replace("data-merman-fallback-text-filter=", "ignored="),
+            source.replace(
+                ".edgeLabel rect{opacity:.5;fill:red}",
+                "text{filter:none!important}",
+            ),
+            source.replace(
+                ".edgeLabel rect{opacity:.5;fill:red}",
+                ".edgeLabel rect{opacity:.2!important}",
+            ),
+        ] {
+            let out = foreign_object_label_fallback_svg_text(&invalid);
+            let document = crate::xml_dom::Document::parse(&out).unwrap();
+            assert!(
+                !document
+                    .descendants()
+                    .any(|n| n.attribute("filter") == Some("url(#glow)")),
+                "{invalid}\n{out}"
+            );
+            assert!(
+                document.descendants().any(|n| n.has_tag_name("text")
+                    && n.text().is_some_and(|text| text.contains("Hello")))
+            );
+        }
     }
 
     #[test]
@@ -677,7 +1949,7 @@ mod tests {
             "explicit background-color: initial must not become the compatibility gray: {out}"
         );
 
-        for clear in ["transparent", "initial"] {
+        for clear in ["transparent", "initial", "unset", "rgba(0,0,0,0)", "#0000"] {
             let svg = format!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.labelBkg{{background-color:#ff0000}}.labelBkg .clear{{background-color:{clear}}}</style><foreignObject x="10" y="20" width="30" height="24"><div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg"><span class="clear">Hello</span></div></foreignObject></svg>"#,
             );
@@ -687,9 +1959,9 @@ mod tests {
                 .nth(1)
                 .unwrap_or_else(|| panic!("expected fallback output: {out}"));
             assert!(
-                !fallback.contains(r##"fill="#ff0000""##)
+                fallback.contains(r##"fill="#ff0000""##)
                     && !fallback.contains("rgba(232, 232, 232, 0.5)"),
-                "a specified {clear} descendant must clear the parent fallback background: {out}"
+                "a specified {clear} descendant must leave its parent's background visible: {out}"
             );
         }
 
@@ -780,13 +2052,55 @@ mod tests {
         );
         assert!(
             out.contains(r##"fill="#c0ffee""##)
-                && out.contains(r#"<rect x="10" y="20" width="30" height="24""#),
+                && out.contains(r#"<rect x="0" y="0" width="30" height="24""#)
+                && out.contains(r#"<use x="10" y="20""#),
             "expected the real labelBkg rule after authored brace text to drive fallback background: {out}"
         );
         assert!(
             out.contains("font-family: Inter"),
             "expected root font declarations to remain indexed: {out}"
         );
+    }
+
+    #[test]
+    fn foreign_object_overlay_inherits_logical_xml_stylesheet_font_strings() {
+        for serialized in [
+            r##"font-family:&quot;A&amp;B&quot;,monospace;fill:#123456;"##,
+            r##"font-family:"A&amp;B",monospace;fill:#123456;"##,
+            r##"<![CDATA[font-family:"A&B",monospace;fill:#123456;]]>"##,
+        ] {
+            let css = if serialized.starts_with("<![CDATA[") {
+                r##"<![CDATA[#root{font-family:"A&B",monospace;fill:#123456;}]]>"##.to_owned()
+            } else {
+                format!("#root{{{serialized}}}")
+            };
+            let svg = format!(
+                r#"<svg id="root" xmlns="http://www.w3.org/2000/svg"><style>{css}</style><foreignObject width="80" height="24"><div xmlns="http://www.w3.org/1999/xhtml">Root</div></foreignObject></svg>"#
+            );
+            let output = foreign_object_label_fallback_svg_text(&svg);
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
+            let fallback = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class") == Some("merman-foreignobject-fallback-text")
+                })
+                .expect("actual fallback text");
+            assert_eq!(
+                fallback
+                    .descendants()
+                    .filter(crate::xml_dom::Node::is_text)
+                    .filter_map(|node| node.text())
+                    .collect::<String>(),
+                "Root"
+            );
+            let style = fallback.attribute("style").unwrap();
+            assert!(
+                style.contains(r#"font-family: "A&B",monospace;"#),
+                "logical font stack must inherit: {style}"
+            );
+            assert_eq!(fallback.attribute("fill"), Some("#123456"));
+        }
     }
 
     #[test]
@@ -910,7 +2224,7 @@ mod tests {
             "an invalid compound must invalidate its complete selector list: {out}"
         );
 
-        for operator in ["|=", "^=", "$=", "*="] {
+        for operator in ["|=", "^=", "*="] {
             let selector = format!("[data-tags{operator}choice],.nodeLabel");
             let svg = format!(
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><style>{selector}{{font-size:13px}}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="nodeLabel">Alpha</span></div></foreignObject></svg>"#,
@@ -1108,13 +2422,14 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_UNIVERSAL_POSTINGS);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
             &mut checkpoint,
             &mut selector_limit,
             &mut preflight,
+            &mut |_| Ok::<(), &'static str>(()),
         );
 
         assert_eq!(result, Err("selector limit"));
@@ -1151,13 +2466,14 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_POSTINGS);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
             &mut checkpoint,
             &mut selector_limit,
             &mut preflight,
+            &mut |_| Ok::<(), &'static str>(()),
         );
 
         assert_eq!(result, Err("selector limit"));
@@ -1181,13 +2497,14 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_STYLESHEET_BYTES);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
             &mut checkpoint,
             &mut selector_limit,
             &mut preflight,
+            &mut |_| Ok::<(), &'static str>(()),
         );
 
         assert_eq!(result, Err("selector limit"));
@@ -1253,13 +2570,14 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_DECLARATIONS_PER_RULE);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
             &mut checkpoint,
             &mut selector_limit,
             &mut preflight,
+            &mut |_| Ok::<(), &'static str>(()),
         );
         assert_eq!(result, Err("selector limit"));
     }
@@ -1294,13 +2612,14 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_COMPONENTS_PER_BRANCH);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
             &mut checkpoint,
             &mut selector_limit,
             &mut preflight,
+            &mut |_| Ok::<(), &'static str>(()),
         );
         assert_eq!(result, Err("selector limit"));
     }
@@ -1343,13 +2662,14 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_MATCH_WORK);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
             &mut checkpoint,
             &mut selector_limit,
             &mut preflight,
+            &mut |_| Ok::<(), &'static str>(()),
         );
         assert_eq!(result, Err("selector limit"));
     }
@@ -1387,13 +2707,14 @@ mod tests {
             assert_eq!(maximum, super::cascade::MAX_SELECTOR_ANCESTRY_DEPTH);
             Err("selector limit")
         };
-        let mut preflight = |_, _| Ok::<(), &'static str>(());
+        let mut preflight = |_, _, _| Ok::<(), &'static str>(());
         let result = super::foreign_object_label_fallback_svg_text_with_checkpoints(
             &svg,
             &measurer,
             &mut checkpoint,
             &mut selector_limit,
             &mut preflight,
+            &mut |_| Ok::<(), &'static str>(()),
         );
         assert_eq!(result, Err("selector limit"));
     }
@@ -1415,21 +2736,21 @@ mod tests {
         let out = foreign_object_label_fallback_svg_text(svg);
 
         assert!(
-            out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#c0ffee"/>"##),
+            has_background_rect(&out, "#c0ffee", "80", "30"),
             "a classless common XHTML background owner must drive the fallback rect: {out}"
         );
 
         let shorthand = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel{background:#ececff}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel">Alpha</span></div></foreignObject></svg>"##;
         let out = foreign_object_label_fallback_svg_text(shorthand);
         assert!(
-            out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#ececff"/>"##),
+            has_background_rect(&out, "#ececff", "80", "30"),
             "a color-only background shorthand must resolve on the real XHTML owner: {out}"
         );
 
         let current_color = r##"<svg xmlns="http://www.w3.org/2000/svg"><style>.edgeLabel{color:#123456;background-color:currentColor}</style><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml"><span class="edgeLabel">Alpha</span></div></foreignObject></svg>"##;
         let out = foreign_object_label_fallback_svg_text(current_color);
         assert!(
-            out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#123456"/>"##)
+            has_background_rect(&out, "#123456", "80", "30")
                 && !out.contains(r#"fill="currentcolor""#),
             "background currentColor must be materialized before leaving XHTML context: {out}"
         );
@@ -1441,7 +2762,7 @@ mod tests {
         let out = foreign_object_label_fallback_svg_text(svg);
 
         assert!(
-            !out.contains(r##"<rect x="0" y="0" width="80" height="30" fill="#c0ffee"/>"##),
+            !has_background_rect(&out, "#c0ffee", "80", "30"),
             "a background that covers only one rich-text run must not expand to the complete fallback label: {out}"
         );
     }
@@ -1538,18 +2859,18 @@ mod tests {
     }
 
     #[test]
-    fn foreign_object_overlay_uses_common_ancestor_for_mixed_text_leaves() {
+    fn foreign_object_overlay_preserves_each_mixed_text_leaf_typography() {
         let svg = r#"
 <svg xmlns="http://www.w3.org/2000/svg"><g><foreignObject width="80" height="30"><div xmlns="http://www.w3.org/1999/xhtml" style="font-size:14px"><span>Alpha</span><strong style="font-size:20px">Beta</strong></div></foreignObject></g></svg>"#;
         let out = foreign_object_label_fallback_svg_text(svg);
 
         assert!(
             out.contains("font-size: 14px"),
-            "mixed text leaves should use their deepest common ancestor's fallback typography: {out}"
+            "the row keeps its common ancestor's base typography: {out}"
         );
         assert!(
-            !out.contains("font-size: 20px"),
-            "the fallback must not arbitrarily select one rich-text leaf: {out}"
+            out.contains("font-size: 20px"),
+            "the styled leaf retains its own measured typography: {out}"
         );
     }
 
@@ -1671,7 +2992,7 @@ mod tests {
                 metrics.width, metrics.height,
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+            let document = crate::xml_dom::Document::parse(&output).expect("valid fallback SVG");
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| {
@@ -1717,7 +3038,8 @@ mod tests {
                     r#"<svg xmlns="http://www.w3.org/2000/svg" style="font-size:16px"><foreignObject width="{limit}" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:{white_space};width:{limit}px">{label}</div></foreignObject></svg>"#,
                 );
                 let output = render_fallback(&svg, measurer.as_ref());
-                let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+                let document =
+                    crate::xml_dom::Document::parse(&output).expect("valid fallback SVG");
                 let rows: Vec<_> = document
                     .descendants()
                     .filter(|node| node.has_tag_name("text"))
@@ -1747,7 +3069,8 @@ mod tests {
                     r#"<svg xmlns="http://www.w3.org/2000/svg" style="font-size:16px"><foreignObject width="20" height="48" text-anchor="{anchor}"><div xmlns="http://www.w3.org/1999/xhtml" style="white-space:pre-wrap;width:20px">{label}</div></foreignObject></svg>"#
                 );
                 let output = render_fallback(&svg, measurer.as_ref());
-                let document = roxmltree::Document::parse(&output).expect("valid fallback SVG");
+                let document =
+                    crate::xml_dom::Document::parse(&output).expect("valid fallback SVG");
                 let rows: Vec<_> = document
                     .descendants()
                     .filter(|node| node.has_tag_name("text"))
@@ -1784,7 +3107,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="100" height="24"><div style="white-space:break-spaces;width:100px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let row = document
                 .descendants()
                 .find(|node| node.has_tag_name("text"))
@@ -1800,7 +3123,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="200" height="72"><div style="white-space:{mode};width:200px">  a  <br/><br/> b </div></foreignObject></svg>"#
             );
             let output = foreign_object_label_fallback_svg_text(&svg);
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -1820,7 +3143,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="20" height="48" text-anchor="{anchor}"><div style="white-space:normal;width:20px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -1842,7 +3165,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="60" height="48"><div style="white-space:break-spaces;width:60px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -1893,7 +3216,7 @@ mod tests {
             r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="8000" height="48"><div style="white-space:break-spaces;width:8000px">{label}</div></foreignObject></svg>"#
         );
         let output = render_fallback(&svg, &measurer);
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         assert_eq!(
             document
                 .descendants()
@@ -1927,7 +3250,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="10" height="48"><div style="white-space:{parent};width:10px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))
@@ -1969,7 +3292,7 @@ mod tests {
             .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
         let svg = r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="100" height="48"><div style="white-space:pre-wrap;width:100px">a&amp;lt;br&amp;gt;  b</div></foreignObject></svg>"#;
         let output = render_fallback(svg, measurer.as_ref());
-        let document = roxmltree::Document::parse(&output).unwrap();
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
         let rows: Vec<_> = document
             .descendants()
             .filter(|node| node.has_tag_name("text"))
@@ -2026,7 +3349,7 @@ mod tests {
                 r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="{width}" height="48"><div style="white-space:{parent};width:{width}px">{label}</div></foreignObject></svg>"#
             );
             let output = render_fallback(&svg, measurer.as_ref());
-            let document = roxmltree::Document::parse(&output).unwrap();
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
             let rows: Vec<_> = document
                 .descendants()
                 .filter(|node| node.has_tag_name("text"))

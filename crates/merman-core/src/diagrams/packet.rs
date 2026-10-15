@@ -81,7 +81,7 @@ pub(crate) fn render_model_to_compat_json(
     out.insert("packet".to_string(), json!(&model.packet));
     out.insert(
         "config".to_string(),
-        crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
     );
     Ok(Value::Object(out))
 }

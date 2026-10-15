@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-token-baseline",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise the semantic token baseline without raw CSS."
+}

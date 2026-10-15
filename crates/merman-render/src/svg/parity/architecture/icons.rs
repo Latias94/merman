@@ -1,6 +1,6 @@
 use crate::svg::icon_registry::{IconIdScope, scope_svg_internal_ids};
 
-use super::super::fmt_into;
+use super::super::{SvgOutput, fmt_into};
 use std::borrow::Cow;
 
 pub(super) fn arch_icon_body(name: &str) -> &'static str {
@@ -43,7 +43,7 @@ pub(super) fn arch_icon_needs_id_scope(icon_name: &str, has_registry: bool) -> b
 }
 
 pub(super) fn write_arch_icon_svg(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     icon_name: &str,
     icon_size_px: f64,
     id_scope: Option<IconIdScope>,
@@ -68,7 +68,7 @@ pub(super) fn write_arch_icon_svg(
 }
 
 pub(super) fn write_arch_icon_svg_with_registry(
-    out: &mut String,
+    out: &mut impl SvgOutput,
     icon_name: &str,
     icon_size_px: f64,
     icon_registry: Option<&crate::svg::IconRegistry>,

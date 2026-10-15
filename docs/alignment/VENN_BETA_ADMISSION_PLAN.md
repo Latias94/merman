@@ -1,7 +1,7 @@
 # Venn Beta Admission Plan (Mermaid@11.16.1)
 
 Status: Admitted
-Last updated: 2026-07-22
+Last updated: 2026-08-10
 Pinned Mermaid commit: `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`
 
 This document records the source-backed plan and admission evidence for `venn-beta` in `merman`.
@@ -20,7 +20,8 @@ The parser and DB are small enough to port directly. The risky part is layout/re
 - Done: targeted `xtask compare-venn-svgs`, `gen-upstream-svgs --diagram venn`, and `check-upstream-svgs --diagram venn` tooling.
 - Done: normalized Venn fixtures and committed upstream SVG baselines for Mermaid syntax-doc examples.
 - Done: `venn` is admitted to `supported_diagrams()` and the primary SVG matrix for classic SVG output.
-- Done: Venn renderer theme roles are projected through `PresentationTheme::venn()` for classic SVG output.
+- Done: Venn renderer theme roles are read through the renderer-local
+  `MermaidThemeAdapter::venn()` compatibility view for classic SVG output.
 - Done: `look: "handDrawn"` emits deterministic seeded `roughr` groups for circles and intersections, including hachure and cross-hatch fills.
 - Done: Mermaid Cypress cases 14, 15, and 18 have semantic/layout goldens and pinned 11.16 SVG baselines. Their exact fixture records are admitted as structure-only evidence because JavaScript RoughJS and Rust `roughr` do not produce path-identical coordinates.
 - Done: Mermaid Cypress cases 2, 8, 9, 13, 16, and 17 have semantic/layout goldens and pinned
@@ -62,7 +63,7 @@ flowchart LR
     Source["venn-beta source"] --> Parser["Rust parser + Venn semantic model"]
     Parser --> Layout["Rust Venn layout kernel"]
     Layout --> Svg["Stage B SVG renderer"]
-    Theme["PresentationTheme Venn roles"] --> Svg
+    Theme["Mermaid compatibility Venn roles"] --> Svg
     Upstream["@upsetjs/venn.js 2.0.0 + fmin 0.0.4 oracle"] --> Layout
     Svg --> Compare["compare-venn-svgs + upstream baselines"]
 ```
@@ -74,7 +75,11 @@ The implementation lane should have these slices:
 3. Layout kernel: port the relevant `@upsetjs/venn.js@2.0.0` layout, geometry, text-centre, normalize, scale, path, and minimal `fmin` helper behavior into Rust behind a typed adapter. Seed the random MDS path for deterministic oracle tests.
 4. Layout oracle fixtures: generate pinned package outputs for small, overlapping, disjoint, nested, higher-order, and text-node diagrams; compare circles, text centres, paths, and loss within documented tolerances before renderer DOM work.
 5. Stage B SVG renderer: emit Mermaid-shaped `.venn-circle`, `.venn-intersection`, `.venn-title`, `.venn-text-nodes`, `.venn-text-area`, and `foreignObject` text-node DOM after layout is source-backed. Classic output uses direct paths; `look: "handDrawn"` replaces circle/intersection paths with deterministic seeded `roughr` groups matching Mermaid's RoughJS branch structure.
-6. Theme roles: `PresentationTheme::venn()` owns `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`, `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and dark/light readable circle text derivation; diagram `style` entries still override per-area fill, stroke, opacity, width, and text color.
+6. Theme roles: the renderer-local `MermaidThemeAdapter::venn()` compatibility view reads
+   `venn1..venn8`, `vennTitleTextColor`, `vennSetTextColor`, `primaryColor`,
+   `primaryTextColor`, `textColor`, `titleColor`, `background`, font family, and dark/light
+   readable circle text derivation; diagram `style` entries still override per-area fill, stroke,
+   opacity, width, and text color. This is not structured `DiagramTheme` family evidence.
 7. Fixture and compare gate: import syntax-doc and parser-source fixtures, generate `fixtures/upstream-svgs/venn`, run `xtask compare-venn-svgs`, and keep the family in the main matrix once family-local structural DOM parity is green.
 
 ## Alternatives Considered
@@ -162,7 +167,9 @@ fixtures carry structure-only evidence: they prove the expected rough groups, el
 fill modes, labels, and text-node wrappers, but do not claim JavaScript RoughJS and Rust `roughr`
 path coordinates are identical.
 
-The renderer now consumes Venn theme roles through `PresentationTheme::venn()`, so Venn-specific theme fallback chains no longer live inside the SVG emission module.
+The renderer now consumes Mermaid-compatible Venn roles through the renderer-local
+`MermaidThemeAdapter::venn()` view, so Venn-specific fallback chains no longer live inside the SVG
+emission module. Structured `DiagramTheme` support remains a separate family migration.
 
 ## Admission Gates
 

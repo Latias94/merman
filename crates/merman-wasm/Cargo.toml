@@ -284,7 +284,7 @@ merman-bindings-core.workspace = true
 merman-core = { workspace = true, features = ["operation-deadlines"] }
 merman-editor-core = { workspace = true, optional = true }
 serde.workspace = true
-serde_json.workspace = true
+serde_json = { workspace = true, features = ["raw_value"] }
 serde-wasm-bindgen.workspace = true
 wasm-bindgen.workspace = true
 

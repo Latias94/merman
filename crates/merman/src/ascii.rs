@@ -2,7 +2,7 @@
 //!
 //! Source-to-text operations use [`crate::Renderer`] so parsing, resource policy, cancellation,
 //! and deadlines share one operation owner. Hosts that already own an operation-bound typed model
-//! may use [`AsciiRenderer`] as the lower-level target backend.
+//! may use [`AsciiRenderer`](crate::ascii::AsciiRenderer) as the lower-level target backend.
 
 pub use crate::{normalize_terminal_diagnostic, normalize_terminal_text};
 

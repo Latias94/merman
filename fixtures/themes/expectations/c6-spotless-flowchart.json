@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-c6-spotless-flowchart",
+  "evidenceKind": "typed-capability",
+  "intent": "Prove the Spotless Flowchart repeating-canvas, dashed rounded-node, and embedded native-font slice through terminal SVG evidence and bounded PNG regions."
+}

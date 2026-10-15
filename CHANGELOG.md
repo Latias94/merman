@@ -6,6 +6,25 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## Unreleased
 
+- Native exports preserve HTML bold, italic and code typography and explicit SVG canvas sizes.
+  PDF filter sampling no longer silently drops images when a budget rounds either dimension to zero.
+  PNG/JPEG/PDF continue best-effort output for known backend shadow and CSS limitations, recording
+  diagnostics in export reports and CLI warnings; explicit portable-output requirements remain strict.
+- Rust binding engines can share an explicit operation-local font context across measurement and
+  native painting with the opt-in `native-fonts` feature. CLI exports report unresolved fonts and
+  missing glyphs. The [font fitting evidence](docs/assets/issue-199-font-bounds/README.md) explains
+  the deterministic and native measurement choices for [#199](https://github.com/Latias94/merman/issues/199).
+- Family-owned Mermaid configuration now reaches C4 text, boundaries and relationships;
+  ZenUML colors and typography; Wardley anchors and dividers; Gantt axes; XY Chart styles and
+  font measurement; and Mindmap icon-label backgrounds. Site and source overrides retain their
+  precedence. Compiled theme paint and text rules keep their independent owners; the retired
+  presentation API is not restored. Fixes
+  [#197](https://github.com/Latias94/merman/issues/197),
+  [#198](https://github.com/Latias94/merman/issues/198), and
+  [#199](https://github.com/Latias94/merman/issues/199).
+- Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated
+  Swimlane titles in PNG, JPEG, and PDF exports.
+  [#200](https://github.com/Latias94/merman/issues/200)
 - Align the development baseline with Mermaid 12.2.0. Mindmaps support `mindmap.colorBy: depth`,
   center SVG labels, and use readable Neo HTML-label colors. Circle sizing follows label dimensions,
   including HandDrawn circle paths with resource checks before generation;
@@ -56,6 +75,14 @@ For required upgrade actions, see the [0.8.0 to 0.9.0 upgrade guide](docs/releas
 ### Security
 
 - Updated Playground math-rendering and source-map dependencies to resolve the audited vulnerable versions. [#169](https://github.com/Latias94/merman/pull/169), [#194](https://github.com/Latias94/merman/pull/194)
+
+### Theme integration
+
+- Replaced the presentation-profile API with compiled `DiagramTheme` values attached through `RenderRequest::with_theme(...)`; Mermaid behavior remains in `site_config`, while visual styling is owned by the theme contract.
+- Added version-1 theme definitions, token expansion, canonical JSON sharing, complete-spec import/export, reusable themes, artifact-aware catalogs, support queries, and bounded resource admission. Omitted values and explicit clears remain distinct.
+- Binding Options JSON advances from schema `2` to `3`, and Web/WASM transport API advances from `5` to `6`. Regenerate wrappers and artifacts together. Native C ABI `3`, UniFFI API `7`, Android JNI API `2`, and Node transport `1` retain their independent versions. Typst theme operations belong to the local ABI `3` development snapshot, separate from the `0.5.0` ABI `2` package baseline.
+- Added CLI `--theme-definition` support and artifact-aware preset discovery. Theme CSS and host security controls remain capability-gated, while safe theme variables and fonts pass through the shared admission boundary.
+- Added bounded theme resource admission and preserved the exact artifact/family/output qualification scope for alpha presets; catalog availability is not an all-family portability guarantee.
 
 ## [0.8.0] - 2026-10-06
 
@@ -143,6 +170,10 @@ Published alpha sections below remain historical records. Their intermediate fea
 
 Thanks to @betyourluck, @can1357, @colindean, @daikisuyama, @Ginger-Beard, @ixmoyren, @llimllib, @lovasoa, @lucaschoeneberg, @makenowjust, @manixate, @mrueg, and @vlasky for contributions across the 0.8 release line, and to @aurabindo for the Flowchart browser-clipping report. Published alpha entries retain the contribution-specific history.
 
+- Accept Mermaid Unicode node IDs in Flowchart, including Japanese and accented names, and preserve UTF-8 boundaries when recovering from invalid characters.
+
+- Removed per-container Markdown prefix copies and repeated negative include-line scans, avoiding quadratic memory and suffix-scanning work on deeply nested or heavily formatted prose without diagrams.
+- Preserved conditional `cfg_attr` documentation in its original order during delayed rustdoc macro expansion, including nested conditions.
 ## [0.8.0-alpha.7] - 2026-09-30
 
 Alpha.7 is planned as the final alpha in the 0.8.0 release cycle. It moves the compatibility baseline to Mermaid 12.0.0, adds Agentflow and Usecase, and makes diagram-family selection explicit for custom Rust builds. This is a breaking prerelease; see the [alpha.6 to alpha.7 upgrade guide](docs/release/ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md) before updating source dependencies, generated bindings, or snapshots. Package channels publish independently.

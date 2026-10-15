@@ -1,13 +1,11 @@
 //! Flowchart v2 basic geometry shapes.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::{OptionalStyleAttr, escape_attr};
 use crate::svg::parity::{fmt, fmt_display};
 
 use super::super::geom::path_from_points;
 use super::super::roughjs::{
-    roughjs_circle_with_work, roughjs_hachure_paths_for_svg_path, roughjs_paths_for_circle,
+    roughjs_hachure_paths_for_svg_path, roughjs_paths_for_circle,
     roughjs_paths_for_circle_with_roughness,
 };
 
@@ -16,10 +14,10 @@ const FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT: f32 = 1.5;
 const FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP: f32 = 1.5;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
-) {
+) -> super::super::emission::FlowchartNodeShapeEmissionReceipt {
     let w = common.layout_node.width.max(1.0);
     let h = common.layout_node.height.max(1.0);
     let tx = -w / 2.0 + 0.5;
@@ -44,6 +42,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
                 FLOWCHART_DIAMOND_HAND_DRAWN_FILL_WEIGHT,
                 FLOWCHART_DIAMOND_HAND_DRAWN_HACHURE_GAP,
                 FLOWCHART_DIAMOND_HAND_DRAWN_ROUGHNESS,
+                common.work_meter,
                 common.hand_drawn_seed,
             )
         })
@@ -66,12 +65,12 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
             fmt_display(common.stroke_width as f64),
             escape_attr(common.stroke_dasharray),
         );
-        return;
+        return super::super::emission::FlowchartNodeShapeEmissionReceipt::unverified();
     }
 
     let _ = write!(
         out,
-        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({},{})"{} />"#,
+        r#"<polygon points="{},0 {},{} {},{} 0,{}" class="label-container" transform="translate({},{})"{}{} />"#,
         fmt(w / 2.0),
         fmt(w),
         fmt(-h / 2.0),
@@ -80,12 +79,14 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_diamond(
         fmt(-h / 2.0),
         fmt(tx),
         fmt(ty),
-        OptionalStyleAttr(common.style)
+        OptionalStyleAttr(common.style),
+        common.effect_filter_attr,
     );
+    super::super::emission::FlowchartNodeShapeEmissionReceipt::classic_polygon()
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -94,17 +95,17 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
     let h = common.layout_node.height.max(1.0);
     let r = (w.min(h) / 2.0).max(0.5);
     if common.look_is_hand_drawn() {
-        let paths = roughjs_circle_with_work(ctx.work_meter, r * 2.0, 0.7, || {
-            super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                roughjs_paths_for_circle(
-                    r * 2.0,
-                    common.stroke_width,
-                    common.stroke_dasharray,
-                    true,
-                    common.hand_drawn_seed,
-                )
-            })
-        })?;
+        let paths = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_circle(
+                r * 2.0,
+                common.stroke_width,
+                common.stroke_dasharray,
+                true,
+                common.work_meter,
+                common.hand_drawn_seed,
+            )
+        });
+        ctx.checkpoint_emit()?;
         if let Some(paths) = paths {
             let _ = write!(
                 out,
@@ -113,20 +114,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_circle(
             );
             write_rough_circle_paths(out, common, &paths, common.stroke_width);
             out.push_str("</g>");
-            return Ok(());
+            return out.checkpoint();
         }
     }
     let _ = write!(
         out,
-        r#"<circle class="basic label-container" style="{}" r="{}" cx="0" cy="0"/>"#,
+        r#"<circle class="basic label-container"{} style="{}" r="{}" cx="0" cy="0"/>"#,
+        common.effect_filter_attr,
         escape_attr(common.style),
         fmt(r),
     );
-    Ok(())
+    out.checkpoint()
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     details: &mut crate::svg::parity::flowchart::types::FlowchartRenderDetails,
@@ -137,32 +139,30 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
     );
     if common.look_is_hand_drawn() {
         // Mermaid doubleCircle.ts overrides even user stroke widths for each ring.
-        let outer =
-            roughjs_circle_with_work(ctx.work_meter, geometry.outer_radius * 2.0, 0.2, || {
-                super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                    roughjs_paths_for_circle_with_roughness(
-                        geometry.outer_radius * 2.0,
-                        2.5,
-                        common.stroke_dasharray,
-                        true,
-                        0.2,
-                        common.hand_drawn_seed,
-                    )
-                })
-            })?;
-        let inner =
-            roughjs_circle_with_work(ctx.work_meter, geometry.inner_radius * 2.0, 0.2, || {
-                super::super::helpers::timed_node_roughjs(common.timing, details, || {
-                    roughjs_paths_for_circle_with_roughness(
-                        geometry.inner_radius * 2.0,
-                        1.5,
-                        common.stroke_dasharray,
-                        true,
-                        0.2,
-                        common.hand_drawn_seed,
-                    )
-                })
-            })?;
+        let outer = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_circle_with_roughness(
+                geometry.outer_radius * 2.0,
+                2.5,
+                common.stroke_dasharray,
+                true,
+                0.2,
+                common.work_meter,
+                common.hand_drawn_seed,
+            )
+        });
+        ctx.checkpoint_emit()?;
+        let inner = super::super::helpers::timed_node_roughjs(common.timing, details, || {
+            roughjs_paths_for_circle_with_roughness(
+                geometry.inner_radius * 2.0,
+                1.5,
+                common.stroke_dasharray,
+                true,
+                0.2,
+                common.work_meter,
+                common.hand_drawn_seed,
+            )
+        });
+        ctx.checkpoint_emit()?;
         if let (Some(outer), Some(inner)) = (outer, inner) {
             let classes = std::iter::once("default")
                 .chain(common.node_classes.iter().map(String::as_str))
@@ -178,19 +178,20 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_double_circle(
             out.push_str("</g><g>");
             write_rough_circle_paths(out, common, &inner, 1.5);
             out.push_str("</g></g>");
-            return Ok(());
+            return out.checkpoint();
         }
     }
     let _ = write!(
         out,
-        r#"<g class="basic label-container" style="{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"/></g>"#,
+        r#"<g class="basic label-container"{} style="{}"><circle class="outer-circle" cx="0" cy="0" r="{}" style="{}"/><circle class="inner-circle" cx="0" cy="0" r="{}" style="{}"/></g>"#,
+        common.effect_filter_attr,
         escape_attr(common.style),
         fmt(geometry.outer_radius),
         escape_attr(common.style),
         fmt(geometry.inner_radius),
         escape_attr(common.style),
     );
-    Ok(())
+    out.checkpoint()
 }
 
 fn hand_drawn_circle_style(styles: &[String]) -> String {
@@ -208,7 +209,7 @@ fn hand_drawn_circle_style(styles: &[String]) -> String {
 }
 
 fn write_rough_circle_paths(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     paths: &(String, String),
     stroke_width: f32,

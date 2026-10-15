@@ -1,0 +1,45 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-hand-drawn-effects",
+  "tokens": null,
+  "typography": {
+    "fontStack": {
+      "binding": "fixture-assets",
+      "families": [
+        "Excalifont"
+      ],
+      "assetIds": [
+        "font-excalifont-latin"
+      ]
+    },
+    "letterSpacingMilliEm": null,
+    "textTransform": null
+  },
+  "canvas": [],
+  "blendMode": null,
+  "nodeStyle": {
+    "border": null,
+    "dashPattern": [
+      6,
+      4
+    ],
+    "cornerRadiusPx": 6,
+    "shadow": {
+      "offsetXPx": 2,
+      "offsetYPx": 3,
+      "blurPx": 0,
+      "spreadPx": 0,
+      "color": "#11182755"
+    }
+  },
+  "semanticRules": [],
+  "svgEffects": [
+    {
+      "kind": "turbulence-displacement",
+      "baseFrequencyMilli": 18,
+      "octaves": 2,
+      "scale": 3
+    }
+  ],
+  "residualMechanisms": []
+}

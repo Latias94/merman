@@ -182,10 +182,12 @@ impl<'de> Deserialize<'de> for RequiredNullableId {
 #[serde(deny_unknown_fields)]
 struct BindingOperationDescriptor {
     id: String,
+    maturity: String,
     capability: RequiredNullableId,
     output: RequiredNullableId,
     compiled_prerequisites: Vec<String>,
     description: String,
+    input_kind: String,
     media_type: String,
     requires_uri: bool,
     targets: Vec<String>,
@@ -296,6 +298,7 @@ fn is_diagram_specific_feature_name(id: &str) -> bool {
             .iter()
             .any(|fact| {
                 fact.diagram_type == id
+                    || fact.family_id.as_str() == id
                     || fact.logical_family_kind == id
                     || fact.metadata_id == Some(id)
                     || fact.render_model_kind == Some(id)
@@ -495,7 +498,9 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
     for (index, operation) in descriptor.binding_operations.iter().enumerate() {
         let base = format!("binding_operations[{index}]");
         validate_kebab_id(&operation.id, &format!("{base}.id"))?;
+        validate_kebab_id(&operation.maturity, &format!("{base}.maturity"))?;
         require_non_empty(&operation.description, &format!("{base}.description"))?;
+        validate_kebab_id(&operation.input_kind, &format!("{base}.input_kind"))?;
         require_non_empty(&operation.media_type, &format!("{base}.media_type"))?;
         let operation_targets =
             validate_targets(&operation.targets, &format!("{base}.targets"), &target_ids)?;
@@ -564,6 +569,11 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         );
 
         let Some(output_id) = operation.output.0.as_deref() else {
+            if operation.requires_uri && operation.input_kind != "mermaid-source" {
+                return Err(format!(
+                    "{base}.input_kind: URI-backed operations must consume `mermaid-source`"
+                ));
+            }
             continue;
         };
         let Some(output) = output_by_id.get(output_id) else {
@@ -587,6 +597,12 @@ fn validate_descriptor(descriptor: &CapabilitySurfaceDescriptor) -> Result<(), S
         if operation.requires_uri {
             return Err(format!(
                 "{base}.requires_uri: output `{}` must not require a URI",
+                output.id
+            ));
+        }
+        if operation.input_kind != "mermaid-source" {
+            return Err(format!(
+                "{base}.input_kind: output `{}` must consume `mermaid-source`",
                 output.id
             ));
         }
@@ -888,10 +904,12 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor, digest: &str) -> Result
          pub struct OperationSpec {\n\
          \x20   pub key: OperationKey,\n\
          \x20   pub id: &'static str,\n\
+         \x20   pub maturity: &'static str,\n\
          \x20   pub capability: Option<CapabilityKey>,\n\
          \x20   pub output: Option<OutputKey>,\n\
          \x20   pub compiled_prerequisites: &'static [CapabilityKey],\n\
          \x20   pub description: &'static str,\n\
+         \x20   pub input_kind: &'static str,\n\
          \x20   pub media_type: &'static str,\n\
          \x20   pub requires_uri: bool,\n\
          \x20   pub targets: &'static [TargetKey],\n\
@@ -908,6 +926,7 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor, digest: &str) -> Result
         )
         .unwrap();
         writeln!(out, "        id: {:?},", operation.id).unwrap();
+        writeln!(out, "        maturity: {:?},", operation.maturity).unwrap();
         match operation.capability.0.as_deref() {
             Some(capability) => writeln!(
                 out,
@@ -937,6 +956,7 @@ fn render_rust(descriptor: &CapabilitySurfaceDescriptor, digest: &str) -> Result
         }
         out.push_str("],\n");
         writeln!(out, "        description: {:?},", operation.description).unwrap();
+        writeln!(out, "        input_kind: {:?},", operation.input_kind).unwrap();
         writeln!(out, "        media_type: {:?},", operation.media_type).unwrap();
         writeln!(out, "        requires_uri: {},", operation.requires_uri).unwrap();
         out.push_str("        targets: &[");
@@ -1109,10 +1129,12 @@ fn render_typescript(
                 .into_iter()
                 .map(|operation| serde_json::json!({
                     "id": operation.id,
+                    "maturity": operation.maturity,
                     "capability": operation.capability.0.as_deref(),
                     "output": operation.output.0.as_deref(),
                     "compiled_prerequisites": sorted_string_refs(&operation.compiled_prerequisites),
                     "description": operation.description,
+                    "input_kind": operation.input_kind,
                     "media_type": operation.media_type,
                     "requires_uri": operation.requires_uri,
                     "targets": sorted_string_refs(&operation.targets),
@@ -1178,7 +1200,9 @@ fn render_node_javascript(
             .into_iter()
             .map(|operation| serde_json::json!({
                 "id": operation.id,
+                "maturity": operation.maturity,
                 "compiled_prerequisites": sorted_string_refs(&operation.compiled_prerequisites),
+                "input_kind": operation.input_kind,
             }))
             .collect::<Vec<_>>()
     );
@@ -1280,9 +1304,11 @@ fn render_web_typescript(
                 .iter()
                 .map(|operation| serde_json::json!({
                     "id": operation.id,
+                    "maturity": operation.maturity,
                     "capability": operation.capability.0.as_deref(),
                     "output": operation.output.0.as_deref(),
                     "compiled_prerequisites": sorted_string_refs(&operation.compiled_prerequisites),
+                    "input_kind": operation.input_kind,
                     "media_type": operation.media_type,
                     "requires_uri": operation.requires_uri,
                 }))
@@ -1410,7 +1436,7 @@ fn render_c_header(
         .unwrap();
     }
     out.push_str(
-        "\ntypedef struct MermanCapabilityDescriptor {\n    const char *id;\n    const char *kind;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *const *implication_ids;\n    size_t implication_count;\n} MermanCapabilityDescriptor;\n\ntypedef struct MermanOutputDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanOutputDescriptor;\n\ntypedef struct MermanBindingOperationDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    int requires_uri;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *output_id;\n    const char *const *compiled_prerequisite_ids;\n    size_t compiled_prerequisite_count;\n} MermanBindingOperationDescriptor;\n\n",
+        "\ntypedef struct MermanCapabilityDescriptor {\n    const char *id;\n    const char *kind;\n    const char *description;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *const *implication_ids;\n    size_t implication_count;\n} MermanCapabilityDescriptor;\n\ntypedef struct MermanOutputDescriptor {\n    const char *id;\n    const char *capability_id;\n    const char *description;\n    const char *media_type;\n    const char *const *target_ids;\n    size_t target_count;\n} MermanOutputDescriptor;\n\ntypedef struct MermanBindingOperationDescriptor {\n    const char *id;\n    const char *maturity;\n    const char *capability_id;\n    const char *description;\n    const char *input_kind;\n    const char *media_type;\n    int requires_uri;\n    const char *const *target_ids;\n    size_t target_count;\n    const char *output_id;\n    const char *const *compiled_prerequisite_ids;\n    size_t compiled_prerequisite_count;\n} MermanBindingOperationDescriptor;\n\n",
     );
 
     for capability in sorted_capabilities(descriptor) {
@@ -1513,10 +1539,12 @@ fn render_c_header(
         );
         writeln!(
             out,
-            "    {{ {:?}, {}, {:?}, {:?}, {}, {}, {}, {}, {}, {} }},",
+            "    {{ {:?}, {:?}, {}, {:?}, {:?}, {:?}, {}, {}, {}, {}, {}, {} }},",
             operation.id,
+            operation.maturity,
             c_nullable_string(operation.capability.0.as_deref()),
             operation.description,
+            operation.input_kind,
             operation.media_type,
             if operation.requires_uri { 1 } else { 0 },
             c_array_name_or_null(&targets_name, &targets),
@@ -1572,7 +1600,7 @@ fn render_markdown(
         .unwrap();
     }
     out.push_str(
-        "\n## Binding Operations\n\n| ID | Capability | Output | Compiled prerequisites | Media type | Requires URI | Targets |\n| --- | --- | --- | --- | --- | --- | --- |\n",
+        "\n## Binding Operations\n\n| ID | Maturity | Capability | Output | Compiled prerequisites | Input kind | Media type | Requires URI | Targets |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n",
     );
     for operation in sorted_binding_operations(descriptor) {
         let capability = operation
@@ -1589,11 +1617,13 @@ fn render_markdown(
             .unwrap_or_else(|| "none".to_string());
         writeln!(
             out,
-            "| `{}` | {} | {} | {} | `{}` | {} | {} |",
+            "| `{}` | `{}` | {} | {} | {} | `{}` | `{}` | {} | {} |",
             operation.id,
+            operation.maturity,
             capability,
             output,
             code_list(operation.compiled_prerequisites.iter().map(String::as_str)),
+            operation.input_kind,
             operation.media_type,
             if operation.requires_uri { "yes" } else { "no" },
             code_list(operation.targets.iter().map(String::as_str))
@@ -1844,6 +1874,7 @@ mod tests {
         assert_eq!(semantic_operation.capability.0.as_deref(), None);
         assert_eq!(semantic_operation.output.0.as_deref(), None);
         assert!(semantic_operation.compiled_prerequisites.is_empty());
+        assert_eq!(semantic_operation.input_kind, "mermaid-source");
         assert!(!semantic_operation.requires_uri);
 
         for (operation_id, output_id, compiled_prerequisites) in [
@@ -1877,7 +1908,40 @@ mod tests {
     }
 
     #[test]
-    fn semantic_digest_covers_output_and_compilation_relationships() {
+    fn committed_binding_operations_expose_descriptor_owned_maturity() {
+        let value = committed_value();
+        let operations = value["binding_operations"]
+            .as_array()
+            .expect("binding operations must be an array");
+
+        for operation in operations {
+            let id = operation["id"]
+                .as_str()
+                .expect("binding operation id must be a string");
+            let expected = match id {
+                "describe-theme-support-json"
+                | "export-theme-preset-json"
+                | "materialize-theme-json" => "alpha",
+                _ => "stable",
+            };
+            assert_eq!(
+                operation["maturity"], expected,
+                "binding operation `{id}` must declare its canonical maturity"
+            );
+        }
+
+        let descriptor = committed_descriptor();
+        let digest = semantic_digest(&descriptor).unwrap();
+        let rust = render_rust(&descriptor, &digest).unwrap();
+        let web = render_web_typescript(&descriptor, &digest).unwrap();
+        let header = render_c_header(&descriptor, &digest).unwrap();
+        assert!(rust.contains("pub maturity: &'static str"));
+        assert!(web.contains("\"maturity\": \"alpha\""));
+        assert!(header.contains("const char *maturity;"));
+    }
+
+    #[test]
+    fn semantic_digest_covers_operation_maturity_and_compilation_relationships() {
         let descriptor = committed_descriptor();
         let baseline = semantic_digest(&descriptor).unwrap();
 
@@ -1889,6 +1953,15 @@ mod tests {
             .unwrap();
         png.compiled_prerequisites.clear();
 
+        assert_ne!(semantic_digest(&changed).unwrap(), baseline);
+
+        let mut changed = descriptor;
+        let theme_operation = changed
+            .binding_operations
+            .iter_mut()
+            .find(|operation| operation.id == "materialize-theme-json")
+            .unwrap();
+        theme_operation.maturity = "stable".to_string();
         assert_ne!(semantic_digest(&changed).unwrap(), baseline);
     }
 
@@ -1917,6 +1990,26 @@ mod tests {
         let semantic = binding_operation_index(&committed, "semantic-json");
         let png = binding_operation_index(&committed, "png");
         let svg = binding_operation_index(&committed, "svg");
+
+        let mut missing_maturity = committed.clone();
+        missing_maturity["binding_operations"][semantic]
+            .as_object_mut()
+            .unwrap()
+            .remove("maturity");
+        let error = validate_fixture(missing_maturity).unwrap_err();
+        assert!(
+            error.contains("missing field `maturity`"),
+            "unexpected diagnostic: {error}"
+        );
+
+        let mut invalid_maturity = committed.clone();
+        invalid_maturity["binding_operations"][semantic]["maturity"] = json!("Stable");
+        let error = validate_fixture(invalid_maturity).unwrap_err();
+        assert!(
+            error.contains(&format!("binding_operations[{semantic}].maturity"))
+                && error.contains("lowercase kebab-case"),
+            "unexpected diagnostic: {error}"
+        );
 
         let mut missing_capability = committed.clone();
         missing_capability["binding_operations"][semantic]

@@ -10,10 +10,22 @@ use merman_core::diagrams::timeline::{
 use std::borrow::Cow;
 
 mod config;
+mod css_binding;
+mod task_index;
+mod text_paint;
+mod theme;
+mod typography;
 
-pub(crate) use config::TimelineConfigView;
+use task_index::TimelineTaskIndex;
 
-const MAX_SECTIONS: i64 = 12;
+pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
+pub(crate) use css_binding::TimelineCssBinding;
+pub(crate) use text_paint::{TimelineTextPaintPlan, TimelineTextPaintReceipt};
+pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeReceipt};
+pub(crate) use typography::{TimelineTypographyThemePlan, TimelineTypographyThemeReceipt};
+
+pub(crate) const MERMAID_EVENT_RADIUS_PX: f64 = 5.0;
+pub(crate) const MERMAID_EVENT_RADIUS_TOKEN: &str = "5";
 
 const BASE_MARGIN: f64 = 50.0;
 const NODE_PADDING: f64 = 20.0;
@@ -39,12 +51,16 @@ pub(crate) fn default_use_max_width() -> bool {
     false
 }
 
-fn section_index(full_section: i64) -> i64 {
-    (full_section % MAX_SECTIONS) - 1
+fn section_index(full_section: i64, theme_color_limit: usize) -> i64 {
+    (full_section % theme_color_limit as i64) - 1
 }
 
-fn section_class(full_section: i64) -> String {
-    format!("section-{}", section_index(full_section))
+fn section_class(full_section: i64, theme_color_limit: usize) -> String {
+    if theme_color_limit == 0 {
+        "section-NaN".to_string()
+    } else {
+        format!("section-{}", section_index(full_section, theme_color_limit))
+    }
 }
 
 fn next_char_at(text: &str, idx: usize) -> Option<char> {
@@ -227,6 +243,7 @@ struct TimelineNodeRequest<'a> {
     kind: &'a str,
     label: &'a str,
     full_section: i64,
+    theme_color_limit: usize,
     x: f64,
     y: f64,
     content_width: f64,
@@ -244,6 +261,7 @@ fn compute_node(
         kind,
         label,
         full_section,
+        theme_color_limit,
         x,
         y,
         content_width,
@@ -269,7 +287,7 @@ fn compute_node(
         height,
         content_width: content_width.max(1.0),
         padding,
-        section_class: section_class(full_section),
+        section_class: section_class(full_section, theme_color_limit),
         label: label.to_string(),
         label_lines,
         kind: kind.to_string(),
@@ -341,30 +359,49 @@ fn expand_bounds_for_node_text(
     }
 }
 
-pub(crate) fn layout_timeline_diagram_typed(
+#[cfg(test)]
+pub(crate) fn layout_timeline_diagram_typed_with_resolved_typography(
     model: &TimelineDiagramRenderModel,
     effective_config: &serde_json::Value,
+    resolved_font_family_css: Option<&str>,
+    resolved_font_size_px: Option<f64>,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
+    let settings = TimelineConfigView::new(effective_config)
+        .layout_settings_with_resolved_typography(resolved_font_family_css, resolved_font_size_px);
+    layout_timeline_diagram_typed_with_binding(model, &settings, measurer)
+}
+
+pub(crate) fn layout_timeline_diagram_typed_with_binding(
+    model: &TimelineDiagramRenderModel,
+    settings: &config::TimelineLayoutSettings,
+    measurer: &dyn TextMeasurer,
+) -> Result<TimelineDiagramLayout> {
+    let task_index = TimelineTaskIndex::new(model)?;
     match model.direction {
         TimelineDirection::LeftToRight => {
-            layout_timeline_horizontal(model, effective_config, measurer)
+            layout_timeline_horizontal(model, &task_index, settings, measurer)
         }
-        TimelineDirection::TopDown => layout_timeline_vertical(model, effective_config, measurer),
+        TimelineDirection::TopDown => {
+            layout_timeline_vertical(model, &task_index, settings, measurer)
+        }
     }
 }
 
 fn layout_timeline_horizontal(
     model: &TimelineDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    task_index: &TimelineTaskIndex<'_>,
+    settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
-    let cfg = TimelineConfigView::new(effective_config).layout_settings();
+    let cfg = settings.clone();
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
+    let theme_color_limit = cfg.theme_color_limit;
+    let is_neo = cfg.is_neo;
 
     let left_margin = cfg.left_margin;
     let disable_multicolor = cfg.disable_multicolor;
@@ -439,12 +476,8 @@ fn layout_timeline_horizontal(
         let section_y = base_y;
 
         for (section_number, section_label) in model.sections.iter().enumerate() {
+            let tasks_for_section = task_index.tasks_for_section(section_number);
             let section_number = section_number as i64;
-            let tasks_for_section: Vec<&TimelineRenderTask> = model
-                .tasks
-                .iter()
-                .filter(|t| t.section == *section_label)
-                .collect();
             let tasks_for_section_count = tasks_for_section.len().max(1);
 
             let content_width = TASK_STEP_X * (tasks_for_section_count as f64) - 50.0;
@@ -453,6 +486,7 @@ fn layout_timeline_horizontal(
                     kind: "section",
                     label: section_label,
                     full_section: section_number,
+                    theme_color_limit,
                     x: master_x,
                     y: section_y,
                     content_width,
@@ -469,13 +503,14 @@ fn layout_timeline_horizontal(
             let mut task_x = master_x;
             let task_y = section_y + max_section_height + 50.0;
 
-            for task in &tasks_for_section {
+            for &task in tasks_for_section {
                 let full_section = section_number;
                 let task_node = compute_node(
                     TimelineNodeRequest {
                         kind: "task",
                         label: &task.task,
                         full_section,
+                        theme_color_limit,
                         x: task_x,
                         y: task_y,
                         content_width: task_content_width,
@@ -505,6 +540,7 @@ fn layout_timeline_horizontal(
                             kind: "event",
                             label: ev,
                             full_section,
+                            theme_color_limit,
                             x: task_x,
                             y: event_y,
                             content_width: task_content_width,
@@ -537,18 +573,18 @@ fn layout_timeline_horizontal(
             master_x += TASK_STEP_X * (tasks_for_section_count as f64);
         }
     } else {
-        let mut master_x = base_x;
-        let master_y = base_y;
-        let mut section_color: i64 = 0;
+        let mut orphan_x = base_x;
+        let mut orphan_section_color = 0;
 
-        for task in &model.tasks {
+        for &task in task_index.orphan_tasks() {
             let task_node = compute_node(
                 TimelineNodeRequest {
                     kind: "task",
                     label: &task.task,
-                    full_section: section_color,
-                    x: master_x,
-                    y: master_y,
+                    full_section: orphan_section_color,
+                    theme_color_limit,
+                    x: orphan_x,
+                    y: base_y,
                     content_width: task_content_width,
                     padding: NODE_PADDING,
                     max_height: max_task_height,
@@ -561,22 +597,23 @@ fn layout_timeline_horizontal(
 
             let connector = TimelineLineLayout {
                 kind: "task-events".to_string(),
-                x1: master_x + (task_node.width / 2.0),
-                y1: master_y + max_task_height,
-                x2: master_x + (task_node.width / 2.0),
-                y2: master_y + max_task_height + 100.0 + max_event_line_length + 100.0,
+                x1: orphan_x + (task_node.width / 2.0),
+                y1: base_y + max_task_height,
+                x2: orphan_x + (task_node.width / 2.0),
+                y2: base_y + max_task_height + 100.0 + max_event_line_length + 100.0,
             };
             all_lines_pre_title.push(connector.clone());
 
             let mut events: Vec<TimelineNodeLayout> = Vec::new();
-            let mut event_y = master_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
+            let mut event_y = base_y + EVENT_VERTICAL_OFFSET_FROM_TASK_Y;
             for ev in &task.events {
                 let event_node = compute_node(
                     TimelineNodeRequest {
                         kind: "event",
                         label: ev,
-                        full_section: section_color,
-                        x: master_x,
+                        full_section: orphan_section_color,
+                        theme_color_limit,
+                        x: orphan_x,
                         y: event_y,
                         content_width: task_content_width,
                         padding: NODE_PADDING,
@@ -597,9 +634,9 @@ fn layout_timeline_horizontal(
                 events,
             });
 
-            master_x += TASK_STEP_X;
+            orphan_x += TASK_STEP_X;
             if !disable_multicolor {
-                section_color += 1;
+                orphan_section_color += 1;
             }
         }
     }
@@ -630,7 +667,11 @@ fn layout_timeline_horizontal(
         .as_deref()
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty());
-    let title_x = pre_title_box_width / 2.0 - left_margin;
+    let title_x = if is_neo {
+        pre_min_x * 2.0 + left_margin
+    } else {
+        pre_title_box_width / 2.0 - left_margin
+    };
 
     let depth_y = if has_sections {
         max_section_height + max_task_height + 150.0
@@ -727,6 +768,7 @@ fn layout_vertical_tasks<'a>(
     max_task_height: f64,
     mut section_color: i64,
     advance_section_color: bool,
+    theme_color_limit: usize,
     text_style: &TextStyle,
     layout_font_size: f64,
     measurer: &dyn TextMeasurer,
@@ -745,6 +787,7 @@ fn layout_vertical_tasks<'a>(
                 kind: "task",
                 label: &task.task,
                 full_section: section_color,
+                theme_color_limit,
                 x: task_x,
                 y: task_y,
                 content_width: VERTICAL_NODE_CONTENT_WIDTH,
@@ -766,6 +809,7 @@ fn layout_vertical_tasks<'a>(
                     kind: "event",
                     label: event,
                     full_section: section_color,
+                    theme_color_limit,
                     x: events_x,
                     y: event_y,
                     content_width: VERTICAL_EVENT_CONTENT_WIDTH,
@@ -807,15 +851,17 @@ fn layout_vertical_tasks<'a>(
 
 fn layout_timeline_vertical(
     model: &TimelineDiagramRenderModel,
-    effective_config: &serde_json::Value,
+    task_index: &TimelineTaskIndex<'_>,
+    settings: &config::TimelineLayoutSettings,
     measurer: &dyn TextMeasurer,
 ) -> Result<TimelineDiagramLayout> {
     let _ = (model.acc_title.as_deref(), model.acc_descr.as_deref());
 
-    let cfg = TimelineConfigView::new(effective_config).layout_settings();
+    let cfg = settings.clone();
     let text_style = cfg.text_style;
     let render_font_size = text_style.font_size;
     let layout_font_size = cfg.layout_font_size;
+    let theme_color_limit = cfg.theme_color_limit;
     let left_margin = cfg.left_margin;
 
     let node_total_width = VERTICAL_NODE_CONTENT_WIDTH + VERTICAL_NODE_PADDING * 2.0;
@@ -876,24 +922,20 @@ fn layout_timeline_vertical(
     let timeline_x = base_x + left_width;
 
     let mut sections = Vec::new();
-    let mut orphan_tasks = Vec::new();
     let mut all_nodes_pre_title = Vec::new();
     let mut all_lines_pre_title = Vec::new();
 
-    if has_sections {
+    let orphan_tasks = if has_sections {
         let mut master_y = base_y;
         for (section_number, section_label) in model.sections.iter().enumerate() {
+            let tasks_for_section = task_index.tasks_for_section(section_number);
             let section_number = section_number as i64;
-            let tasks_for_section = model
-                .tasks
-                .iter()
-                .filter(|task| task.section == *section_label)
-                .collect::<Vec<_>>();
             let section_node = compute_node(
                 TimelineNodeRequest {
                     kind: "section",
                     label: section_label,
                     full_section: section_number,
+                    theme_color_limit,
                     x: timeline_x - left_width,
                     y: master_y,
                     content_width: section_content_width,
@@ -914,6 +956,7 @@ fn layout_timeline_vertical(
                 max_task_height,
                 section_number,
                 false,
+                theme_color_limit,
                 &text_style,
                 layout_font_size,
                 measurer,
@@ -935,22 +978,24 @@ fn layout_timeline_vertical(
                 tasks,
             });
         }
+        Vec::new()
     } else {
-        orphan_tasks = layout_vertical_tasks(
-            model.tasks.iter(),
+        layout_vertical_tasks(
+            task_index.orphan_tasks().iter().copied(),
             timeline_x,
             base_y,
             task_spacing,
             max_task_height,
             0,
             !cfg.disable_multicolor,
+            theme_color_limit,
             &text_style,
             layout_font_size,
             measurer,
             &mut all_nodes_pre_title,
             &mut all_lines_pre_title,
-        );
-    }
+        )
+    };
 
     let pre_title_bounds = bounds_from_nodes_and_lines(&all_nodes_pre_title, &all_lines_pre_title);
     let has_pre_title_content = pre_title_bounds.is_some();
@@ -1010,9 +1055,9 @@ fn layout_timeline_vertical(
     let activity_line = TimelineLineLayout {
         kind: "activity".to_string(),
         x1: timeline_x,
-        y1: base_y - render_font_size * 2.0,
+        y1: base_y - layout_font_size * 2.0,
         x2: timeline_x,
-        y2: content_max_y + render_font_size * 0.5 + 20.0,
+        y2: content_max_y + layout_font_size * 0.5 + 20.0,
     };
     let mut all_lines_full = all_lines_pre_title;
     all_lines_full.push(activity_line.clone());
@@ -1077,12 +1122,111 @@ mod tests {
         };
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
         let measurer = session.text_measurer(TextMeasurementPhase::Layout);
-        layout_timeline_diagram_typed(
+        layout_timeline_diagram_typed_with_resolved_typography(
             model,
             parsed.metadata().effective_config.as_value(),
+            None,
+            None,
             &measurer,
         )
         .expect("layout ok")
+    }
+
+    fn layout_timeline_model(model: &TimelineDiagramRenderModel) -> TimelineDiagramLayout {
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let measurer = session.text_measurer(TextMeasurementPhase::Layout);
+        layout_timeline_diagram_typed_with_resolved_typography(
+            model,
+            &serde_json::json!({}),
+            None,
+            None,
+            &measurer,
+        )
+        .expect("layout ok")
+    }
+
+    fn timeline_task(
+        id: i64,
+        section: &str,
+        section_index: Option<usize>,
+        task: &str,
+    ) -> TimelineRenderTask {
+        TimelineRenderTask {
+            id,
+            section: section.to_string(),
+            section_index,
+            task_type: section.to_string(),
+            task: task.to_string(),
+            score: 0,
+            events: Vec::new(),
+        }
+    }
+
+    fn section_task_labels(layout: &TimelineDiagramLayout) -> Vec<Vec<&str>> {
+        layout
+            .sections
+            .iter()
+            .map(|section| {
+                section
+                    .tasks
+                    .iter()
+                    .map(|task| task.node.label.as_str())
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn duplicate_section_labels_keep_authored_task_occurrences() {
+        for source in [
+            concat!(
+                "timeline\n",
+                "section Repeated\n",
+                "First\n",
+                "section Repeated\n",
+                "Second\n",
+                "Third\n",
+            ),
+            concat!(
+                "timeline TD\n",
+                "section Repeated\n",
+                "First\n",
+                "section Repeated\n",
+                "Second\n",
+                "Third\n",
+            ),
+        ] {
+            let layout = layout_timeline(source);
+
+            assert_eq!(
+                section_task_labels(&layout),
+                vec![vec!["First"], vec!["Second", "Third"]]
+            );
+        }
+    }
+
+    #[test]
+    fn sectionless_orphan_tasks_keep_model_order() {
+        for direction in [TimelineDirection::LeftToRight, TimelineDirection::TopDown] {
+            let mut model = TimelineDiagramRenderModel::default();
+            model.direction = direction;
+            model.tasks = vec![
+                timeline_task(0, "", None, "First"),
+                timeline_task(1, "Legacy", None, "Second"),
+                timeline_task(2, "", None, "Third"),
+            ];
+
+            let layout = layout_timeline_model(&model);
+
+            assert_eq!(
+                layout
+                    .orphan_tasks
+                    .iter()
+                    .map(|task| task.node.label.as_str())
+                    .collect::<Vec<_>>(),
+                ["First", "Second", "Third"]
+            );
+        }
     }
 
     #[test]

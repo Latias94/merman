@@ -233,7 +233,7 @@ fn rewrite_attrs(attrs: &mut Vec<Attribute>, context: &mut Expansion<'_>) -> Res
             ));
         } else if let Some(deferred) = deferred_doc(attr, context.helper)? {
             all_documents.extend(deferred.documents);
-        } else if attr.path().is_ident("doc") {
+        } else if attr.path().is_ident("doc") || attr.path().is_ident("cfg_attr") {
             dynamic = true;
         }
     }
@@ -265,8 +265,9 @@ fn rewrite_attrs(attrs: &mut Vec<Attribute>, context: &mut Expansion<'_>) -> Res
             }
             documents.extend(deferred.documents);
         } else {
-            // Dynamic doc expressions retain their position and are not evaluated by this adapter.
-            if attr.path().is_ident("doc") {
+            // Rust owns conditional expansion. A cfg_attr may emit docs (even through
+            // another cfg_attr), so keep it between the original literal groups.
+            if attr.path().is_ident("doc") || attr.path().is_ident("cfg_attr") {
                 flush_documents(
                     &mut documents,
                     &mut insert_at,

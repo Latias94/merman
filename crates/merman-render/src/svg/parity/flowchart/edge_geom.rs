@@ -48,6 +48,7 @@ pub(super) struct ClippedEdgeRoute {
 #[derive(Clone, Copy)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeomRequest<'a> {
     pub(super) ctx: &'a FlowchartRenderCtx<'a>,
+    pub(super) key: crate::flowchart::FlowchartEdgeKey,
     pub(super) edge: &'a crate::flowchart::FlowEdge,
     pub(super) origin_x: f64,
     pub(super) origin_y: f64,

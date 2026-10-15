@@ -2,7 +2,9 @@
 
 use super::heuristic::append_text_width_em;
 use super::html_wrap::{HtmlWhiteSpace, NormalizedHtmlText, plan_html_lines};
-use super::wrap::split_graphemes_to_width;
+#[cfg(test)]
+use super::wrap::GraphemeSplitStats as LongWordSplitStats;
+use super::wrap::visit_grapheme_lines_to_width;
 use super::{
     TextMeasurer, TextMetrics, TextStyle, WrapMode, trim_end_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
@@ -29,6 +31,12 @@ enum LineWidthSource<'a> {
     Heuristic,
     UniformAdvanceEm(f64),
     Callback(&'a TextWidthPxFn),
+}
+
+struct LongWordSplitResult<'a> {
+    tail: Option<(&'a str, LineWidthAccumulator)>,
+    #[cfg(test)]
+    stats: LongWordSplitStats,
 }
 
 #[derive(Clone, Copy)]
@@ -361,6 +369,13 @@ impl DeterministicTextMeasurer {
         })
     }
 
+    pub(crate) fn normalized_text_lines_for_wrap_mode(
+        text: &str,
+        _wrap_mode: WrapMode,
+    ) -> Vec<String> {
+        Self::normalized_text_lines(text)
+    }
+
     pub(crate) fn split_line_to_words(text: &str) -> Vec<String> {
         // Mirrors Mermaid's `splitLineToWords` fallback behavior when `Intl.Segmenter` is absent:
         // split by spaces, then re-add the spaces as separate tokens (preserving multiple spaces).
@@ -382,17 +397,43 @@ impl DeterministicTextMeasurer {
         !trim_html_collapsible_ascii_whitespace(text).is_empty()
     }
 
-    fn split_token_to_width<'t, W: LineWidthProvider>(
-        token: &'t str,
+    fn split_long_token_to_lines<'a, W: LineWidthProvider>(
+        token: &'a str,
         max_width_px: f64,
         width_model: &mut W,
-    ) -> Result<(&'t str, &'t str), W::Error> {
+        out: &mut Vec<String>,
+    ) -> Result<LongWordSplitResult<'a>, W::Error> {
         let mut width = LineWidthAccumulator::default();
-        split_graphemes_to_width(token, max_width_px, |candidate, grapheme| {
-            let (candidate_width, candidate_width_px) =
-                width_model.candidate_width_px(width, candidate, grapheme)?;
-            width = candidate_width;
-            Ok(candidate_width_px)
+        let visit = visit_grapheme_lines_to_width(
+            token,
+            max_width_px,
+            |candidate, grapheme, new_line| -> Result<f64, W::Error> {
+                if new_line {
+                    width = LineWidthAccumulator::default();
+                }
+                let (candidate_width, candidate_width_px) =
+                    width_model.candidate_width_px(width, candidate, grapheme)?;
+                width = candidate_width;
+                Ok(candidate_width_px)
+            },
+            |line| {
+                out.push(line.to_string());
+                true
+            },
+        )?;
+        let tail = if visit.tail.is_empty() {
+            None
+        } else if width_model.width_px(visit.tail)? > max_width_px {
+            // An over-wide grapheme advances the queue together with its zero-width scalars.
+            out.push(visit.tail.to_string());
+            None
+        } else {
+            Some((visit.tail, width))
+        };
+        Ok(LongWordSplitResult {
+            tail,
+            #[cfg(test)]
+            stats: visit.stats,
         })
     }
 
@@ -442,14 +483,12 @@ impl DeterministicTextMeasurer {
             }
             if !break_long_words {
                 out.push(tok);
-            } else {
-                // Split at the largest grapheme boundary that fits. Zero-width graphemes do not
-                // consume line capacity, and an over-wide grapheme still advances the queue.
-                let (head, tail) = Self::split_token_to_width(&tok, max_width_px, width_model)?;
-                out.push(head.to_string());
-                if !tail.is_empty() {
-                    tokens.push_front(tail.to_string());
-                }
+            } else if let Some((tail, tail_width)) =
+                Self::split_long_token_to_lines(&tok, max_width_px, width_model, &mut out)?.tail
+            {
+                cur.clear();
+                cur.push_str(tail);
+                cur_width = tail_width;
             }
         }
 
@@ -928,7 +967,8 @@ mod tests {
 
     #[test]
     fn long_word_splitting_keeps_zero_width_scalars_with_visible_text() {
-        let (head, tail) = DeterministicTextMeasurer::split_token_to_width(
+        let mut completed = Vec::new();
+        let result = DeterministicTextMeasurer::split_long_token_to_lines(
             "W\u{0301}W",
             8.0,
             &mut LineWidthModel {
@@ -937,10 +977,12 @@ mod tests {
                 style: &TextStyle::default(),
                 html_text: false,
             },
+            &mut completed,
         )
         .unwrap();
-        assert_eq!(head, "W\u{0301}");
-        assert_eq!(tail, "W");
+        let tail = result.tail;
+        assert_eq!(completed, ["W\u{0301}", "W"]);
+        assert!(tail.is_none(), "both visible graphemes exceed the line");
 
         let metrics = DeterministicTextMeasurer::default().measure_wrapped(
             "\u{0301}WW",
@@ -991,14 +1033,136 @@ mod tests {
             ("🇨🇳🇺🇸", "🇨🇳", "🇺🇸"),
             ("1️⃣2️⃣", "1️⃣", "2️⃣"),
         ] {
-            let (head, tail) =
-                DeterministicTextMeasurer::split_token_to_width(text, 16.0, &mut width_model)
-                    .unwrap();
-            assert_eq!((head, tail), (first, second), "text={text:?}");
+            let mut completed = Vec::new();
+            let result = DeterministicTextMeasurer::split_long_token_to_lines(
+                text,
+                16.0,
+                &mut width_model,
+                &mut completed,
+            )
+            .unwrap();
+            let (tail, _) = result
+                .tail
+                .expect("the final emoji grapheme fits on the next line");
+            assert_eq!(completed, [first], "text={text:?}");
+            assert_eq!(tail, second, "text={text:?}");
 
             let metrics = measurer.measure_wrapped(text, &style, Some(16.0), WrapMode::SvgLike);
             assert_eq!(metrics.line_count, 2, "text={text:?}: {metrics:?}");
             assert_eq!(metrics.width, 16.0, "text={text:?}: {metrics:?}");
+        }
+    }
+
+    #[test]
+    fn long_word_split_work_is_linear_in_graphemes_and_output_bytes() {
+        let mut width_model = LineWidthModel {
+            font_size: 10.0,
+            source: LineWidthSource::Heuristic,
+            style: &TextStyle::default(),
+            html_text: false,
+        };
+
+        for grapheme_count in [128, 256, 512] {
+            let text = "W".repeat(grapheme_count);
+            let mut lines = Vec::new();
+            let result = DeterministicTextMeasurer::split_long_token_to_lines(
+                &text,
+                8.5,
+                &mut width_model,
+                &mut lines,
+            )
+            .unwrap();
+            let (tail, _) = result.tail.expect("the final grapheme fits exactly");
+            lines.push(tail.to_string());
+
+            assert_eq!(lines.len(), grapheme_count);
+            assert!(lines.iter().all(|line| line == "W"));
+            assert_eq!(lines.concat(), text);
+            assert_eq!(result.stats.grapheme_visits, grapheme_count);
+            assert_eq!(result.stats.partitioned_bytes, text.len());
+        }
+    }
+
+    #[test]
+    fn long_word_split_work_accounts_for_bytes_inside_one_grapheme() {
+        let mut width_model = LineWidthModel {
+            font_size: 10.0,
+            source: LineWidthSource::Heuristic,
+            style: &TextStyle::default(),
+            html_text: false,
+        };
+
+        for combining_scalars in [128, 256, 512] {
+            let text = format!("W{}", "\u{0301}".repeat(combining_scalars));
+            let mut lines = Vec::new();
+            let result = DeterministicTextMeasurer::split_long_token_to_lines(
+                &text,
+                8.0,
+                &mut width_model,
+                &mut lines,
+            )
+            .unwrap();
+
+            assert!(
+                result.tail.is_none(),
+                "the over-wide grapheme is emitted directly"
+            );
+            assert_eq!(lines, [text.as_str()]);
+            assert_eq!(result.stats.grapheme_visits, 1);
+            assert_eq!(result.stats.partitioned_bytes, text.len());
+        }
+    }
+
+    #[test]
+    fn long_word_final_tail_can_share_its_line_with_following_tokens() {
+        let measurer = DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_size: 10.0,
+            ..TextStyle::default()
+        };
+        let mut width_model = LineWidthModel {
+            font_size: 10.0,
+            source: LineWidthSource::Heuristic,
+            style: &TextStyle::default(),
+            html_text: false,
+        };
+        let lines =
+            DeterministicTextMeasurer::wrap_line("WWW i", 15.0, true, &mut width_model).unwrap();
+
+        assert_eq!(lines, ["W", "W", "W i"]);
+        let metrics = measurer.measure_wrapped("WWW i", &style, Some(15.0), WrapMode::SvgLike);
+        assert_eq!(metrics.line_count, lines.len());
+        assert_eq!(metrics.width.to_bits(), 14.6_f64.to_bits());
+    }
+
+    #[test]
+    fn long_word_final_tail_discards_collapsible_invisible_prefix() {
+        for invisible_prefix in ["\t ", "\r "] {
+            for mut width_model in [
+                LineWidthModel {
+                    font_size: 10.0,
+                    source: LineWidthSource::Heuristic,
+                    style: &TextStyle::default(),
+                    html_text: false,
+                },
+                LineWidthModel {
+                    font_size: 10.0,
+                    source: LineWidthSource::UniformAdvanceEm(0.6),
+                    style: &TextStyle::default(),
+                    html_text: false,
+                },
+            ] {
+                let text = format!("{invisible_prefix}WWW");
+                let lines =
+                    DeterministicTextMeasurer::wrap_line(&text, 10.0, true, &mut width_model)
+                        .unwrap();
+
+                assert_eq!(lines, ["W", "W", "W"], "text={text:?}");
+                assert!(
+                    lines.iter().all(|line| width_model.width_px(line) <= 10.0),
+                    "text={text:?}, lines={lines:?}"
+                );
+            }
         }
     }
 

@@ -33,10 +33,11 @@ impl<'a> IshikawaConfigView<'a> {
         }
     }
 
-    pub(crate) fn render_settings(&self) -> IshikawaRenderSettings {
-        IshikawaRenderSettings {
-            font_size_css: config_css_number_or_string(self.effective_config, &["fontSize"]),
-        }
+    pub(crate) fn stylesheet_font_size_css(&self) -> Option<String> {
+        // Mermaid's diagram stylesheet receives `themeVariables` as its style options, while the
+        // deterministic layout continues to read the root `fontSize`.
+        config_css_number_or_string(self.effective_config, &["themeVariables", "fontSize"])
+            .or_else(|| config_css_number_or_string(self.effective_config, &["fontSize"]))
     }
 
     fn ishikawa_bool(&self, key: &str) -> Option<bool> {
@@ -53,10 +54,6 @@ pub(crate) struct IshikawaLayoutSettings {
     pub(crate) padding: f64,
     pub(crate) use_max_width: bool,
     pub(crate) font_size: f64,
-}
-
-pub(crate) struct IshikawaRenderSettings {
-    pub(crate) font_size_css: Option<String>,
 }
 
 #[cfg(test)]
@@ -105,12 +102,31 @@ mod tests {
     }
 
     #[test]
-    fn ishikawa_render_settings_preserve_css_font_size_spelling() {
+    fn ishikawa_stylesheet_font_size_preserves_theme_variable_spelling() {
+        let cfg = json!({
+            "fontSize": "18px !important;",
+            "themeVariables": {
+                "fontSize": "24px"
+            }
+        });
+        assert_eq!(
+            IshikawaConfigView::new(&cfg)
+                .stylesheet_font_size_css()
+                .as_deref(),
+            Some("24px")
+        );
+    }
+
+    #[test]
+    fn ishikawa_stylesheet_font_size_falls_back_to_root_value() {
         let cfg = json!({
             "fontSize": "18px !important;"
         });
-        let settings = IshikawaConfigView::new(&cfg).render_settings();
-
-        assert_eq!(settings.font_size_css.as_deref(), Some("18px !important"));
+        assert_eq!(
+            IshikawaConfigView::new(&cfg)
+                .stylesheet_font_size_css()
+                .as_deref(),
+            Some("18px !important")
+        );
     }
 }

@@ -1,0 +1,7 @@
+stateDiagram-v2
+    direction TB
+    [*] --> rinse
+    rinse --> polish: remove residue
+    polish --> inspect: verify finish
+    inspect --> release: ship clean
+    release --> [*]

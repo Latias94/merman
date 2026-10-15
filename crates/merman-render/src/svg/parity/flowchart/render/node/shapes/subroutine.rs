@@ -6,7 +6,7 @@ use crate::svg::parity::flowchart::OptionalStyleAttr;
 use crate::svg::parity::fmt_display;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
 ) {
     // Mermaid `subroutine.ts` (non-handDrawn): polygon via `insertPolygonShape(...)`.

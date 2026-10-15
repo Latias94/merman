@@ -2408,6 +2408,7 @@ version = "0.9.0"
 dependencies = [
  "base64 0.23.1",
  "criterion",
+ "data-encoding",
  "merman-analysis",
  "merman-ascii",
  "merman-ascii-test-contracts",
@@ -2416,6 +2417,8 @@ dependencies = [
  "merman-export",
  "merman-fixture-render-context",
  "merman-render",
+ "merman-theme-authoring-fixtures",
+ "merman-theme-contract",
  "png",
  "roxmltree 0.21.1",
  "rustybuzz",
@@ -2451,6 +2454,7 @@ dependencies = [
 name = "merman-ascii"
 version = "0.9.0"
 dependencies = [
+ "data-encoding",
  "dugong",
  "merman-core",
  "rustc-hash",
@@ -2475,11 +2479,14 @@ name = "merman-bindings-core"
 version = "0.9.0"
 dependencies = [
  "criterion",
+ "data-encoding",
  "merman",
  "merman-analysis",
  "merman-ascii-test-contracts",
  "merman-core",
  "merman-render",
+ "merman-theme-authoring-fixtures",
+ "merman-theme-contract",
  "roxmltree 0.21.1",
  "serde",
  "serde_json",
@@ -2501,6 +2508,7 @@ dependencies = [
  "merman",
  "merman-analysis",
  "merman-ascii-test-contracts",
+ "merman-bindings-core",
  "merman-doc",
  "merman-render",
  "png",
@@ -2600,6 +2608,7 @@ dependencies = [
  "svgtypes 0.16.1",
  "thiserror 2.0.21",
  "tiny-skia",
+ "ttf-parser",
  "unicase",
  "unicode-script",
  "usvg",
@@ -2610,6 +2619,7 @@ name = "merman-ffi"
 version = "0.9.0"
 dependencies = [
  "cc",
+ "data-encoding",
  "libloading 0.9.0",
  "merman",
  "merman-bindings-core",
@@ -2621,6 +2631,7 @@ dependencies = [
 name = "merman-fixture-render-context"
 version = "0.9.0"
 dependencies = [
+ "data-encoding",
  "json5",
  "serde",
  "serde-saphyr",
@@ -2641,6 +2652,7 @@ dependencies = [
 name = "merman-lsp"
 version = "0.9.0"
 dependencies = [
+ "data-encoding",
  "futures",
  "merman-analysis",
  "merman-core",
@@ -2664,6 +2676,7 @@ version = "0.9.0"
 dependencies = [
  "base64 0.23.1",
  "cssparser 0.38.0",
+ "data-encoding",
  "data-url",
  "dugong",
  "futures",
@@ -2671,9 +2684,11 @@ dependencies = [
  "kurbo 0.13.1",
  "libm",
  "manatee",
+ "memchr",
  "merman-core",
  "merman-fixture-render-context",
  "merman-layout-elk",
+ "merman-theme-contract",
  "merman-unicode-linebreak",
  "pulldown-cmark",
  "quick-xml",
@@ -2688,6 +2703,7 @@ dependencies = [
  "ryu-js",
  "serde",
  "serde_json",
+ "sha2",
  "svgtypes 0.16.1",
  "thiserror 2.0.21",
  "unicode-segmentation",
@@ -2706,6 +2722,37 @@ dependencies = [
  "roxmltree 0.21.1",
  "serde_json",
  "syn 3.0.8",
+ "tempfile",
+]
+
+[[package]]
+name = "merman-theme-acceptance"
+version = "0.9.0"
+dependencies = [
+ "image",
+ "merman",
+ "merman-export",
+ "merman-render",
+ "png",
+ "roxmltree 0.21.1",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "merman-theme-authoring-fixtures"
+version = "0.9.0"
+
+[[package]]
+name = "merman-theme-contract"
+version = "0.9.0"
+dependencies = [
+ "merman-theme-authoring-fixtures",
+ "serde",
+ "serde_json",
+ "serde_json_canonicalizer",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
@@ -4029,9 +4076,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.45"
+version = "0.23.46"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
+checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
@@ -4305,6 +4352,17 @@ dependencies = [
  "serde",
  "serde_core",
  "zmij",
+]
+
+[[package]]
+name = "serde_json_canonicalizer"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fe52319a927259afbfa5180c5157cd8167edfd3e8c254f9558c7fef44c5649f2"
+dependencies = [
+ "ryu-js",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -5865,6 +5923,7 @@ dependencies = [
  "base64 0.23.1",
  "brotli",
  "cssparser 0.38.0",
+ "data-encoding",
  "dugong",
  "flate2",
  "fs2",

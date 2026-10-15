@@ -32,6 +32,7 @@ pub(in crate::svg::parity::flowchart) fn missing_section_points(
 
 pub(in crate::svg::parity::flowchart) fn missing_section_label_position(
     ctx: &FlowchartRenderCtx<'_>,
+    key: crate::flowchart::FlowchartEdgeKey,
     edge: &crate::model::LayoutEdge,
     origin_x: f64,
     origin_y: f64,
@@ -39,7 +40,7 @@ pub(in crate::svg::parity::flowchart) fn missing_section_label_position(
     if !ctx.uses_elk_adapter_dom || !edge.points.is_empty() {
         return None;
     }
-    let source = ctx.edges_by_id.get(edge.id.as_str())?;
+    let source = ctx.edges_by_key.get(&key)?;
     let points = missing_section_points(ctx, source, origin_x, origin_y)?;
     let first = points.first()?;
     let last = points.last()?;

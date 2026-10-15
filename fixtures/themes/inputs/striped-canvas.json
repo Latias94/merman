@@ -1,0 +1,46 @@
+{
+  "themeInputVersion": 2,
+  "fixtureId": "fixture-striped-canvas",
+  "tokens": null,
+  "typography": null,
+  "canvas": [
+    {
+      "kind": "linear-gradient",
+      "angleDegrees": 135,
+      "repetition": "repeating",
+      "tileWidthPx": null,
+      "tileHeightPx": null,
+      "stops": [
+        {
+          "offsetPercent": 0,
+          "color": "#cbd5e155"
+        },
+        {
+          "offsetPercent": 25,
+          "color": "#cbd5e155"
+        },
+        {
+          "offsetPercent": 26,
+          "color": "#cbd5e100"
+        },
+        {
+          "offsetPercent": 50,
+          "color": "#cbd5e100"
+        },
+        {
+          "offsetPercent": 51,
+          "color": "#cbd5e155"
+        },
+        {
+          "offsetPercent": 100,
+          "color": "#cbd5e155"
+        }
+      ]
+    }
+  ],
+  "blendMode": null,
+  "nodeStyle": null,
+  "semanticRules": [],
+  "svgEffects": [],
+  "residualMechanisms": []
+}

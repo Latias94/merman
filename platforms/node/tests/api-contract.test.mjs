@@ -23,6 +23,7 @@ import {
   parseRuntimeCatalogJsonText,
 } from "../src/errors.mjs";
 import {
+  BINDING_OPTIONS_SCHEMA_VERSION,
   BINDING_OPTION_GROUP_SPECS,
   BINDING_OPERATION_EXPECTATIONS,
   METADATA_SPECS,
@@ -187,6 +188,40 @@ test("operation errors preserve structured resource details", () => {
   assert.deepEqual(error.resourceDetails, resource);
 });
 
+test("resource error declarations match the runtime detail shape", () => {
+  const declarations = readFileSync(path.join(nodeRoot, "src", "index.d.ts"), "utf8");
+  const resourceDetails = declarations.match(
+    /export interface MermanResourceErrorDetails\s*{(?<body>[^}]*)}/s,
+  );
+  assert.ok(resourceDetails?.groups?.body);
+  assert.match(resourceDetails.groups.body, /readonly\s+cause:\s*string;/);
+
+  const declaredFields = [...resourceDetails.groups.body.matchAll(/readonly\s+(\w+)\s*:/g)]
+    .map((match) => match[1])
+    .sort();
+  const runtimeFields = Object.keys(
+    new MermanOperationError({
+      code: 10,
+      code_name: "MERMAN_RESOURCE_LIMIT_EXCEEDED",
+      kind: "generic",
+      capability_id: null,
+      details: {
+        resource: {
+          cause: "arithmetic_overflow",
+          limit_id: "max_layout_work_units",
+          phase: "layout_model",
+          actual: "18446744073709551615",
+          max: 800_000,
+          profile: "interactive",
+        },
+      },
+      message: "layout work overflowed",
+    }).resourceDetails,
+  ).sort();
+
+  assert.deepEqual(declaredFields, runtimeFields);
+});
+
 test("operation errors preserve structured diagnostic details", () => {
   const diagnostic = {
     code: "merman.test",
@@ -246,7 +281,7 @@ function runtimeCatalog(overrides = {}) {
     schema_version: 1,
     transport_api_version: 1,
     package_version: PACKAGE_VERSION,
-    options_schema_versions: [2],
+    options_schema_versions: [BINDING_OPTIONS_SCHEMA_VERSION],
     payload_schemas: [
       { id: "binding-result", version: 1 },
       { id: "operation-metadata", version: 1 },
@@ -261,7 +296,7 @@ function runtimeCatalog(overrides = {}) {
     capabilities: {
       capability_ids: ["layout-cytoscape", "layout-elk", "svg"],
       output_ids: ["svg"],
-      operation_ids: ["layout-json", "semantic-json", "svg", "svg-plan-json"],
+      operation_ids: [...NODE_WIRE_CONTRACT.artifact.operation_ids],
       system_adapter_ids: [],
       text_measurement: {
         protocol_version: TEXT_MEASUREMENT_PROTOCOL_VERSION,
@@ -583,7 +618,7 @@ test("default construction is explicit deterministic interactive policy", async 
 
   assert.deepEqual(factory.createdWith, [
     {
-      version: 2,
+      version: BINDING_OPTIONS_SCHEMA_VERSION,
       runtime_policy: "deterministic",
       resources: { profile: "interactive" },
     },
@@ -599,6 +634,17 @@ test("default construction is explicit deterministic interactive policy", async 
       uri: null,
     },
   ]);
+  await engine.dispose();
+});
+
+test("construction preserves an explicit null text measurement selector", async () => {
+  const factory = transportFactory();
+  const engine = await createNodeEngine(
+    { bindingOptions: { environment: { text_measurement: null } } },
+    { loadTransport: factory.loadTransport },
+  );
+
+  assert.deepEqual(factory.createdWith[0].environment, { text_measurement: null });
   await engine.dispose();
 });
 
@@ -906,6 +952,38 @@ test("named metadata and SVG-plan helpers preserve text JSON payloads", async ()
   );
 });
 
+test("theme catalog metadata preserves the shared open qualification IDs verbatim", async () => {
+  const vectors = JSON.parse(readFileSync(path.join(
+    repositoryRoot,
+    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/qualified-cells.json",
+  ), "utf8"));
+  const presets = JSON.parse(readFileSync(path.join(
+    repositoryRoot,
+    "crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/preset-catalog.json",
+  ), "utf8"));
+  for (const { id, cell } of vectors) {
+    const entries = structuredClone(presets);
+    entries[0].qualified_cells = [cell];
+    const payload = JSON.stringify({ schema_version: 1, presets: entries });
+    const calls = [];
+    const factory = transportFactory({
+      metadataJson(metadataId) {
+        calls.push(metadataId);
+        return payload;
+      },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    try {
+      const result = engine.metadataJson("theme-catalog");
+      assert.equal(result, payload, id);
+      assert.deepEqual(JSON.parse(result).presets[0].qualified_cells, [cell], id);
+      assert.deepEqual(calls, ["theme-catalog"], id);
+    } finally {
+      await engine.dispose();
+    }
+  }
+});
+
 test("metadata helper rejects non-text, oversized, unadvertised, and typed-error responses", async () => {
   const directObjectFactory = transportFactory({
     metadataJson(id) {
@@ -1190,7 +1268,12 @@ test("runtime catalog follows descriptor-owned SVG compiled prerequisites", asyn
   assert.deepEqual(
     NODE_BINDING_OPERATIONS,
     descriptor.binding_operations
-      .map(({ id, compiled_prerequisites }) => ({ id, compiled_prerequisites }))
+      .map(({ id, maturity, compiled_prerequisites, input_kind }) => ({
+        id,
+        maturity,
+        compiled_prerequisites,
+        input_kind,
+      }))
       .sort((left, right) => left.id.localeCompare(right.id)),
   );
   assert.notEqual(pipelineOperations.length, 0);
@@ -1618,7 +1701,7 @@ test("public TypeScript declarations cover the generic operation API", () => {
     /export declare class MermanEngine\s*{[^}]*private constructor\(\);/s,
   );
   assert.doesNotMatch(declarations, /"deterministic"\s*\|\s*"native"/);
-  assert.match(declarations, /text_measurement\?:\s*"deterministic"/);
+  assert.match(declarations, /text_measurement\?:\s*"deterministic"\s*\|\s*null;/);
   assert.doesNotMatch(declarations, /text_measurement[^;]*(?:"vendored"|"parity")/);
   assert.match(declarations, /class MermanInvalidTransportError extends MermanError/);
   assert.match(declarations, /type MermanResourceCount\s*=\s*number\s*\|\s*string/);
@@ -1683,7 +1766,7 @@ test("binding options preserve the shared profile vocabulary and reject host mea
       fixed_today: "2026-07-23",
     }),
     {
-      version: 2,
+      version: BINDING_OPTIONS_SCHEMA_VERSION,
       runtime_policy: "deterministic",
       resources: { profile: "trusted-native" },
       fixed_today: "2026-07-23",
@@ -1692,7 +1775,10 @@ test("binding options preserve the shared profile vocabulary and reject host mea
 
   assert.throws(
     () => normalizeBindingOptions({ version: 1 }),
-    /unsupported binding options schema version `1`; expected 2/i,
+    new RegExp(
+      `unsupported binding options schema version \`1\`; expected ${BINDING_OPTIONS_SCHEMA_VERSION}`,
+      "i",
+    ),
   );
   assert.throws(
     () => normalizeBindingOptions({ runtime_policy: "native" }),
@@ -1703,6 +1789,12 @@ test("binding options preserve the shared profile vocabulary and reject host mea
       environment: { text_measurement: "deterministic" },
     }).environment.text_measurement,
     "deterministic",
+  );
+  assert.equal(
+    normalizeBindingOptions({
+      environment: { text_measurement: null },
+    }).environment.text_measurement,
+    null,
   );
   for (const textMeasurement of ["vendored", "parity"]) {
     assert.throws(
@@ -1780,6 +1872,47 @@ test("capability-gated errors survive while advertised-operation contradictions 
   await engine.dispose();
 });
 
+test("advertised SVG preserves missing content capabilities in sync and async calls", async () => {
+  for (const capabilityId of ["embedded-fonts", "math", "future-content"]) {
+    const response = failure({ kind: "missing-capability", capabilityId });
+    const factory = transportFactory({
+      async execute() { return response; },
+      executeSync() { return response; },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    try {
+      const check = (error) => {
+        assert.ok(error instanceof MermanOperationError);
+        assert.equal(error.codeName, "MERMAN_UNSUPPORTED_OPERATION");
+        assert.equal(error.kind, "missing-capability");
+        assert.equal(error.capabilityId, capabilityId);
+        return true;
+      };
+      await assert.rejects(engine.renderSvg("flowchart TD\nA"), check);
+      assert.throws(() => engine.renderSvgSync("flowchart TD\nA"), check);
+    } finally {
+      await engine.dispose();
+    }
+  }
+});
+
+test("missing advertised capabilities still contradict the runtime catalog", async () => {
+  for (const capabilityId of ["svg", "layout-elk"]) {
+    const response = failure({ kind: "missing-capability", capabilityId });
+    const factory = transportFactory({
+      async execute() { return response; },
+      executeSync() { return response; },
+    });
+    const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+    try {
+      await assert.rejects(engine.renderSvg("flowchart TD\nA"), MermanInvalidTransportError);
+      assert.throws(() => engine.renderSvgSync("flowchart TD\nA"), MermanInvalidTransportError);
+    } finally {
+      await engine.dispose();
+    }
+  }
+});
+
 test("cancellation responses must match this invocation control", async () => {
   for (const {
     label,
@@ -1830,7 +1963,7 @@ test("cancellation responses must match this invocation control", async () => {
   }
 });
 
-test("generic execution covers the complete 14-operation matrix", async () => {
+test("generic execution covers the complete descriptor operation matrix", async () => {
   const expectations = new Map(
     BINDING_OPERATION_EXPECTATIONS.map((expectation) => [
       expectation.operation_id,

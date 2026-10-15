@@ -1,8 +1,5 @@
 //! Flowchart v2 manual input/file shapes.
 
-use std::fmt::Write as _;
-
-use crate::flowchart::flowchart_effective_text_style_for_node_classes;
 use crate::svg::parity::{escape_xml_display, fmt, fmt_display};
 
 use super::super::geom::path_from_points;
@@ -10,7 +7,7 @@ use super::super::helpers;
 use super::super::roughjs::roughjs_paths_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -18,6 +15,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         None,
         label.text,
         label.label_type,
@@ -33,7 +31,26 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
         ((w + metrics.height) / 2.0, 0.0),
     ];
     let path_data = path_from_points(&pts);
-    if let Some((fill_d, stroke_d)) =
+    if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
+        let _ = write!(
+            out,
+            r#"<g transform="translate({},{})" class="outer-path" style="{}">"#,
+            fmt_display(-h / 2.0),
+            fmt_display(h / 2.0),
+            escape_xml_display(common.rough_group_style),
+        );
+        helpers::write_hand_drawn_path_pair(out, common, &fill_d, &stroke_d);
+        out.push_str("</g>");
+    } else if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<path d="{}" class="outer-path" transform="translate({}, {})" style="{}"/>"#,
+            escape_xml_display(&path_data),
+            fmt_display(-h / 2.0),
+            fmt_display(h / 2.0),
+            escape_xml_display(common.style),
+        );
+    } else if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -66,11 +83,18 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
             escape_xml_display(common.style)
         );
         out.push_str("</g>");
+    } else {
+        let _ = write!(
+            out,
+            r#"<path d="{}" class="outer-path" style="{}"/>"#,
+            escape_xml_display(&path_data),
+            escape_xml_display(common.style),
+        );
     }
 
-    let node_text_style = flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
-        ctx.class_defs,
+    let node_text_style = super::super::helpers::node_source_text_style(
+        ctx,
+        Some(common.node_id),
         common.node_classes,
         common.node_styles,
     );
@@ -84,7 +108,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_file(
 }
 
 pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &crate::svg::parity::flowchart::types::FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &mut super::super::FlowchartNodeLabelState<'_>,
@@ -92,6 +116,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
 ) {
     let metrics = helpers::compute_node_label_metrics(
         ctx,
+        common.node_id,
         Some(common.layout_node),
         label.text,
         label.label_type,
@@ -107,7 +132,24 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
     let y = -h / 2.0;
     let points = vec![(x, y), (x, y + h), (x + w, y + h), (x + w, y - h / 2.0)];
     let path_data = path_from_points(&points);
-    if let Some((fill_d, stroke_d)) =
+    if let Some((fill_d, stroke_d)) = helpers::hand_drawn_path_pair(common, details, &path_data) {
+        let _ = write!(
+            out,
+            r#"<g class="basic label-container outer-path" transform="translate(0,{})" style="{}">"#,
+            fmt(h / 4.0),
+            escape_xml_display(common.rough_group_style),
+        );
+        helpers::write_hand_drawn_path_pair(out, common, &fill_d, &stroke_d);
+        out.push_str("</g>");
+    } else if common.look_is_hand_drawn() {
+        let _ = write!(
+            out,
+            r#"<path d="{}" class="basic label-container outer-path" transform="translate(0,{})" style="{}"/>"#,
+            escape_xml_display(&path_data),
+            fmt(h / 4.0),
+            escape_xml_display(common.style),
+        );
+    } else if let Some((fill_d, stroke_d)) =
         super::super::helpers::timed_node_roughjs(common.timing, details, || {
             roughjs_paths_for_svg_path(
                 &path_data,
@@ -139,11 +181,19 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_manual_input(
             escape_xml_display(common.style)
         );
         out.push_str("</g>");
+    } else {
+        let _ = write!(
+            out,
+            r#"<path d="{}" class="basic label-container outer-path" transform="translate(0,{})" style="{}"/>"#,
+            escape_xml_display(&path_data),
+            fmt(h / 4.0),
+            escape_xml_display(common.style),
+        );
     }
 
-    let node_text_style = flowchart_effective_text_style_for_node_classes(
-        &ctx.text_style,
-        ctx.class_defs,
+    let node_text_style = super::super::helpers::node_source_text_style(
+        ctx,
+        Some(common.node_id),
         common.node_classes,
         common.node_styles,
     );

@@ -2,7 +2,7 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1 as const;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed" as const;
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:5b258cdc24e14dbc01dc19276c0c3d3477a4c3db20fba0214c87f6fd2333d00c" as const;
 
 export const WEB_CAPABILITIES = [
   {
@@ -62,89 +62,141 @@ export const WEB_OUTPUTS = [
 export const WEB_BINDING_OPERATIONS = [
   {
     "id": "analysis-facts-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "analysis-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "ascii",
+    "maturity": "stable",
     "capability": "ascii",
     "output": "ascii",
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "text/plain; charset=utf-8",
     "requires_uri": false
   },
   {
+    "id": "describe-theme-support-json",
+    "maturity": "alpha",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "input_kind": "theme-support-query-json",
+    "media_type": "application/json",
+    "requires_uri": false
+  },
+  {
     "id": "document-analysis-facts-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": true
   },
   {
     "id": "document-analysis-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": true
   },
   {
     "id": "edge-geometry-json",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
+    "media_type": "application/json",
+    "requires_uri": false
+  },
+  {
+    "id": "export-theme-preset-json",
+    "maturity": "alpha",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "input_kind": "theme-preset-id",
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "layout-json",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
+    "media_type": "application/json",
+    "requires_uri": false
+  },
+  {
+    "id": "materialize-theme-json",
+    "maturity": "alpha",
+    "capability": "svg",
+    "output": null,
+    "compiled_prerequisites": [],
+    "input_kind": "theme-definition-json",
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "semantic-json",
+    "maturity": "stable",
     "capability": null,
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "svg",
+    "maturity": "stable",
     "capability": "svg",
     "output": "svg",
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "image/svg+xml",
     "requires_uri": false
   },
   {
     "id": "svg-plan-json",
+    "maturity": "stable",
     "capability": "svg",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   },
   {
     "id": "validation-json",
+    "maturity": "stable",
     "capability": "analysis",
     "output": null,
     "compiled_prerequisites": [],
+    "input_kind": "mermaid-source",
     "media_type": "application/json",
     "requires_uri": false
   }
@@ -173,10 +225,13 @@ export const WEB_BINDING_OPERATION_IDS = [
   "analysis-facts-json",
   "analysis-json",
   "ascii",
+  "describe-theme-support-json",
   "document-analysis-facts-json",
   "document-analysis-json",
   "edge-geometry-json",
+  "export-theme-preset-json",
   "layout-json",
+  "materialize-theme-json",
   "semantic-json",
   "svg",
   "svg-plan-json",

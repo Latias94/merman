@@ -2,8 +2,8 @@ use super::builtin::util::{
     SvgTagScanner, checkpoint_loop, next_svg_quoted_attr_with_checkpoints, start_tag_name,
 };
 use super::preset::SvgPipelinePreset;
+use crate::DiagramFamilyId;
 use crate::environment::{RenderSession, RoutedTextMeasurer, TextMeasurementPhase};
-use crate::family::RenderFamilyKind;
 use crate::resources::{
     RenderResourcePolicy, ResourceLimitCause, ResourceLimitExceeded, ResourceLimitOverride,
     ResourceLimitPhase,
@@ -12,7 +12,7 @@ use merman_core::OperationPhase;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SvgPostprocessMetadata {
-    family_kind: Option<RenderFamilyKind>,
+    family_id: Option<DiagramFamilyId>,
     diagram_type: Option<String>,
     diagram_title: Option<String>,
     svg_id: Option<String>,
@@ -25,7 +25,7 @@ impl SvgPostprocessMetadata {
 
     /// Recovers descriptive metadata from the root SVG without granting family capabilities.
     ///
-    /// Family-specific passes consume an explicitly supplied [`RenderFamilyKind`], never metadata
+    /// Family-specific passes consume an explicitly supplied [`DiagramFamilyId`], never metadata
     /// inferred from SVG text.
     pub fn from_svg(svg: &str) -> Self {
         let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
@@ -99,8 +99,8 @@ impl SvgPostprocessMetadata {
     }
 
     /// Supplies the renderer-owned family identity required by family-specific built-in passes.
-    pub(crate) fn with_family_kind(mut self, family_kind: RenderFamilyKind) -> Self {
-        self.family_kind = Some(family_kind);
+    pub(crate) fn with_family_id(mut self, family_id: DiagramFamilyId) -> Self {
+        self.family_id = Some(family_id);
         self
     }
 
@@ -141,8 +141,8 @@ impl SvgPostprocessMetadata {
         self.diagram_type.as_deref()
     }
 
-    pub fn family_kind(&self) -> Option<RenderFamilyKind> {
-        self.family_kind
+    pub fn family_id(&self) -> Option<DiagramFamilyId> {
+        self.family_id
     }
 
     pub fn diagram_title(&self) -> Option<&str> {
@@ -310,8 +310,8 @@ impl<'a> SvgPostprocessContext<'a> {
         self.metadata.diagram_type()
     }
 
-    pub fn family_kind(&self) -> Option<RenderFamilyKind> {
-        self.metadata.family_kind()
+    pub fn family_id(&self) -> Option<DiagramFamilyId> {
+        self.metadata.family_id()
     }
 
     pub fn diagram_title(&self) -> Option<&'a str> {
@@ -356,7 +356,7 @@ mod tests {
 
         assert_eq!(metadata.svg_id(), Some("diagram-1"));
         assert_eq!(metadata.diagram_type(), Some("quadrantChart"));
-        assert_eq!(metadata.family_kind(), None);
+        assert_eq!(metadata.family_id(), None);
     }
 
     #[test]
@@ -367,7 +367,7 @@ mod tests {
 
         assert_eq!(metadata.svg_id(), None);
         assert_eq!(metadata.diagram_type(), None);
-        assert_eq!(metadata.family_kind(), None);
+        assert_eq!(metadata.family_id(), None);
     }
 
     #[test]
@@ -380,7 +380,7 @@ mod tests {
 
             assert_eq!(metadata.svg_id(), None, "{svg}");
             assert_eq!(metadata.diagram_type(), None, "{svg}");
-            assert_eq!(metadata.family_kind(), None, "{svg}");
+            assert_eq!(metadata.family_id(), None, "{svg}");
         }
     }
 
@@ -392,7 +392,7 @@ mod tests {
 
         assert_eq!(metadata.svg_id(), Some("root"));
         assert_eq!(metadata.diagram_type(), Some("quadrantChart"));
-        assert_eq!(metadata.family_kind(), None);
+        assert_eq!(metadata.family_id(), None);
     }
 
     #[test]
@@ -400,6 +400,6 @@ mod tests {
         let metadata = SvgPostprocessMetadata::new().with_diagram_type("quadrantChart");
 
         assert_eq!(metadata.diagram_type(), Some("quadrantChart"));
-        assert_eq!(metadata.family_kind(), None);
+        assert_eq!(metadata.family_id(), None);
     }
 }

@@ -187,7 +187,7 @@ impl XyChartDiagramRenderModel {
         out.insert("type".to_string(), Value::String(meta.diagram_type.clone()));
         out.insert(
             "config".to_string(),
-            crate::config::clone_value_nonrecursive(meta.effective_config.as_value()),
+            crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value()),
         );
         Value::Object(out)
     }

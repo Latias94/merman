@@ -60,8 +60,8 @@ subgraph Group
 end
 "#,
             expected_fragments: &[
-                r#"<g class="cluster" id="look-flowchart-Group" data-look="neo""#,
-                r#"id="look-flowchart-flowchart-A-0" transform="translate"#,
+                r#"data-id="Group" data-et="cluster" data-look="neo""#,
+                r#"data-look="neo" data-id="A" data-et="node""#,
             ],
         },
         LookDomCase {
@@ -201,6 +201,26 @@ mindmap
             case.name
         );
     }
+}
+
+#[test]
+fn unsupported_look_values_cannot_escape_into_css_selectors() {
+    let svg = render_svg(
+        "look-unsafe",
+        r##"%%{init: {"look": "neo\"]{color:red}"}}%%
+requirementDiagram
+  requirement req1 {
+    id: 1
+    text: Visible requirement
+    risk: high
+    verifymethod: analysis
+  }
+"##,
+    );
+
+    assert!(svg.contains(r#"data-look="neo""#), "{svg}");
+    assert!(!svg.contains(r#"neo\"]{color:red"#), "{svg}");
+    assert!(!svg.contains(r#"[data-look="neo"]{color:red"#), "{svg}");
 }
 
 #[test]

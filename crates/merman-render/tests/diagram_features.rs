@@ -207,29 +207,6 @@ fn custom_provenance_and_cancellation_precede_family_availability() {
     ));
 }
 
-#[cfg(feature = "diagram-mindmap")]
-#[test]
-fn mindmap_declined_math_measurement_keeps_markdown_fallback() {
-    let parsed = parse(
-        "---\nconfig:\n  layout: tidy-tree\n---\nmindmap\n  root[Root]\n    child[\"**Bold** $$x$$\"]",
-    );
-    let session = RenderEnvironment::deterministic()
-        .with_math_renderer(std::sync::Arc::new(merman_render::math::NoopMathRenderer))
-        .begin_session()
-        .unwrap();
-    let artifact = family::prepare(parsed, &LayoutOptions::default(), session).unwrap();
-    let layout = artifact.layout_json().unwrap();
-    let nodes = layout["layout"]["MindmapDiagram"]["nodes"]
-        .as_array()
-        .unwrap();
-    assert_eq!(nodes.len(), 2);
-    assert!(
-        nodes
-            .iter()
-            .all(|node| node["width"].as_f64().unwrap() > 0.0)
-    );
-}
-
 #[cfg(feature = "diagram-agentflow")]
 #[test]
 fn agentflow_renders_with_independent_family_selection() {

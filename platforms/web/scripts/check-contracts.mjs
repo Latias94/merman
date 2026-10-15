@@ -60,10 +60,8 @@ const stableWrapperOnlyExports = new Set([
   "isAsciiDiagramType",
   "isBindingErrorPayload",
   "isBindingStatusCodeName",
-  "isBundledThemePresetName",
   "isDiagramType",
   "isThemeName",
-  "normalizeBundledThemePresetName",
   "normalizeThemeName",
 ]);
 const stablePublicTypes = new Set([
@@ -222,6 +220,11 @@ const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
   ["AnalysisFactsResult", "version", "2"],
 ];
+const requiredTypePropertyAnnotations = [
+  ["MermaidThemeCompatibility", "theme", "ThemeName"],
+  ["MermaidSiteConfig", "themeCSS", "never"],
+  ["MermaidSiteConfig", "secure", "never"],
+];
 
 let failed = false;
 failed ||= reportMissing(
@@ -326,7 +329,7 @@ const expectedRuntimeStateProperties = new Set([
   "supportedDiagramsCache",
   "diagramFamilyCapabilitiesCache",
   "runtimeCatalogCache",
-  "presentationCatalogCache",
+  "themeCatalogCache",
   "supportedThemesCache",
 ]);
 failed ||= reportMissing(
@@ -365,14 +368,29 @@ failed ||= reportPolicyFailure(
       .has("parse"),
 );
 failed ||= reportPolicyFailure(
-  "check-contracts: SVG options must use presentation instead of the removed host_theme group",
+  "check-contracts: SVG options must use theme instead of the removed presentation and host_theme groups",
   contract
     .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
     .has("host_theme") ||
+    contract
+      .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
+      .has("presentation") ||
     !contract
       .exportedTypePropertyNames(publicEntry, "SvgBindingOptions")
-      .has("presentation"),
+      .has("theme"),
 );
+{
+  const svgOptions = contract.exportedTypePropertyNames(publicEntry, "SvgOptions");
+  failed ||= reportPolicyFailure(
+    "check-contracts: general Web bindings must not expose host-owned CSS controls",
+    [
+      "scoped_css",
+      "scopedCss",
+      "css_override_policy",
+      "cssOverridePolicy",
+    ].some((property) => svgOptions.has(property)),
+  );
+}
 failed ||= reportPolicyFailure(
   "check-contracts: legacy single-document workspace symbol names must be removed",
   publicValueExports.has("editorWorkspaceSymbols") ||
@@ -419,6 +437,18 @@ for (const [interfaceName, propertyName, expectedType] of requiredTypePropertyTy
   );
   failed ||= reportPolicyFailure(
     `check-contracts: ${interfaceName}.${propertyName} must use type ${expectedType}`,
+    actualType !== expectedType,
+  );
+}
+
+for (const [interfaceName, propertyName, expectedType] of requiredTypePropertyAnnotations) {
+  const actualType = contract.exportedTypePropertyAnnotationText(
+    publicEntry,
+    interfaceName,
+    propertyName,
+  );
+  failed ||= reportPolicyFailure(
+    `check-contracts: ${interfaceName}.${propertyName} must reference ${expectedType}`,
     actualType !== expectedType,
   );
 }

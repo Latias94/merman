@@ -45,52 +45,56 @@ class ReleaseChangelogTests(unittest.TestCase):
                     require_date=True,
                 )
 
-    def test_unversioned_first_heading_is_valid_during_development(self) -> None:
+    def test_development_allows_pending_notes_before_the_latest_version(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.write_projection(root)
             path = root / "CHANGELOG.md"
             path.write_text(
-                "# Changelog\n\n## [Unreleased]\n\n## [0.8.0-alpha.6] - 2026-09-04\n",
+                "# Changelog\n\n## [Unreleased]\n\n- Pending change.\n\n"
+                "## [0.8.0-alpha.6] - 2026-09-02\n",
                 encoding="utf-8",
             )
             verify.verify_repository(root, "0.8.0-alpha.6")
-            with self.assertRaisesRegex(
-                verify.ReleaseChangelogError,
-                "must be versioned and dated",
-            ):
-                verify.verify_repository(root, "0.8.0-alpha.6", require_date=True)
 
-    def test_unreleased_does_not_hide_other_projection_version_mismatches(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            self.write_projection(root)
-            (root / "CHANGELOG.md").write_text("## [Unreleased]\n", encoding="utf-8")
-            (root / "platforms/node/CHANGELOG.md").write_text(
-                "## [0.8.0-alpha.5] - 2026-07-23\n", encoding="utf-8"
-            )
-            with self.assertRaisesRegex(verify.ReleaseChangelogError, "starts with"):
-                verify.verify_repository(root, "0.8.0-alpha.6")
-
-    def test_unreleased_cannot_carry_a_release_date(self) -> None:
-        with self.assertRaisesRegex(verify.ReleaseChangelogError, "must not have a date/status"):
-            verify.first_release_heading("## [Unreleased] - 2026-09-10\n", Path("CHANGELOG.md"))
-
-    def test_versioned_heading_still_requires_a_date_or_status(self) -> None:
-        with self.assertRaisesRegex(verify.ReleaseChangelogError, "has no date/status"):
-            verify.first_release_heading("## [0.8.0-alpha.6]\n", Path("CHANGELOG.md"))
-
-    def test_dated_projections_pass_immutable_preflight(self) -> None:
+    def test_immutable_preflight_rejects_pending_notes_in_any_position(self) -> None:
+        released = "## [0.8.0-alpha.6] - 2026-09-02\n"
+        pending = "## [Unreleased]\n\n- API 8 has not shipped.\n"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self.write_projection(root)
             for relative in verify.CHANGELOG_PATHS:
                 path = root / relative
-                path.write_text(
-                    path.read_text(encoding="utf-8").replace("Unreleased", "2026-09-10"),
-                    encoding="utf-8",
-                )
+                path.write_text(path.read_text().replace(" - Unreleased", " - 2026-09-02"))
             verify.verify_repository(root, "0.8.0-alpha.6", require_date=True)
+            for text in [pending + released, released + pending]:
+                (root / "CHANGELOG.md").write_text(text, encoding="utf-8")
+                with self.subTest(text=text), self.assertRaisesRegex(
+                    verify.ReleaseChangelogError, "Unreleased section",
+                ):
+                    verify.verify_repository(root, "0.8.0-alpha.6", require_date=True)
+
+    def test_pending_notes_do_not_hide_a_wrong_latest_release(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.write_projection(root)
+            path = root / "CHANGELOG.md"
+            path.write_text(
+                "## [Unreleased]\n\n## [0.8.0-alpha.5] - 2026-08-01\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(verify.ReleaseChangelogError, "expected"):
+                verify.verify_repository(root, "0.8.0-alpha.6")
+
+    def test_pending_notes_do_not_replace_a_version_or_date(self) -> None:
+        for text, message in [
+            ("## [Unreleased]\n", "no release heading"),
+            ("## [Unreleased]\n\n## [0.8.0-alpha.6]\n", "no date/status"),
+        ]:
+            with self.subTest(text=text), self.assertRaisesRegex(
+                verify.ReleaseChangelogError, message,
+            ):
+                verify.first_release_heading(text, Path("CHANGELOG.md"))
 
     def test_invalid_status_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

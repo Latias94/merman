@@ -90,15 +90,58 @@ fn node<'a>(layout: &'a FlowchartLayout, id: &str) -> &'a LayoutNode {
 }
 
 fn source_node<'a>(document: &'a roxmltree::Document<'_>, id: &str) -> roxmltree::Node<'a, 'a> {
-    document
+    let mut matches = document.descendants().filter(|group| {
+        group.has_tag_name("g")
+            && group.attribute("data-id") == Some(id)
+            && group.attribute("data-et") == Some("node")
+    });
+    let node = matches.next().expect("rendered source node");
+    assert!(matches.next().is_none(), "duplicate source node occurrence");
+    let prefix = format!(
+        "{}-merman-flowchart-document-node-",
+        document.root_element().attribute("id").unwrap(),
+    );
+    let ordinal = node
+        .attribute("id")
+        .unwrap()
+        .strip_prefix(&prefix)
+        .expect("node DOM identity belongs to its canonical document owner");
+    assert!(!ordinal.is_empty() && ordinal.bytes().all(|byte| byte.is_ascii_digit()));
+    let ids = document
         .descendants()
-        .find(|group| {
-            group.has_tag_name("g")
-                && group
-                    .attribute("id")
-                    .is_some_and(|value| value.contains(&format!("flowchart-{id}-")))
-        })
-        .expect("rendered source node")
+        .filter_map(|node| node.attribute("id"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        ids.len(),
+        ids.iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        "duplicate SVG DOM IDs"
+    );
+    node
+}
+
+#[cfg(feature = "layout-elk")]
+fn upstream_source_node<'a>(
+    document: &'a roxmltree::Document<'_>,
+    id: &str,
+) -> roxmltree::Node<'a, 'a> {
+    let mut matches = document.descendants().filter(|group| {
+        group.has_tag_name("g")
+            && group.attribute("id").is_some_and(|value| {
+                value
+                    .split_once(&format!("-flowchart-{id}-"))
+                    .is_some_and(|(scope, ordinal)| {
+                        scope == document.root_element().attribute("id").unwrap()
+                            && !ordinal.is_empty()
+                            && ordinal.bytes().all(|byte| byte.is_ascii_digit())
+                    })
+            })
+    });
+    let node = matches.next().expect("pinned upstream source node");
+    assert!(matches.next().is_none(), "duplicate pinned source node");
+    node
 }
 
 fn label_dimensions(document: &roxmltree::Document<'_>, id: &str, style: &TextStyle) -> (f64, f64) {
@@ -255,12 +298,28 @@ fn hand_drawn_circle_fixture_preserves_pinned_rough_groups_and_ring_order() {
     assert!(node(&minimum, "R").width > node(&natural, "R").width);
     // The existing roughr boundary stores stroke width as f32; the browser uses a JS Number.
     // Assert each exact representation instead of accepting arbitrary numeric drift.
-    for (svg, circle_stroke_width) in [(svg.as_str(), f64::from(1.3_f32)), (upstream, 1.3)] {
+    for (svg, circle_stroke_width, canonical_ids) in [
+        (svg.as_str(), f64::from(1.3_f32), true),
+        (upstream, 1.3, false),
+    ] {
         let document = roxmltree::Document::parse(svg).unwrap();
-        let circle = shape(&document, "A");
+        let source_node = |id| {
+            if canonical_ids {
+                source_node(&document, id)
+            } else {
+                upstream_source_node(&document, id)
+            }
+        };
+        let shape = |id| {
+            source_node(id)
+                .children()
+                .find(roxmltree::Node::is_element)
+                .expect("shape precedes label")
+        };
+        let circle = shape("A");
         assert_eq!(circle.attribute("class"), Some("basic label-container"));
         assert_rough_ring(circle, circle_stroke_width);
-        let double = shape(&document, "B");
+        let double = shape("B");
         assert_eq!(double.attribute("class"), Some("default"));
         let rings: Vec<_> = double
             .children()
@@ -270,12 +329,9 @@ fn hand_drawn_circle_fixture_preserves_pinned_rough_groups_and_ring_order() {
         assert_rough_ring(rings[0], 2.5);
         assert_rough_ring(rings[1], 1.5);
         for id in ["A", "B"] {
-            assert_eq!(
-                source_node(&document, id).attribute("data-look"),
-                Some("handDrawn")
-            );
+            assert_eq!(source_node(id).attribute("data-look"), Some("handDrawn"));
             assert!(
-                !source_node(&document, id)
+                !source_node(id)
                     .descendants()
                     .any(|node| node.has_tag_name("circle"))
             );

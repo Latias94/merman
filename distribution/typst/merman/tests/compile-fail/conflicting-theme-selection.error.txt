@@ -1,0 +1,1 @@
+merman options must not contain both `diagram-theme` and `theme-preset`

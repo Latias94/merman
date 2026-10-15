@@ -35,7 +35,7 @@ fn render_with_profile(
     profile: RenderResourceProfile,
     parse_options: ParseOptions,
     pipeline: Option<SvgPipeline>,
-) -> Result<Option<String>, merman::RenderError> {
+) -> Result<Option<String>, Box<merman::RenderError>> {
     let policy = RenderResourcePolicy::for_profile(profile);
     let renderer = Renderer::new()
         .with_parse_options(parse_options)
@@ -71,16 +71,40 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
     .unwrap_or_else(|| panic!("{name}: no diagram detected"))
 }
 
+fn fallback_content<'a, 'input>(group: roxmltree::Node<'a, 'input>) -> roxmltree::Node<'a, 'input> {
+    let instance = group
+        .children()
+        .find(|node| node.has_tag_name("use"))
+        .expect("fallback instance must reference its isolated content");
+    let id = instance
+        .attribute("href")
+        .and_then(|href| href.strip_prefix('#'))
+        .expect("fallback use must have a local href");
+    let mut definitions = group
+        .document()
+        .descendants()
+        .filter(|node| node.attribute("id") == Some(id));
+    let content = definitions.next().expect("fallback href must resolve");
+    assert!(
+        definitions.next().is_none(),
+        "fallback content id must be unique"
+    );
+    assert!(
+        content.ancestors().any(|node| node.has_tag_name("defs")
+            && node.parent() == Some(group.document().root_element())),
+        "fallback content must live in root definitions"
+    );
+    content
+}
+
 fn fallback_text_style(svg: &str, label: &str) -> String {
     let document = roxmltree::Document::parse(svg).expect("resvg-safe output should be XML");
     document
         .descendants()
+        .filter(|group| group.attribute("data-merman-foreignobject") == Some("fallback"))
+        .flat_map(|group| fallback_content(group).descendants())
         .find(|node| {
-            node.has_tag_name("text")
-                && node.ancestors().any(|ancestor| {
-                    ancestor.attribute("data-merman-foreignobject") == Some("fallback")
-                })
-                && node.text().is_some_and(|text| text.trim() == label)
+            node.has_tag_name("text") && node.text().is_some_and(|text| text.trim() == label)
         })
         .and_then(|node| node.attribute("style"))
         .map(str::to_owned)
@@ -174,7 +198,7 @@ fn zed_issue_fixtures_render_typed_resvg_safe() {
             .descendants()
             .filter(|node| node.attribute("data-merman-foreignobject") == Some("fallback"))
             .map(|group| {
-                let rows: Vec<_> = group
+                let rows: Vec<_> = fallback_content(group)
                     .descendants()
                     .filter(|node| node.has_tag_name("text"))
                     .map(|node| node.text().unwrap_or(""))
@@ -265,7 +289,7 @@ fn zed_resvg_safe_flowchart_fallback_soft_wraps_html_node_labels() {
             return None;
         }
 
-        let rows = group
+        let rows = fallback_content(group)
             .descendants()
             .filter(|node| node.has_tag_name("text"))
             .map(|node| {

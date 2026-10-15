@@ -750,28 +750,28 @@ fn parse_analysis_options(options_json: Option<&str>) -> Result<AnalysisOptions,
             format!("failed to decode normalized editor options_json: {err}"),
         )
     })?;
-    let max_source_bytes = normalized_editor_max_source_bytes(&normalized, ceiling)?;
+    let resource_limits = normalized_editor_analysis_resource_limits(&normalized, ceiling)?;
 
-    let mut analysis_value = if options_json.is_empty() {
-        serde_json::Value::Object(serde_json::Map::new())
-    } else {
-        serde_json::from_str::<serde_json::Value>(options_json).map_err(|err| {
-            BindingError::new(
-                BindingStatus::OptionsJsonError,
-                format!("invalid options_json: {err}"),
-            )
-        })?
-    };
+    let mut analysis_value = normalized;
     prepare_binding_options_for_analysis(&mut analysis_value);
     let options = merman_analysis::analysis_options_from_json_value(&analysis_value)
         .map_err(|err| BindingError::new(BindingStatus::InvalidArgument, err.to_string()))?;
-    Ok(options.with_max_source_bytes(Some(max_source_bytes)))
+    Ok(options
+        .with_max_source_bytes(Some(resource_limits.max_source_bytes))
+        .with_max_document_diagrams(Some(resource_limits.max_document_diagrams)))
 }
 
 #[derive(Debug, Clone, Copy)]
 struct EditorResourceCeiling {
     profile_id: &'static str,
     max_source_bytes: usize,
+    max_document_diagrams: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct EditorAnalysisResourceLimits {
+    max_source_bytes: usize,
+    max_document_diagrams: usize,
 }
 
 fn editor_resource_ceiling() -> Result<EditorResourceCeiling, BindingError> {
@@ -781,17 +781,24 @@ fn editor_resource_ceiling() -> Result<EditorResourceCeiling, BindingError> {
         .get_or_init(|| {
             let resources = crate::wasm_runtime_catalog().resources;
             let profile_id = resources.general_binding_default_profile;
-            let max_source_bytes = resources
+            let profile = resources
                 .profiles
                 .iter()
-                .find(|profile| profile.id == profile_id)?
+                .find(|profile| profile.id == profile_id)?;
+            let max_source_bytes = profile
                 .limits
                 .get("max_source_bytes")
+                .copied()
+                .flatten()?;
+            let max_document_diagrams = profile
+                .limits
+                .get(merman_analysis::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID)
                 .copied()
                 .flatten()?;
             Some(EditorResourceCeiling {
                 profile_id,
                 max_source_bytes,
+                max_document_diagrams,
             })
         })
         .as_ref()
@@ -799,15 +806,15 @@ fn editor_resource_ceiling() -> Result<EditorResourceCeiling, BindingError> {
         .ok_or_else(|| {
             BindingError::new(
                 BindingStatus::InternalError,
-                "WASM runtime catalog default resource profile must define max_source_bytes",
+                "WASM runtime catalog default resource profile must define all editor analysis limits",
             )
         })
 }
 
-fn normalized_editor_max_source_bytes(
+fn normalized_editor_analysis_resource_limits(
     normalized: &serde_json::Value,
     ceiling: EditorResourceCeiling,
-) -> Result<usize, BindingError> {
+) -> Result<EditorAnalysisResourceLimits, BindingError> {
     let root = normalized.as_object().ok_or_else(|| {
         BindingError::new(
             BindingStatus::InternalError,
@@ -828,10 +835,87 @@ fn normalized_editor_max_source_bytes(
             )
         })?;
 
+    let profile_id = resources
+        .get("profile")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or(ceiling.profile_id);
+    let catalog = crate::wasm_runtime_catalog();
+    let profile = catalog
+        .resources
+        .profiles
+        .iter()
+        .find(|profile| profile.id == profile_id)
+        .ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InternalError,
+                format!("normalized editor resource profile `{profile_id}` is absent from the WASM runtime catalog"),
+            )
+        })?;
+    let max_source_bytes = normalized_editor_analysis_limit(
+        resources,
+        profile,
+        "max_source_bytes",
+        ceiling.max_source_bytes,
+    )?;
+    let mut max_document_diagrams = None;
+    for descriptor in merman_analysis::ANALYSIS_RESOURCE_LIMIT_DESCRIPTORS {
+        match descriptor.stable_id {
+            merman_analysis::MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID => {
+                max_document_diagrams = Some(normalized_editor_analysis_limit(
+                    resources,
+                    profile,
+                    descriptor.stable_id,
+                    ceiling.max_document_diagrams,
+                )?);
+            }
+            unknown => {
+                return Err(BindingError::new(
+                    BindingStatus::InternalError,
+                    format!(
+                        "WASM editor analysis resource projection has no owner for `{unknown}`"
+                    ),
+                ));
+            }
+        }
+    }
+    let max_document_diagrams = max_document_diagrams.ok_or_else(|| {
+        BindingError::new(
+            BindingStatus::InternalError,
+            "WASM editor analysis resource descriptors omitted max_document_diagrams",
+        )
+    })?;
+
+    Ok(EditorAnalysisResourceLimits {
+        max_source_bytes,
+        max_document_diagrams,
+    })
+}
+
+fn normalized_editor_analysis_limit(
+    resources: &serde_json::Map<String, serde_json::Value>,
+    profile: &merman_bindings_core::RuntimeResourceProfile,
+    limit_id: &str,
+    ceiling: usize,
+) -> Result<usize, BindingError> {
+    let profile_value = profile
+        .limits
+        .get(limit_id)
+        .copied()
+        .flatten()
+        .ok_or_else(|| {
+            BindingError::new(
+                BindingStatus::InternalError,
+                format!(
+                    "WASM runtime catalog profile `{}` must define {limit_id}",
+                    profile.id
+                ),
+            )
+        })?;
+
     match resources
         .get("limits")
         .and_then(serde_json::Value::as_object)
-        .and_then(|limits| limits.get("max_source_bytes"))
+        .and_then(|limits| limits.get(limit_id))
     {
         Some(value) => value
             .as_u64()
@@ -839,10 +923,10 @@ fn normalized_editor_max_source_bytes(
             .ok_or_else(|| {
                 BindingError::new(
                     BindingStatus::InternalError,
-                    "normalized max_source_bytes must fit usize",
+                    format!("normalized {limit_id} must fit usize"),
                 )
             }),
-        None => Ok(ceiling.max_source_bytes),
+        None => Ok(profile_value.min(ceiling)),
     }
 }
 
@@ -979,9 +1063,11 @@ mod tests {
         let ceiling = editor_resource_ceiling().expect("WASM editor resource ceiling");
         assert_eq!(ceiling.profile_id, "interactive");
         assert_eq!(ceiling.max_source_bytes, 2 * 1024 * 1024);
+        assert_eq!(ceiling.max_document_diagrams, 256);
 
         let options = parse_analysis_options(None).expect("default editor analysis options");
         assert_eq!(options.max_source_bytes(), Some(ceiling.max_source_bytes));
+        assert_eq!(options.max_document_diagrams(), Some(256));
 
         let source = "x".repeat(ceiling.max_source_bytes + 1);
         let error = build_editor_document_analysis(&source, "file:///tmp/oversized.mmd", 1, None)
@@ -995,24 +1081,123 @@ mod tests {
     }
 
     #[test]
-    fn editor_language_accepts_resource_profiles_and_projects_the_source_limit() {
+    fn editor_language_accepts_resource_profiles_and_projects_analysis_limits() {
         let constrained =
             parse_analysis_options(Some(r#"{"resources":{"profile":"constrained"}}"#))
                 .expect("constrained editor profile");
         assert_eq!(constrained.max_source_bytes(), Some(1024 * 1024));
+        assert_eq!(constrained.max_document_diagrams(), Some(128));
 
         let wrapped = parse_analysis_options(Some(
-            r#"{"analysis":{"resources":{"profile":"interactive"}}}"#,
+            r#"{"analysis":{"fixed_today":"2026-08-01","fixed_local_offset_minutes":60,"site_config":{"theme":"dark"},"lint":{"profile":"recommended"},"resources":{"profile":"interactive"}}}"#,
         ))
-        .expect("wrapped interactive editor profile");
+        .expect("wrapped interactive editor options");
         assert_eq!(wrapped.max_source_bytes(), Some(2 * 1024 * 1024));
+        assert_eq!(wrapped.max_document_diagrams(), Some(256));
+        assert_eq!(
+            wrapped.rule_config().profile(),
+            merman_analysis::AnalysisRuleProfile::Recommended
+        );
+        assert_eq!(
+            wrapped
+                .site_config()
+                .expect("wrapped site config")
+                .as_value()["theme"],
+            "dark"
+        );
+        assert_eq!(
+            wrapped.runtime_policy().fixed_local_offset_minutes(),
+            Some(60)
+        );
+        let operation = wrapped
+            .runtime_policy()
+            .begin_operation()
+            .expect("wrapped fixed date must produce an operation context");
+        let today = operation.today_local();
+        assert_eq!((today.year(), today.month(), today.day()), (2026, 8, 1));
+        assert!(operation.today_is_fixed());
+    }
+
+    fn markdown_with_mermaid_fences(count: usize) -> String {
+        let mut source = String::new();
+        for index in 0..count {
+            source.push_str("```mermaid\nflowchart TD\n");
+            source.push_str(&format!("A{index} --> B{index}\n"));
+            source.push_str("```\n");
+        }
+        source
+    }
+
+    #[test]
+    fn editor_language_constrained_profile_limits_markdown_and_mdx_to_128_diagrams() {
+        let options_json = Some(r#"{"resources":{"profile":"constrained"}}"#);
+        let exact = markdown_with_mermaid_fences(128);
+        let excessive = markdown_with_mermaid_fences(129);
+
+        for extension in ["md", "mdx"] {
+            build_editor_document_analysis(
+                &exact,
+                &format!("file:///tmp/constrained.{extension}"),
+                1,
+                options_json,
+            )
+            .expect("128 Mermaid fences must fit the constrained editor profile");
+
+            let error = build_editor_document_analysis(
+                &excessive,
+                &format!("file:///tmp/constrained.{extension}"),
+                1,
+                options_json,
+            )
+            .expect_err("the 129th Mermaid fence must exceed the constrained editor profile");
+            assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+            assert!(
+                error
+                    .message()
+                    .contains("Mermaid fence 129 exceeds max_document_diagrams 128"),
+                "unexpected {extension} rejection: {}",
+                error.message()
+            );
+        }
+    }
+
+    #[test]
+    fn editor_language_default_profile_limits_markdown_and_mdx_to_256_diagrams() {
+        let exact = markdown_with_mermaid_fences(256);
+        let excessive = markdown_with_mermaid_fences(257);
+
+        for extension in ["md", "mdx"] {
+            build_editor_document_analysis(
+                &exact,
+                &format!("file:///tmp/interactive.{extension}"),
+                1,
+                None,
+            )
+            .expect("256 Mermaid fences must fit the default interactive editor profile");
+
+            let error = build_editor_document_analysis(
+                &excessive,
+                &format!("file:///tmp/interactive.{extension}"),
+                1,
+                None,
+            )
+            .expect_err("the 257th Mermaid fence must exceed the interactive editor profile");
+            assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+            assert!(
+                error
+                    .message()
+                    .contains("Mermaid fence 257 exceeds max_document_diagrams 256"),
+                "unexpected {extension} rejection: {}",
+                error.message()
+            );
+        }
     }
 
     #[test]
     fn editor_language_extracts_analysis_options_from_the_shared_binding_envelope() {
         let options = parse_analysis_options(Some(
             r#"{
-                "version": 2,
+                "version": 3,
                 "parse": { "suppress_errors": true },
                 "resources": { "profile": "constrained" }
             }"#,
@@ -1033,10 +1218,12 @@ mod tests {
 
     #[test]
     fn editor_language_resource_limits_can_only_tighten_the_transport_ceiling() {
-        let options =
-            parse_analysis_options(Some(r#"{"resources":{"limits":{"max_source_bytes":32}}}"#))
-                .expect("stricter editor source limit");
+        let options = parse_analysis_options(Some(
+            r#"{"resources":{"limits":{"max_source_bytes":32,"max_document_diagrams":2}}}"#,
+        ))
+        .expect("stricter editor analysis limits");
         assert_eq!(options.max_source_bytes(), Some(32));
+        assert_eq!(options.max_document_diagrams(), Some(2));
 
         let error = build_editor_document_analysis(
             "flowchart TD\nA-->B\nA-->C\n",
@@ -1048,10 +1235,31 @@ mod tests {
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
         assert!(error.message().contains("exceeding max_source_bytes 16"));
 
+        let error = build_editor_document_analysis(
+            &markdown_with_mermaid_fences(3),
+            "file:///tmp/tightened.md",
+            1,
+            Some(r#"{"resources":{"limits":{"max_document_diagrams":2}}}"#),
+        )
+        .expect_err("tightened diagram limit must reject the third Mermaid fence");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert!(
+            error
+                .message()
+                .contains("Mermaid fence 3 exceeds max_document_diagrams 2")
+        );
+
         let error = parse_analysis_options(Some(
             r#"{"resources":{"limits":{"max_source_bytes":2097153}}}"#,
         ))
         .expect_err("editor options must not loosen the Web ceiling");
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("loosen the transport ceiling"));
+
+        let error = parse_analysis_options(Some(
+            r#"{"resources":{"limits":{"max_document_diagrams":257}}}"#,
+        ))
+        .expect_err("editor options must not loosen the Web diagram ceiling");
         assert_eq!(error.status(), BindingStatus::OptionsJsonError);
         assert!(error.message().contains("loosen the transport ceiling"));
     }

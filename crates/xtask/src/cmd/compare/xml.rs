@@ -8,7 +8,7 @@ use std::fs::{self, File, OpenOptions};
 use std::io::Write as _;
 use std::path::{Component, Path, PathBuf};
 
-use super::{render_semantic_svg, svg_request};
+use super::{render_semantic_svg, source_requires_math, svg_request};
 
 const XML_OUTPUT_LOCK_FILE: &str = ".compare-svg-xml.lock";
 
@@ -296,13 +296,9 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
 
     let verification_environment = merman::SvgEnvironment::deterministic();
     let mut observed_operations =
-        super::ObservedRenderOperations::from_environment(&verification_environment)?;
+        super::ObservedRenderOperations::from_environment(&verification_environment);
 
     let workspace_root = crate::cmd::workspace_root();
-
-    let tools_root = crate::cmd::mermaid_cli_root();
-    let toolchain_read_guard = crate::cmd::acquire_upstream_svg_toolchain_read_guard(&tools_root)?;
-    let node_math_renderer = toolchain_read_guard.node_katex_math_renderer();
 
     // Mermaid gitGraph auto-generates commit ids using `Math.random()`. Upstream gitGraph SVGs in
     // this repo are generated with a seeded upstream renderer, so keep the local side seeded too
@@ -490,12 +486,7 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                 }
             };
 
-            let mut environment = merman::SvgEnvironment::deterministic();
-            if matches!(diagram.as_str(), "flowchart" | "sequence")
-                && let Some(renderer) = node_math_renderer.clone()
-            {
-                environment = environment.with_math_renderer(renderer);
-            }
+            let environment = merman::SvgEnvironment::deterministic();
             let runtime_policy = if diagram == "gantt" {
                 Some(
                     super::gantt_baseline_runtime_policy(
@@ -530,6 +521,22 @@ pub(crate) fn compare_svg_xml(args: Vec<String>) -> Result<(), XtaskError> {
                     continue;
                 }
             };
+
+            if matches!(diagram.as_str(), "flowchart" | "sequence")
+                && source_requires_math(
+                    &fixture_path,
+                    &renderer,
+                    &text,
+                    svg_request(environment.clone(), layout_opts.clone(), None),
+                )
+                .map_err(XtaskError::SvgCompareFailed)?
+            {
+                skipped.push((
+                    format!("{diagram}/{stem}"),
+                    "external host math backend injection is disabled; use the browser qualification lane",
+                ));
+                continue;
+            }
 
             let diagram_id = if diagram == "flowchart" {
                 flowchart_fixture_diagram_id(stem, &upstream_svg)
@@ -721,8 +728,7 @@ mod tests {
     #[test]
     fn svg_xml_report_does_not_claim_an_unobserved_operation() {
         let environment = merman::SvgEnvironment::deterministic();
-        let observed = super::super::ObservedRenderOperations::from_environment(&environment)
-            .expect("render operation contract");
+        let observed = super::super::ObservedRenderOperations::from_environment(&environment);
         let pinned = svg_xml_report_header(
             crate::svgdom::DomMode::Parity,
             3,

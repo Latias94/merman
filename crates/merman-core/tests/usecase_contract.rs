@@ -1,3 +1,5 @@
+#![cfg(feature = "diagram-usecase")]
+
 use merman_core::{
     EditorRenamePolicy, EditorSemanticCompleteness, EditorSemanticKind, EditorSemanticRole, Engine,
     ParseOptions, RenderSemanticModel,

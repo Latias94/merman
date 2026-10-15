@@ -12,14 +12,6 @@ test("SVG plan facade preserves the generated object payload and encodes options
     schema_version: 1,
     planned_operation_id: "svg",
     diagram_type: "flowchart-v2",
-    presentation_profile_id: "merman-modern",
-    presentation_aspects: [
-      {
-        id: "flowchart-elk-default",
-        state: "blocked",
-        required_capability_id: "layout-elk",
-      },
-    ],
     required_capability_ids: ["layout-elk", "svg"],
     missing_capability_ids: ["layout-elk"],
     ready: false,
@@ -27,7 +19,7 @@ test("SVG plan facade preserves the generated object payload and encodes options
   const runtime = bindSurfaceRuntime(
     async () => ({
       default: async () => {},
-      transportApiVersion: () => 5,
+      transportApiVersion: () => coreRuntime.WEB_TRANSPORT_API_VERSION,
       svgPlanJson(source, optionsJson) {
         calls.push({ source, optionsJson });
         return expected;

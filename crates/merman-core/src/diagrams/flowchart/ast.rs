@@ -378,9 +378,11 @@ mod tests {
         let control = OperationControl::new();
         control.cancel_after_checkpoints(2);
         let mut statements = StatementArena::default();
+        let edge_budget = super::super::flowchart_edge_budget(&metadata());
         let result = super::super::flowchart_grammar::FlowchartAstParser::new().parse(
             &mut statements,
             &control,
+            &edge_budget,
             super::super::Lexer::new(&source),
         );
         assert!(matches!(result, Err(lalrpop_util::ParseError::User { .. })));

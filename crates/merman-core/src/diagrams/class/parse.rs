@@ -213,23 +213,31 @@ pub(crate) fn parse_class(code: &str, meta: &ParseMetadata) -> Result<Value> {
 }
 
 #[cfg(test)]
-pub(crate) fn parse_class_typed(
+pub(crate) fn parse_class_typed_with_render_context(
     code: &str,
     meta: &ParseMetadata,
-) -> Result<class_typed::ClassDiagram> {
+) -> Result<(
+    class_typed::ClassDiagram,
+    class_typed::ClassStylePrecedenceFacts,
+)> {
     Ok(parse_class_semantic_source(code, meta)?
         .db
-        .into_typed_model(meta))
+        .into_typed_model_with_style_facts(meta))
 }
 
-pub(crate) fn parse_class_typed_controlled(
+pub(crate) fn parse_class_typed_with_render_context_controlled(
     code: &str,
     meta: &ParseMetadata,
     control: &OperationControl,
-) -> OperationControlResult<Result<class_typed::ClassDiagram>> {
+) -> OperationControlResult<
+    Result<(
+        class_typed::ClassDiagram,
+        class_typed::ClassStylePrecedenceFacts,
+    )>,
+> {
     let construction = construct_class_semantic_source(code, meta, control)?;
     match construction {
-        Ok(source) => Ok(Ok(source.db.into_typed_model(meta))),
+        Ok(source) => Ok(Ok(source.db.into_typed_model_with_style_facts(meta))),
         Err(failure) => Ok(Err((*failure).into_parse_error(meta, code.len()))),
     }
 }

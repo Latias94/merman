@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -230,6 +231,7 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             {
                 "ReleaseArtifactError",
                 "assemble_bundle",
+                "finalize_bundle",
                 "harden_installers",
                 "prepare_global_inputs",
                 "verify_plan",
@@ -560,8 +562,123 @@ class ReleaseArtifactBundleTests(unittest.TestCase):
             with self.assertRaises(bundle.ReleaseArtifactError):
                 bundle.verify_bundle(destination, version=VERSION, source_sha=SOURCE_SHA)
 
+    def publication_inputs(self, temp: Path):
+        _, verified, generated, digests = self.prepare(temp)
+        complete_global_generation(generated, digests)
+        source = temp / "bundle"
+        bundle.assemble_bundle(generated, verified, source, version=VERSION, source_sha=SOURCE_SHA)
+        record = {
+            "source_commit": SOURCE_SHA,
+            "cli_archive": {"sha256": digests[archive_name("merman-cli")],
+                            "target": TARGETS[-1], "version": VERSION},
+            "host": {"system": "Linux", "release": "test", "machine": "x86_64"},
+            "cli": {"executable_sha256": "b" * 64, "catalog": {"schema_version": 1, "presets": []},
+                    "render_config": {"htmlLabels": False}, "svg_pipeline": "resvg-safe"},
+            "qualification": {"presets": [{
+                "preset": "brutalist", "profile": "native-test-host",
+                "qualification_schema_revision": 1, "recipe_fingerprint": "c" * 64,
+                "resource_fingerprint": "d" * 64,
+                "cells": [{"family": "state", "output": "svg", "source_id": "state",
+                           "source_digest": "e" * 64, "png_scale": 1.0, "font_source": "system",
+                           "private_observation": "must not be published"}],
+            }]},
+        }
+        path = temp / "qualification.json"
+        path.write_text(json.dumps(record), encoding="utf-8")
+        path.with_suffix(".catalog.json").write_text(json.dumps(bundle.archive_catalog(record)), encoding="utf-8")
+        return source, path, record
+
+    def test_finalize_publishes_only_bound_public_catalog_and_preserves_archive_bytes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            temp = Path(temporary)
+            source, record_path, record = self.publication_inputs(temp)
+            original = {p.name: p.read_bytes() for p in source.iterdir()}
+            destination = temp / "publication"
+            subprocess.run([
+                sys.executable, bundle.__file__, "finalize", str(source), str(record_path),
+                str(destination), "--version", VERSION, "--source-sha", SOURCE_SHA,
+            ], check=True, capture_output=True)
+            bundle.verify_bundle(destination, version=VERSION, source_sha=SOURCE_SHA, require_preset_catalog=True)
+            for name in release_names():
+                self.assertEqual((destination / name).read_bytes(), original[name])
+            self.assertEqual({p.name: p.read_bytes() for p in source.iterdir()}, original)
+            self.assertEqual({p.name for p in destination.iterdir()},
+                             {*release_names(), bundle.MANIFEST_NAME, bundle.PRESET_CATALOG_NAME})
+            payload = (destination / bundle.PRESET_CATALOG_NAME).read_text()
+            self.assertEqual(json.loads(payload), bundle.archive_catalog(record))
+            self.assertNotIn("private_observation", payload)
+            with self.assertRaisesRegex(bundle.ReleaseArtifactError, "already contains"):
+                bundle.finalize_bundle(destination, record_path, temp / "again", version=VERSION, source_sha=SOURCE_SHA)
+            self.assertFalse((temp / "again").exists())
+
+    def test_finalize_rejects_missing_stale_or_changed_native_companions(self) -> None:
+        for mutation in ("missing", "catalog", "source", "target", "version", "archive", "executable"):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as temporary:
+                temp = Path(temporary)
+                source, record_path, record = self.publication_inputs(temp)
+                companion = record_path.with_suffix(".catalog.json")
+                if mutation == "missing":
+                    companion.unlink()
+                elif mutation == "catalog":
+                    changed = bundle.archive_catalog(record)
+                    changed["catalog"] = {"changed": True}
+                    companion.write_text(json.dumps(changed))
+                else:
+                    if mutation == "source":
+                        record["source_commit"] = "f" * 40
+                    elif mutation == "executable":
+                        record["cli"]["executable_sha256"] = "invalid"
+                    else:
+                        field = {"target": "target", "version": "version", "archive": "sha256"}[mutation]
+                        record["cli_archive"][field] = "changed"
+                    record_path.write_text(json.dumps(record))
+                    companion.write_text(json.dumps(bundle.archive_catalog(record)))
+                with self.assertRaises((bundle.ReleaseArtifactError, bundle.ArchiveVerificationError)):
+                    bundle.finalize_bundle(source, record_path, temp / "publication", version=VERSION, source_sha=SOURCE_SHA)
+                self.assertFalse((temp / "publication").exists())
+
+    def test_publication_verification_rejects_catalog_tampering_and_unbound_rehash(self) -> None:
+        for rehash in (False, True):
+            with self.subTest(rehash=rehash), tempfile.TemporaryDirectory() as temporary:
+                temp = Path(temporary)
+                source, record_path, _ = self.publication_inputs(temp)
+                destination = temp / "publication"
+                bundle.finalize_bundle(source, record_path, destination, version=VERSION, source_sha=SOURCE_SHA)
+                path = destination / bundle.PRESET_CATALOG_NAME
+                catalog = json.loads(path.read_text())
+                catalog["artifact"]["sha256"] = "f" * 64
+                path.write_text(json.dumps(catalog))
+                if rehash:
+                    manifest_path = destination / bundle.MANIFEST_NAME
+                    manifest = json.loads(manifest_path.read_text())
+                    entry = next(entry for entry in manifest["assets"] if entry["name"] == path.name)
+                    entry.update(sha256=bundle.sha256_file(path), size=path.stat().st_size)
+                    manifest_path.write_text(json.dumps(manifest))
+                with self.assertRaises(bundle.ReleaseArtifactError):
+                    bundle.verify_bundle(destination, version=VERSION, source_sha=SOURCE_SHA)
+
+    def test_publication_mode_rejects_removed_catalog_even_with_rewritten_manifest(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            temp = Path(temporary)
+            source, record_path, _ = self.publication_inputs(temp)
+            destination = temp / "publication"
+            bundle.finalize_bundle(source, record_path, destination, version=VERSION, source_sha=SOURCE_SHA)
+            (destination / bundle.PRESET_CATALOG_NAME).unlink()
+            manifest_path = destination / bundle.MANIFEST_NAME
+            manifest = json.loads(manifest_path.read_text())
+            manifest["assets"] = [entry for entry in manifest["assets"] if entry["name"] != bundle.PRESET_CATALOG_NAME]
+            manifest_path.write_text(json.dumps(manifest))
+            with self.assertRaisesRegex(bundle.ReleaseArtifactError, "missing its preset catalog"):
+                bundle.verify_bundle(destination, version=VERSION, source_sha=SOURCE_SHA, require_preset_catalog=True)
+            rejected = subprocess.run([
+                sys.executable, bundle.__file__, "verify-bundle", str(destination), "--version", VERSION,
+                "--source-sha", SOURCE_SHA, "--require-preset-catalog",
+            ], capture_output=True, text=True)
+            self.assertNotEqual(rejected.returncode, 0)
+            self.assertIn("missing its preset catalog", rejected.stderr)
+
     def test_plan_rejects_unknown_source_or_glob_assets(self) -> None:
-        for unexpected in ("source.tar.gz", "*.zip"):
+        for unexpected in ("source.tar.gz", "*.zip", bundle.PRESET_CATALOG_NAME):
             with self.subTest(unexpected=unexpected), tempfile.TemporaryDirectory() as temp_dir:
                 temp = Path(temp_dir)
                 plan = temp / "plan.json"

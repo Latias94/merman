@@ -24,7 +24,7 @@ else:
 WORKFLOW_PATH = ".github/workflows/release-preflight.yml"
 RECEIPT_NAME = "preflight-evidence.json"
 REQUIRED_JOBS = frozenset({
-    "validate-inputs", "versions-and-packages", "cli-and-lsp-archives",
+    "validate-inputs", "versions-and-packages", "mermaid-reference-materialized", "cli-and-lsp-archives",
     "python-wheel", "android-aar", "apple-xcframework", "web-npm-dry-run",
     "node-loader-package", "node-wasm-package", "node-platform-package",
     "node-npm-dry-run", "vscode-extension-dry-run", "flutter-dry-run",

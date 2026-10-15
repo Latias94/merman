@@ -1,16 +1,14 @@
 use crate::Result;
-use crate::entities::decode_entities_minimal;
 use crate::environment::TextMeasurementPhase;
 use crate::svg::fallback::foreign_object_label_fallback_svg_text_controlled;
 use crate::text::TextMeasurer;
 use std::borrow::Cow;
-use std::collections::HashSet;
 #[cfg(test)]
 use std::convert::Infallible;
 
 use super::util::{
-    checkpoint_loop, extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
-    rfind_with_checkpoints,
+    extract_quoted_attr, find_tag_end_with_checkpoints, find_with_checkpoints,
+    next_svg_quoted_attr_with_checkpoints, rfind_with_checkpoints,
 };
 use crate::svg::pipeline::final_validation::SvgStructureMetrics;
 use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
@@ -44,12 +42,22 @@ pub(crate) fn apply_foreign_object_fallback<'a>(
     execution: crate::svg::pipeline::SvgPostprocessExecution<'_>,
     structure: SvgStructureMetrics,
 ) -> Result<Cow<'a, str>> {
+    apply_foreign_object_fallback_with_outcome(svg, text_measurer, execution, structure)
+        .map(|(svg, _changed)| svg)
+}
+
+pub(crate) fn apply_foreign_object_fallback_with_outcome<'a>(
+    svg: Cow<'a, str>,
+    text_measurer: &dyn TextMeasurer,
+    execution: crate::svg::pipeline::SvgPostprocessExecution<'_>,
+    structure: SvgStructureMetrics,
+) -> Result<(Cow<'a, str>, bool)> {
     execution.checkpoint()?;
     if find_with_checkpoints(&svg, "<foreignObject", &mut || execution.checkpoint())?.is_none() {
-        return Ok(svg);
+        return Ok((svg, false));
     }
     foreign_object_label_fallback_svg_text_controlled(&svg, text_measurer, execution, structure)
-        .map(Cow::Owned)
+        .map(|svg| (Cow::Owned(svg), true))
 }
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -173,10 +181,37 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
         let switch_wrapper = find_wrapping_switch(svg, cursor, start, open_end, checkpoint)?;
 
         if let Some((switch_start, switch_close_start, switch_close_end)) = switch_wrapper {
-            // This foreignObject is part of a <switch> element with native SVG fallback text.
-            // Unwrap the <switch>: remove <switch> + <foreignObject>, keep sibling <text>
-            // fallback elements.
+            // Keep the native fallback's inherited presentation and coordinate system.
+            // A neutral group replaces switch selection after the HTML branch is removed.
             out.push_str(&svg[cursor..switch_start]);
+            let Some(switch_open_end) =
+                find_tag_end_with_checkpoints(svg, switch_start, checkpoint)?
+            else {
+                out.push_str(&svg[switch_start..switch_close_end]);
+                cursor = switch_close_end;
+                continue;
+            };
+            let switch_tag = &svg[switch_start..=switch_open_end];
+            out.push_str("<g");
+            let mut attr_cursor = 0;
+            while let Some(attr) =
+                next_svg_quoted_attr_with_checkpoints(switch_tag, attr_cursor, checkpoint)?
+            {
+                let name = &switch_tag[attr.name_start..attr.name_end];
+                if ![
+                    "requiredFeatures",
+                    "requiredExtensions",
+                    "systemLanguage",
+                    "externalResourcesRequired",
+                ]
+                .iter()
+                .any(|conditional| name.eq_ignore_ascii_case(conditional))
+                {
+                    out.push_str(&switch_tag[attr.full_start..attr.full_end]);
+                }
+                attr_cursor = attr.full_end;
+            }
+            out.push('>');
             if !fo_tag.trim_end().ends_with("/>") {
                 let fo_close_start = open_end + 1;
                 if let Some(fo_close_rel) =
@@ -186,6 +221,7 @@ pub(crate) fn strip_foreign_objects_with_checkpoints<E>(
                     out.push_str(&svg[after_fo..switch_close_start]);
                 }
             }
+            out.push_str("</g>");
             cursor = switch_close_end;
             continue;
         }
@@ -231,6 +267,16 @@ fn find_wrapping_switch<E>(
     else {
         return Ok(None);
     };
+    let Some(switch_open_end) = find_tag_end_with_checkpoints(svg, switch_start, checkpoint)?
+    else {
+        return Ok(None);
+    };
+    if !svg[switch_open_end + 1..foreign_object_start]
+        .trim()
+        .is_empty()
+    {
+        return Ok(None);
+    }
     if find_with_checkpoints(
         &svg[switch_start..foreign_object_start],
         "</switch>",
@@ -262,14 +308,24 @@ fn find_wrapping_switch<E>(
         return Ok(None);
     };
     let switch_close_start = foreign_object_end + switch_close_relative;
-    if find_with_checkpoints(
-        &svg[foreign_object_end..switch_close_start],
-        "<text",
-        checkpoint,
-    )?
-    .is_none()
-    {
-        return Ok(None);
+    // Generated in-place text is not a native switch fallback.
+    let mut tail_start = foreign_object_end;
+    loop {
+        let tail = svg[tail_start..switch_close_start].trim_start();
+        tail_start = switch_close_start - tail.len();
+        if tail.starts_with("<g")
+            && let Some(end) = find_tag_end_with_checkpoints(svg, tail_start, checkpoint)?
+            && extract_quoted_attr(&svg[tail_start..=end], "data-merman-foreignobject")
+                == Some("fallback")
+            && let Some((_, end)) = find_matching_g_end(svg, tail_start, checkpoint)?
+        {
+            tail_start = end;
+            continue;
+        }
+        if !tail.starts_with("<text") {
+            return Ok(None);
+        }
+        break;
     }
 
     Ok(Some((
@@ -315,51 +371,9 @@ pub(crate) fn drop_native_duplicate_fallbacks_with_checkpoints<E>(
     svg: &str,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<String, E> {
-    let native_text = collect_native_text_contents(svg, checkpoint)?;
-    if native_text.is_empty() {
-        return Ok(svg.to_string());
-    }
-
-    let mut out = String::with_capacity(svg.len());
-    let mut cursor = 0;
-    let marker = r#"data-merman-foreignobject="fallback""#;
-    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], marker, checkpoint)? {
-        let attr_start = cursor + rel_start;
-        let Some(group_start) = rfind_with_checkpoints(&svg[..attr_start], "<g", checkpoint)?
-        else {
-            out.push_str(&svg[cursor..attr_start]);
-            cursor = attr_start;
-            continue;
-        };
-        if group_start < cursor {
-            out.push_str(&svg[cursor..attr_start]);
-            cursor = attr_start;
-            continue;
-        }
-        let Some((close_start, group_end)) = find_matching_g_end(svg, group_start, checkpoint)?
-        else {
-            out.push_str(&svg[cursor..attr_start]);
-            cursor = attr_start;
-            continue;
-        };
-        let Some(open_end) = find_tag_end_with_checkpoints(svg, group_start, checkpoint)? else {
-            out.push_str(&svg[cursor..attr_start]);
-            cursor = attr_start;
-            continue;
-        };
-
-        let fallback_text = normalize_text_content(&svg[open_end + 1..close_start], checkpoint)?;
-        if native_text.contains(fallback_text.trim()) {
-            out.push_str(&svg[cursor..group_start]);
-        } else {
-            out.push_str(&svg[cursor..group_end]);
-        }
-        cursor = group_end;
-    }
-
-    out.push_str(&svg[cursor..]);
-    checkpoint()?;
-    Ok(out)
+    // Only switch provenance proves that native text replaces this HTML branch.
+    // Equal text/positions cannot establish equivalent CSS, background or visibility.
+    drop_switch_native_fallbacks_with_checkpoints(svg, checkpoint)
 }
 
 #[cfg(test)]
@@ -370,76 +384,13 @@ pub(crate) fn drop_native_duplicate_fallbacks(svg: &str) -> String {
     ))
 }
 
-fn collect_native_text_contents<E>(
-    svg: &str,
-    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> std::result::Result<HashSet<String>, E> {
-    let mut contents = HashSet::new();
-    let mut cursor = 0;
-    while let Some(rel_start) = find_with_checkpoints(&svg[cursor..], "<text", checkpoint)? {
-        let start = cursor + rel_start;
-        let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
-            break;
-        };
-        let tag = &svg[start..=open_end];
-        if text_tag_is_fallback(tag) || tag.trim_end().ends_with("/>") {
-            cursor = open_end + 1;
-            continue;
-        }
-
-        let close_start = open_end + 1;
-        let Some(rel_close) = find_with_checkpoints(&svg[close_start..], "</text>", checkpoint)?
-        else {
-            cursor = open_end + 1;
-            continue;
-        };
-        let close = close_start + rel_close;
-        let text = normalize_text_content(&svg[close_start..close], checkpoint)?;
-        if !text.is_empty() {
-            contents.insert(text);
-        }
-        cursor = close + "</text>".len();
-    }
-    checkpoint()?;
-    Ok(contents)
-}
-
+#[cfg(test)]
 fn text_tag_is_fallback(tag: &str) -> bool {
     extract_quoted_attr(tag, "class").is_some_and(|classes| {
         classes
             .split_whitespace()
             .any(|class| class == "merman-foreignobject-fallback-text")
     })
-}
-
-fn normalize_text_content<E>(
-    fragment: &str,
-    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> std::result::Result<String, E> {
-    let stripped = strip_tags(fragment, checkpoint)?;
-    checkpoint()?;
-    let normalized = decode_entities_minimal(&stripped).trim().to_string();
-    checkpoint()?;
-    Ok(normalized)
-}
-
-fn strip_tags<E>(
-    fragment: &str,
-    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> std::result::Result<String, E> {
-    let mut out = String::with_capacity(fragment.len());
-    let mut in_tag = false;
-    for (iteration, ch) in fragment.chars().enumerate() {
-        checkpoint_loop(iteration, checkpoint)?;
-        match ch {
-            '<' => in_tag = true,
-            '>' => in_tag = false,
-            _ if !in_tag => out.push(ch),
-            _ => {}
-        }
-    }
-    checkpoint()?;
-    Ok(out)
 }
 
 fn find_matching_g_end<E>(
@@ -621,12 +572,12 @@ mod tests {
     }
 
     #[test]
-    fn drop_native_duplicate_fallbacks_removes_only_matching_fallback_groups() {
+    fn drop_native_duplicate_fallbacks_preserves_unproven_ordinary_paint() {
         let svg = r##"<svg>
-<text class="task">Make tea</text>
+<text x="100" y="12" text-anchor="middle" dominant-baseline="central" class="task">Make tea</text>
 <g data-merman-foreignobject="fallback" class="dup">
   <rect/>
-  <text class="merman-foreignobject-fallback-text">Make tea</text>
+  <text x="100" y="12" text-anchor="middle" dominant-baseline="central" class="merman-foreignobject-fallback-text">Make tea</text>
 </g>
 <g data-merman-foreignobject="fallback" class="keep">
   <text class="merman-foreignobject-fallback-text">Only fallback</text>
@@ -635,8 +586,8 @@ mod tests {
 
         let out = drop_native_duplicate_fallbacks(svg);
 
-        assert!(out.contains(r#"<text class="task">Make tea</text>"#));
-        assert!(!out.contains(r#"class="dup""#));
+        assert!(out.contains(r#"class="task">Make tea</text>"#));
+        assert!(out.contains(r#"class="dup""#));
         assert!(out.contains(r#"class="keep""#));
         assert!(out.contains("Only fallback"));
     }
@@ -782,8 +733,8 @@ mod tests {
     #[test]
     fn resvg_safe_can_optionally_drop_native_duplicate_fallbacks() {
         let svg = r##"<svg xmlns="http://www.w3.org/2000/svg">
-<text class="task">Make tea</text>
 <g transform="translate(0,0)">
+  <text x="100" y="12" text-anchor="middle" dominant-baseline="central" class="task">Make tea</text>
   <foreignObject width="200" height="24"><div xmlns="http://www.w3.org/1999/xhtml"><p>Make tea</p></div></foreignObject>
 </g>
 <g transform="translate(0,40)">
@@ -801,10 +752,10 @@ mod tests {
         assert_eq!(
             out.matches(r#"data-merman-foreignobject="fallback""#)
                 .count(),
-            1,
+            2,
             "{out}"
         );
         assert!(out.contains("Only fallback"));
-        assert!(out.contains(r#"<text class="task">Make tea</text>"#));
+        assert!(out.contains(r#"class="task">Make tea</text>"#));
     }
 }

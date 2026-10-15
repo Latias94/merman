@@ -11,13 +11,14 @@ const generatedSource = path.join(webRoot, "src", "generated", "resource-contrac
 
 test("interactive resource tightening accepts the generated Rust layout-work ceiling", async () => {
   const contract = await loadGeneratedContract();
+  const interactiveLayoutWorkCeiling = 14_100_000;
 
   assert.doesNotThrow(() =>
     contract.tightenResourceOptions(
       { profile: "interactive" },
       {
         profile: "interactive",
-        limits: { max_layout_work_units: 14_100_000 },
+        limits: { max_layout_work_units: interactiveLayoutWorkCeiling },
       },
     ),
   );
@@ -27,7 +28,7 @@ test("interactive resource tightening accepts the generated Rust layout-work cei
         { profile: "interactive" },
         {
           profile: "interactive",
-          limits: { max_layout_work_units: 14_100_001 },
+          limits: { max_layout_work_units: interactiveLayoutWorkCeiling + 1 },
         },
       ),
     /maximum 14100000/,

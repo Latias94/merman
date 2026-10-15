@@ -148,7 +148,18 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-me
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
 on\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
+editor-dark\t'[alpha] Editor Dark'
+one-dark\t'[alpha] One Dark'
+gruvbox-light\t'[alpha] Gruvbox Light'
+gruvbox-dark\t'[alpha] Gruvbox Dark'
+ayu-light\t'[alpha] Ayu Light'
+ayu-dark\t'[alpha] Ayu Dark'
+brutalist\t'[alpha] Brutalist'
+spotless\t'[alpha] Spotless'
+cyberpunk\t'[alpha] Cyberpunk'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -254,7 +265,18 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-mea
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
 on\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor-light\t'[alpha] Editor Light'
+editor-dark\t'[alpha] Editor Dark'
+one-dark\t'[alpha] One Dark'
+gruvbox-light\t'[alpha] Gruvbox Light'
+gruvbox-dark\t'[alpha] Gruvbox Dark'
+ayu-light\t'[alpha] Ayu Light'
+ayu-dark\t'[alpha] Ayu Dark'
+brutalist\t'[alpha] Brutalist'
+spotless\t'[alpha] Spotless'
+cyberpunk\t'[alpha] Cyberpunk'"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-file -d 'Versioned theme recipe JSON, or a selection containing exactly one `preset` or `spec`' -r -F
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-definition -d 'Shareable ThemeDefinitionV1 JSON materialized before rendering' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s w -l width -d 'Available container width for size-sensitive layouts' -r
@@ -398,7 +420,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l embedded-
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l iconPacks -d 'Iconify package names' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l iconPacksNamesAndUrls -d 'Iconify prefix#url definitions' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s c -l configFile -d 'JSON Mermaid configuration file' -r -F
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s t -l theme -d 'Theme of the chart' -r -f -a "default\t''
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s t -l theme -d 'Official Mermaid CLI theme selector' -r -f -a "default\t''
 forest\t''
 dark\t''
 neutral\t''"
@@ -412,7 +434,6 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-meas
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-system -d 'Control bounded system font discovery; requires explicit native measurement or on, off with explicit sources unless on is requested' -r -f -a "off\t''
 on\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l presentation-profile -d 'First-party presentation profile applied below explicit Mermaid configuration' -r -f -a "merman-modern\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''
 ratex\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s w -l width -d 'Width of the page' -r

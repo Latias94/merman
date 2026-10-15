@@ -101,84 +101,119 @@ REQUIRED_PAYLOAD_SCHEMA_VERSIONS = {
 BINDING_OPERATION_RELATION_SPECS = (
     {
         "operation_id": "analysis-facts-json",
+        "maturity": "stable",
         "availability_capability_id": "analysis",
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "analysis-json",
+        "maturity": "stable",
         "availability_capability_id": "analysis",
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "ascii",
+        "maturity": "stable",
         "availability_capability_id": "ascii",
         "output_id": "ascii",
         "compiled_prerequisite_ids": (),
     },
     {
+        "operation_id": "describe-theme-support-json",
+        "maturity": "alpha",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
         "operation_id": "document-analysis-facts-json",
+        "maturity": "stable",
         "availability_capability_id": "analysis",
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "document-analysis-json",
+        "maturity": "stable",
         "availability_capability_id": "analysis",
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "edge-geometry-json",
+        "maturity": "stable",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
+        "operation_id": "export-theme-preset-json",
+        "maturity": "alpha",
         "availability_capability_id": "svg",
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "jpeg",
+        "maturity": "stable",
         "availability_capability_id": "jpeg",
         "output_id": "jpeg",
         "compiled_prerequisite_ids": ("svg",),
     },
     {
         "operation_id": "layout-json",
+        "maturity": "stable",
+        "availability_capability_id": "svg",
+        "output_id": None,
+        "compiled_prerequisite_ids": (),
+    },
+    {
+        "operation_id": "materialize-theme-json",
+        "maturity": "alpha",
         "availability_capability_id": "svg",
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "pdf",
+        "maturity": "stable",
         "availability_capability_id": "pdf",
         "output_id": "pdf",
         "compiled_prerequisite_ids": ("svg",),
     },
     {
         "operation_id": "png",
+        "maturity": "stable",
         "availability_capability_id": "png",
         "output_id": "png",
         "compiled_prerequisite_ids": ("svg",),
     },
     {
         "operation_id": "semantic-json",
+        "maturity": "stable",
         "availability_capability_id": None,
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "svg",
+        "maturity": "stable",
         "availability_capability_id": "svg",
         "output_id": "svg",
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "svg-plan-json",
+        "maturity": "stable",
         "availability_capability_id": "svg",
         "output_id": None,
         "compiled_prerequisite_ids": (),
     },
     {
         "operation_id": "validation-json",
+        "maturity": "stable",
         "availability_capability_id": "analysis",
         "output_id": None,
         "compiled_prerequisite_ids": (),
@@ -199,15 +234,15 @@ METADATA_SPECS = (
         "required_capability_id": "analysis",
     },
     {
-        "id": "presentation-catalog",
-        "required_capability_id": None,
-    },
-    {
         "id": "supported-diagrams",
         "required_capability_id": None,
     },
     {
         "id": "supported-themes",
+        "required_capability_id": None,
+    },
+    {
+        "id": "theme-catalog",
         "required_capability_id": None,
     },
 )
@@ -268,12 +303,6 @@ BINDING_OPTION_GROUP_SPECS = (
         "requires_svg_pipeline": False,
     },
     {
-        "id": "presentation",
-        "always_available": False,
-        "any_capability_ids": (),
-        "requires_svg_pipeline": True,
-    },
-    {
         "id": "raster",
         "always_available": False,
         "any_capability_ids": ("jpeg", "png"),
@@ -304,6 +333,12 @@ BINDING_OPTION_GROUP_SPECS = (
         "requires_svg_pipeline": True,
     },
     {
+        "id": "theme",
+        "always_available": False,
+        "any_capability_ids": (),
+        "requires_svg_pipeline": True,
+    },
+    {
         "id": "version",
         "always_available": True,
         "any_capability_ids": (),
@@ -322,11 +357,17 @@ TEXT_MEASUREMENT_PROVIDER_SPECS = (
         "source": "constructor-service",
         "constructor_service_id": "host-text-measurement",
     },
+    {
+        "id": "native-fonts",
+        "source": "constructor-service",
+        "constructor_service_id": "native-font-context",
+    },
 )
 
 TEXT_MEASUREMENT_PROVIDER_IDS = (
     "deterministic",
     "host-callback",
+    "native-fonts",
 )
 
 BINDING_TRANSPORT_EXPOSURE_SPECS = (
@@ -348,7 +389,7 @@ BINDING_TRANSPORT_EXPOSURE_SPECS = (
     {
         "id": "rust",
         "payload_schema_ids": ("binding-result", "operation-metadata"),
-        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry"),
+        "constructor_service_candidate_ids": ("host-text-measurement", "icon-registry", "native-font-context"),
     },
     {
         "id": "typst",
@@ -536,6 +577,13 @@ CONSTRUCTOR_SERVICE_SPECS = (
                 "description": "Maximum XML elements in one direct icon SVG fragment",
                 "value": 4096,
             },
+        ),
+    },
+    {
+        "id": "native-font-context",
+        "requires_svg_pipeline": True,
+        "provided_text_measurement_provider_ids": ("native-fonts",),
+        "resource_limits": (
         ),
     },
 )

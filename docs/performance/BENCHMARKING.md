@@ -46,6 +46,69 @@ for exploration, but its internal samples are not independent base/head observat
 themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
 that claim.
 
+### Theme compilation and discovery
+
+`merman-bindings-core`'s `theme_operations` Criterion bench separates definition compilation,
+materialization, preset compilation/export, the shared support-query corpus, and full catalog
+construction. It uses deterministic engines and the explicit `interactive` resource profile.
+Default means a version-one authoring definition with an empty `tokens` object; light/dark use
+the shared authoring fixtures, and Editor Light/Cyberpunk contrast a simple and a complex
+built-in recipe. Every run checks the shared materialization, support and preset-catalog goldens,
+plus recipe fingerprints, before measuring. No fonts are embedded by the benchmark inputs.
+
+```bash
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-bindings-core \
+  --no-default-features --features svg --bench theme_operations -- --test
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman-bindings-core \
+  --no-default-features --features svg --bench theme_operations -- \
+  --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
+```
+
+Keep `target/criterion/theme_*` raw samples with the source, lockfile, executable and fixture
+hashes before measuring another feature profile, or set a separate `CRITERION_HOME` per lane.
+A separate advanced build may enable
+`svg,png,jpeg,pdf,embedded-fonts,math,layout-elk,layout-cytoscape`; it is a Cargo feature lane,
+not a packaged-artifact admission receipt. Do not combine its catalog output with the SVG-only
+lane: the advertised capabilities differ.
+
+Times include admission, allocation and destruction of each result. Definition compilation uses
+a reused compiler; materialization, preset export and support use a reused binding engine. The
+support estimate covers the entire shared query batch, with Criterion throughput reported per
+query. Catalog `fresh_engine` includes construction and destruction inside an already running
+process; both catalog lanes have completed preflight, so neither measures process cold start or
+first-touch initialization. These are diagnostic baselines, not alpha.6 regression evidence:
+alpha.6's presentation catalog does not implement the current theme-authoring/discovery contract.
+Latency samples do not establish allocation counts or peak memory.
+
+### Native SVG/PNG/PDF throughput
+
+`merman`'s `native_export` bench measures the public `Renderer` source-to-output path for the
+unchanged public Cyberpunk Flowchart, Sequence and XY Chart fixtures, each with the native default
+theme and the complete Cyberpunk preset. It reuses the renderer and precompiled theme, uses strict
+parsing, native SVG text (`htmlLabels: false`), a resvg-safe pipeline, fixed diagram IDs, system
+fonts and default render/export resource limits. PNG uses the default 1x scale without a fit box.
+
+```bash
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
+  --features svg,png,pdf --bench native_export -- --test
+CARGO_BUILD_JOBS=1 cargo bench --locked -p merman --no-default-features \
+  --features svg,png,pdf --bench native_export -- \
+  --noplot --sample-size 30 --warm-up-time 2 --measurement-time 3
+```
+
+Each of the 18 rows includes parse, layout, SVG emission, terminal encoding, request cloning and
+output destruction. Preflight warms first-use font discovery; this is neither process cold start
+nor export from a previously rendered document. Flat sampling avoids linear iteration growth for
+expensive PDF cases; slow cases may exceed the requested measurement duration to collect all
+samples. Criterion reports throughput as complete outputs per second.
+
+Pre/postflight requires identical output bytes. SVG must parse, PNG must decode with positive
+dimensions, and PDF must have valid framing; these checks do not establish visual qualification.
+Preflight emits source/output hashes. Set `MERMAN_BENCH_ARTIFACT_DIR` to retain the actual output
+files outside the timed loop, and use a separate `CRITERION_HOME` for each measured feature lane.
+A failed or rejected output stops the run rather than becoming a fast timing sample. These are
+diagnostic baselines until a separate matched, calibrated comparison establishes a revision claim.
+
 ### ASCII semantic-depth benchmark
 
 The `ascii_pipeline` bench measures the public synchronous ASCII renderer with strict parsing,

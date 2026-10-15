@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-class-semantic-capabilities",
+  "evidenceKind": "typed-capability",
+  "intent": "Exercise a class-family descendant predicate with a non-empty typed style effect."
+}

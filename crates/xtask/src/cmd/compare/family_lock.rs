@@ -1,7 +1,6 @@
 use crate::XtaskError;
 use crate::cmd::{UpstreamSvgFamilyLock, UpstreamSvgToolchainLock};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 pub(crate) fn acquire_upstream_svg_family_lock_for_compare(
     target: &Path,
@@ -32,20 +31,6 @@ pub(crate) fn acquire_upstream_svg_toolchain_read_guard(
 impl UpstreamSvgToolchainReadGuard {
     pub(crate) fn tools_root(&self) -> &Path {
         &self.tools_root
-    }
-
-    pub(crate) fn node_katex_math_renderer(
-        &self,
-    ) -> Option<Arc<dyn merman_render::math::MathRenderer + Send + Sync>> {
-        if !self.tools_root.join("package.json").is_file()
-            || !self.tools_root.join("node_modules").is_dir()
-        {
-            return None;
-        }
-
-        Some(Arc::new(merman_render::math::NodeKatexMathRenderer::new(
-            self.tools_root.clone(),
-        )))
     }
 }
 
@@ -102,17 +87,15 @@ mod tests {
     }
 
     #[test]
-    fn toolchain_read_guard_keeps_missing_node_modules_unavailable() {
+    fn toolchain_read_guard_retains_the_locked_tools_root() {
         let tools_root = unique_toolchain_dir("missing-node-modules");
         fs::create_dir_all(&tools_root).expect("create toolchain directory");
-        fs::write(tools_root.join("package.json"), "{}\n").expect("write package metadata");
 
         let read_guard = acquire_upstream_svg_toolchain_read_guard(&tools_root)
             .expect("acquire toolchain read guard");
-        assert!(read_guard.node_katex_math_renderer().is_none());
+        assert_eq!(read_guard.tools_root(), tools_root);
 
         drop(read_guard);
-        fs::remove_file(tools_root.join("package.json")).expect("remove package metadata");
         fs::remove_dir(&tools_root).expect("remove toolchain directory");
     }
 }

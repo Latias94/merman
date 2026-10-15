@@ -2972,7 +2972,7 @@ fn render_family_fixture_svg(
     mmd_path: &Path,
     text: &str,
     parse_options: merman_core::ParseOptions,
-    expected_family: merman_render::family::RenderFamilyKind,
+    expected_family: merman_core::DiagramFamilyId,
     svg_options: &merman_render::svg::SvgRenderOptions,
     debug_options: &merman_render::svg::SvgDebugOptions,
 ) -> Result<String, String> {
@@ -2988,11 +2988,11 @@ fn render_family_fixture_svg(
         merman_render::family::prepare(parsed, &merman_render::LayoutOptions::default(), session)
             .map_err(|err| format!("layout failed for {}: {err}", mmd_path.display()))?;
 
-    if artifact.family_kind() != expected_family {
+    if artifact.family_id() != expected_family {
         return Err(format!(
             "unexpected render family for {}: expected {expected_family}, got {} ({})",
             mmd_path.display(),
-            artifact.family_kind(),
+            artifact.family_id(),
             artifact.metadata().diagram_type
         ));
     }
@@ -3000,7 +3000,7 @@ fn render_family_fixture_svg(
     artifact
         .render_svg(svg_options, debug_options)
         .map(|rendered| {
-            let (svg, _family_kind, _metadata, _session) = rendered.into_parts();
+            let (svg, _report) = rendered.into_completion().into_output_and_report();
             svg
         })
         .map_err(|err| format!("render failed for {}: {err}", mmd_path.display()))
@@ -3009,7 +3009,7 @@ fn render_family_fixture_svg(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct DebugSvgFamily {
     fixture_dir: &'static str,
-    family: merman_render::family::RenderFamilyKind,
+    family: merman_core::DiagramFamilyId,
     suppress_errors: bool,
     seeded_site_config: bool,
     deterministic_diagram_id: bool,
@@ -3026,48 +3026,41 @@ fn debug_svg_family(diagram: &str) -> Option<DebugSvgFamily> {
     match diagram {
         "flowchart" | "flowchart-v2" | "flowchartV2" => Some(standard(
             "flowchart",
-            merman_render::family::RenderFamilyKind::Flowchart,
+            merman_core::DiagramFamilyId::FLOWCHART,
         )),
-        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => Some(standard(
-            "state",
-            merman_render::family::RenderFamilyKind::State,
-        )),
-        "class" | "classDiagram" => Some(standard(
-            "class",
-            merman_render::family::RenderFamilyKind::Class,
-        )),
+        "state" | "stateDiagram" | "stateDiagram-v2" | "stateDiagramV2" => {
+            Some(standard("state", merman_core::DiagramFamilyId::STATE))
+        }
+        "class" | "classDiagram" => Some(standard("class", merman_core::DiagramFamilyId::CLASS)),
         "er" | "erDiagram" => Some(DebugSvgFamily {
             fixture_dir: "er",
-            family: merman_render::family::RenderFamilyKind::Er,
+            family: merman_core::DiagramFamilyId::ER,
             suppress_errors: true,
             seeded_site_config: true,
             deterministic_diagram_id: true,
         }),
         "c4" => Some(DebugSvgFamily {
             fixture_dir: "c4",
-            family: merman_render::family::RenderFamilyKind::C4,
+            family: merman_core::DiagramFamilyId::C4,
             suppress_errors: true,
             seeded_site_config: false,
             deterministic_diagram_id: true,
         }),
         "sequence" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard(
-                "sequence",
-                merman_render::family::RenderFamilyKind::Sequence,
-            )
+            ..standard("sequence", merman_core::DiagramFamilyId::SEQUENCE)
         }),
         "info" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard("info", merman_render::family::RenderFamilyKind::Info)
+            ..standard("info", merman_core::DiagramFamilyId::INFO)
         }),
         "pie" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard("pie", merman_render::family::RenderFamilyKind::Pie)
+            ..standard("pie", merman_core::DiagramFamilyId::PIE)
         }),
         "packet" => Some(DebugSvgFamily {
             deterministic_diagram_id: false,
-            ..standard("packet", merman_render::family::RenderFamilyKind::Packet)
+            ..standard("packet", merman_core::DiagramFamilyId::PACKET)
         }),
         _ => None,
     }
@@ -3415,7 +3408,7 @@ mod tests {
             Path::new("info.mmd"),
             "info\n",
             merman_core::ParseOptions::default(),
-            merman_render::family::RenderFamilyKind::Info,
+            merman_core::DiagramFamilyId::INFO,
             &merman_render::svg::SvgRenderOptions::default(),
             &merman_render::svg::SvgDebugOptions::default(),
         )
@@ -3432,7 +3425,7 @@ mod tests {
             Path::new("info.mmd"),
             "info\n",
             merman_core::ParseOptions::default(),
-            merman_render::family::RenderFamilyKind::Flowchart,
+            merman_core::DiagramFamilyId::FLOWCHART,
             &merman_render::svg::SvgRenderOptions::default(),
             &merman_render::svg::SvgDebugOptions::default(),
         )
@@ -3986,6 +3979,17 @@ mod tests {
             script.contains("timezone,"),
             "the resolved timezone must be emitted in the browser attestation"
         );
+    }
+
+    #[test]
+    fn browser_launchers_keep_processes_in_the_managed_tree() {
+        for script_path in [
+            ensure_upstream_svg_render_environment_probe_script().unwrap(),
+            ensure_seeded_upstream_svg_renderer_script().unwrap(),
+        ] {
+            let script = fs::read_to_string(script_path).expect("read browser launcher");
+            assert!(script.contains("detached: false,"));
+        }
     }
 
     #[test]

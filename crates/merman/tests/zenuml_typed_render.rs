@@ -49,6 +49,7 @@ fn advanced_zenuml_is_a_first_class_typed_render() {
         .expect("ZenUML preparation must succeed")
         .expect("ZenUML must be detected");
     assert_eq!(semantic.semantic_kind(), "zenuml");
+    assert_eq!(semantic.family_id(), Some(merman::DiagramFamilyId::ZENUML));
     let output = semantic
         .render(merman::RenderTarget::Svg(SvgRequest::default()))
         .expect("ZenUML SVG must render");

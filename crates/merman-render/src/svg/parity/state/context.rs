@@ -7,6 +7,11 @@ pub(super) fn state_is_hidden(ctx: &StateRenderCtx<'_>, id: &str) -> bool {
 }
 
 pub(super) fn state_data_look<'a>(ctx: &'a StateRenderCtx<'_>) -> &'a str {
+    let look = ctx.serialized_diagram_look.trim();
+    if look.is_empty() { "classic" } else { look }
+}
+
+pub(super) fn state_effective_look<'a>(ctx: &'a StateRenderCtx<'_>) -> &'a str {
     let look = ctx.diagram_look.trim();
     if look.is_empty() { "classic" } else { look }
 }
@@ -213,36 +218,7 @@ pub(super) fn state_edge_context<'a>(
 
 pub(super) fn state_is_shadowed_self_loop_edge(
     ctx: &StateRenderCtx<'_>,
-    edge_index: usize,
     edge: &StateSvgEdge,
-    root: Option<&str>,
 ) -> bool {
-    // Only Dagre replaces parallel self loops with shared dummy-node segments.
-    if ctx.uses_elk_adapter_dom || edge.start != edge.end {
-        return false;
-    }
-    if state_edge_context(ctx, edge) != root {
-        return false;
-    }
-
-    for later in ctx.edges.iter().skip(edge_index + 1) {
-        if later.start != later.end {
-            continue;
-        }
-        if later.start != edge.start || later.end != edge.end {
-            continue;
-        }
-        if state_is_hidden(ctx, later.start.as_str())
-            || state_is_hidden(ctx, later.end.as_str())
-            || state_is_hidden(ctx, later.id.as_str())
-        {
-            continue;
-        }
-        if state_edge_context(ctx, later) != root {
-            continue;
-        }
-        return true;
-    }
-
-    false
+    ctx.style_plan.is_shadowed_self_loop_edge(&edge.id)
 }

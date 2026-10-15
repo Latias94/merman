@@ -1,0 +1,6 @@
+{
+  "fixtureExpectationVersion": 2,
+  "fixtureId": "fixture-aurora-residual",
+  "evidenceKind": "typed-capability",
+  "intent": "Keep browser backdrop blur explicit instead of silently claiming portable output."
+}

@@ -1,58 +1,42 @@
 use super::super::*;
-use super::SequenceEmitCheckpoints;
-use crate::sequence::{SequenceMathHeightMode, measure_sequence_math_label};
+use crate::sequence::{SequenceMathHeightMode, prepared_sequence_math_terminal_geometry};
 
-pub(super) struct SequenceKatexLabel {
-    pub(super) html: String,
+#[derive(Clone)]
+pub(super) struct SequenceKatexLabel<'a> {
+    pub(super) html: &'a str,
     pub(super) width: f64,
     pub(super) height: f64,
+    style_assurance: &'a crate::math::PreparedMathStyleAssurance,
 }
 
-pub(super) fn sequence_katex_label(
-    text: &str,
-    measurer: &dyn TextMeasurer,
+pub(super) fn sequence_katex_label<'a>(
+    prepared: Option<&'a crate::math::PreparedMathLabel>,
     style: &TextStyle,
-    config: &merman_core::MermaidConfig,
-    math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
     height_mode: SequenceMathHeightMode,
-    checkpoints: SequenceEmitCheckpoints<'_>,
-) -> Result<Option<SequenceKatexLabel>> {
-    checkpoints.checkpoint()?;
-    if !text.contains("$$") {
-        return Ok(None);
-    }
-    let Some(renderer) = math_renderer else {
-        return Ok(None);
-    };
-    let Some((width, height)) = measure_sequence_math_label(
-        measurer,
-        text,
-        style,
-        config,
-        Some(renderer),
-        height_mode,
-        checkpoints.text(),
-    )?
-    else {
-        return Ok(None);
-    };
-    checkpoints.checkpoint()?;
-    let html = renderer.render_sequence_html_label(text, config);
-    checkpoints.checkpoint()?;
-    let Some(html) = html else {
-        return Ok(None);
-    };
-    let html = xhtml_fix_fragment(&merman_core::sanitize::sanitize_text(&html, config));
-    Ok(Some(SequenceKatexLabel {
-        html,
+) -> Option<SequenceKatexLabel<'a>> {
+    let prepared = prepared?;
+    let (width, height) =
+        prepared_sequence_math_terminal_geometry(Some(prepared), style, height_mode)?
+            .browser_box_size();
+    Some(SequenceKatexLabel {
+        html: prepared.browser_xhtml(),
         width,
         height,
-    }))
+        style_assurance: prepared.style_assurance(),
+    })
+}
+
+pub(super) fn record_sequence_katex_terminal_emission(
+    receipt: &crate::sequence::SequenceTypographyThemeReceipt,
+    surface: crate::sequence::SequenceTextSurface,
+    label: &SequenceKatexLabel<'_>,
+) {
+    receipt.record_prepared_math_emission(surface, label.style_assurance);
 }
 
 pub(super) fn write_sequence_katex_foreign_object(
-    out: &mut String,
-    label: &SequenceKatexLabel,
+    out: &mut impl SvgOutput,
+    label: &SequenceKatexLabel<'_>,
     x: f64,
     y: f64,
 ) {
@@ -67,92 +51,81 @@ pub(super) fn write_sequence_katex_foreign_object(
     );
 }
 
-fn xhtml_fix_fragment(input: &str) -> String {
-    input
-        .replace("<br>", "<br />")
-        .replace("<br/>", "<br />")
-        .replace("<br >", "<br />")
-        .replace("</br>", "<br />")
-        .replace("</br/>", "<br />")
-        .replace("</br />", "<br />")
-        .replace("</br >", "<br />")
-}
-
 #[cfg(test)]
 mod tests {
-    use super::sequence_katex_label;
-    use crate::math::MathRenderer;
-    use crate::resources::{OperationWorkMeter, RenderResourcePolicy};
-    use crate::sequence::SequenceMathHeightMode;
-    use crate::text::{DeterministicTextMeasurer, TextMetrics, TextStyle};
-    use merman_core::{MermaidConfig, OperationControl, OperationPhase};
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
+
+    use crate::math::{ConfiguredMathBackend, MathRenderer};
+    use crate::text::{TextMetrics, TextStyle};
+
+    use super::*;
 
     #[derive(Debug)]
-    struct CancellingMathRenderer {
-        control: OperationControl,
-        measurement_calls: AtomicUsize,
-        render_calls: AtomicUsize,
-    }
+    struct FixedSequenceMathRenderer;
 
-    impl MathRenderer for CancellingMathRenderer {
-        fn render_html_label(&self, text: &str, _config: &MermaidConfig) -> Option<String> {
-            self.render_calls.fetch_add(1, Ordering::Relaxed);
-            Some(text.to_string())
-        }
-
-        fn measure_sequence_html_label(
+    impl MathRenderer for FixedSequenceMathRenderer {
+        fn render_html_label(
             &self,
             _text: &str,
-            _config: &MermaidConfig,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            None
+        }
+
+        fn render_sequence_html_label(
+            &self,
+            _text: &str,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            Some("<span class=\"prepared\">x²</span>".to_owned())
+        }
+
+        fn measure_sequence_html_label_with_style(
+            &self,
+            _text: &str,
+            _config: &merman_core::MermaidConfig,
+            style: &TextStyle,
         ) -> Option<TextMetrics> {
-            let calls = self.measurement_calls.fetch_add(1, Ordering::Relaxed) + 1;
-            if calls == 1 {
-                self.control.cancel();
-            }
             Some(TextMetrics {
-                width: 20.0,
-                height: 20.0,
+                width: 33.0,
+                height: style.font_size,
                 line_count: 1,
             })
         }
     }
 
     #[test]
-    fn sequence_math_emit_stops_after_measurement_callback_cancels() {
-        let control = OperationControl::new();
-        let meter = OperationWorkMeter::new_with_control(
-            RenderResourcePolicy::unbounded_for_trusted_input(),
-            control.clone(),
+    fn sequence_writer_reads_browser_projection_without_reentering_a_backend() {
+        let backend = ConfiguredMathBackend::external(Arc::new(FixedSequenceMathRenderer));
+        let config = merman_core::MermaidConfig::default();
+        let style = TextStyle {
+            font_size: 29.0,
+            ..TextStyle::default()
+        };
+        let meter = Arc::new(crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let occurrence_id = crate::math::PreparedMathOccurrenceId::indexed(
+            crate::DiagramFamilyId::SEQUENCE,
+            "message-label",
+            0,
         );
-        let renderer = CancellingMathRenderer {
-            control,
-            measurement_calls: AtomicUsize::new(0),
-            render_calls: AtomicUsize::new(0),
-        };
-        let text = std::iter::repeat_n("$$x$$", 130)
-            .collect::<Vec<_>>()
-            .join(" ");
+        let outcome = backend
+            .prepare(
+                crate::math::PrepareMathLabelRequest::sequence(
+                    "$$x^2$$", &config, &style, "#e5e7eb",
+                )
+                .with_occurrence_id(&occurrence_id),
+                &meter,
+            )
+            .unwrap();
+        let prepared = outcome.prepared().expect("prepared Sequence math");
 
-        let result = sequence_katex_label(
-            &text,
-            &DeterministicTextMeasurer::default(),
-            &TextStyle::default(),
-            &MermaidConfig::default(),
-            Some(&renderer),
-            SequenceMathHeightMode::Draw,
-            super::SequenceEmitCheckpoints::new(&meter),
-        );
-        let error = match result {
-            Err(error) => error,
-            Ok(_) => panic!("expected Sequence emit cancellation"),
-        };
-        let crate::Error::Cancelled(error) = error else {
-            panic!("expected Sequence emit cancellation");
-        };
+        let label = sequence_katex_label(Some(prepared), &style, SequenceMathHeightMode::Draw)
+            .expect("writer projection");
 
-        assert_eq!(error.phase, OperationPhase::Emit);
-        assert_eq!(renderer.measurement_calls.load(Ordering::Relaxed), 1);
-        assert_eq!(renderer.render_calls.load(Ordering::Relaxed), 0);
+        assert_eq!(label.html, prepared.browser_xhtml());
+        assert_eq!(label.width, 33.0);
+        assert!(label.height >= 29.0);
     }
 }

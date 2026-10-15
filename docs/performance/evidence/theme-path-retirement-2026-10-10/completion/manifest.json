@@ -1,0 +1,51 @@
+{
+  "format": "merman-performance-evidence-archive-v1",
+  "date": "2026-10-10",
+  "verified_source": "3a2a2de46476365b2d45270f35ce036da62fbb4d",
+  "runtime_source": "dd79ca584de4bb8b0045f572302d2ba355ce1958",
+  "ci_run": 38023696805,
+  "performance_run": 38023696796,
+  "ci_successful_jobs": 55,
+  "ci_intentional_skips": [
+    "typst-package-compat"
+  ],
+  "aggregate_gate": "pr-gate: success",
+  "scope": "Final platform delivery job/step metadata and supplemental local private acceptance/public boundary; native timing limitations remain in the separate shared-final archive. The GitHub bulk text log download was unavailable during archival, so ci.json is the authoritative per-job/per-step receipt.",
+  "archives": [
+    {
+      "path": "ci.json.gz",
+      "sha256": "b01250099869c08df7a9ceb74094d9e2ace698ea149ac1ddfd635944d1fe2fb3",
+      "bytes": 10035,
+      "uncompressed_sha256": "3e238731e9df7427203ce1bd3e41a87ee38306b2dbdd6a95142445e995f50015",
+      "uncompressed_bytes": 135324
+    },
+    {
+      "path": "local-receipts.json.gz",
+      "sha256": "00e223ba3cc10875a6abbd0cc19d13a69d1c1583b27b42f33c813c36b07f97ce",
+      "bytes": 719,
+      "uncompressed_sha256": "b5ca1e59b4324b1f3781218defe3ca40504abd16b77298c5fad7d74de5eb369c",
+      "uncompressed_bytes": 1517
+    },
+    {
+      "path": "performance-ci.json.gz",
+      "sha256": "778b653de73b378587835d9316f61f79fb29e9b924b84428a62b1546479c30dc",
+      "bytes": 718,
+      "uncompressed_sha256": "490be19f57ffa8d88e5c230ac73484657ddcc96aa0550785b5c7688d7704d755",
+      "uncompressed_bytes": 4016
+    },
+    {
+      "path": "private-acceptance.log.gz",
+      "sha256": "44465cfdcb9d4140f1da9f768f9714d9740d2d936e6eb9c5cc18c5227d77143c",
+      "bytes": 1882,
+      "uncompressed_sha256": "5b8767f1c72b7f656f1c668be617201615727b24a88917d10019ae0f988e8c26",
+      "uncompressed_bytes": 8484
+    },
+    {
+      "path": "public-boundary.log.gz",
+      "sha256": "80076b7faf8bcaa402f0d483a4ce82e2ab2d35d08616092f900b1b51e2728765",
+      "bytes": 250,
+      "uncompressed_sha256": "3b12e06f63c8277466456a107c7dedb34c3a4f6b6a6478bd11d125e719372f66",
+      "uncompressed_bytes": 807
+    }
+  ]
+}

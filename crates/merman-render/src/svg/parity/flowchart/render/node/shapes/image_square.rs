@@ -1,43 +1,35 @@
 //! Flowchart v2 image square shape.
 
-use std::fmt::Write as _;
-
 use crate::svg::parity::flowchart::types::{FlowchartRenderCtx, FlowchartRenderDetails};
-use crate::svg::parity::flowchart::{
-    HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR, OptionalStyleXmlAttr, flowchart_label_html,
-};
 use crate::svg::parity::{escape_xml_display, fmt_display};
 
 use super::super::roughjs::roughjs_stroke_path_for_svg_path;
 
 pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
-    out: &mut String,
+    out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
     common: &super::super::FlowchartNodeRenderCommon<'_>,
     label: &super::super::FlowchartNodeLabelState<'_>,
     details: &mut FlowchartRenderDetails,
-) -> bool {
+) -> Option<super::super::emission::FlowchartNodeLabelEmissionReceipt> {
     // Port of Mermaid `imageSquare.ts` (`image-shape default`).
     if let Some(img_href) = common.node_img.filter(|s| !s.trim().is_empty()) {
         let has_label = !label.text.is_empty();
         let label_padding = if has_label { 8.0 } else { 0.0 };
         let top_label = common.node_pos == Some("t");
 
-        let metrics = super::super::helpers::compute_node_label_metrics(
-            ctx,
-            Some(common.layout_node),
-            label.text,
-            label.label_type,
-            common.node_classes,
-            common.node_styles,
-        );
-        let span_style_attr = OptionalStyleXmlAttr(common.label_style);
+        let mut metrics = common
+            .label_emission
+            .metrics(ctx, Some(common.layout_node), label);
+        if !has_label {
+            metrics.width = 0.0;
+            metrics.height = 0.0;
+        }
 
         // Mermaid's `labelHelper(...)` wraps image labels in `.labelBkg`; the flowchart
         // stylesheet adds 2px padding to the nested `<p>`, so DOM `getBBox()` includes +4px.
         let label_bbox_w = metrics.width + if has_label { 4.0 } else { 0.0 };
         let label_bbox_h = metrics.height + if has_label { 4.0 } else { 0.0 };
-        let label_div_style = super::super::helpers::asset_label_div_style(ctx, label_bbox_w);
         let geometry = crate::flowchart::ImageSquareGeometry::from_label(
             metrics,
             has_label,
@@ -118,35 +110,21 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         out.push_str("</g>");
 
         // Label group uses a background class in Mermaid's image/icon helpers.
-        let label_html =
-            super::super::helpers::timed_node_label_html(common.timing, details, || {
-                flowchart_label_html(label.text, label.label_type, ctx.config, ctx.math_renderer)
-            });
         let label_dy = if top_label {
             -image_height / 2.0 - label_bbox_h / 2.0 - label_padding / 2.0
         } else {
             image_height / 2.0 - label_bbox_h / 2.0 + label_padding / 2.0
         };
-        let _ = write!(
+        let label_receipt = common.label_emission.write_special_html_label(
             out,
-            concat!(
-                r#"<g class="label" style="{}" transform="translate({},{})">"#,
-                r#"<rect/>"#,
-                r#"<foreignObject width="{}" height="{}"{}>"#,
-                r#"<div xmlns="http://www.w3.org/1999/xhtml" class="labelBkg" "#,
-                r#"style="{}"><span class="{}"{}>{}</span></div>"#,
-                r#"</foreignObject></g>"#
-            ),
-            escape_xml_display(common.label_style),
-            fmt_display(-label_bbox_w / 2.0),
-            fmt_display(label_dy),
-            fmt_display(label_bbox_w),
-            fmt_display(label_bbox_h),
-            HTML_LABEL_FOREIGN_OBJECT_OVERFLOW_ATTR,
-            escape_xml_display(&label_div_style),
-            super::super::helpers::flowchart_node_label_span_class(label.label_type),
-            span_style_attr,
-            label_html
+            ctx,
+            common,
+            label,
+            details,
+            -label_bbox_w / 2.0,
+            label_dy,
+            label_bbox_w,
+            label_bbox_h,
         );
 
         let outer_x0 = -outer_w / 2.0;
@@ -187,7 +165,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         if common.wrapped_in_a {
             out.push_str("</a>");
         }
-        return true;
+        return Some(label_receipt);
     } else {
         // Fall back to a normal node if the image URL is missing.
         let w = common.layout_node.width.max(1.0);
@@ -204,5 +182,5 @@ pub(in crate::svg::parity::flowchart::render::node) fn try_render_image_square(
         // Keep default label rendering.
     }
 
-    false
+    None
 }

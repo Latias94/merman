@@ -1,7 +1,12 @@
 # Theme Capability Deepening - Handoff
 
 Status: Closed
-Last updated: 2026-06-04
+Last updated: 2026-08-25
+
+> Historical closeout note (2026-08-25): this handoff records the June 2026 lane closure. The
+> later portable-theme convergence work has already superseded its pending-commit recommendation;
+> current status and follow-on gates live in
+> [`docs/plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md`](../../plans/2026-08-09-001-portable-theme-architecture-convergence-addendum.md).
 
 ## Current State
 
@@ -19,7 +24,7 @@ What is frozen:
 | Source | State | Evidence | Impact | Action |
 | --- | --- | --- | --- | --- |
 | User goal and autonomy request | COVERED | active Codex goal + current lane docs | execution is explicitly authorized | proceed |
-| `AGENTS.md` repo rules | COVERED | repo root `AGENTS.md` | commit still needs user confirmation | obey during closeout |
+| `AGENTS.md` repo rules | COVERED | repo root `AGENTS.md` | June closeout followed the then-current confirmation rule | preserved as historical evidence |
 | Root `CONTEXT.md` | DEFERRED | `ARCH-001` records it as missing | not blocking this bounded theme lane | continue with ADRs/workstreams as context |
 | Theme parity prior lane | COVERED | `docs/workstreams/theme-parity/*` | provides split-follow-up boundary | treat as parent lane |
 | Theme/render architecture audit | COVERED | `ARCH-013` in `docs/quality/ARCHITECTURE_ISSUES_2026-06-01.md` | justifies the deeper render-side seam | implement |
@@ -55,12 +60,12 @@ What is frozen:
 
 ## Blockers
 
-- None currently. The only standing workflow constraint is that any commit still needs user
-  confirmation under repo policy.
+- None recorded for this closed lane. The June closeout's commit-confirmation note is historical;
+  it is not an active instruction for the later convergence work.
 
-## Next Recommended Action
+## Historical Next Action
 
-- Commit the closed lane after user confirmation. Suggested message:
-  `refactor(merman-render): add render-side theme capability seams`.
-- Open narrower follow-ons only if the next objective is a specific remaining raw-theme family,
-  bindings/playground public surface, or host styling policy.
+The June handoff recommended committing the closed lane after maintainer confirmation. That action
+has since been superseded by later theme-architecture commits. Do not reopen this lane; open a
+narrower follow-on only for a specific remaining raw-theme family, binding/playground surface, or
+host styling policy.

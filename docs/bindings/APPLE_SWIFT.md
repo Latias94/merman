@@ -127,7 +127,7 @@ shape and its local relations, such as every output also being an operation and 
 system adapter also being a capability. They must tolerate newly introduced stable IDs rather than
 embedding a second copy of Merman's global vocabulary.
 
-Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `2`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
+Use `resourceOptionsJson(profile:overrides:)` to build Options JSON schema `3`. `.constrained` is the recommended profile for untrusted or multi-tenant diagrams; pass `nil` for a reusable request overlay that must inherit its constructor ceiling. Override records accept only `MermanResourceOverrideId`, while the runtime catalog remains the complete source of truth for all limits. The complete resource decision table and error behavior are documented in [binding options](OPTIONS_JSON.md).
 
 ## Text Measurement
 
@@ -166,8 +166,8 @@ contract.
   an existing engine.
 - Call `close()` deterministically, especially when a callback can capture the engine.
 - Move API 6 or older generated source and native libraries together to API 7. Replace the
-  version probe with `bindingApiVersionV7()`. API 7 adds `requestedLayoutProfile` and
-  `compactAttempted` to the schema-3 ASCII output plan; `layoutProfile` identifies the selected
+  version probe with `bindingApiVersionV7()`. API 7 preserves theme-authoring diagnostics and exposes `requestedLayoutProfile` and
+  `compactAttempted` in the schema-3 ASCII output plan; `layoutProfile` identifies the selected
   Canonical or Compact geometry. API 6 introduced the capability admission arrays and encoding.
   The generated source and native library must move atomically. `MermanOperationRequestV4` remains the current
   request record; add `control: nil` to generic request construction until the host adopts
@@ -180,8 +180,12 @@ contract.
 
 ## Verification
 
-The Apple smoke calls the generated public API against the built XCFramework. It intentionally
-checks only SVG output, immutable icon and text-measurement services, and deterministic close.
-Owner-local Rust tests carry exhaustive catalog, error, output, and lifecycle contracts. CI also
+The Apple smoke calls the generated public API against the built XCFramework. It checks SVG and
+ASCII output, immutable icon and text-measurement services, resource and cancellation errors, and
+deterministic close. Both one-shot and reusable consumers also execute the shared light/dark theme
+materialization, support-query, and structured error vectors from
+`crates/merman-theme-authoring-fixtures/fixtures/authoring-v1`. These fixtures are repository test
+inputs, not resources bundled into the Swift library.
+Owner-local Rust tests carry the broader catalog, output, and lifecycle contracts. CI also
 rebuilds the checked-in generated Swift binding, so API drift cannot pass by compiling an older
 hand-written facade.

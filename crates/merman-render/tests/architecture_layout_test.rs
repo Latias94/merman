@@ -269,30 +269,31 @@ fn architecture_parse_for_render_model_handles_deep_group_chain() {
 #[test]
 fn architecture_layout_handles_deep_group_chain() {
     const DEPTH: usize = 64;
-    let source = deep_group_chain_diagram(DEPTH);
-    let engine = Engine::new();
-    let handle = std::thread::Builder::new()
-        .name("architecture-deep-group-layout".to_string())
-        // The public artifact pipeline needs more stack headroom on Windows/MSVC than the
-        // parse-only path while retaining the 128 KiB contract on other platforms.
-        .stack_size(DEEP_GROUP_LAYOUT_STACK_SIZE)
-        .spawn(move || layout_architecture_with_engine(&engine, &source))
-        .expect("spawn architecture deep group layout test");
-    let layout = handle
-        .join()
-        .expect("architecture deep group layout should finish without stack overflow");
+    for depth in [1, DEPTH] {
+        let source = deep_group_chain_diagram(depth);
+        let engine = Engine::new();
+        let handle = std::thread::Builder::new()
+            .name("architecture-deep-group-layout".to_string())
+            // Exercise both fixed preparation overhead and input-depth-dependent traversal.
+            .stack_size(DEEP_GROUP_LAYOUT_STACK_SIZE)
+            .spawn(move || layout_architecture_with_engine(&engine, &source))
+            .expect("spawn architecture deep group layout test");
+        let layout = handle
+            .join()
+            .expect("architecture deep group layout should finish without stack overflow");
 
-    assert!(
-        layout.nodes.iter().any(|node| node.id == "leaf"),
-        "expected deepest service to remain in Architecture layout"
-    );
-    assert!(
-        layout
-            .fcose_compound_bounds
-            .iter()
-            .any(|bounds| bounds.id == format!("g{}", DEPTH - 1)),
-        "expected deepest group to preserve FCoSE compound bounds"
-    );
+        assert!(
+            layout.nodes.iter().any(|node| node.id == "leaf"),
+            "expected deepest service to remain in Architecture layout"
+        );
+        assert!(
+            layout
+                .fcose_compound_bounds
+                .iter()
+                .any(|bounds| bounds.id == format!("g{}", depth - 1)),
+            "expected deepest group to preserve FCoSE compound bounds"
+        );
+    }
 }
 
 #[test]

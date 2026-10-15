@@ -1,0 +1,23 @@
+{
+  "site_config": {
+    "theme": "dark",
+    "fontFamily": "Cousine, monospace",
+    "themeVariables": {
+      "fontFamily": "Cousine, monospace",
+      "cScale0": "#1e3a5f",
+      "cScale1": "#4a3410",
+      "cScaleLabel0": "#dfe1e5",
+      "cScaleLabel1": "#dfe1e5",
+      "mindmap": {
+        "labelBackgroundColor": "#1e1f22",
+        "labelTextColor": "#dfe1e5"
+      }
+    }
+  },
+  "svg": {
+    "diagram_id": "issue-199-font-bounds",
+    "pipeline": "resvg-safe",
+    "root_background_color": "#1e1f22"
+  },
+  "raster": {"scale": 2}
+}

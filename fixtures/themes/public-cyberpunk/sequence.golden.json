@@ -1,0 +1,115 @@
+{
+  "diagramType": "sequence",
+  "model": {
+    "type": "sequence",
+    "title": null,
+    "accTitle": null,
+    "accDescr": null,
+    "actorOrder": [
+      "Client",
+      "API"
+    ],
+    "actors": {
+      "API": {
+        "name": "API",
+        "description": "API",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      },
+      "Client": {
+        "name": "Client",
+        "description": "Client",
+        "type": "participant",
+        "wrap": false,
+        "links": {},
+        "properties": {}
+      }
+    },
+    "messages": [
+      {
+        "id": "0",
+        "from": "Client",
+        "to": "API",
+        "type": 0,
+        "message": "Request data",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "1",
+        "from": "API",
+        "to": null,
+        "type": 17,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "2",
+        "from": "API",
+        "to": "API",
+        "type": 2,
+        "message": "Verify token",
+        "wrap": false,
+        "activate": false,
+        "placement": 1
+      },
+      {
+        "id": "3",
+        "from": null,
+        "to": null,
+        "type": 10,
+        "message": "Each request",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "4",
+        "from": "API",
+        "to": "Client",
+        "type": 1,
+        "message": "Return data",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "5",
+        "from": null,
+        "to": null,
+        "type": 11,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      },
+      {
+        "id": "6",
+        "from": "API",
+        "to": null,
+        "type": 18,
+        "message": "",
+        "wrap": false,
+        "activate": false
+      }
+    ],
+    "notes": [
+      {
+        "actor": "API",
+        "message": "Verify token",
+        "placement": 1,
+        "wrap": false
+      }
+    ],
+    "boxes": [],
+    "createdActors": {},
+    "destroyedActors": {},
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "rightOf": 1,
+        "over": 2
+      }
+    }
+  }
+}

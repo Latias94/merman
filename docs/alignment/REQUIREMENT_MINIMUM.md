@@ -2,7 +2,10 @@
 
 This document defines the admitted Requirement parser, model, Dagre layout, and SVG contract.
 
-Baseline: Mermaid `11.16.1` at `7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`.
+Historical parser admission baseline: Mermaid `11.16.1` at
+`7ecca0cd7f1658ef74f4e7e91f925724ef403bbf`. The current reference is the pinned Mermaid
+`11.17.2` checkout specified by ADR-0001. The SVG-label contract below was checked against
+that checkout; this does not relabel historical fixtures as regenerated evidence.
 
 Upstream references:
 
@@ -70,6 +73,18 @@ Upstream references:
 
 ## Layout And SVG Admission
 
+- Requirement and element lines honor root `htmlLabels` (default `true`). Relationships and
+  self-loop anchors follow the shared effective setting, including the `flowchart.htmlLabels`
+  fallback when the root setting is absent, matching the distinct upstream consumers.
+- With `htmlLabels: false`, these labels emit SVG `text`/`tspan`, retain Markdown and decoded
+  entities, and use SVG-mode measurement. Node stacking includes the upstream 6px bbox-height
+  addition; relationship backgrounds instead add 2px on each side of their text bounds.
+- Source label `color` becomes `fill` only on SVG `text`; the label group and first-row inner
+  spans retain their source declarations. Shape fill does not become text fill. The name line
+  retains the upstream first-row bold override; ELK-configured body lines retain start alignment.
+- Prepared-label reuse binds both node and relationship modes in addition to typography and
+  measurement identity. Host measurers retain render-time callbacks. Browser glyph overhang and
+  bbox offsets remain text-measurement residuals, not pixel-exact qualification.
 - Relationship ownership uses a structured edge key, so duplicate sources, reverse edges, and
   self-loops do not bind labels by source text or array position.
 - Dagre self-loops preserve Mermaid's helper segments, marker ids, and route restoration.

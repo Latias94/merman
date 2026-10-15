@@ -181,7 +181,8 @@ fn hex_digit(value: u8) -> u8 {
 }
 
 fn mindmap_compat_config(meta: &ParseMetadata) -> Value {
-    let mut config = crate::config::clone_value_nonrecursive(meta.effective_config.as_value());
+    let mut config =
+        crate::compatibility_json::clone_value_nonrecursive(meta.effective_config.as_value());
     if meta.config.as_value().get("layout").is_none()
         && let Some(object) = config.as_object_mut()
     {

@@ -2,69 +2,115 @@
 // Source: capabilities/feature-surface-v1.json. Do not edit directly.
 
 export const CAPABILITY_DESCRIPTOR_SCHEMA_VERSION = 1;
-export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:eef244eb1728b05d047257200bf15c4cf439ac9654100778205aaaf88f8ed2ed";
+export const CAPABILITY_DESCRIPTOR_DIGEST = "sha256:5b258cdc24e14dbc01dc19276c0c3d3477a4c3db20fba0214c87f6fd2333d00c";
 
 export const NODE_BINDING_OPERATIONS = [
   {
     "id": "analysis-facts-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "analysis-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "ascii",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
+  },
+  {
+    "id": "describe-theme-support-json",
+    "maturity": "alpha",
+    "compiled_prerequisites": [],
+    "input_kind": "theme-support-query-json"
   },
   {
     "id": "document-analysis-facts-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "document-analysis-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "edge-geometry-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
+  },
+  {
+    "id": "export-theme-preset-json",
+    "maturity": "alpha",
+    "compiled_prerequisites": [],
+    "input_kind": "theme-preset-id"
   },
   {
     "id": "jpeg",
+    "maturity": "stable",
     "compiled_prerequisites": [
       "svg"
-    ]
+    ],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "layout-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
+  },
+  {
+    "id": "materialize-theme-json",
+    "maturity": "alpha",
+    "compiled_prerequisites": [],
+    "input_kind": "theme-definition-json"
   },
   {
     "id": "pdf",
+    "maturity": "stable",
     "compiled_prerequisites": [
       "svg"
-    ]
+    ],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "png",
+    "maturity": "stable",
     "compiled_prerequisites": [
       "svg"
-    ]
+    ],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "semantic-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "svg",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "svg-plan-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   },
   {
     "id": "validation-json",
-    "compiled_prerequisites": []
+    "maturity": "stable",
+    "compiled_prerequisites": [],
+    "input_kind": "mermaid-source"
   }
 ];

@@ -3,6 +3,12 @@
 use super::*;
 use usvg::fontdb::{Database, FaceInfo, ID};
 
+/// Discovery-owned selection evidence before bounded binary admission.
+pub(super) struct FontSelection {
+    pub(super) candidate: FontCandidate,
+    pub(super) family_fallback_used: bool,
+}
+
 pub(super) enum FontCandidate {
     Loaded(FaceInfo),
     File {
@@ -10,6 +16,17 @@ pub(super) enum FontCandidate {
         index: u32,
         expected: ExpectedFace,
     },
+}
+
+impl FontCandidate {
+    fn export_source(&self) -> NativeExportFontSource {
+        match self {
+            // Loaded faces originate from the caller-owned database. Discovery-backed faces
+            // always cross the bounded file admission path below.
+            Self::Loaded(_) => NativeExportFontSource::Caller,
+            Self::File { .. } => NativeExportFontSource::System,
+        }
+    }
 }
 
 pub(super) enum ExpectedFace {
@@ -50,7 +67,7 @@ impl DiscoveryProvider {
         &self,
         font: &usvg::Font,
         control: &OperationControl,
-    ) -> Result<Option<FontCandidate>, NativeFontError> {
+    ) -> Result<Option<FontSelection>, NativeFontError> {
         match self {
             Self::Bounded(catalog) => catalog.select(font, control),
             #[cfg(feature = "experimental-system-font-query")]
@@ -103,9 +120,11 @@ impl DiscoveryProvider {
 pub(super) fn resolver(
     context: NativeFontContext,
     control: OperationControl,
+    observer: Option<NativeExportFontObserver>,
 ) -> usvg::FontResolver<'static> {
     let select_context = context.clone();
     let select_control = control.clone();
+    let select_observer = observer.clone();
     usvg::FontResolver {
         select_font: Box::new(move |font, database| {
             let result = (|| {
@@ -117,16 +136,33 @@ pub(super) fn resolver(
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
                 provider
                     .select(font, &select_control)?
-                    .map(|candidate| {
-                        select_context.0.sources.materialize(
-                            candidate,
-                            database,
-                            &select_context.0.limits,
-                            &select_control,
-                        )
+                    .map(|selection| {
+                        let source = selection.candidate.export_source();
+                        select_context
+                            .0
+                            .sources
+                            .materialize(
+                                selection.candidate,
+                                database,
+                                &select_context.0.limits,
+                                &select_control,
+                            )
+                            .inspect(|id| {
+                                if let Some(observer) = &select_observer {
+                                    observer.admit(*id, source);
+                                    if selection.family_fallback_used {
+                                        observer.mark_family_fallback();
+                                    }
+                                }
+                            })
                     })
                     .transpose()
             })();
+            if let Some(observer) = &select_observer
+                && !matches!(&result, Ok(Some(_)))
+            {
+                observer.mark_unresolved_font();
+            }
             resolve_or_record(&select_context, result)
         }),
         select_fallback: Box::new(move |character, excluded, database| {
@@ -151,6 +187,7 @@ pub(super) fn resolver(
                     &excluded_faces,
                     &control,
                     &mut |candidate| {
+                        let source = candidate.export_source();
                         let id = context.0.sources.materialize(
                             candidate,
                             database,
@@ -176,10 +213,24 @@ pub(super) fn resolver(
                             &probe_excluded,
                             &mut Arc::new(probe),
                         );
-                        Ok((selected == Some(candidate_id)).then_some(id))
+                        if selected == Some(candidate_id) {
+                            if let Some(observer) = &observer {
+                                observer.admit(id, source);
+                            }
+                            Ok(Some(id))
+                        } else {
+                            Ok(None)
+                        }
                     },
                 )
             })();
+            if let Some(observer) = &observer {
+                if matches!(&result, Ok(Some(_))) {
+                    observer.mark_glyph_fallback();
+                } else {
+                    observer.mark_unresolved_glyph();
+                }
+            }
             resolve_or_record(&context, result)
         }),
     }

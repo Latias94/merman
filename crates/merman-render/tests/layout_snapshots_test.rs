@@ -222,12 +222,11 @@ fn parser_only_layout_exclusions_use_exact_family_facts() {
     )));
 }
 
+// These committed snapshots use both optional layout engines. Reduced feature profiles have
+// independent capability and fallback tests rather than this complete-backend golden set.
+#[cfg(all(feature = "layout-elk", feature = "layout-cytoscape"))]
 #[test]
 fn fixtures_match_layout_golden_snapshots_when_present() {
-    if !cfg!(feature = "layout-elk") {
-        return;
-    }
-
     let runtime_policy = merman_core::runtime::RuntimePolicy::deterministic()
         .try_with_fixed_local_offset_minutes(0)
         .expect("valid UTC offset")
