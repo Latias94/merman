@@ -17,6 +17,25 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 15 Windows data-flow refactor](native_theme_refactor_windows_2026-10-15.md)
+removes the reachable quadratic staged-provenance scan and reduces terminal allocation.
+Class medium terminal allocation drops from 1,699 to 746 operations and peak growth from
+160,850 to 30,234 bytes. The public 4,096-variable Dark diagnostic falls from about 148 ms
+to 30 ms. Ordinary SVG latency recovery remains open: three-pair diagnostics do not clear
+the joint improvement gate, and terminal timing does not show a consistent win despite
+less allocation. Preserve complete validation and advance the generated-XML ownership
+boundary only with exact event-derived facts, mutation invalidation and fresh evidence.
+
+The [October 15 Windows attribution](native_theme_attribution_windows_2026-10-15.md) reproduces
+the `v0.9.0` to merged-theme `b9844db7b` regression on identical Class and Journey SVGs.
+Three-pair diagnostics observe Class medium +64.30% and Journey +274.31%; these are not a new
+calibrated confirmation. Independent probes isolate ordinary standalone finalization at about
+639 us for Class and 105 us for Journey, with resource hashing at about 39 us and 6 us.
+Prioritize the shared XML/reference data flow and bounded serialization rather than another
+local report-clone cleanup. A separate public Dark/frontmatter probe confirms quadratic staged
+provenance work: 4,096 extra variables take about 151 ms versus 15 ms at v0.9.0.
+Keep that structural repair separate from the default SVG lane. No production speedup is admitted.
+
 The [October 14 native repair closeout](native_theme_repair_2026-10-14.md) closes N01–N36
 as correctness or owner-local structural repairs. The fourteen-row frozen confirmation cohort
 passes non-regression against clean corrected control `d5ae01105`; no row clears the registered
