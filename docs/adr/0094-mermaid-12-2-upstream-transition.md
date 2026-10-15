@@ -1,4 +1,4 @@
-# ADR-0093: Mermaid 12.2 Upstream Transition
+# ADR-0094: Mermaid 12.2 Upstream Transition
 
 ## Status
 

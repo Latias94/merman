@@ -321,6 +321,24 @@ def read_release_contract(root: Path) -> tuple[dict, dict]:
     return matches[0], authority
 
 
+def _publishes_theme_preset_catalog(contract_root: Path) -> bool:
+    """Detect whether the version-owned CLI source publishes the catalog field.
+
+    The Arch job verifies the stable 0.9.0 source package with the current verifier.
+    That source predates the theme-preset capability field, while the current development
+    contract requires it. Keep the version-owned capability surface authoritative without
+    weakening the current source contract when the source marker is absent.
+    """
+    source = contract_root / "crates/merman-cli/src/capabilities.rs"
+    if not source.is_file() or source.is_symlink():
+        return True
+    try:
+        text = source.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return True
+    return "theme_preset_catalog_document" in text
+
+
 def _run(
     binary: Path,
     arguments: list[str],
@@ -515,12 +533,12 @@ def _verify_capabilities(
         raise CliInstallationError("installed diagram family set differs from cli-release")
     if _id_set(document.get("outputs"), "installed outputs") != expected_outputs:
         raise CliInstallationError("installed output set differs from cli-release")
-    if "svg" in expected_capabilities:
+    if "svg" in expected_capabilities and _publishes_theme_preset_catalog(contract_root):
         try:
             validate_unqualified_catalog(document.get("theme_presets"))
         except RuntimeError as error:
             raise CliInstallationError(f"installed {error}") from error
-    elif "theme_presets" in document:
+    elif "theme_presets" in document and _publishes_theme_preset_catalog(contract_root):
         raise CliInstallationError("installed capabilities expose a theme preset catalog without SVG support")
     surface = _strict_json_object(
         _read_regular_file(

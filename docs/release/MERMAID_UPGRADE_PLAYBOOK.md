@@ -17,7 +17,7 @@ The scope adds Mindmap structural-depth colors and label fixes, label-derived Ci
 label-aware ELK terminal straightening, and Swimlane order, title-band, terminal, DOM-id and
 actual-engine clipping fixes. It adds no diagram family or Cargo feature and changes no FFI or
 editor-facts schema version. The independent Tree-sitter baseline does not move. See
-[ADR-0093](../adr/0093-mermaid-12-2-upstream-transition.md) for source evidence and dependency decisions.
+[ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md) for source evidence and dependency decisions.
 
 Reference generation, source-bound oracle refresh, focused regressions, and the three-mode DOM
 matrix are verified. The full strict release gates passed on the frozen source on 2026-10-13;

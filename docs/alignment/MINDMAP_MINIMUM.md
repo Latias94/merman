@@ -9,7 +9,7 @@ root, independently of indentation width, cycling through eleven non-root sectio
 its child's section. All node shapes center SVG text labels; Neo SVG and HTML labels use matching
 palette colors. Circle geometry uses the label diagonal and the selected look's padding. SVG text
 labels use the shared Markdown text path and do not require a math renderer for literal `$$` text.
-See [ADR-0093](../adr/0093-mermaid-12-2-upstream-transition.md) for source and regression ownership.
+See [ADR-0094](../adr/0094-mermaid-12-2-upstream-transition.md) for source and regression ownership.
 
 ## Supported (current)
 

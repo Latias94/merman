@@ -245,3 +245,17 @@ All nine tests in the four-binary CI integration recipe pass with no skips or ea
 The Class case covers five schemes, three looks, both label modes, both selector variants, and
 solid/transparent fills. The following exact minimal-feature CI discovery recipe also passes
 all 52 tests. Source formatting, whitespace and the indexed path budget pass.
+
+## ADR identity integration, 2026-10-15
+
+Run 38605647362 passed all runtime owner jobs but failed hygiene on a duplicated ADR 0094.
+The checkout was GitHub merge preview `e2fdd31c`, combining head `6b73eae28` with base `a109d297`.
+The two branches had independently renumbered different documents to 0094. The branch integrates
+that base and uses its canonical assignment: shared Rustdoc is 0093 and Mermaid 12.2 is 0094.
+Filename/title identities, current references and the earlier integration notes agree.
+
+The exact merged tree passes ADR verification, all six ADR unit tests, the Homebrew/archive
+owner suites (103 tests, one existing platform skip), installation contracts, release versions,
+424 legal projections, third-party metadata and both independent locked Cargo metadata recipes.
+The inherited base changes also include its installation-verifier compatibility fix and nested
+lock refresh. No Rust implementation, workflow gate or rendering tolerance changes in this repair.

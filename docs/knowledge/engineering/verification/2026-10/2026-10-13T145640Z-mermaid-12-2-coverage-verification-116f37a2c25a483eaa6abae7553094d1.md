@@ -42,5 +42,5 @@ Canonical PR monitoring retains invocation `ea58ea61fd6b41f1abee35b438961179`; t
 # Citations
 
 - [Fixture coverage and issue triage](../../../../alignment/FIXTURE_COVERAGE_12_2.md)
-- [ADR-0093](../../../../adr/0093-mermaid-12-2-upstream-transition.md)
+- [ADR-0094](../../../../adr/0094-mermaid-12-2-upstream-transition.md)
 - [PR #196](https://github.com/Latias94/merman/pull/196)
