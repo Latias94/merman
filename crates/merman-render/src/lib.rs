@@ -158,6 +158,14 @@ pub mod gitgraph;
     )
 )]
 mod graph_label;
+#[cfg_attr(
+    not(feature = "all-diagrams"),
+    allow(
+        dead_code,
+        reason = "Shared HTML controls have different callers in each diagram selection."
+    )
+)]
+mod html;
 #[cfg(feature = "diagram-info")]
 pub mod info;
 #[cfg(feature = "diagram-ishikawa")]

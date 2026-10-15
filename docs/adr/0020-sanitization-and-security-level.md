@@ -18,8 +18,8 @@ model so downstream renderers (SVG/Canvas/UI wrappers) can match Mermaid behavio
 - Implement a Mermaid-inspired sanitizer in `merman-core`:
   - `sanitize::sanitize_text` and `sanitize::sanitize_text_or_array`
   - `sanitize::remove_script` for strict/antiscript levels
-  - HTML rewriting uses `lol_html` (streaming HTML rewriter) to avoid brittle regex-based parsing and
-    to keep output close to input while applying Mermaid's safety rules.
+  - HTML5 recovery uses `html5ever` before tree-based policy traversal and explicit HTML/XHTML
+    serialization (see the revised ADR-0021).
   - Tag/attribute validation uses DOMPurify default allowlists generated from the pinned DOMPurify version
     (see ADR-0024).
   - `dompurifyConfig` coverage is incremental; currently supported keys include:

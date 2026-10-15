@@ -767,18 +767,18 @@ pub(in crate::svg::parity) fn render_flowchart_edge_label(
     let label_html = if crate::flowchart::flowchart_label_is_empty_for_render(label_text) {
         std::borrow::Cow::Borrowed("")
     } else {
-        let prepared_math = ctx
+        let prepared_label = ctx
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math_for_terminal(owner, label_text)
+                sidecar.prepared_label_for_terminal(owner, label_text)
             });
-        flowchart_label_html_with_prepared_math(
+        flowchart_label_html_with_prepared_label(
             label_text,
             label_type,
             ctx.config,
             ctx.math_renderer,
-            prepared_math,
+            prepared_label,
         )
     };
 
@@ -1147,18 +1147,18 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_edge_label_node(
         let owner = Some(crate::flowchart::FlowchartSvgLabelOwner::SwimlaneEdgeLabel(
             key.semantic_index(),
         ));
-        let prepared_math = ctx
+        let prepared_label = ctx
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math_for_terminal(owner, label_text)
+                sidecar.prepared_label_for_terminal(owner, label_text)
             });
-        let label_html = flowchart_label_html_with_prepared_math(
+        let label_html = flowchart_label_html_with_prepared_label(
             label_text,
             label_type,
             ctx.config,
             ctx.math_renderer,
-            prepared_math,
+            prepared_label,
         );
         // `createText` maps only the first literal `fill:` occurrence to `color:` before applying
         // the copied label style to the HTML span and div. Later fixed declarations override the

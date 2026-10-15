@@ -15,7 +15,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
     struct FixedMath;
     impl MathRenderer for FixedMath {
         fn render_html_label(&self, text: &str, _: &MermaidConfig) -> Option<String> {
-            assert_eq!(text, "$$x&lt;br/&gt;y$$");
+            assert_eq!(text, "$$x&lt;br&gt;y$$");
             Some("<span>rendered formula</span>".to_owned())
         }
         fn measure_html_label(
@@ -26,7 +26,7 @@ fn usecase_math_measurement_and_output_share_the_operation_backend() {
             _: Option<f64>,
             _: WrapMode,
         ) -> Option<TextMetrics> {
-            assert_eq!(text, "$$x&lt;br/&gt;y$$");
+            assert_eq!(text, "$$x&lt;br&gt;y$$");
             Some(TextMetrics {
                 width: 222.0,
                 height: 37.0,

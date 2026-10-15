@@ -4416,8 +4416,8 @@ linkStyle 1 font-weight:banana
     .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
     .expect("best-effort output should preserve sanitized XHTML styles");
 
-    assert!(rendered.svg().contains("class='host-label'"));
-    assert!(rendered.svg().contains("style='color:var(--accent)'"));
+    assert!(rendered.svg().contains("class=\"host-label\""));
+    assert!(rendered.svg().contains("style=\"color:var(--accent)\""));
     assert!(rendered.style_report().residuals().iter().any(|residual| {
         residual.owner_id() == "L_A_B_0"
             && residual.property() == Some("color")
@@ -9933,7 +9933,7 @@ impl crate::math::MathRenderer for SwimlanePreparedMathRenderer {
 }
 
 #[test]
-fn swimlane_group_title_reuses_prepared_math_for_terminal_emission() {
+fn swimlane_group_title_reuses_prepared_label_for_terminal_emission() {
     let source = r#"swimlane-beta LR
 subgraph Lane["$$x^2$$"]
   A[Node]
@@ -9962,7 +9962,7 @@ end
         .expect("Swimlane group-title owner");
     assert!(matches!(
         swimlane.svg_label_sidecar().prepared_math(owner, "$$x^2$$"),
-        crate::flowchart::FlowchartPreparedMathResolution::Prepared(_)
+        crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(_)
     ));
     let calls_after_preparation = calls.load(std::sync::atomic::Ordering::Relaxed);
     assert!(

@@ -4,7 +4,7 @@ use crate::diagram_theme::ThemeTarget;
 use std::fmt::Write as _;
 
 use crate::svg::parity::flowchart::label::{
-    flowchart_label_html_with_prepared_math, flowchart_label_plain_text,
+    flowchart_label_html_with_prepared_label, flowchart_label_plain_text,
 };
 use crate::svg::parity::flowchart::style::{
     FlowchartCompiledStyles, flowchart_label_div_style_prefix,
@@ -137,19 +137,19 @@ impl<'a> FlowchartNodeLabelEmissionPlan<'a> {
             });
         let final_style = self.final_style(ctx, &text_style, prepared_svg_label.as_ref());
         let span_style_attr = OptionalStyleXmlAttr(final_style.as_str());
-        let prepared_math = ctx
+        let prepared_label = ctx
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math_for_terminal(owner, label.text)
+                sidecar.prepared_label_for_terminal(owner, label.text)
             });
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
-            flowchart_label_html_with_prepared_math(
+            flowchart_label_html_with_prepared_label(
                 label.text,
                 label.label_type,
                 ctx.config,
                 ctx.math_renderer,
-                prepared_math,
+                prepared_label,
             )
         });
         let mut div_style = final_style.clone();
@@ -409,19 +409,19 @@ fn render_flowchart_node_label_with_wrapper(
         }
         out.push_str("</g></g>");
     } else {
-        let prepared_math = ctx
+        let prepared_label = ctx
             .svg_label_sidecar
             .zip(owner)
             .map_or(Default::default(), |(sidecar, owner)| {
-                sidecar.prepared_math_for_terminal(owner, label.text)
+                sidecar.prepared_label_for_terminal(owner, label.text)
             });
         let label_html = super::helpers::timed_node_label_html(common.timing, details, || {
-            flowchart_label_html_with_prepared_math(
+            flowchart_label_html_with_prepared_label(
                 label.text,
                 label.label_type,
                 ctx.config,
                 ctx.math_renderer,
-                prepared_math,
+                prepared_label,
             )
         });
         if ctx.text_surface_paint.generic_text.requested() {
@@ -451,8 +451,8 @@ fn render_flowchart_node_label_with_wrapper(
         let is_math_html_label = ctx.node_wrap_mode == crate::text::WrapMode::HtmlLike
             && label.text.contains("$$")
             && (matches!(
-                prepared_math,
-                crate::flowchart::FlowchartPreparedMathResolution::Prepared(_)
+                prepared_label,
+                crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(_)
             ) || ctx.math_renderer.is_some());
 
         let mut label_below_minimum = false;
@@ -477,40 +477,20 @@ fn render_flowchart_node_label_with_wrapper(
                 label_below_minimum = natural.width < min_width;
                 natural.width >= ctx.wrapping_width - 0.01
             } else {
-                let has_inline_style_tags =
-                    ctx.node_html_labels && label.label_type != "markdown" && {
-                        let lower = label_html.to_ascii_lowercase();
-                        crate::text::flowchart_html_has_inline_style_tags(&lower)
-                    };
-
-                let raw = if label.label_type == "markdown" {
-                    crate::text::measure_markdown_with_inline_styles(
-                        ctx.measurer,
-                        label.text,
-                        &node_text_style,
-                        None,
-                        ctx.node_wrap_mode,
-                    )
-                    .width
-                } else if has_inline_style_tags {
-                    crate::text::measure_html_with_inline_styles(
-                        ctx.measurer,
-                        &label_html,
-                        &node_text_style,
-                        None,
-                        ctx.node_wrap_mode,
-                    )
-                    .width
-                } else {
-                    ctx.measurer
-                        .measure_wrapped(
-                            &label_text_plain,
-                            &node_text_style,
-                            None,
-                            ctx.node_wrap_mode,
-                        )
-                        .width
-                };
+                let raw = crate::graph_label::flowchart_html_label_metrics_for_layout(
+                    crate::flowchart::FlowchartLabelMetricsRequest {
+                        measurer: ctx.measurer,
+                        raw_label: label.text,
+                        label_type: label.label_type,
+                        style: &node_text_style,
+                        max_width_px: None,
+                        wrap_mode: ctx.node_wrap_mode,
+                        config: ctx.config,
+                        math_renderer: None,
+                    },
+                    &label_html,
+                )
+                .width;
                 label_below_minimum = raw < min_width;
                 raw > ctx.wrapping_width
             }

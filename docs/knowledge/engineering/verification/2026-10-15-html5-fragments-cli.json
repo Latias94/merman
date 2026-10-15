@@ -1,0 +1,107 @@
+{
+  "kind": "matched Windows debug CLI diagnostic",
+  "timestamp": "2026-10-15T11:42:04.474852+00:00",
+  "platform": "Windows-11-10.0.26100-SP0",
+  "features": "--no-default-features --features diagram-flowchart,svg",
+  "base_commit": "b9844db7b747111690bf6369d4536885a85e35a7",
+  "samples_per_variant": 5,
+  "binaries": {
+    "baseline": {
+      "bytes": 30731264,
+      "sha256": "7872bec4970c0079523c53edc841aad81f108a425e64a16134bd5680841a5a50"
+    },
+    "current": {
+      "bytes": 30804480,
+      "sha256": "ad5a50b13520ed23c2125095452e4498496904099c4b03efe4d7dc32c7ff5ce2"
+    }
+  },
+  "workloads": {
+    "closed": {
+      "source_bytes": 2492,
+      "source_sha256": "b140bbdbe2a8f44aab73349d9287a971b35749c9bffa849769aeba73c8147c6c",
+      "milliseconds": {
+        "baseline": [
+          127.5717,
+          117.5505,
+          124.795,
+          116.3708,
+          111.1552
+        ],
+        "current": [
+          135.0492,
+          117.229,
+          108.9096,
+          112.1201,
+          115.2966
+        ]
+      },
+      "median_ms": {
+        "baseline": 117.5505,
+        "current": 115.2966
+      },
+      "current_over_baseline": 0.9808261130322712,
+      "svg_bytes": {
+        "baseline": 63134,
+        "current": 63134
+      }
+    },
+    "bench-plain": {
+      "source_bytes": 6159,
+      "source_sha256": "b4666213c2471ea183285572e0228be0e91e38b4d430aff095e570410282da47",
+      "milliseconds": {
+        "baseline": [
+          215.1254,
+          215.9759,
+          226.1867,
+          207.8959,
+          217.7488
+        ],
+        "current": [
+          222.0939,
+          227.4121,
+          219.8407,
+          221.6528,
+          232.6736
+        ]
+      },
+      "median_ms": {
+        "baseline": 215.9759,
+        "current": 222.0939
+      },
+      "current_over_baseline": 1.0283272346590522,
+      "svg_bytes": {
+        "baseline": 330103,
+        "current": 330103
+      }
+    },
+    "bench-rich": {
+      "source_bytes": 15359,
+      "source_sha256": "5f8f84339fe807e57f2f1f661aa4e64430cfed4ee38c6a8cc045eda3444ac78d",
+      "milliseconds": {
+        "baseline": [
+          808.8249,
+          861.1248,
+          877.954,
+          891.1545,
+          886.3591
+        ],
+        "current": [
+          816.693,
+          858.2749,
+          896.1313,
+          876.2544,
+          863.2186
+        ]
+      },
+      "median_ms": {
+        "baseline": 877.954,
+        "current": 863.2186
+      },
+      "current_over_baseline": 0.9832162049492343,
+      "svg_bytes": {
+        "baseline": 338801,
+        "current": 338801
+      }
+    }
+  }
+}

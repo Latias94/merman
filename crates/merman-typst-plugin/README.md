@@ -59,7 +59,7 @@ plugin and its dependency closure.
 
 RaTeX math is not supported by the Typst plugin. Its current dependency closure uses browser system-font discovery, which violates the zero-browser-import Typst boundary. A future math admission must pass separate import and behavior gates before it updates the one canonical artifact recipe.
 
-The exact Typst dependency gate admits `json5`, `lol_html`, and `url` as measured pure-Rust parts of invariant Mermaid language, configuration, and sanitization semantics. It continues to reject browser bindings and system adapters. The artifact size budget and final module import check bound this admitted closure.
+The exact Typst dependency gate admits `json5`, `html5ever`, and `url` as measured pure-Rust parts of invariant Mermaid language, configuration, and sanitization semantics. It continues to reject browser bindings and system adapters. The artifact size budget and final module import check bound this admitted closure.
 
 The Typst wrapper version in `distribution/typst/merman/typst.toml` is independent from the Rust workspace version returned by `package_version`.
 

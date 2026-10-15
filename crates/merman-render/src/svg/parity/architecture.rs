@@ -1,4 +1,5 @@
 mod edges;
+#[cfg(test)]
 mod foreign_object;
 mod geometry;
 mod icons;

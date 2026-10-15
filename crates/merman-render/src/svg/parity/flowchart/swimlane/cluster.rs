@@ -366,20 +366,20 @@ pub(in crate::svg::parity::flowchart) fn render_swimlane_cluster(
         crate::flowchart::FlowchartSourceFacetStatus::Absent,
     );
     if ctx.swimlane_title_html_labels {
-        let prepared_math = ctx
+        let prepared_label = ctx
             .svg_label_sidecar
             .and_then(|sidecar| {
                 sidecar
                     .swimlane_group_title_owner(cluster.id.as_str())
-                    .map(|owner| sidecar.prepared_math_for_terminal(owner, render_title))
+                    .map(|owner| sidecar.prepared_label_for_terminal(owner, render_title))
             })
             .unwrap_or_default();
-        let title_html = flowchart_label_html_with_prepared_math(
+        let title_html = flowchart_label_html_with_prepared_label(
             render_title,
             "markdown",
             ctx.config,
             ctx.math_renderer,
-            prepared_math,
+            prepared_label,
         );
         html_typography_statuses =
             crate::svg::parity::flowchart::style::sanitized_xhtml_typography_statuses(

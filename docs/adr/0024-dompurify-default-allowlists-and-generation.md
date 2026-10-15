@@ -56,11 +56,12 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
 - Implement a DOMPurify-inspired tag/attribute validation step in `merman-core::sanitize` driven by:
   - `DEFAULT_ALLOWED_TAGS` / `DEFAULT_ALLOWED_ATTR`
   - `DEFAULT_URI_SAFE_ATTRIBUTES` / `DEFAULT_DATA_URI_TAGS`
+  - `DEFAULT_FORBID_CONTENTS`, SVG/MathML namespace tag sets, and HTML integration points
   - Mermaid's target-preservation hook semantics (`<a target="...">` survives sanitization, and
     `target=_blank` forces `rel=noopener`)
-- Decode the minimal subset of HTML entities required for URI attribute parity (notably `&colon;`,
-  `&newline;`, `&tab;`, and common numeric `:` forms), because DOMPurify runs on a parsed DOM where
-  those entities are already decoded by the browser.
+- Run policy validation on the recovered HTML5 tree (ADR-0021), whose attribute values already
+  have browser entity-decoding semantics. Keep the separate entity decoder only for consumers
+  validating serialized SVG URI attributes.
 
 ## Consequences
 
@@ -68,8 +69,8 @@ and a reproducible way to keep them pinned to Mermaid's baseline dependency vers
   robust against bypass inputs.
 - We can update allowlists deterministically by updating `tools/upstreams/REPOS.lock.json`,
   materializing `repo-ref/dompurify`, and regenerating.
-- Full DOMPurify parity is still a long-term effort (namespaces, custom element handling, full config
-  surface), but the foundation matches Mermaid's default behavior much better.
+- Default namespace transitions are covered by the generated sets and HTML5 tree builder.
+  Custom element handling and the complete DOMPurify configuration surface remain incremental.
 
 ## References
 

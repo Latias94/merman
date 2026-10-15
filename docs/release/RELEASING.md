@@ -679,7 +679,7 @@ profile is `publish`; it consumes the exact `typst-wasm` artifact recipe, which 
 `default-features = false`, the `svg`, `analysis`,
 `layout-cytoscape`, and `layout-elk` features, the `wasm-size` Cargo profile, and the
 `wasm32-unknown-unknown` target. Feature bundles are additive closure descriptions, not alternate
-release artifacts. The exact dependency gate admits `json5`, `lol_html`, and `url` as measured
+release artifacts. The exact dependency gate admits `json5`, `html5ever`, and `url` as measured
 pure-Rust dependencies of invariant Mermaid language, configuration, and sanitization semantics.
 They remain covered by the exact artifact size budget and final WASM import gate; browser bindings,
 randomness, clocks, and other system adapters remain forbidden. Release validation requires Typst

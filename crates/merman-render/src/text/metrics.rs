@@ -2674,29 +2674,28 @@ pub fn unsupported_html_label_style(
     use quick_xml::{Reader, events::Event};
 
     control.checkpoint()?;
-    let html = if label_type == "markdown" {
-        let decoded = crate::entities::decode_mermaid_entities_for_render_text(label);
-        let decoded = if decoded.contains("\\\\") {
-            std::borrow::Cow::Owned(decoded.replace("\\\\", "\\"))
-        } else {
-            decoded
-        };
-        let markdown_auto_wrap = config
-            .as_value()
-            .get("markdownAutoWrap")
-            .and_then(serde_json::Value::as_bool)
-            .unwrap_or(true);
-        super::mermaid_markdown_to_html_label_fragment(
-            decoded.trim_end_matches('\n'),
-            markdown_auto_wrap,
-        )
-    } else {
-        crate::flowchart::flowchart_non_markdown_label_for_html(label, label_type)
-    };
+    let html = crate::graph_label::flowchart_label_html_source(label, label_type, config);
     // Sanitizer-removed attributes and encoded angle brackets cannot affect rendered typography.
-    let html = crate::xml::normalize_html_fragment_for_xhtml(
-        &merman_core::sanitize::sanitize_text(&html, config),
+    let work_meter = crate::resources::OperationWorkMeter::new_with_control(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        control.clone(),
     );
+    let parse_work = std::cell::Cell::new(0);
+    let sink = crate::html::HtmlSanitizeSink::new(
+        usize::MAX,
+        &work_meter,
+        &parse_work,
+        merman_core::OperationPhase::Layout,
+    );
+    let html = match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config, &sink) {
+        Ok(html) => html,
+        Err(merman_core::sanitize::SanitizeFailure::Output(
+            crate::html::HtmlOutputError::Operation(
+                crate::resources::OperationWorkError::Cancelled(error),
+            ),
+        )) => return Err(error),
+        Err(_) => String::new(),
+    };
     let mut tags = Reader::from_str(&html);
     tags.config_mut().check_end_names = false;
     tags.config_mut().allow_unmatched_ends = true;
@@ -2758,6 +2757,30 @@ pub fn unsupported_html_label_style(
         }
     }
     Ok(None)
+}
+
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    )
+))]
+#[test]
+fn unsupported_html_style_checks_cancellation_during_fragment_recovery() {
+    let control = merman_core::OperationControl::new();
+    control.cancel_after_checkpoints(8);
+    let label = "<span>label</span>".repeat(64);
+    let error = unsupported_html_label_style(
+        &label,
+        "text",
+        &merman_core::MermaidConfig::default(),
+        &[],
+        &control,
+    )
+    .expect_err("typography admission must cancel while recovering HTML");
+    assert_eq!(control.checkpoint(), Err(error));
 }
 
 pub fn measure_html_with_inline_styles(

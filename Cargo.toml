@@ -63,6 +63,7 @@ flate2 = "1.1.10"
 fontique = { version = "0.12.0", default-features = false, features = ["system"] }
 fs2 = "0.4.3"
 htmlize = { version = "1.1.0", features = ["unescape"] }
+html5ever = "0.40.1"
 indexmap = "2.14.2"
 lalrpop = "0.23.1"
 lalrpop-util = { version = "0.23.1", default-features = false }
@@ -108,7 +109,6 @@ futures = { version = "0.3.34", default-features = false }
 ttf-parser = { version = "0.25.1", default-features = false, features = ["std", "variable-fonts"] }
 hashbrown = { version = "0.17.1", default-features = false, features = ["equivalent"] }
 hickory-resolver = { version = "0.26.3", default-features = false, features = ["tokio", "system-config"] }
-lol_html = "3.0.1"
 url = "2.5.8"
 cssparser = "0.38.0"
 jiff = { version = "0.2.38", default-features = false }

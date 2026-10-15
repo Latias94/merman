@@ -749,17 +749,33 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         out.push('>');
         out.checkpoint()?;
 
-        fn markdown_to_sanitized_xhtml(text: &str, config: &merman_core::MermaidConfig) -> String {
+        let parse_work = std::cell::Cell::new(0);
+        let work_meter = options.work_meter();
+        let sink = crate::html::HtmlSanitizeSink::new(
+            work_meter.max_svg_bytes().unwrap_or(usize::MAX),
+            work_meter,
+            &parse_work,
+            merman_core::OperationPhase::Emit,
+        );
+
+        fn markdown_to_sanitized_xhtml(
+            text: &str,
+            config: &merman_core::MermaidConfig,
+            sink: &crate::html::HtmlSanitizeSink<'_>,
+            work_meter: &crate::resources::OperationWorkMeter,
+        ) -> Result<String> {
             let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
             let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            let html_out = merman_core::sanitize::sanitize_text(&html_out, config);
-            let html_out = crate::xml::normalize_html_fragment_for_xhtml(&html_out);
+            let html_out = crate::html::resolve_svg_fragment(
+                merman_core::sanitize::sanitize_xhtml_with_sink(&html_out, config, sink),
+                work_meter,
+            )?;
             // Mermaid inserts the sanitized fragment without trimming it. This is observable for
             // indented-code labels once the 200px container switches to `break-spaces`: a trailing
             // indentation-only source line still owns a browser line box.
-            single_image_paragraph_inner(&html_out)
+            Ok(single_image_paragraph_inner(&html_out)
                 .map(str::to_string)
-                .unwrap_or(html_out)
+                .unwrap_or(html_out))
         }
 
         fn escape_amp_preserving_entities(raw: &str) -> String {
@@ -774,12 +790,13 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     capability: crate::RenderCapability::Math,
                     diagram_type: "mindmap".to_string(),
                 })?;
-            let html = crate::xml::normalize_html_fragment_for_xhtml(
-                &merman_core::sanitize::sanitize_text(&html, config),
-            );
+            let html = crate::html::resolve_svg_fragment(
+                merman_core::sanitize::sanitize_xhtml_with_sink(&html, config, &sink),
+                work_meter,
+            )?;
             out.push_str(&escape_amp_preserving_entities(&html));
         } else {
-            let html = markdown_to_sanitized_xhtml(text, config);
+            let html = markdown_to_sanitized_xhtml(text, config, &sink, work_meter)?;
             let html = decode_mermaid_entities_for_render_text(&html);
             out.push_str(&escape_amp_preserving_entities(html.as_ref()));
         }

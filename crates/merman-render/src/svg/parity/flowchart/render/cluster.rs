@@ -453,18 +453,18 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         return Ok(());
     }
 
-    let prepared_math = ctx
+    let prepared_label = ctx
         .svg_label_sidecar
         .zip(title_owner)
         .map_or(Default::default(), |(sidecar, owner)| {
-            sidecar.prepared_math_for_terminal(owner, render_title)
+            sidecar.prepared_label_for_terminal(owner, render_title)
         });
-    let title_html = flowchart_label_html_with_prepared_math(
+    let title_html = flowchart_label_html_with_prepared_label(
         render_title,
         label_type,
         ctx.config,
         ctx.math_renderer,
-        prepared_math,
+        prepared_label,
     );
     let span_style_attr = OptionalStyleXmlAttr(label_style);
     let markdown_uses_wrapped_box = if ctx.uses_elk_adapter_dom {

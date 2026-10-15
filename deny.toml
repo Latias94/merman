@@ -41,10 +41,6 @@ name = "dtoa-short"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
-name = "selectors"
-allow = ["MPL-2.0"]
-
-[[licenses.exceptions]]
 name = "uniffi"
 allow = ["MPL-2.0"]
 

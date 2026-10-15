@@ -176,6 +176,11 @@ impl FlowchartLabelEffects {
                         height,
                         text_style.as_ref(),
                         false,
+                        sidecar
+                            .node_owner(id, false)
+                            .map_or(Default::default(), |owner| {
+                                sidecar.prepared_label_for_terminal(owner, raw)
+                            }),
                     )?
                     else {
                         continue;
@@ -278,6 +283,10 @@ impl FlowchartLabelEffects {
                         content.height,
                         text_style.as_ref(),
                         true,
+                        sidecar.prepared_label_for_terminal(
+                            FlowchartSvgLabelOwner::Edge(edge.key.semantic_index()),
+                            raw,
+                        ),
                     )?
                     else {
                         continue;
@@ -500,6 +509,7 @@ fn plain_html_shadow_bounds(
     height: f64,
     style: &crate::text::TextStyle,
     single_paragraph: bool,
+    prepared: crate::flowchart::FlowchartPreparedLabelResolution<'_>,
 ) -> crate::Result<Option<[f64; 4]>> {
     let em = style.font_size;
     if ![width, height, em]
@@ -510,13 +520,7 @@ fn plain_html_shadow_bounds(
         return Ok(None);
     }
     ctx.work_meter.charge(raw.len())?;
-    let html = flowchart_label_html_with_prepared_math(
-        raw,
-        "text",
-        ctx.config,
-        None,
-        crate::flowchart::FlowchartPreparedMathResolution::NotPrepared,
-    );
+    let html = flowchart_label_html_with_prepared_label(raw, "text", ctx.config, None, prepared);
     ctx.work_meter.charge(html.len())?;
     let wrapped = format!("<span>{html}</span>");
     let Ok(document) = crate::xml_dom::Document::parse(&wrapped) else {
