@@ -535,19 +535,47 @@ fn validate_xml_declaration(declaration: &BytesDecl<'_>) -> Result<()> {
     Ok(())
 }
 
-fn validate_xml_characters(
-    value: &str,
-    mut checkpoint: &mut dyn FnMut() -> Result<()>,
-) -> Result<()> {
-    for (iteration, character) in value.chars().enumerate() {
-        checkpoint_loop(iteration, &mut checkpoint)?;
-        if !crate::xml::is_xml_1_0_char(character) {
+fn validate_xml_characters(value: &str, checkpoint: &mut dyn FnMut() -> Result<()>) -> Result<()> {
+    const MAX_BLOCK_BYTES: usize = 256;
+
+    let mut start = 0;
+    while start < value.len() {
+        checkpoint()?;
+        let mut end = start.saturating_add(MAX_BLOCK_BYTES).min(value.len());
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        let block = &value[start..end];
+        // In valid UTF-8, XML 1.0 forbids only ASCII controls other than TAB/LF/CR and
+        // U+FFFE/U+FFFF. Surrogates cannot occur, and other Unicode noncharacters are legal.
+        let (invalid_control, has_ef) =
+            block
+                .as_bytes()
+                .iter()
+                .fold((false, false), |(invalid_control, has_ef), &byte| {
+                    (
+                        invalid_control | (byte < 0x20 && !matches!(byte, b'\t' | b'\n' | b'\r')),
+                        has_ef | (byte == 0xef),
+                    )
+                });
+        // Scalar-aligned ends cannot split EF BF BE/BF. Without EF, neither forbidden
+        // scalar is present, including in Unicode text. There is no whole-input fallback.
+        let invalid_noncharacter =
+            has_ef && (block.contains('\u{fffe}') || block.contains('\u{ffff}'));
+        if (invalid_control || invalid_noncharacter)
+            && let Some(character) = block
+                .chars()
+                .find(|&character| !crate::xml::is_xml_1_0_char(character))
+        {
             checkpoint()?;
             return Err(xml_validation_error(format!(
                 "the character U+{:04X} is forbidden in XML 1.0",
                 u32::from(character)
             )));
         }
+        // Each block bounds the fold, two possible searches and invalid-scalar localization:
+        // at most four passes over <=256 bytes (<=1024 logical input bytes), not 256 total work.
+        start = end;
     }
     checkpoint()
 }
@@ -2921,6 +2949,113 @@ mod tests {
             r#"<svg title="&amp;#0;">&amp;#xFFFE;</svg>"#.to_owned(),
         ] {
             validate_xml(&svg).unwrap_or_else(|error| panic!("{svg:?}: {error:?}"));
+        }
+    }
+
+    #[test]
+    fn xml_character_bytes_match_every_rust_scalar() {
+        let mut encoded = [0_u8; 4];
+        for point in 0..=0x10ffff {
+            let Some(character) = char::from_u32(point) else {
+                continue;
+            };
+            let text = character.encode_utf8(&mut encoded);
+            let result = validate_xml_characters(text, &mut || Ok(()));
+            assert_eq!(
+                result.is_ok(),
+                crate::xml::is_xml_1_0_char(character),
+                "U+{point:04X}"
+            );
+        }
+    }
+
+    #[test]
+    fn xml_character_bytes_keep_first_scalar_error_across_utf8_block_boundaries() {
+        fn scalar_reference(value: &str) -> Result<()> {
+            match value
+                .chars()
+                .find(|&character| !crate::xml::is_xml_1_0_char(character))
+            {
+                None => Ok(()),
+                Some(character) => Err(xml_validation_error(format!(
+                    "the character U+{:04X} is forbidden in XML 1.0",
+                    u32::from(character)
+                ))),
+            }
+        }
+
+        for offset in 0..=768 {
+            for middle in [
+                "é中🙂",
+                "\u{fffd}\u{1fffe}\u{10ffff}",
+                "\0\u{ffff}",
+                "\u{ffff}\0",
+                "\u{fffe}\u{1f}",
+                "\u{1f}\u{fffe}",
+                "é🙂\u{ffff}",
+            ] {
+                let text = format!("{}{middle}{}", "a".repeat(offset), "普通🙂".repeat(90));
+                let expected = scalar_reference(&text);
+                let actual = validate_xml_characters(&text, &mut || Ok(()));
+                assert_eq!(
+                    format!("{actual:?}"),
+                    format!("{expected:?}"),
+                    "offset={offset}, middle={middle:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn xml_character_bytes_accept_legal_controls_and_noncharacters_in_every_plane() {
+        let mut text = String::from("\t\r\n\u{7f}\u{85}\u{d7ff}\u{e000}\u{fffd}");
+        for point in 0xfdd0..=0xfdef {
+            text.push(char::from_u32(point).unwrap());
+        }
+        for plane in 1..=16 {
+            for suffix in [0xfffe, 0xffff] {
+                text.push(char::from_u32((plane << 16) | suffix).unwrap());
+            }
+        }
+        validate_xml_characters(&text.repeat(32), &mut || Ok(())).unwrap();
+    }
+
+    #[test]
+    fn xml_character_bytes_observe_postprocess_cancellation_before_error_and_during_long_text() {
+        use merman_core::{CancelReason, OperationControl, OperationPhase};
+
+        for (text, cancel_at) in [
+            ("\u{ffff}".to_owned(), 2),
+            (format!("{}\0", "普通🙂".repeat(4_096)), 3),
+        ] {
+            let control = OperationControl::new();
+            let session = crate::environment::RenderEnvironment::deterministic()
+                .begin_session_with_control(control.clone())
+                .unwrap();
+            let mut checkpoints = 0;
+            let error = validate_xml_characters(&text, &mut || {
+                checkpoints += 1;
+                if checkpoints == cancel_at {
+                    control.cancel();
+                }
+                session.checkpoint(OperationPhase::Postprocess)
+            })
+            .unwrap_err();
+            assert!(matches!(
+                &error,
+                Error::Cancelled(cancellation)
+                    if cancellation.phase == OperationPhase::Postprocess
+                        && cancellation.reason == CancelReason::Requested
+            ));
+            // No historical callback-count equality is required. Once observed, cancellation
+            // remains the first terminal even at another stage and before a later XML error.
+            assert_eq!(
+                format!(
+                    "{:?}",
+                    session.checkpoint(OperationPhase::Emit).unwrap_err()
+                ),
+                format!("{error:?}")
+            );
         }
     }
 
