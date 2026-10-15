@@ -98,6 +98,7 @@ pub(super) fn measure_xml_validation_work<T>(
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 struct ReferenceAnalysisWork {
     dependency_nodes: usize,
+    tree_edges: usize,
     postorder_slots: usize,
     occurrence_slots: usize,
     occurrence_edges: usize,
@@ -144,7 +145,7 @@ pub(crate) struct SvgStructureMetrics {
 /// Complete XML and reference facts for one immutable SVG generation.
 pub(crate) struct ValidatedSvgXmlFacts {
     raw_structure: SvgStructureMetrics,
-    reference_nodes: Vec<ReferenceNode>,
+    references: SvgReferenceFacts,
 }
 
 impl ValidatedSvgXmlFacts {
@@ -754,28 +755,24 @@ fn validate_svg_xml_facts_with_controls(
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<ValidatedSvgXmlFacts> {
-    let mut reference_nodes = Vec::new();
+    let mut facts = SvgReferenceFacts::default();
     let mut reference_stack = Vec::new();
     let raw_structure = visit_well_formed_svg_with_controls::<true>(
         svg,
         checkpoint,
         check_structure,
-        &mut |references, depth| {
+        &mut |element, depth| {
             // Append validated facts only after this element passes its raw structure budget.
             // Defer expansion planning until the complete document has passed XML validation.
             reference_stack.truncate(depth);
-            append_reference_node(
-                &mut reference_nodes,
-                reference_stack.last().copied(),
-                references,
-            );
-            reference_stack.push(reference_nodes.len() - 1);
+            let index = facts.append(reference_stack.last().copied(), element);
+            reference_stack.push(index);
             Ok(())
         },
     )?;
     Ok(ValidatedSvgXmlFacts {
         raw_structure,
-        reference_nodes,
+        references: facts,
     })
 }
 
@@ -784,9 +781,9 @@ fn check_svg_resource_budget_from_xml_facts_with_controls(
     checkpoint: &mut impl FnMut() -> Result<()>,
     check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
 ) -> Result<()> {
-    let summary = match analyze_svg_reference_expansion_with_checkpoints::<false, _>(
-        &facts.reference_nodes,
-        Some(facts.raw_structure),
+    let summary = match analyze_svg_reference_facts_with_checkpoints::<false, _>(
+        facts.references,
+        facts.raw_structure,
         checkpoint,
     ) {
         Ok(plan) => plan,
@@ -820,7 +817,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
     let mut root_seen = false;
     let mut root_closed = false;
     let mut style_text = None::<OpenStyle>;
-    let mut reference_nodes = Vec::new();
+    let mut references = SvgReferenceFacts::default();
     let mut reference_stack = Vec::new();
     let mut resource_closure = SvgResourceClosureBuilder::default();
     let mut text_content = SvgTextContentTracker::default();
@@ -854,11 +851,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                     })?;
                 let opens_style = validated.is_style;
                 fallback_css_residual |= validated.fallback_css_residual;
-                append_reference_node(
-                    &mut reference_nodes,
-                    reference_stack.last().copied(),
-                    validated,
-                );
+                references.append(reference_stack.last().copied(), validated);
                 if is_root {
                     root_seen = true;
                 }
@@ -866,7 +859,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                 if opens_style {
                     style_text = Some(OpenStyle { css: String::new() });
                 }
-                reference_stack.push(reference_nodes.len() - 1);
+                reference_stack.push(references.parents.len() - 1);
             }
             Event::Empty(element) => {
                 if style_text.is_some() {
@@ -885,11 +878,7 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
                 )?;
                 let empty_style = validated.is_style;
                 fallback_css_residual |= validated.fallback_css_residual;
-                append_reference_node(
-                    &mut reference_nodes,
-                    reference_stack.last().copied(),
-                    validated,
-                );
+                references.append(reference_stack.last().copied(), validated);
                 if empty_style {
                     validate_style_text("", &mut checkpoint)?;
                 }
@@ -995,9 +984,9 @@ fn validate_resvg_compatible_svg_after_xml_with_structure(
         return Err(validation_error("the SVG root is not closed"));
     }
     checkpoint()?;
-    let reference_plan = match analyze_svg_reference_expansion_with_checkpoints::<true, _>(
-        &reference_nodes,
-        Some(raw_structure),
+    let reference_plan = match analyze_svg_reference_facts_with_checkpoints::<true, _>(
+        references,
+        raw_structure,
         &mut checkpoint,
     ) {
         Ok(plan) => plan.into_detailed_plan(),
@@ -1062,18 +1051,150 @@ struct ValidatedElement {
     is_style: bool,
     is_marker: bool,
     may_repeat_per_element: bool,
-    use_id: Option<String>,
-    parsed_id: Option<String>,
-    references: Vec<ElementReference>,
+    ids: ElementIds,
+    references: [Option<ElementReference>; 4],
 }
 
-struct ReferenceNode {
-    children: Vec<usize>,
+#[derive(Default)]
+struct ElementIds {
+    parsed: Option<String>,
+    raw: RawElementId,
+}
+
+#[derive(Default)]
+enum RawElementId {
+    #[default]
+    Absent,
+    Parsed,
+    Other(String),
+}
+
+impl ElementIds {
+    fn observe(&mut self, value: &str, unqualified: bool) {
+        let parsed = self.parsed.get_or_insert_with(|| value.to_owned());
+        if unqualified {
+            // Both values have passed XML normalization. Namespace aliases can select a
+            // different first parsed ID, so sharing is based on the actual selected values.
+            self.raw = if parsed.as_str() == value {
+                RawElementId::Parsed
+            } else {
+                RawElementId::Other(value.to_owned())
+            };
+        }
+    }
+
+    fn raw_value(&self) -> Option<&str> {
+        match &self.raw {
+            RawElementId::Absent => None,
+            RawElementId::Parsed => self.parsed.as_deref(),
+            RawElementId::Other(value) => Some(value),
+        }
+    }
+}
+
+struct ReferenceIdentity {
+    element: usize,
     is_marker: bool,
-    may_repeat_per_element: bool,
-    use_id: Option<String>,
-    parsed_id: Option<String>,
-    references: Vec<ElementReference>,
+    ids: ElementIds,
+}
+
+struct SourceReference {
+    source: usize,
+    reference: ElementReference,
+}
+
+/// Preorder topology and sparse expansion facts for one immutable XML generation.
+/// A document without expansion retains no child lists, reference lists, or dependency graph.
+#[derive(Default)]
+struct SvgReferenceFacts {
+    parents: Vec<usize>,
+    identities: Vec<ReferenceIdentity>,
+    references: Vec<SourceReference>,
+    effects: Vec<usize>,
+}
+
+impl SvgReferenceFacts {
+    fn append(&mut self, parent: Option<usize>, element: ValidatedElement) -> usize {
+        let index = self.parents.len();
+        self.parents.push(parent.unwrap_or(usize::MAX));
+        if element.ids.parsed.is_some() {
+            self.identities.push(ReferenceIdentity {
+                element: index,
+                is_marker: element.is_marker,
+                ids: element.ids,
+            });
+        }
+        self.references
+            .extend(
+                element
+                    .references
+                    .into_iter()
+                    .flatten()
+                    .map(|reference| SourceReference {
+                        source: index,
+                        reference,
+                    }),
+            );
+        if element.may_repeat_per_element {
+            self.effects.push(index);
+        }
+        index
+    }
+}
+
+/// One edge arena, with contiguous adjacency ranges for real nodes and transparent ID groups.
+pub(super) struct ReferenceDependencyGraph {
+    ranges: Vec<std::ops::Range<usize>>,
+    edges: Vec<(usize, usize)>,
+    real_nodes: usize,
+}
+
+impl ReferenceDependencyGraph {
+    #[cfg(test)]
+    pub(super) fn new(dependencies: Vec<Vec<(usize, usize)>>, real_nodes: usize) -> Self {
+        match Self::with_checkpoints(dependencies, real_nodes, &mut || {
+            Ok::<(), std::convert::Infallible>(())
+        }) {
+            Ok(graph) => graph,
+            Err(error) => match error {},
+        }
+    }
+
+    pub(super) fn with_checkpoints<E>(
+        dependencies: Vec<Vec<(usize, usize)>>,
+        real_nodes: usize,
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<Self, E> {
+        checkpoint()?;
+        let mut edge_count = 0;
+        for (iteration, node_edges) in dependencies.iter().enumerate() {
+            checkpoint_loop(iteration, checkpoint)?;
+            edge_count += node_edges.len();
+        }
+        let mut ranges = Vec::with_capacity(dependencies.len());
+        let mut edges = Vec::with_capacity(edge_count);
+        let mut edge_iteration = 0usize;
+        for (iteration, node_edges) in dependencies.into_iter().enumerate() {
+            checkpoint_loop(iteration, checkpoint)?;
+            let start = edges.len();
+            for edge in node_edges {
+                checkpoint_loop(edge_iteration, checkpoint)?;
+                edge_iteration = edge_iteration.saturating_add(1);
+                edges.push(edge);
+            }
+            ranges.push(start..edges.len());
+        }
+        checkpoint()?;
+        Ok(Self {
+            ranges,
+            edges,
+            real_nodes,
+        })
+    }
+
+    fn dependencies(&self, index: usize) -> &[(usize, usize)] {
+        &self.edges[self.ranges[index].clone()]
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -1089,47 +1210,12 @@ struct ElementReference {
     target_kind: ReferenceTargetKind,
 }
 
-pub(super) struct ReferenceDependencyGraph {
-    // Real document nodes keep their encounter-order indexes. Trailing nodes are transparent
-    // candidate groups: they share duplicate-ID edges without contributing an element or depth.
-    dependencies: Vec<Vec<(usize, usize)>>,
-    real_nodes: usize,
-}
-
 pub(super) enum ReferencePlanningError<E> {
     Invalid(String),
     Checkpoint(E),
 }
 
 pub(super) type ReferencePlanningResult<T, E> = std::result::Result<T, ReferencePlanningError<E>>;
-
-impl ReferenceDependencyGraph {
-    pub(super) fn new(dependencies: Vec<Vec<(usize, usize)>>, real_nodes: usize) -> Self {
-        Self {
-            dependencies,
-            real_nodes,
-        }
-    }
-}
-
-fn append_reference_node(
-    nodes: &mut Vec<ReferenceNode>,
-    parent: Option<usize>,
-    validated: ValidatedElement,
-) {
-    let index = nodes.len();
-    if let Some(parent) = parent {
-        nodes[parent].children.push(index);
-    }
-    nodes.push(ReferenceNode {
-        children: Vec::new(),
-        is_marker: validated.is_marker,
-        may_repeat_per_element: validated.may_repeat_per_element,
-        use_id: validated.use_id,
-        parsed_id: validated.parsed_id,
-        references: validated.references,
-    });
-}
 
 #[inline(never)]
 fn validate_element_after_xml(
@@ -1261,7 +1347,7 @@ fn validate_element_after_xml(
     }
     let mut validated = reference_attributes.finish();
     validated.fallback_css_residual = fallback_css_residual;
-    if let Some(id) = &validated.parsed_id {
+    if let Some(id) = &validated.ids.parsed {
         resource_closure.observe_fragment_id(id);
     }
     Ok(validated)
@@ -1273,8 +1359,7 @@ fn validate_element_after_xml(
 struct ReferenceAttributes<'a> {
     element_name: &'a str,
     is_svg_element: bool,
-    use_id: Option<String>,
-    parsed_id: Option<String>,
+    ids: ElementIds,
     use_href: Option<String>,
     use_xlink_href: Option<String>,
     fe_image_href: Option<String>,
@@ -1293,8 +1378,7 @@ impl<'a> ReferenceAttributes<'a> {
         Self {
             element_name,
             is_svg_element,
-            use_id: None,
-            parsed_id: None,
+            ids: ElementIds::default(),
             use_href: None,
             use_xlink_href: None,
             fe_image_href: None,
@@ -1326,10 +1410,7 @@ impl<'a> ReferenceAttributes<'a> {
             self.geometry_source_len.get_or_insert(value.len());
         }
         if self.is_svg_element && semantic_name == "id" {
-            self.parsed_id.get_or_insert_with(|| value.to_owned());
-            if is_unbound_attribute {
-                self.use_id = Some(value.to_owned());
-            }
+            self.ids.observe(value, is_unbound_attribute);
         }
         if self.is_svg_element && semantic_name == "href" {
             if self.element_name.eq_ignore_ascii_case("use") {
@@ -1380,112 +1461,54 @@ impl<'a> ReferenceAttributes<'a> {
     }
 
     fn finish(self) -> ValidatedElement {
-        let mut references = Vec::new();
-        if let Some(target) = self
-            .use_xlink_href
-            .as_deref()
-            .or(self.use_href.as_deref())
-            .and_then(same_document_use_target)
-        {
-            references.push(ElementReference {
-                target: target.to_owned(),
-                multiplicity: 1,
-                target_kind: ReferenceTargetKind::UseElement,
-            });
-        }
-        if let Some(target) = self
-            .fe_image_href
-            .as_deref()
-            .and_then(same_document_use_target)
-        {
-            references.push(ElementReference {
-                target: target.to_owned(),
-                multiplicity: 1,
-                target_kind: ReferenceTargetKind::ParsedElement,
-            });
-        }
-        if let Some(target) = self.marker_start {
-            references.push(ElementReference {
-                target,
-                multiplicity: 1,
-                target_kind: ReferenceTargetKind::Marker,
-            });
-        }
-        if let Some(target) = self.marker_mid {
-            references.push(ElementReference {
-                target,
-                multiplicity: marker_mid_instance_upper_bound(
-                    self.element_name,
-                    self.geometry_source_len.unwrap_or(0),
-                ),
-                target_kind: ReferenceTargetKind::Marker,
-            });
-        }
-        if let Some(target) = self.marker_end {
-            references.push(ElementReference {
-                target,
-                multiplicity: 1,
-                target_kind: ReferenceTargetKind::Marker,
-            });
-        }
+        let href = if self.element_name.eq_ignore_ascii_case("use") {
+            self.use_xlink_href
+                .as_deref()
+                .or(self.use_href.as_deref())
+                .and_then(same_document_use_target)
+                .map(|target| ElementReference {
+                    target: target.to_owned(),
+                    multiplicity: 1,
+                    target_kind: ReferenceTargetKind::UseElement,
+                })
+        } else {
+            self.fe_image_href
+                .as_deref()
+                .and_then(same_document_use_target)
+                .map(|target| ElementReference {
+                    target: target.to_owned(),
+                    multiplicity: 1,
+                    target_kind: ReferenceTargetKind::ParsedElement,
+                })
+        };
+        let marker = |target, multiplicity| ElementReference {
+            target,
+            multiplicity,
+            target_kind: ReferenceTargetKind::Marker,
+        };
         ValidatedElement {
             fallback_css_residual: false,
             is_style: self.is_svg_element && self.element_name.eq_ignore_ascii_case("style"),
             is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
             may_repeat_per_element: self.is_svg_element
                 && matches!(self.element_name, "filter" | "mask" | "clipPath"),
-            use_id: self.use_id,
-            parsed_id: self.parsed_id,
-            references,
+            ids: self.ids,
+            references: [
+                href,
+                self.marker_start.map(|target| marker(target, 1)),
+                self.marker_mid.map(|target| {
+                    marker(
+                        target,
+                        marker_mid_instance_upper_bound(
+                            self.element_name,
+                            self.geometry_source_len.unwrap_or(0),
+                        ),
+                    )
+                }),
+                self.marker_end.map(|target| marker(target, 1)),
+            ],
         }
     }
-}
-
-#[cfg(test)]
-fn collect_reference_element_after_xml(
-    element: &BytesStart<'_>,
-    resolver: &NamespaceResolver,
-    checkpoint: &mut impl FnMut() -> Result<()>,
-) -> Result<ValidatedElement> {
-    let (namespace, local_name) = resolver.resolve_element(element.name());
-    let element_name = local_name.as_ref();
-    let mut references =
-        ReferenceAttributes::new(element_name, is_svg_element_namespace(&namespace));
-    if !references.is_svg_element {
-        return Ok(references.finish());
-    }
-    // The caller already validated this exact immutable SVG, including lexical and expanded
-    // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
-    for attribute in element.attributes().with_checks(false) {
-        checkpoint()?;
-        let attribute = attribute
-            .map_err(|error| xml_validation_error(format!("invalid XML attribute: {error}")))?;
-        if attribute.key.as_namespace_binding().is_some() {
-            continue;
-        }
-        let (namespace, local_name) = resolver.resolve_attribute(attribute.key);
-        let is_unbound = matches!(&namespace, ResolveResult::Unbound);
-        let is_xlink = matches!(
-            &namespace,
-            ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
-        );
-        if !usvg_consumes_attribute_namespace(namespace)? {
-            continue;
-        }
-        let value = attribute.normalized_value(XmlVersion::Implicit1_0);
-        checkpoint()?;
-        let value = value.map_err(|error| {
-            xml_validation_error(format!("invalid XML attribute value: {error}"))
-        })?;
-        references.observe(
-            local_name.as_ref(),
-            is_unbound,
-            is_xlink,
-            &value,
-            checkpoint,
-        )?;
-    }
-    Ok(references.finish())
 }
 
 fn is_url_function_attribute(name: &str) -> bool {
@@ -1587,247 +1610,216 @@ impl SvgReferenceAnalysis {
     }
 }
 
-#[cfg(test)]
-fn plan_svg_reference_expansion_with_checkpoints<E>(
-    nodes: &[ReferenceNode],
-    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> ReferencePlanningResult<SvgReferencePlan, E> {
-    analyze_svg_reference_expansion_with_checkpoints::<true, _>(nodes, None, checkpoint)
-        .map(SvgReferenceAnalysis::into_detailed_plan)
-}
-
-fn analyze_svg_reference_expansion_with_checkpoints<const DETAILED: bool, E>(
-    nodes: &[ReferenceNode],
-    raw_structure: Option<SvgStructureMetrics>,
+fn analyze_svg_reference_facts_with_checkpoints<const DETAILED: bool, E>(
+    facts: SvgReferenceFacts,
+    structure: SvgStructureMetrics,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
-    let Some(_) = nodes.first() else {
-        return Err(ReferencePlanningError::Invalid(
-            "the document does not contain an SVG reference root".to_string(),
-        ));
-    };
+    checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+    debug_assert_eq!(facts.parents.len(), structure.elements);
+    if facts.references.is_empty() && facts.effects.is_empty() {
+        // This decision uses every actual XML reference and effect, including missing targets.
+        // IDs alone cannot expand an element. No topology or identity index is materialized.
+        let raw_element_occurrences = if DETAILED {
+            #[cfg(test)]
+            record_reference_analysis_work(|work| work.occurrence_slots += structure.elements);
+            vec![1; structure.elements].into_boxed_slice()
+        } else {
+            Box::default()
+        };
+        checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+        return Ok(SvgReferenceAnalysis {
+            structure,
+            raw_element_occurrences,
+        });
+    }
+    let (graph, effects) = build_reference_fact_dependencies(facts, checkpoint)
+        .map_err(ReferencePlanningError::Checkpoint)?;
+    analyze_compact_reference_dependencies::<DETAILED, _>(&graph, &effects, checkpoint)
+}
 
-    if let Some(structure) = raw_structure {
-        // Only this XML owner supplies complete, validated element facts for these exact bytes.
-        // Unused IDs/markers/gradients do not expand. References and all conservative effect
-        // applications must use the graph, including missing targets and duplicate parsed IDs.
-        let mut no_expansion = true;
-        for (index, node) in nodes.iter().enumerate() {
-            checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
-            if !node.references.is_empty() || node.may_repeat_per_element {
-                no_expansion = false;
-                break;
+struct ParsedIdCandidates {
+    first: (usize, bool),
+    additional: Vec<(usize, bool)>,
+}
+
+impl ParsedIdCandidates {
+    fn iter(&self) -> impl Iterator<Item = &(usize, bool)> {
+        std::iter::once(&self.first).chain(&self.additional)
+    }
+}
+
+fn build_reference_fact_dependencies<E>(
+    facts: SvgReferenceFacts,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<(ReferenceDependencyGraph, Vec<usize>), E> {
+    let SvgReferenceFacts {
+        parents,
+        identities,
+        references,
+        effects,
+    } = facts;
+    let real_nodes = parents.len();
+    let mut use_ids = HashMap::new();
+    let mut parsed_ids = HashMap::<&str, ParsedIdCandidates>::new();
+    for (iteration, identity) in identities.iter().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        if let Some(id) = identity.ids.raw_value() {
+            // Raw use expansion selects the first unqualified ID in document order.
+            use_ids.entry(id).or_insert(identity.element);
+        }
+        if let Some(id) = identity.ids.parsed.as_deref() {
+            let candidate = (identity.element, identity.is_marker);
+            match parsed_ids.entry(id) {
+                std::collections::hash_map::Entry::Occupied(mut entry) => {
+                    entry.get_mut().additional.push(candidate);
+                }
+                std::collections::hash_map::Entry::Vacant(entry) => {
+                    entry.insert(ParsedIdCandidates {
+                        first: candidate,
+                        additional: Vec::new(),
+                    });
+                }
             }
         }
-        if no_expansion {
-            debug_assert_eq!(structure.elements, nodes.len());
-            let raw_element_occurrences = if DETAILED {
-                #[cfg(test)]
-                record_reference_analysis_work(|work| {
-                    work.occurrence_slots += nodes.len();
-                });
-                vec![1; nodes.len()].into_boxed_slice()
-            } else {
-                Box::default()
-            };
-            checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
-            return Ok(SvgReferenceAnalysis {
-                structure,
-                raw_element_occurrences,
-            });
-        }
     }
 
-    let dependencies = build_svg_reference_dependencies_with_checkpoints(nodes, checkpoint)
-        .map_err(ReferencePlanningError::Checkpoint)?;
-    analyze_svg_reference_dependencies_with_effects::<DETAILED, _>(&dependencies, nodes, checkpoint)
-}
-
-#[cfg(test)]
-fn build_svg_reference_dependencies(nodes: &[ReferenceNode]) -> ReferenceDependencyGraph {
-    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
-    match build_svg_reference_dependencies_with_checkpoints(nodes, &mut checkpoint) {
-        Ok(graph) => graph,
-        Err(error) => match error {},
-    }
-}
-
-fn build_svg_reference_dependencies_with_checkpoints<E>(
-    nodes: &[ReferenceNode],
-    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> std::result::Result<ReferenceDependencyGraph, E> {
-    let real_nodes = nodes.len();
-
-    let mut use_ids = HashMap::new();
-    let mut parsed_ids: HashMap<&str, Vec<(usize, bool)>> = HashMap::new();
-    for (index, node) in nodes.iter().enumerate() {
-        checkpoint_loop(index, checkpoint)?;
-        if let Some(id) = node.use_id.as_deref() {
-            // Raw `<use>` expansion resolves the first unqualified XML `id`.
-            use_ids.entry(id).or_insert(index);
-        }
-        if let Some(id) = node.parsed_id.as_deref() {
-            // Keep every candidate conservatively. usvg ignores unknown elements and otherwise
-            // resolves duplicate parsed IDs to one element; charging the union avoids mirroring
-            // its private element whitelist while ensuring an ignored duplicate cannot shadow a
-            // resource-bearing target in this preflight graph.
-            parsed_ids
-                .entry(id)
-                .or_default()
-                .push((index, node.is_marker));
-        }
-    }
-
-    let mut dependencies = Vec::with_capacity(real_nodes);
-    let mut child_iteration = 0usize;
-    for (node_index, node) in nodes.iter().enumerate() {
-        checkpoint_loop(node_index, checkpoint)?;
-        let mut node_dependencies = Vec::with_capacity(node.children.len());
-        for &child in &node.children {
-            checkpoint_loop(child_iteration, checkpoint)?;
-            child_iteration = child_iteration.saturating_add(1);
-            node_dependencies.push((child, 1));
-        }
-        dependencies.push(node_dependencies);
-    }
+    let mut graph = ReferenceDependencyGraph {
+        ranges: vec![0..0; real_nodes],
+        edges: Vec::new(),
+        real_nodes,
+    };
     let mut parsed_dependencies = HashMap::new();
     let mut marker_dependencies = HashMap::new();
-    let mut reference_iteration = 0usize;
-    for (index, node) in nodes.iter().enumerate() {
-        checkpoint_loop(index, checkpoint)?;
-        for reference in &node.references {
-            checkpoint_loop(reference_iteration, checkpoint)?;
-            reference_iteration = reference_iteration.saturating_add(1);
-            let target_index = match reference.target_kind {
-                ReferenceTargetKind::UseElement => use_ids.get(reference.target.as_str()).copied(),
-                ReferenceTargetKind::ParsedElement => {
-                    resolve_parsed_id_dependency_with_checkpoints(
-                        reference.target.as_str(),
-                        false,
-                        &parsed_ids,
-                        &mut parsed_dependencies,
-                        &mut dependencies,
-                        checkpoint,
-                    )?
-                }
-                ReferenceTargetKind::Marker => resolve_parsed_id_dependency_with_checkpoints(
-                    reference.target.as_str(),
-                    true,
-                    &parsed_ids,
-                    &mut marker_dependencies,
-                    &mut dependencies,
-                    checkpoint,
-                )?,
-            };
-            if let Some(target_index) = target_index {
-                dependencies[index].push((target_index, reference.multiplicity));
-            }
+    let mut resolved_references = Vec::with_capacity(references.len());
+    for (iteration, SourceReference { source, reference }) in references.into_iter().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        let target = match reference.target_kind {
+            ReferenceTargetKind::UseElement => use_ids.get(reference.target.as_str()).copied(),
+            ReferenceTargetKind::ParsedElement => resolve_fact_id_dependency(
+                &reference.target,
+                false,
+                &parsed_ids,
+                &mut parsed_dependencies,
+                &mut graph,
+                checkpoint,
+            )?,
+            ReferenceTargetKind::Marker => resolve_fact_id_dependency(
+                &reference.target,
+                true,
+                &parsed_ids,
+                &mut marker_dependencies,
+                &mut graph,
+                checkpoint,
+            )?,
+        };
+        if let Some(target) = target {
+            graph.ranges[source].end += 1;
+            resolved_references.push((source, target, reference.multiplicity));
         }
     }
+    // No graph node retains strings or an ID index. Sparse XML facts are consumed here.
+    drop(use_ids);
+    drop(parsed_ids);
+    drop(parsed_dependencies);
+    drop(marker_dependencies);
+    drop(identities);
 
+    for (iteration, &parent) in parents.iter().enumerate().skip(1) {
+        checkpoint_loop(iteration, checkpoint)?;
+        graph.ranges[parent].end += 1;
+    }
+    let tree_start = graph.edges.len();
+    let mut end = tree_start;
+    for (iteration, range) in graph.ranges[..real_nodes].iter_mut().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        let count = range.end;
+        *range = end..end + count;
+        end += count;
+    }
+    graph.edges.resize(end, (0, 0));
+    // Each actual tree edge is written directly to its final arena once. The parent arena is
+    // consumed, rather than allocating child lists and then copying them into a second graph.
+    for (index, parent) in parents.into_iter().enumerate().skip(1) {
+        checkpoint_loop(index, checkpoint)?;
+        graph.edges[graph.ranges[parent].start] = (index, 1);
+        graph.ranges[parent].start += 1;
+        #[cfg(test)]
+        record_reference_analysis_work(|work| work.tree_edges += 1);
+    }
+    for (iteration, (source, target, multiplicity)) in resolved_references.into_iter().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        graph.edges[graph.ranges[source].start] = (target, multiplicity);
+        graph.ranges[source].start += 1;
+    }
+    let mut start = tree_start;
+    for (iteration, range) in graph.ranges[..real_nodes].iter_mut().enumerate() {
+        checkpoint_loop(iteration, checkpoint)?;
+        range.start = start;
+        start = range.end;
+    }
     #[cfg(test)]
-    record_reference_analysis_work(|work| {
-        work.dependency_nodes += dependencies.len();
-    });
-    Ok(ReferenceDependencyGraph {
-        dependencies,
-        real_nodes,
-    })
+    record_reference_analysis_work(|work| work.dependency_nodes += graph.ranges.len());
+    Ok((graph, effects))
 }
 
-fn resolve_parsed_id_dependency_with_checkpoints<'a, E>(
+fn resolve_fact_id_dependency<'a, E>(
     target: &str,
     marker_only: bool,
-    parsed_ids: &HashMap<&'a str, Vec<(usize, bool)>>,
+    parsed_ids: &HashMap<&'a str, ParsedIdCandidates>,
     resolved: &mut HashMap<&'a str, Option<usize>>,
-    dependencies: &mut Vec<Vec<(usize, usize)>>,
+    graph: &mut ReferenceDependencyGraph,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> std::result::Result<Option<usize>, E> {
     checkpoint()?;
     let Some((id, candidates)) = parsed_ids.get_key_value(target) else {
         return Ok(None);
     };
-    if let [(index, is_marker)] = candidates.as_slice() {
-        return Ok((!marker_only || *is_marker).then_some(*index));
+    if candidates.additional.is_empty() {
+        let (index, is_marker) = candidates.first;
+        return Ok((!marker_only || is_marker).then_some(index));
     }
     if let Some(&dependency) = resolved.get(target) {
         return Ok(dependency);
     }
-    let dependency = if marker_only {
-        resolve_reference_candidates_with_checkpoints(
-            dependencies,
-            candidates
-                .iter()
-                .filter_map(|&(index, is_marker)| is_marker.then_some(index)),
-            checkpoint,
-        )?
-    } else {
-        resolve_reference_candidates_with_checkpoints(
-            dependencies,
-            candidates.iter().map(|&(index, _)| index),
-            checkpoint,
-        )?
+    let mut candidates = candidates
+        .iter()
+        .filter_map(|&(index, is_marker)| (!marker_only || is_marker).then_some(index));
+    let dependency = match (candidates.next(), candidates.next()) {
+        (None, _) => None,
+        (Some(first), None) => Some(first),
+        (Some(first), Some(second)) => {
+            let index = graph.ranges.len();
+            let start = graph.edges.len();
+            graph.edges.extend([(first, 1), (second, 1)]);
+            for (iteration, candidate) in candidates.enumerate() {
+                checkpoint_loop(iteration, checkpoint)?;
+                graph.edges.push((candidate, 1));
+            }
+            graph.ranges.push(start..graph.edges.len());
+            Some(index)
+        }
     };
     resolved.insert(*id, dependency);
     Ok(dependency)
-}
-
-fn resolve_reference_candidates_with_checkpoints<E>(
-    dependencies: &mut Vec<Vec<(usize, usize)>>,
-    mut candidates: impl Iterator<Item = usize>,
-    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
-) -> std::result::Result<Option<usize>, E> {
-    checkpoint()?;
-    let Some(first) = candidates.next() else {
-        return Ok(None);
-    };
-    let Some(second) = candidates.next() else {
-        return Ok(Some(first));
-    };
-
-    // A duplicate-ID candidate union is materialized once. Every parsed-tree reference then owns
-    // one edge to this transparent group instead of copying every candidate edge.
-    let group_index = dependencies.len();
-    let mut group = Vec::with_capacity(candidates.size_hint().0.saturating_add(2));
-    group.push((first, 1));
-    group.push((second, 1));
-    for (iteration, index) in candidates.enumerate() {
-        checkpoint_loop(iteration, checkpoint)?;
-        group.push((index, 1));
-    }
-    dependencies.push(group);
-    Ok(Some(group_index))
-}
-
-#[cfg(test)]
-pub(super) fn plan_svg_reference_dependencies(
-    graph: &ReferenceDependencyGraph,
-) -> std::result::Result<SvgReferencePlan, String> {
-    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
-    match analyze_svg_reference_dependencies_with_effects::<true, _>(graph, &[], &mut checkpoint) {
-        Ok(plan) => Ok(plan.into_detailed_plan()),
-        Err(ReferencePlanningError::Invalid(error)) => Err(error),
-        Err(ReferencePlanningError::Checkpoint(error)) => match error {},
-    }
 }
 
 pub(super) fn summarize_svg_reference_dependencies_with_checkpoints<E>(
     graph: &ReferenceDependencyGraph,
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgStructureMetrics, E> {
-    analyze_svg_reference_dependencies_with_effects::<false, _>(graph, &[], checkpoint)
+    analyze_compact_reference_dependencies::<false, _>(graph, &[], checkpoint)
         .map(|analysis| analysis.structure)
 }
 
-fn analyze_svg_reference_dependencies_with_effects<const DETAILED: bool, E>(
+fn analyze_compact_reference_dependencies<const DETAILED: bool, E>(
     graph: &ReferenceDependencyGraph,
-    svg_nodes: &[ReferenceNode],
+    effects: &[usize],
     checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
 ) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
     // User element budgets can exceed a native backend's ceiling. Count independently of that
     // ceiling so an observational compatibility failure cannot hide a resource-limit failure.
-    let dependencies = &graph.dependencies;
-    let nodes_len = dependencies.len();
+    let nodes_len = graph.ranges.len();
     let mut states = vec![0_u8; nodes_len];
     let mut expanded_elements = vec![0_usize; nodes_len];
     let mut expanded_depths = vec![0_usize; nodes_len];
@@ -1852,7 +1844,7 @@ fn analyze_svg_reference_dependencies_with_effects<const DETAILED: bool, E>(
             let is_group = index >= graph.real_nodes;
             let mut elements = if is_group { 0_usize } else { 1 };
             let mut depth = 0_usize;
-            for &(dependency, multiplicity) in &dependencies[index] {
+            for &(dependency, multiplicity) in graph.dependencies(index) {
                 checkpoint_loop(dependency_iteration, checkpoint)
                     .map_err(ReferencePlanningError::Checkpoint)?;
                 dependency_iteration = dependency_iteration.saturating_add(1);
@@ -1879,7 +1871,7 @@ fn analyze_svg_reference_dependencies_with_effects<const DETAILED: bool, E>(
             0 => {
                 states[index] = 1;
                 stack.push((index, true));
-                for &(dependency, _) in dependencies[index].iter().rev() {
+                for &(dependency, _) in graph.dependencies(index).iter().rev() {
                     checkpoint_loop(dependency_iteration, checkpoint)
                         .map_err(ReferencePlanningError::Checkpoint)?;
                     dependency_iteration = dependency_iteration.saturating_add(1);
@@ -1921,28 +1913,26 @@ fn analyze_svg_reference_dependencies_with_effects<const DETAILED: bool, E>(
         raw_element_occurrences[0] = 1;
     }
     let application_upper_bound = expanded_elements[0];
-    for (index, node) in svg_nodes.iter().enumerate() {
-        checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
-        if node.may_repeat_per_element {
-            // The XML owner includes every real node under the SVG root. After cycle checking,
-            // an extra root edge to an effect cannot change non-root costs or topological order.
-            debug_assert!(index != 0 && states[index] == 2);
-            // Charge each filter/mask/clip-path once per baseline expanded element, preserving
-            // the conservative CSS-independent bound without evaluating the graph a second time.
-            expanded_elements[0] = expanded_elements[0]
-                .saturating_add(expanded_elements[index].saturating_mul(application_upper_bound));
-            expanded_depths[0] = expanded_depths[0].max(expanded_depths[index].saturating_add(1));
-            if DETAILED {
-                raw_element_occurrences[index] =
-                    raw_element_occurrences[index].saturating_add(application_upper_bound);
-            }
+    for (iteration, &index) in effects.iter().enumerate() {
+        checkpoint_loop(iteration, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+        // The XML owner includes every real node under the SVG root. After cycle checking,
+        // an extra root edge to an effect cannot change non-root costs or topological order.
+        debug_assert!(index != 0 && states[index] == 2);
+        // Charge each filter/mask/clip-path once per baseline expanded element, preserving
+        // the conservative CSS-independent bound without evaluating the graph a second time.
+        expanded_elements[0] = expanded_elements[0]
+            .saturating_add(expanded_elements[index].saturating_mul(application_upper_bound));
+        expanded_depths[0] = expanded_depths[0].max(expanded_depths[index].saturating_add(1));
+        if DETAILED {
+            raw_element_occurrences[index] =
+                raw_element_occurrences[index].saturating_add(application_upper_bound);
         }
     }
     let mut occurrence_dependency_iteration = 0usize;
     for (iteration, index) in postorder.into_iter().rev().enumerate() {
         checkpoint_loop(iteration, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
         let occurrences = raw_element_occurrences[index];
-        for &(dependency, multiplicity) in &dependencies[index] {
+        for &(dependency, multiplicity) in graph.dependencies(index) {
             checkpoint_loop(occurrence_dependency_iteration, checkpoint)
                 .map_err(ReferencePlanningError::Checkpoint)?;
             occurrence_dependency_iteration = occurrence_dependency_iteration.saturating_add(1);
@@ -2052,12 +2042,645 @@ fn xml_validation_error(message: impl Into<String>) -> Error {
 mod tests {
     use super::*;
 
-    fn two_pass_reference_budget(
+    // Frozen pre-refactor collection and graph planning are intentionally test-only.
+    // They provide an independent oracle for identity ownership, adjacency, and exact counts.
+    struct ReferenceNode {
+        children: Vec<usize>,
+        is_marker: bool,
+        may_repeat_per_element: bool,
+        use_id: Option<String>,
+        parsed_id: Option<String>,
+        references: Vec<ElementReference>,
+    }
+
+    struct LegacyReferenceDependencyGraph {
+        // Real document nodes keep their encounter-order indexes. Trailing nodes are transparent
+        // candidate groups: they share duplicate-ID edges without contributing an element or depth.
+        dependencies: Vec<Vec<(usize, usize)>>,
+        real_nodes: usize,
+    }
+
+    fn append_reference_node(
+        nodes: &mut Vec<ReferenceNode>,
+        parent: Option<usize>,
+        validated: LegacyValidatedElement,
+    ) {
+        let index = nodes.len();
+        if let Some(parent) = parent {
+            nodes[parent].children.push(index);
+        }
+        nodes.push(ReferenceNode {
+            children: Vec::new(),
+            is_marker: validated.is_marker,
+            may_repeat_per_element: validated.may_repeat_per_element,
+            use_id: validated.use_id,
+            parsed_id: validated.parsed_id,
+            references: validated.references,
+        });
+    }
+
+    struct LegacyValidatedElement {
+        is_marker: bool,
+        may_repeat_per_element: bool,
+        use_id: Option<String>,
+        parsed_id: Option<String>,
+        references: Vec<ElementReference>,
+    }
+
+    struct LegacyReferenceAttributes<'a> {
+        element_name: &'a str,
+        is_svg_element: bool,
+        use_id: Option<String>,
+        parsed_id: Option<String>,
+        use_href: Option<String>,
+        use_xlink_href: Option<String>,
+        fe_image_href: Option<String>,
+        geometry_source_len: Option<usize>,
+        marker_start: Option<String>,
+        marker_start_seen: bool,
+        marker_mid: Option<String>,
+        marker_mid_seen: bool,
+        marker_end: Option<String>,
+        marker_end_seen: bool,
+        marker_error: Option<Error>,
+    }
+
+    impl<'a> LegacyReferenceAttributes<'a> {
+        fn new(element_name: &'a str, is_svg_element: bool) -> Self {
+            Self {
+                element_name,
+                is_svg_element,
+                use_id: None,
+                parsed_id: None,
+                use_href: None,
+                use_xlink_href: None,
+                fe_image_href: None,
+                geometry_source_len: None,
+                marker_start: None,
+                marker_start_seen: false,
+                marker_mid: None,
+                marker_mid_seen: false,
+                marker_end: None,
+                marker_end_seen: false,
+                marker_error: None,
+            }
+        }
+
+        #[inline(never)]
+        fn observe(
+            &mut self,
+            semantic_name: &str,
+            is_unbound_attribute: bool,
+            is_xlink_attribute: bool,
+            value: &str,
+            checkpoint: &mut dyn FnMut() -> Result<()>,
+        ) -> Result<()> {
+            if self.is_svg_element
+                && ((self.element_name == "path" && semantic_name == "d")
+                    || (matches!(self.element_name, "polyline" | "polygon")
+                        && semantic_name == "points"))
+            {
+                self.geometry_source_len.get_or_insert(value.len());
+            }
+            if self.is_svg_element && semantic_name == "id" {
+                self.parsed_id.get_or_insert_with(|| value.to_owned());
+                if is_unbound_attribute {
+                    self.use_id = Some(value.to_owned());
+                }
+            }
+            if self.is_svg_element && semantic_name == "href" {
+                if self.element_name.eq_ignore_ascii_case("use") {
+                    if is_xlink_attribute {
+                        self.use_xlink_href.get_or_insert_with(|| value.to_owned());
+                    } else if is_unbound_attribute {
+                        self.use_href.get_or_insert_with(|| value.to_owned());
+                    }
+                }
+                if self.element_name.eq_ignore_ascii_case("feImage") {
+                    self.fe_image_href.get_or_insert_with(|| value.to_owned());
+                }
+            }
+            let marker_slot = if semantic_name == "marker-start" && !self.marker_start_seen {
+                self.marker_start_seen = true;
+                Some(&mut self.marker_start)
+            } else if semantic_name == "marker-mid" && !self.marker_mid_seen {
+                self.marker_mid_seen = true;
+                Some(&mut self.marker_mid)
+            } else if semantic_name == "marker-end" && !self.marker_end_seen {
+                self.marker_end_seen = true;
+                Some(&mut self.marker_end)
+            } else {
+                None
+            };
+            if let Some(slot) = marker_slot {
+                let target = same_document_marker_target(value);
+                checkpoint()?;
+                match target {
+                    Ok(Some(target)) if is_marker_capable_svg_element(self.element_name) => {
+                        *slot = Some(target.to_owned());
+                    }
+                    Ok(None) => {}
+                    Ok(Some(_)) => {
+                        self.marker_error.get_or_insert_with(|| {
+                            validation_error(format!(
+                                "marker references on <{}> cannot be bounded before usvg parsing",
+                                self.element_name
+                            ))
+                        });
+                    }
+                    Err(error) => {
+                        self.marker_error.get_or_insert(error);
+                    }
+                }
+            }
+            Ok(())
+        }
+
+        fn finish(self) -> LegacyValidatedElement {
+            let mut references = Vec::new();
+            if let Some(target) = self
+                .use_xlink_href
+                .as_deref()
+                .or(self.use_href.as_deref())
+                .and_then(same_document_use_target)
+            {
+                references.push(ElementReference {
+                    target: target.to_owned(),
+                    multiplicity: 1,
+                    target_kind: ReferenceTargetKind::UseElement,
+                });
+            }
+            if let Some(target) = self
+                .fe_image_href
+                .as_deref()
+                .and_then(same_document_use_target)
+            {
+                references.push(ElementReference {
+                    target: target.to_owned(),
+                    multiplicity: 1,
+                    target_kind: ReferenceTargetKind::ParsedElement,
+                });
+            }
+            if let Some(target) = self.marker_start {
+                references.push(ElementReference {
+                    target,
+                    multiplicity: 1,
+                    target_kind: ReferenceTargetKind::Marker,
+                });
+            }
+            if let Some(target) = self.marker_mid {
+                references.push(ElementReference {
+                    target,
+                    multiplicity: marker_mid_instance_upper_bound(
+                        self.element_name,
+                        self.geometry_source_len.unwrap_or(0),
+                    ),
+                    target_kind: ReferenceTargetKind::Marker,
+                });
+            }
+            if let Some(target) = self.marker_end {
+                references.push(ElementReference {
+                    target,
+                    multiplicity: 1,
+                    target_kind: ReferenceTargetKind::Marker,
+                });
+            }
+            LegacyValidatedElement {
+                is_marker: self.is_svg_element && self.element_name.eq_ignore_ascii_case("marker"),
+                may_repeat_per_element: self.is_svg_element
+                    && matches!(self.element_name, "filter" | "mask" | "clipPath"),
+                use_id: self.use_id,
+                parsed_id: self.parsed_id,
+                references,
+            }
+        }
+    }
+
+    fn collect_reference_element_after_xml(
+        element: &BytesStart<'_>,
+        resolver: &NamespaceResolver,
+        checkpoint: &mut impl FnMut() -> Result<()>,
+    ) -> Result<LegacyValidatedElement> {
+        let (namespace, local_name) = resolver.resolve_element(element.name());
+        let element_name = local_name.as_ref();
+        let mut references =
+            LegacyReferenceAttributes::new(element_name, is_svg_element_namespace(&namespace));
+        if !references.is_svg_element {
+            return Ok(references.finish());
+        }
+        // The caller already validated this exact immutable SVG, including lexical and expanded
+        // attribute-name uniqueness. Keep parsing and all target checks without rebuilding that set.
+        for attribute in element.attributes().with_checks(false) {
+            checkpoint()?;
+            let attribute = attribute
+                .map_err(|error| xml_validation_error(format!("invalid XML attribute: {error}")))?;
+            if attribute.key.as_namespace_binding().is_some() {
+                continue;
+            }
+            let (namespace, local_name) = resolver.resolve_attribute(attribute.key);
+            let is_unbound = matches!(&namespace, ResolveResult::Unbound);
+            let is_xlink = matches!(
+                &namespace,
+                ResolveResult::Bound(namespace) if namespace.as_ref() == XLINK_NAMESPACE
+            );
+            if !usvg_consumes_attribute_namespace(namespace)? {
+                continue;
+            }
+            let value = attribute.normalized_value(XmlVersion::Implicit1_0);
+            checkpoint()?;
+            let value = value.map_err(|error| {
+                xml_validation_error(format!("invalid XML attribute value: {error}"))
+            })?;
+            references.observe(
+                local_name.as_ref(),
+                is_unbound,
+                is_xlink,
+                &value,
+                checkpoint,
+            )?;
+        }
+        Ok(references.finish())
+    }
+
+    fn plan_svg_reference_expansion_with_checkpoints<E>(
+        nodes: &[ReferenceNode],
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> ReferencePlanningResult<SvgReferencePlan, E> {
+        analyze_svg_reference_expansion_with_checkpoints::<true, _>(nodes, None, checkpoint)
+            .map(SvgReferenceAnalysis::into_detailed_plan)
+    }
+
+    fn analyze_svg_reference_expansion_with_checkpoints<const DETAILED: bool, E>(
+        nodes: &[ReferenceNode],
+        raw_structure: Option<SvgStructureMetrics>,
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
+        let Some(_) = nodes.first() else {
+            return Err(ReferencePlanningError::Invalid(
+                "the document does not contain an SVG reference root".to_string(),
+            ));
+        };
+
+        if let Some(structure) = raw_structure {
+            // Only this XML owner supplies complete, validated element facts for these exact bytes.
+            // Unused IDs/markers/gradients do not expand. References and all conservative effect
+            // applications must use the graph, including missing targets and duplicate parsed IDs.
+            let mut no_expansion = true;
+            for (index, node) in nodes.iter().enumerate() {
+                checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+                if !node.references.is_empty() || node.may_repeat_per_element {
+                    no_expansion = false;
+                    break;
+                }
+            }
+            if no_expansion {
+                debug_assert_eq!(structure.elements, nodes.len());
+                let raw_element_occurrences = if DETAILED {
+                    record_reference_analysis_work(|work| {
+                        work.occurrence_slots += nodes.len();
+                    });
+                    vec![1; nodes.len()].into_boxed_slice()
+                } else {
+                    Box::default()
+                };
+                checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+                return Ok(SvgReferenceAnalysis {
+                    structure,
+                    raw_element_occurrences,
+                });
+            }
+        }
+
+        let dependencies = build_svg_reference_dependencies_with_checkpoints(nodes, checkpoint)
+            .map_err(ReferencePlanningError::Checkpoint)?;
+        analyze_svg_reference_dependencies_with_effects::<DETAILED, _>(
+            &dependencies,
+            nodes,
+            checkpoint,
+        )
+    }
+
+    fn build_svg_reference_dependencies(nodes: &[ReferenceNode]) -> LegacyReferenceDependencyGraph {
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        match build_svg_reference_dependencies_with_checkpoints(nodes, &mut checkpoint) {
+            Ok(graph) => graph,
+            Err(error) => match error {},
+        }
+    }
+
+    fn build_svg_reference_dependencies_with_checkpoints<E>(
+        nodes: &[ReferenceNode],
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<LegacyReferenceDependencyGraph, E> {
+        let real_nodes = nodes.len();
+
+        let mut use_ids = HashMap::new();
+        let mut parsed_ids: HashMap<&str, Vec<(usize, bool)>> = HashMap::new();
+        for (index, node) in nodes.iter().enumerate() {
+            checkpoint_loop(index, checkpoint)?;
+            if let Some(id) = node.use_id.as_deref() {
+                // Raw `<use>` expansion resolves the first unqualified XML `id`.
+                use_ids.entry(id).or_insert(index);
+            }
+            if let Some(id) = node.parsed_id.as_deref() {
+                // Keep every candidate conservatively. usvg ignores unknown elements and otherwise
+                // resolves duplicate parsed IDs to one element; charging the union avoids mirroring
+                // its private element whitelist while ensuring an ignored duplicate cannot shadow a
+                // resource-bearing target in this preflight graph.
+                parsed_ids
+                    .entry(id)
+                    .or_default()
+                    .push((index, node.is_marker));
+            }
+        }
+
+        let mut dependencies = Vec::with_capacity(real_nodes);
+        let mut child_iteration = 0usize;
+        for (node_index, node) in nodes.iter().enumerate() {
+            checkpoint_loop(node_index, checkpoint)?;
+            let mut node_dependencies = Vec::with_capacity(node.children.len());
+            for &child in &node.children {
+                checkpoint_loop(child_iteration, checkpoint)?;
+                child_iteration = child_iteration.saturating_add(1);
+                node_dependencies.push((child, 1));
+            }
+            dependencies.push(node_dependencies);
+        }
+        let mut parsed_dependencies = HashMap::new();
+        let mut marker_dependencies = HashMap::new();
+        let mut reference_iteration = 0usize;
+        for (index, node) in nodes.iter().enumerate() {
+            checkpoint_loop(index, checkpoint)?;
+            for reference in &node.references {
+                checkpoint_loop(reference_iteration, checkpoint)?;
+                reference_iteration = reference_iteration.saturating_add(1);
+                let target_index = match reference.target_kind {
+                    ReferenceTargetKind::UseElement => {
+                        use_ids.get(reference.target.as_str()).copied()
+                    }
+                    ReferenceTargetKind::ParsedElement => {
+                        resolve_parsed_id_dependency_with_checkpoints(
+                            reference.target.as_str(),
+                            false,
+                            &parsed_ids,
+                            &mut parsed_dependencies,
+                            &mut dependencies,
+                            checkpoint,
+                        )?
+                    }
+                    ReferenceTargetKind::Marker => resolve_parsed_id_dependency_with_checkpoints(
+                        reference.target.as_str(),
+                        true,
+                        &parsed_ids,
+                        &mut marker_dependencies,
+                        &mut dependencies,
+                        checkpoint,
+                    )?,
+                };
+                if let Some(target_index) = target_index {
+                    dependencies[index].push((target_index, reference.multiplicity));
+                }
+            }
+        }
+
+        record_reference_analysis_work(|work| {
+            work.dependency_nodes += dependencies.len();
+        });
+        Ok(LegacyReferenceDependencyGraph {
+            dependencies,
+            real_nodes,
+        })
+    }
+
+    fn resolve_parsed_id_dependency_with_checkpoints<'a, E>(
+        target: &str,
+        marker_only: bool,
+        parsed_ids: &HashMap<&'a str, Vec<(usize, bool)>>,
+        resolved: &mut HashMap<&'a str, Option<usize>>,
+        dependencies: &mut Vec<Vec<(usize, usize)>>,
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<Option<usize>, E> {
+        checkpoint()?;
+        let Some((id, candidates)) = parsed_ids.get_key_value(target) else {
+            return Ok(None);
+        };
+        if let [(index, is_marker)] = candidates.as_slice() {
+            return Ok((!marker_only || *is_marker).then_some(*index));
+        }
+        if let Some(&dependency) = resolved.get(target) {
+            return Ok(dependency);
+        }
+        let dependency = if marker_only {
+            resolve_reference_candidates_with_checkpoints(
+                dependencies,
+                candidates
+                    .iter()
+                    .filter_map(|&(index, is_marker)| is_marker.then_some(index)),
+                checkpoint,
+            )?
+        } else {
+            resolve_reference_candidates_with_checkpoints(
+                dependencies,
+                candidates.iter().map(|&(index, _)| index),
+                checkpoint,
+            )?
+        };
+        resolved.insert(*id, dependency);
+        Ok(dependency)
+    }
+
+    fn resolve_reference_candidates_with_checkpoints<E>(
+        dependencies: &mut Vec<Vec<(usize, usize)>>,
+        mut candidates: impl Iterator<Item = usize>,
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> std::result::Result<Option<usize>, E> {
+        checkpoint()?;
+        let Some(first) = candidates.next() else {
+            return Ok(None);
+        };
+        let Some(second) = candidates.next() else {
+            return Ok(Some(first));
+        };
+
+        // A duplicate-ID candidate union is materialized once. Every parsed-tree reference then owns
+        // one edge to this transparent group instead of copying every candidate edge.
+        let group_index = dependencies.len();
+        let mut group = Vec::with_capacity(candidates.size_hint().0.saturating_add(2));
+        group.push((first, 1));
+        group.push((second, 1));
+        for (iteration, index) in candidates.enumerate() {
+            checkpoint_loop(iteration, checkpoint)?;
+            group.push((index, 1));
+        }
+        dependencies.push(group);
+        Ok(Some(group_index))
+    }
+
+    fn plan_svg_reference_dependencies(
+        graph: &LegacyReferenceDependencyGraph,
+    ) -> std::result::Result<SvgReferencePlan, String> {
+        let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
+        match analyze_svg_reference_dependencies_with_effects::<true, _>(
+            graph,
+            &[],
+            &mut checkpoint,
+        ) {
+            Ok(plan) => Ok(plan.into_detailed_plan()),
+            Err(ReferencePlanningError::Invalid(error)) => Err(error),
+            Err(ReferencePlanningError::Checkpoint(error)) => match error {},
+        }
+    }
+
+    fn analyze_svg_reference_dependencies_with_effects<const DETAILED: bool, E>(
+        graph: &LegacyReferenceDependencyGraph,
+        svg_nodes: &[ReferenceNode],
+        checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+    ) -> ReferencePlanningResult<SvgReferenceAnalysis, E> {
+        // User element budgets can exceed a native backend's ceiling. Count independently of that
+        // ceiling so an observational compatibility failure cannot hide a resource-limit failure.
+        let dependencies = &graph.dependencies;
+        let nodes_len = dependencies.len();
+        let mut states = vec![0_u8; nodes_len];
+        let mut expanded_elements = vec![0_usize; nodes_len];
+        let mut expanded_depths = vec![0_usize; nodes_len];
+        let mut postorder = if DETAILED {
+            Vec::with_capacity(nodes_len)
+        } else {
+            Vec::new()
+        };
+        record_reference_analysis_work(|work| {
+            work.postorder_slots += if DETAILED { nodes_len } else { 0 };
+        });
+        let mut stack = vec![(0_usize, false)];
+        let mut traversal_iteration = 0usize;
+        let mut dependency_iteration = 0usize;
+
+        while let Some((index, complete)) = stack.pop() {
+            checkpoint_loop(traversal_iteration, checkpoint)
+                .map_err(ReferencePlanningError::Checkpoint)?;
+            traversal_iteration = traversal_iteration.saturating_add(1);
+            if complete {
+                let is_group = index >= graph.real_nodes;
+                let mut elements = if is_group { 0_usize } else { 1 };
+                let mut depth = 0_usize;
+                for &(dependency, multiplicity) in &dependencies[index] {
+                    checkpoint_loop(dependency_iteration, checkpoint)
+                        .map_err(ReferencePlanningError::Checkpoint)?;
+                    dependency_iteration = dependency_iteration.saturating_add(1);
+                    let dependency_elements =
+                        expanded_elements[dependency].saturating_mul(multiplicity);
+                    elements = elements.saturating_add(dependency_elements);
+                    let dependency_depth = expanded_depths[dependency];
+                    depth = depth.max(if is_group {
+                        dependency_depth
+                    } else {
+                        dependency_depth.saturating_add(1)
+                    });
+                }
+                expanded_elements[index] = elements;
+                expanded_depths[index] = depth;
+                states[index] = 2;
+                if DETAILED {
+                    postorder.push(index);
+                }
+                continue;
+            }
+
+            match states[index] {
+                0 => {
+                    states[index] = 1;
+                    stack.push((index, true));
+                    for &(dependency, _) in dependencies[index].iter().rev() {
+                        checkpoint_loop(dependency_iteration, checkpoint)
+                            .map_err(ReferencePlanningError::Checkpoint)?;
+                        dependency_iteration = dependency_iteration.saturating_add(1);
+                        match states[dependency] {
+                            0 => stack.push((dependency, false)),
+                            1 => {
+                                checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+                                return Err(ReferencePlanningError::Invalid(
+                                    "same-document SVG expansion references contain a cycle"
+                                        .to_string(),
+                                ));
+                            }
+                            2 => {}
+                            _ => unreachable!("SVG reference traversal state is bounded"),
+                        }
+                    }
+                }
+                1 => {
+                    checkpoint().map_err(ReferencePlanningError::Checkpoint)?;
+                    return Err(ReferencePlanningError::Invalid(
+                        "same-document SVG expansion references contain a cycle".to_string(),
+                    ));
+                }
+                2 => {}
+                _ => unreachable!("SVG reference traversal state is bounded"),
+            }
+        }
+
+        let mut raw_element_occurrences = if DETAILED {
+            vec![0_usize; nodes_len]
+        } else {
+            Vec::new()
+        };
+        record_reference_analysis_work(|work| {
+            work.occurrence_slots += if DETAILED { nodes_len } else { 0 };
+        });
+        if DETAILED {
+            raw_element_occurrences[0] = 1;
+        }
+        let application_upper_bound = expanded_elements[0];
+        for (index, node) in svg_nodes.iter().enumerate() {
+            checkpoint_loop(index, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+            if node.may_repeat_per_element {
+                // The XML owner includes every real node under the SVG root. After cycle checking,
+                // an extra root edge to an effect cannot change non-root costs or topological order.
+                debug_assert!(index != 0 && states[index] == 2);
+                // Charge each filter/mask/clip-path once per baseline expanded element, preserving
+                // the conservative CSS-independent bound without evaluating the graph a second time.
+                expanded_elements[0] = expanded_elements[0].saturating_add(
+                    expanded_elements[index].saturating_mul(application_upper_bound),
+                );
+                expanded_depths[0] =
+                    expanded_depths[0].max(expanded_depths[index].saturating_add(1));
+                if DETAILED {
+                    raw_element_occurrences[index] =
+                        raw_element_occurrences[index].saturating_add(application_upper_bound);
+                }
+            }
+        }
+        let mut occurrence_dependency_iteration = 0usize;
+        for (iteration, index) in postorder.into_iter().rev().enumerate() {
+            checkpoint_loop(iteration, checkpoint).map_err(ReferencePlanningError::Checkpoint)?;
+            let occurrences = raw_element_occurrences[index];
+            for &(dependency, multiplicity) in &dependencies[index] {
+                checkpoint_loop(occurrence_dependency_iteration, checkpoint)
+                    .map_err(ReferencePlanningError::Checkpoint)?;
+                occurrence_dependency_iteration = occurrence_dependency_iteration.saturating_add(1);
+                record_reference_analysis_work(|work| {
+                    work.occurrence_edges += 1;
+                });
+                let added = occurrences.saturating_mul(multiplicity);
+                raw_element_occurrences[dependency] =
+                    raw_element_occurrences[dependency].saturating_add(added);
+            }
+        }
+        raw_element_occurrences.truncate(graph.real_nodes);
+
+        Ok(SvgReferenceAnalysis {
+            structure: SvgStructureMetrics {
+                elements: expanded_elements[0],
+                max_tree_depth: expanded_depths[0],
+            },
+            raw_element_occurrences: raw_element_occurrences.into_boxed_slice(),
+        })
+    }
+
+    fn legacy_reference_nodes(
         svg: &str,
         checkpoint: &mut impl FnMut() -> Result<()>,
-        check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
-    ) -> Result<()> {
-        validate_well_formed_svg_with_controls(svg, checkpoint, check_structure)?;
+    ) -> Result<Vec<ReferenceNode>> {
         let mut reader = NsReader::from_str(svg);
         let mut reference_nodes = Vec::new();
         let mut reference_stack = Vec::new();
@@ -2091,6 +2714,76 @@ mod tests {
                 _ => {}
             }
         }
+        Ok(reference_nodes)
+    }
+
+    fn compact_facts_from_legacy_nodes(
+        nodes: &[ReferenceNode],
+    ) -> (SvgReferenceFacts, SvgStructureMetrics) {
+        let mut facts = SvgReferenceFacts {
+            parents: vec![usize::MAX; nodes.len()],
+            ..SvgReferenceFacts::default()
+        };
+        for (index, node) in nodes.iter().enumerate() {
+            for &child in &node.children {
+                facts.parents[child] = index;
+            }
+            if node.parsed_id.is_some() {
+                let raw = match &node.use_id {
+                    None => RawElementId::Absent,
+                    Some(raw) if Some(raw) == node.parsed_id.as_ref() => RawElementId::Parsed,
+                    Some(raw) => RawElementId::Other(raw.clone()),
+                };
+                facts.identities.push(ReferenceIdentity {
+                    element: index,
+                    is_marker: node.is_marker,
+                    ids: ElementIds {
+                        parsed: node.parsed_id.clone(),
+                        raw,
+                    },
+                });
+            } else if let Some(raw) = &node.use_id {
+                facts.identities.push(ReferenceIdentity {
+                    element: index,
+                    is_marker: node.is_marker,
+                    ids: ElementIds {
+                        parsed: None,
+                        raw: RawElementId::Other(raw.clone()),
+                    },
+                });
+            }
+            for reference in &node.references {
+                facts.references.push(SourceReference {
+                    source: index,
+                    reference: ElementReference {
+                        target: reference.target.clone(),
+                        multiplicity: reference.multiplicity,
+                        target_kind: reference.target_kind,
+                    },
+                });
+            }
+            if node.may_repeat_per_element {
+                facts.effects.push(index);
+            }
+        }
+        let mut depths = vec![0; nodes.len()];
+        for (index, &parent) in facts.parents.iter().enumerate().skip(1) {
+            depths[index] = depths[parent] + 1;
+        }
+        let structure = SvgStructureMetrics {
+            elements: nodes.len(),
+            max_tree_depth: depths.into_iter().max().unwrap_or(0),
+        };
+        (facts, structure)
+    }
+
+    fn two_pass_reference_budget(
+        svg: &str,
+        checkpoint: &mut impl FnMut() -> Result<()>,
+        check_structure: &mut impl FnMut(usize, usize) -> Result<()>,
+    ) -> Result<()> {
+        validate_well_formed_svg_with_controls(svg, checkpoint, check_structure)?;
+        let reference_nodes = legacy_reference_nodes(svg, checkpoint)?;
         let plan = match plan_svg_reference_expansion_with_checkpoints(&reference_nodes, checkpoint)
         {
             Ok(plan) => plan,
@@ -2603,6 +3296,179 @@ mod tests {
     }
 
     #[test]
+    fn compact_facts_preserve_legacy_occurrences_cycles_and_summaries() {
+        let mut fixtures = ordinary_budget_fixtures();
+        fixtures.extend([
+            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g s:id="parsed" id="raw"><rect/></g><g s:id="a&amp;b" id="a&#38;b"><path/></g><g id="raw"/></defs><use href="#raw"/><use href="#a&amp;b"/><filter><feImage href="#parsed"/></filter></svg>"##.to_owned(),
+            r##"<svg xmlns:s="http://www.w3.org/2000/svg"><defs><g id="same"/><marker id="same"><path/></marker><unknown s:id="same"/><mask><use href="#same"/></mask></defs><path d="M0 0L1 1L2 2" marker-start="url(#same)" marker-mid="url(#same)" marker-end="url(#same)"/><filter><feImage href="#same"/></filter><use href="#missing"/></svg>"##.to_owned(),
+        ]);
+        let planning_error = |error| match error {
+            ReferencePlanningError::Invalid(message) => message,
+            ReferencePlanningError::Checkpoint(error) => match error {},
+        };
+        for svg in fixtures {
+            let Ok(facts) =
+                validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(()))
+            else {
+                // Malformed XML and budget error precedence are covered by the full old/new
+                // public budget comparison. A reference plan exists only for valid XML.
+                continue;
+            };
+            let nodes = legacy_reference_nodes(&svg, &mut || Ok(())).unwrap();
+            let expected = plan_svg_reference_expansion_with_checkpoints(&nodes, &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .map_err(planning_error);
+            let actual = analyze_svg_reference_facts_with_checkpoints::<true, _>(
+                facts.references,
+                facts.raw_structure,
+                &mut || Ok::<(), std::convert::Infallible>(()),
+            )
+            .map(SvgReferenceAnalysis::into_detailed_plan)
+            .map_err(planning_error);
+            assert_eq!(actual, expected, "detailed: {svg}");
+
+            let facts =
+                validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(()))
+                    .unwrap();
+            let actual = analyze_svg_reference_facts_with_checkpoints::<false, _>(
+                facts.references,
+                facts.raw_structure,
+                &mut || Ok::<(), std::convert::Infallible>(()),
+            )
+            .map(|analysis| analysis.structure)
+            .map_err(planning_error);
+            let expected = expected.map(|plan| SvgStructureMetrics {
+                elements: plan.expanded_elements(),
+                max_tree_depth: plan.max_tree_depth(),
+            });
+            assert_eq!(actual, expected, "summary: {svg}");
+        }
+    }
+
+    #[test]
+    fn reference_free_facts_retain_only_parent_slots_and_sparse_single_owner_ids() {
+        const GROUPS: usize = 512;
+        let mut svg = String::from("<svg>");
+        for index in 0..GROUPS {
+            svg.push_str(&format!(r#"<g id="group-{index}"><rect/></g>"#));
+        }
+        svg.push_str("</svg>");
+        let facts =
+            validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(())).unwrap();
+        assert_eq!(facts.references.parents.len(), 1 + 2 * GROUPS);
+        assert_eq!(facts.references.identities.len(), GROUPS);
+        assert_eq!(facts.references.references.capacity(), 0);
+        assert_eq!(facts.references.effects.capacity(), 0);
+        for identity in &facts.references.identities {
+            assert!(matches!(identity.ids.raw, RawElementId::Parsed));
+            assert!(std::ptr::eq(
+                identity.ids.raw_value().unwrap(),
+                identity.ids.parsed.as_deref().unwrap(),
+            ));
+        }
+        let (result, work) = measure_reference_analysis_work(|| {
+            analyze_svg_reference_facts_with_checkpoints::<false, _>(
+                facts.references,
+                facts.raw_structure,
+                &mut || Ok::<(), std::convert::Infallible>(()),
+            )
+        });
+        assert!(result.is_ok());
+        assert_eq!(work, ReferenceAnalysisWork::default());
+    }
+
+    #[test]
+    fn compact_graph_writes_each_tree_edge_once_and_matches_legacy_adjacency() {
+        for svg in ordinary_budget_fixtures() {
+            let Ok(facts) =
+                validate_svg_xml_facts_with_controls(&svg, &mut || Ok(()), &mut |_, _| Ok(()))
+            else {
+                continue;
+            };
+            let expected = build_svg_reference_dependencies(
+                &legacy_reference_nodes(&svg, &mut || Ok(())).unwrap(),
+            );
+            let elements = facts.raw_structure.elements;
+            let (graph, work) = measure_reference_analysis_work(|| {
+                build_reference_fact_dependencies(facts.references, &mut || {
+                    Ok::<(), std::convert::Infallible>(())
+                })
+            });
+            let (graph, _) = graph.unwrap();
+            assert_eq!(work.tree_edges, elements - 1, "{svg}");
+            assert_eq!(graph.real_nodes, expected.real_nodes, "{svg}");
+            assert_eq!(graph.ranges.len(), expected.dependencies.len(), "{svg}");
+            assert_eq!(
+                graph.edges.len(),
+                expected.dependencies.iter().map(Vec::len).sum::<usize>(),
+                "{svg}"
+            );
+            for (index, edges) in expected.dependencies.iter().enumerate() {
+                assert_eq!(graph.dependencies(index), edges, "{svg}, node {index}");
+            }
+        }
+    }
+
+    #[test]
+    fn graph_adaptation_observes_cancellation_during_node_and_edge_work() {
+        for dependencies in [vec![Vec::new(); 1024], vec![vec![(0, 1); 1024]]] {
+            let real_nodes = dependencies.len();
+            let mut total = 0;
+            let result = ReferenceDependencyGraph::with_checkpoints(
+                dependencies.clone(),
+                real_nodes,
+                &mut || {
+                    total += 1;
+                    Ok::<(), usize>(())
+                },
+            );
+            assert!(result.is_ok());
+            assert!(
+                total > 8,
+                "both long node rows and long edge rows need bounded checkpoints"
+            );
+            for cancel_at in 1..=total {
+                let mut checkpoints = 0;
+                let result = ReferenceDependencyGraph::with_checkpoints(
+                    dependencies.clone(),
+                    real_nodes,
+                    &mut || {
+                        checkpoints += 1;
+                        if checkpoints == cancel_at {
+                            Err(cancel_at)
+                        } else {
+                            Ok(())
+                        }
+                    },
+                );
+                assert!(matches!(result, Err(at) if at == cancel_at));
+                assert_eq!(checkpoints, cancel_at);
+            }
+        }
+    }
+
+    #[test]
+    fn normalized_id_sharing_preserves_first_parsed_alias_and_raw_id_selection() {
+        let svg = r#"<svg xmlns:s="http://www.w3.org/2000/svg"><g s:id="parsed" id="raw"/><g s:id="a&amp;b" id="a&#38;b"/><g id="first" s:id="ignored"/><g s:id="alias-only"/></svg>"#;
+        let facts =
+            validate_svg_xml_facts_with_controls(svg, &mut || Ok(()), &mut |_, _| Ok(())).unwrap();
+        let identities = &facts.references.identities;
+        assert_eq!(identities.len(), 4);
+        assert_eq!(identities[0].ids.parsed.as_deref(), Some("parsed"));
+        assert_eq!(identities[0].ids.raw_value(), Some("raw"));
+        assert!(matches!(identities[0].ids.raw, RawElementId::Other(_)));
+        assert_eq!(identities[1].ids.parsed.as_deref(), Some("a&b"));
+        assert_eq!(identities[1].ids.raw_value(), Some("a&b"));
+        assert!(matches!(identities[1].ids.raw, RawElementId::Parsed));
+        assert_eq!(identities[2].ids.parsed.as_deref(), Some("first"));
+        assert_eq!(identities[2].ids.raw_value(), Some("first"));
+        assert!(matches!(identities[2].ids.raw, RawElementId::Parsed));
+        assert_eq!(identities[3].ids.parsed.as_deref(), Some("alias-only"));
+        assert_eq!(identities[3].ids.raw_value(), None);
+    }
+
+    #[test]
     fn ordinary_reference_summary_does_not_materialize_discarded_occurrences() {
         let svg = branching_use_svg(8);
         let mut summary = None;
@@ -2996,7 +3862,7 @@ mod tests {
 
     #[test]
     fn reference_accounting_saturates_without_materializing_expanded_nodes() {
-        let graph = ReferenceDependencyGraph {
+        let graph = LegacyReferenceDependencyGraph {
             dependencies: vec![vec![(1, usize::MAX), (1, 2)], vec![(2, 2)], vec![]],
             real_nodes: 3,
         };
@@ -3004,6 +3870,7 @@ mod tests {
         assert_eq!(plan.expanded_elements(), usize::MAX);
         assert_eq!(plan.raw_element_occurrences(), &[1, usize::MAX, usize::MAX]);
         assert_eq!(plan.max_tree_depth(), 2);
+        let graph = ReferenceDependencyGraph::new(graph.dependencies, graph.real_nodes);
         let (summary, work) = measure_reference_analysis_work(|| {
             summarize_svg_reference_dependencies_with_checkpoints(&graph, &mut || {
                 Ok::<(), std::convert::Infallible>(())
@@ -3207,6 +4074,26 @@ mod tests {
                 .iter()
                 .all(|&occurrences| occurrences == 1)
         );
+        let (facts, _) = compact_facts_from_legacy_nodes(&nodes);
+        let (graph, effects) =
+            build_reference_fact_dependencies(
+                facts,
+                &mut || Ok::<(), std::convert::Infallible>(()),
+            )
+            .unwrap();
+        assert_eq!(graph.ranges.len(), real_nodes + 2);
+        assert_eq!(graph.edges.len(), dependency_edges);
+        let actual =
+            analyze_compact_reference_dependencies::<true, _>(&graph, &effects, &mut || {
+                Ok::<(), std::convert::Infallible>(())
+            })
+            .map(SvgReferenceAnalysis::into_detailed_plan)
+            .map_err(|error| match error {
+                ReferencePlanningError::Invalid(message) => message,
+                ReferencePlanningError::Checkpoint(error) => match error {},
+            })
+            .unwrap();
+        assert_eq!(actual, plan);
     }
 
     #[test]
@@ -3268,9 +4155,13 @@ mod tests {
                         }
                         plan_svg_reference_dependencies(&graph)
                     });
-                    let actual = plan_svg_reference_expansion_with_checkpoints(&nodes, &mut || {
-                        Ok::<(), std::convert::Infallible>(())
-                    })
+                    let (facts, structure) = compact_facts_from_legacy_nodes(&nodes);
+                    let actual = analyze_svg_reference_facts_with_checkpoints::<true, _>(
+                        facts,
+                        structure,
+                        &mut || Ok::<(), std::convert::Infallible>(()),
+                    )
+                    .map(SvgReferenceAnalysis::into_detailed_plan)
                     .map_err(|error| match error {
                         ReferencePlanningError::Invalid(message) => message,
                         ReferencePlanningError::Checkpoint(error) => match error {},
@@ -3278,9 +4169,9 @@ mod tests {
                     assert_eq!(actual, expected, "{effects:?}, {multiplicity}, {cyclic}");
 
                     let (summary, work) = measure_reference_analysis_work(|| {
-                        analyze_svg_reference_expansion_with_checkpoints::<false, _>(
-                            &nodes,
-                            None,
+                        analyze_svg_reference_facts_with_checkpoints::<false, _>(
+                            compact_facts_from_legacy_nodes(&nodes).0,
+                            structure,
                             &mut || Ok::<(), std::convert::Infallible>(()),
                         )
                     });
