@@ -17,13 +17,35 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
-The [October 15 scalar/ownership experiments](native_svg_scalar_experiments_windows_2026-10-15.md)
-retain a reviewed exact UTF-8 character candidate with confirmation pending: 3,317 renderer tests
-pass, all 152 SVG identities match, and the native executable decreases by 7,168 bytes. Private
-function results justify the experiment but do not establish public SVG latency. Repeated external
-compiler activity prevents end-to-end sampling from starting. Reference-name filtering remains a
-separate inconclusive diagnostic; do not combine it with the candidate. Structured writer facts
-remain a feasibility boundary, not a production shortcut.
+The [October 16 three-way frontier](native_theme_threeway_frontier_windows_2026-10-16.md)
+compares v0.9.0, merged themes and the latest frozen optimized candidate in one complete
+36-invocation diagnostic with identical Class/Journey/Kanban SVGs. Optimized means improve
+3.20%-17.22% over merged but remain 46.99%-228.36% slower than v0.9.0; no calibrated latency
+or non-regression admission follows. Both separately attempted emission-stage runs detect
+compilation and are rejected. Extra source-review lanes exclude canonical JSON, rustls and large
+default report clones as new primary owners. A public preparation allocation probe establishes
+Class's retained-token slope: adding K bytes to a shared border token adds `(C+4)*K` current
+preparation bytes for C nodes, while old preparation remains unchanged and SVGs match exactly.
+Prioritize binding selections that borrow artifact-owned defaults, preserving typed/source
+authority and completion; investigate repeated edge ordering and borrow-until-append styles as
+separate changes. This is added pre-emission ownership, not a new overall complexity-order claim.
+
+The [October 15 scalar confirmation](native_svg_scalar_confirmation_windows_2026-10-15.md)
+uses clean committed base/head builds and complete eight-pair A/A schedules. Six of seven
+fixtures fail calibration; Kanban completes 32 A/B pairs and confirms non-regression, but its
+improvement interval does not clear the joint 10% and 50 us gate. Overall latency admission remains
+inconclusive. The committed character algorithm's [correctness and size evidence](native_svg_scalar_experiments_windows_2026-10-15.md)
+remains valid, without closing the SVG regression. Do not append samples to the frozen run.
+The [October 15 policy-borrow experiment](native_svg_policy_borrow_windows_2026-10-15.md)
+proves that borrowing the operation-owned policy removes the actual per-element 488-byte copy;
+all 152 SVG rows and 3,317 renderer tests pass. One complete three-pair diagnostic retry has mixed
+changes (Class medium -1.87%, Journey -0.63%, Class tiny -16.34%, Flowchart +4.38%); no latency or
+non-regression admission follows. The ownership refactor is committed as `0f368910e`; preserve the
+failed compiler-observed attempt and the independent State projection reproducibility caveat.
+The larger frontier is typed SVG emission with complete facts carried across root/family/final
+admission; a raw-byte sink alone cannot remove parsing. Preserve Usecase final-length resource
+admission and formatting projection charges in that separate refactor.
+Reference-name filtering and structured writer facts remain separate unadmitted candidates.
 
 The [October 15 terminal follow-up](native_svg_terminal_followup_windows_2026-10-15.md)
 rules out lost existing XML facts on default Journey and keeps explicit-pipeline stripping

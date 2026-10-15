@@ -1,5 +1,7 @@
 # Native SVG scalar and ownership experiments on Windows, 2026-10-15
 
+The later [clean committed confirmation](native_svg_scalar_confirmation_windows_2026-10-15.md) records the completed public-operation experiment. Observations below retain their earlier measurement scope.
+
 The exact UTF-8 character candidate is committed as `21671959cf55c0895ac23413d198e39d39980fc3` with performance confirmation pending. It is not an admitted latency improvement and does not close the v0.9.0 SVG regression.
 
 Base product: `a56aa0792f6d97e976517887cc86cdfe58e46d74`. The earlier [terminal checkpoint](native_svg_terminal_followup_windows_2026-10-15.md) retains its own rejected dispatch experiment. This experiment evaluates two independent candidates, returning production to the exact base between them. The following observations were frozen before the candidate commit; their uncommitted-source evidence class is retained. No push is performed.
