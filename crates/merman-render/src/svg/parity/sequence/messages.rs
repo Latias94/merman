@@ -446,7 +446,6 @@ pub(super) fn render_sequence_messages(
     ctx: &SequenceMessageRenderContext<'_>,
     theme_receipt: &mut crate::sequence::SequenceMessageThemeReceipt,
     sequence_number_receipt: &mut crate::sequence::SequenceNumberLabelThemeReceipt,
-    sequence_number_fill: Option<&str>,
 ) -> crate::Result<()> {
     let mut sequence_number_visible = false;
     let mut sequence_number = 1.0;
@@ -738,7 +737,7 @@ pub(super) fn render_sequence_messages(
                 style = sequence_number_style,
                 n = sequence_number_text,
             );
-            sequence_number_receipt.record_text_emission(sequence_number_fill);
+            sequence_number_receipt.record_text_emission();
         }
 
         let _ = (from, to);
@@ -1065,7 +1064,6 @@ mod tests {
             &ctx,
             &mut crate::sequence::SequenceMessageThemeReceipt::default(),
             &mut crate::sequence::SequenceNumberLabelThemeReceipt::default(),
-            None,
         )
         .expect_err("the rejecting sink must stop message rendering");
 
@@ -1190,11 +1188,10 @@ mod tests {
                 &ctx,
                 &mut receipt,
                 &mut crate::sequence::SequenceNumberLabelThemeReceipt::default(),
-                None,
             )
             .expect("incomplete layout should remain a renderable best-effort case");
 
-            let recorder = crate::sequence::SequenceThemeEvidenceRecorder::default();
+            let recorder = crate::sequence::SequenceThemeEvidenceRecorder::new(true);
             recorder.record_message_emission(
                 crate::sequence::SequenceMessageThemeEmission::from_terminal_writer(
                     Some("#2563eb"),

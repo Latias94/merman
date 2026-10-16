@@ -8,7 +8,8 @@ type StateNode = merman_core::diagrams::state::StateDiagramRenderNode;
 mod label;
 pub(crate) use label::{
     StateLabelMeasurement, measure_state_markdown_label, state_edge_label_xhtml,
-    state_markdown_label_plain_text, state_node_label_xhtml, state_value_to_label_text,
+    state_label_source_style_facts, state_markdown_label_plain_text, state_node_label_xhtml,
+    state_value_to_label_text,
 };
 
 mod edge_label_geometry;
@@ -80,10 +81,7 @@ pub(crate) use effect_plan::{StateEffectPlan, StateNodeEffectPlan};
 pub(crate) use style_plan::{
     ResolvedLabelTypography, StateEdgeStylePlan, StateNodeStylePlan, StateStylePlan,
 };
-pub(crate) use theme_evidence::{
-    StatePendingTerminalMechanism, StateThemeTerminalExpectation, StateThemeTerminalOccurrence,
-    StateThemeTerminalPlan, StateThemeTerminalReceipt,
-};
+pub(crate) use theme_evidence::{StateAppliedThemeOutcome, StateThemeOutcomes, StateThemeSurface};
 
 pub(crate) use layout::layout_state_diagram_typed_with_work_meter;
 pub use layout::{

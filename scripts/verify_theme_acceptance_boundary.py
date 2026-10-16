@@ -12,7 +12,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[1]
 EXCLUDED_MODULES = {
     "merman": {"src/theme_acceptance.rs"},
-    "merman-render": {"src/svg_artifact_receipts.rs"},
+    "merman-render": set(),
     "merman-export": set(),
 }
 # Exact former facade paths, checked by rustc so aliases and multiline re-exports count.

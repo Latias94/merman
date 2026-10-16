@@ -7,7 +7,7 @@ use crate::diagram_theme::{
 };
 use crate::family::resolved_style_property_for_facet as style_property_for_facet;
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Default)]
 pub(super) struct SequenceThemeEvidenceState {
     pub(super) actor_count: usize,
     pub(super) actor_fill_emitted: bool,
@@ -17,13 +17,13 @@ pub(super) struct SequenceThemeEvidenceState {
     pub(super) actor_stroke_unhandled: bool,
     pub(super) actor_stroke_overridden: bool,
     pub(super) actor_style_receipt: SequenceActorThemeReceipt,
-    pub(super) lifeline: SequenceLifelineThemeState,
-    pub(super) message: SequenceMessageThemeState,
-    pub(super) sequence_number: SequenceNumberLabelThemeState,
-    pub(super) keyword_background: SequenceControlThemeState,
-    pub(super) loop_frame: SequenceControlThemeState,
-    pub(super) note: SequenceStaticRectThemeState,
-    pub(super) activation: SequenceStaticRectThemeState,
+    pub(super) lifeline: SequenceLifelineThemeEmission,
+    pub(super) message: SequenceMessageThemeEmission,
+    pub(super) sequence_number: SequenceNumberLabelThemeEmission,
+    pub(super) keyword_background: SequenceControlThemeEmission,
+    pub(super) loop_frame: SequenceControlThemeEmission,
+    pub(super) note: SequenceStaticRectThemeEmission,
+    pub(super) activation: SequenceStaticRectThemeEmission,
     pub(super) typography: Option<SequenceTypographyThemeReceipt>,
     pub(super) unsupported_text: Option<crate::family::FamilyThemeEvidence>,
 }
@@ -102,28 +102,6 @@ impl SequenceActorThemeReceipt {
         record_style_winners(&mut self.ordinal_winners, style);
     }
 
-    pub(super) fn merge(&mut self, other: Self) {
-        self.static_winners.extend(other.static_winners);
-        self.ordinal_winners.extend(other.ordinal_winners);
-        self.geometry_requested |= other.geometry_requested;
-        self.effect_requested |= other.effect_requested;
-        self.effect_binding_used |= other.effect_binding_used;
-        self.effect_cleared |= other.effect_cleared;
-        self.effect_unhandled |= other.effect_unhandled;
-        self.effect_rects
-            .set(self.effect_rects.get().max(other.effect_rects.get()));
-        self.geometry_candidates.set(
-            self.geometry_candidates
-                .get()
-                .max(other.geometry_candidates.get()),
-        );
-        self.geometry_rects
-            .set(self.geometry_rects.get().max(other.geometry_rects.get()));
-        self.geometry_unhandled
-            .set(self.geometry_unhandled.get() || other.geometry_unhandled.get());
-        self.stroke_width_overridden |= other.stroke_width_overridden;
-    }
-
     pub(super) fn route_won(
         &self,
         rule_index: usize,
@@ -171,12 +149,6 @@ impl SequenceLineThemeReceipt {
         self.emitted_lines = self.emitted_lines.saturating_add(1);
     }
 
-    fn merge(&mut self, other: Self) {
-        self.static_winners.extend(other.static_winners);
-        self.line_candidates = self.line_candidates.max(other.line_candidates);
-        self.emitted_lines = self.emitted_lines.max(other.emitted_lines);
-    }
-
     fn route_won(&self, rule_index: usize, facet: FamilyThemeRuleFacet) -> bool {
         self.static_winners
             .contains(&(rule_index, style_property_for_facet(facet)))
@@ -218,60 +190,8 @@ impl SequenceLifelineThemeReceipt {
         self.line.record_line_candidate();
     }
 
-    #[cfg(test)]
-    pub(crate) fn record_line_emission(
-        &mut self,
-        actor_index: usize,
-        x1: f64,
-        y1: f64,
-        x2: f64,
-        y2: f64,
-        stroke_width: f64,
-    ) {
-        self.record_line_emission_with_effective_width(
-            actor_index,
-            x1,
-            y1,
-            x2,
-            y2,
-            stroke_width,
-            stroke_width,
-        );
-    }
-
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "Terminal line evidence retains coordinates and requested/effective widths"
-    )]
-    pub(crate) fn record_line_emission_with_effective_width(
-        &mut self,
-        actor_index: usize,
-        x1: f64,
-        y1: f64,
-        x2: f64,
-        y2: f64,
-        authored_stroke_width: f64,
-        effective_stroke_width: f64,
-    ) {
+    pub(crate) fn record_line_emission(&mut self) {
         self.line.record_line_emission();
-        let _ = (
-            actor_index,
-            x1,
-            y1,
-            x2,
-            y2,
-            authored_stroke_width,
-            effective_stroke_width,
-        );
-    }
-
-    pub(super) fn merge(&mut self, other: Self) {
-        self.line.merge(other.line);
-        self.effect_requested |= other.effect_requested;
-        self.effect_binding_used |= other.effect_binding_used;
-        self.effect_cleared |= other.effect_cleared;
-        self.effect_unhandled |= other.effect_unhandled;
-        self.emitted_effects = self.emitted_effects.max(other.emitted_effects);
     }
 
     pub(super) fn route_won(
@@ -292,34 +212,8 @@ impl SequenceLifelineThemeReceipt {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub(super) struct SequenceLifelineThemeState {
-    pub(super) paint_emitted: bool,
-    pub(super) stroke_width_emitted: bool,
-    pub(super) paint_overridden: bool,
-    pub(super) selected_property: Option<ResolvedStyleProperty>,
-    pub(super) receipt: SequenceLifelineThemeReceipt,
-}
-
-impl SequenceLifelineThemeState {
-    pub(super) fn merge(&mut self, emission: SequenceLifelineThemeEmission) {
-        self.paint_emitted |= emission.paint_emitted;
-        self.stroke_width_emitted |= emission.stroke_width_emitted;
-        self.paint_overridden |= emission.paint_overridden;
-        if let Some(selected_property) = emission.selected_property {
-            debug_assert!(
-                self.selected_property.is_none()
-                    || self.selected_property == Some(selected_property),
-                "one Sequence artifact must resolve one stable Lifeline paint winner"
-            );
-            self.selected_property.get_or_insert(selected_property);
-        }
-        self.receipt.merge(emission.receipt);
-    }
-}
-
 /// Complete writer-owned emission facts for the Sequence Lifeline style tranche.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct SequenceLifelineThemeEmission {
     pub(super) paint_emitted: bool,
     pub(super) stroke_width_emitted: bool,
@@ -391,15 +285,6 @@ impl SequenceMessageThemeReceipt {
         self.candidate_count() != 0 && self.candidate_count() == self.emitted_effects
     }
 
-    pub(super) fn merge(&mut self, other: Self) {
-        self.line.merge(other.line);
-        self.effect_requested |= other.effect_requested;
-        self.effect_binding_used |= other.effect_binding_used;
-        self.effect_cleared |= other.effect_cleared;
-        self.effect_unhandled |= other.effect_unhandled;
-        self.emitted_effects = self.emitted_effects.max(other.emitted_effects);
-    }
-
     pub(super) fn route_won(
         &self,
         rule_index: usize,
@@ -418,34 +303,8 @@ impl SequenceMessageThemeReceipt {
     }
 }
 
-#[derive(Debug, Clone, Default)]
-pub(super) struct SequenceMessageThemeState {
-    pub(super) stroke_emitted: bool,
-    pub(super) stroke_width_emitted: bool,
-    pub(super) stroke_overridden: bool,
-    pub(super) selected_property: Option<ResolvedStyleProperty>,
-    pub(super) receipt: SequenceMessageThemeReceipt,
-}
-
-impl SequenceMessageThemeState {
-    pub(super) fn merge(&mut self, emission: SequenceMessageThemeEmission) {
-        self.stroke_emitted |= emission.stroke_emitted;
-        self.stroke_width_emitted |= emission.stroke_width_emitted;
-        self.stroke_overridden |= emission.stroke_overridden;
-        if let Some(selected_property) = emission.selected_property {
-            debug_assert!(
-                self.selected_property.is_none()
-                    || self.selected_property == Some(selected_property),
-                "one Sequence artifact must resolve one stable Message paint winner"
-            );
-            self.selected_property.get_or_insert(selected_property);
-        }
-        self.receipt.merge(emission.receipt);
-    }
-}
-
 /// Complete writer-owned emission facts for Sequence Message signal color and width.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct SequenceMessageThemeEmission {
     pub(super) stroke_emitted: bool,
     pub(super) stroke_width_emitted: bool,
@@ -482,11 +341,9 @@ impl SequenceMessageThemeEmission {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SequenceNumberLabelThemeReceipt {
     pub(super) static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
-    pub(super) stylesheet_fill: Option<String>,
-    pub(super) typed_stylesheet_emissions: usize,
+    typed_fill_emitted: bool,
     pub(super) text_candidates: usize,
     pub(super) emitted_texts: usize,
-    pub(super) terminal_fill_mismatch: bool,
 }
 
 impl SequenceNumberLabelThemeReceipt {
@@ -494,55 +351,16 @@ impl SequenceNumberLabelThemeReceipt {
         record_style_winners(&mut self.static_winners, style);
     }
 
-    pub(crate) fn record_stylesheet_emission(
-        &mut self,
-        final_fill: &str,
-        typed_fill: Option<&str>,
-    ) {
-        if typed_fill.is_some() {
-            self.typed_stylesheet_emissions = self.typed_stylesheet_emissions.saturating_add(1);
-        }
-        if self
-            .stylesheet_fill
-            .as_deref()
-            .is_some_and(|fill| fill != final_fill)
-            || typed_fill.is_some_and(|fill| fill != final_fill)
-        {
-            self.terminal_fill_mismatch = true;
-        }
-        self.stylesheet_fill
-            .get_or_insert_with(|| final_fill.to_owned());
+    pub(crate) fn record_stylesheet_emission(&mut self, typed_fill: bool) {
+        self.typed_fill_emitted |= typed_fill;
     }
 
     pub(crate) fn record_text_candidate(&mut self) {
         self.text_candidates = self.text_candidates.saturating_add(1);
     }
 
-    pub(crate) fn record_text_emission(&mut self, final_fill: Option<&str>) {
+    pub(crate) fn record_text_emission(&mut self) {
         self.emitted_texts = self.emitted_texts.saturating_add(1);
-        if self.stylesheet_fill.as_deref() != final_fill {
-            self.terminal_fill_mismatch = true;
-        }
-    }
-
-    pub(super) fn merge(&mut self, other: Self) {
-        self.static_winners.extend(other.static_winners);
-        self.text_candidates = self.text_candidates.max(other.text_candidates);
-        self.emitted_texts = self.emitted_texts.max(other.emitted_texts);
-        self.terminal_fill_mismatch |= other.terminal_fill_mismatch;
-        self.typed_stylesheet_emissions = self
-            .typed_stylesheet_emissions
-            .max(other.typed_stylesheet_emissions);
-        if let Some(other_fill) = other.stylesheet_fill {
-            if self
-                .stylesheet_fill
-                .as_deref()
-                .is_some_and(|fill| fill != other_fill.as_str())
-            {
-                self.terminal_fill_mismatch = true;
-            }
-            self.stylesheet_fill.get_or_insert(other_fill);
-        }
     }
 
     pub(super) fn route_applies(
@@ -563,35 +381,15 @@ impl SequenceNumberLabelThemeReceipt {
         }
     }
 
-    pub(super) fn proves_typed_fill(&self, expected_fill: Option<&str>) -> bool {
-        let Some(expected_fill) = expected_fill else {
-            return false;
-        };
+    pub(super) fn typed_fill_applied(&self) -> bool {
         self.text_candidates != 0
             && self.emitted_texts == self.text_candidates
-            && self.typed_stylesheet_emissions == 1
-            && self.stylesheet_fill.as_deref() == Some(expected_fill)
-            && !self.terminal_fill_mismatch
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub(super) struct SequenceNumberLabelThemeState {
-    pub(super) fill_emitted: bool,
-    pub(super) fill_overridden: bool,
-    pub(super) receipt: SequenceNumberLabelThemeReceipt,
-}
-
-impl SequenceNumberLabelThemeState {
-    pub(super) fn merge(&mut self, emission: SequenceNumberLabelThemeEmission) {
-        self.fill_emitted |= emission.fill_emitted;
-        self.fill_overridden |= emission.fill_overridden;
-        self.receipt.merge(emission.receipt);
+            && self.typed_fill_emitted
     }
 }
 
 /// Complete terminal facts for the SequenceNumberLabel fill route.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct SequenceNumberLabelThemeEmission {
     pub(super) fill_emitted: bool,
     pub(super) fill_overridden: bool,
@@ -600,13 +398,12 @@ pub(crate) struct SequenceNumberLabelThemeEmission {
 
 impl SequenceNumberLabelThemeEmission {
     pub(crate) fn from_terminal_writer(
-        typed_fill: Option<&str>,
         fill_overridden: bool,
         receipt: SequenceNumberLabelThemeReceipt,
     ) -> Self {
         let has_numbers = receipt.text_candidates != 0;
         Self {
-            fill_emitted: receipt.proves_typed_fill(typed_fill),
+            fill_emitted: receipt.typed_fill_applied(),
             fill_overridden: has_numbers && fill_overridden,
             receipt,
         }
@@ -625,11 +422,8 @@ pub(crate) struct SequenceControlThemeReceipt {
     pub(crate) effect_unhandled: Cell<bool>,
     effect_emissions: Cell<usize>,
     pub(super) static_winners: BTreeSet<(usize, ResolvedStyleProperty)>,
-    pub(super) stylesheet_fill: Option<String>,
-    pub(super) typed_fill_emissions: usize,
-    pub(super) stylesheet_stroke: Option<String>,
-    pub(super) typed_stroke_emissions: usize,
-    pub(super) stylesheet_mismatch: bool,
+    typed_fill_emitted: bool,
+    typed_stroke_emitted: bool,
     pub(super) surface_candidates: Cell<usize>,
     pub(super) emitted_surfaces: Cell<usize>,
 }
@@ -651,36 +445,9 @@ impl SequenceControlThemeReceipt {
         record_style_winners(&mut self.static_winners, style);
     }
 
-    pub(crate) fn record_stylesheet_emission(
-        &mut self,
-        final_fill: &str,
-        typed_fill: Option<&str>,
-        final_stroke: &str,
-        typed_stroke: Option<&str>,
-    ) {
-        if typed_fill.is_some() {
-            self.typed_fill_emissions = self.typed_fill_emissions.saturating_add(1);
-        }
-        if typed_stroke.is_some() {
-            self.typed_stroke_emissions = self.typed_stroke_emissions.saturating_add(1);
-        }
-        if self
-            .stylesheet_fill
-            .as_deref()
-            .is_some_and(|fill| fill != final_fill)
-            || typed_fill.is_some_and(|fill| fill != final_fill)
-            || self
-                .stylesheet_stroke
-                .as_deref()
-                .is_some_and(|stroke| stroke != final_stroke)
-            || typed_stroke.is_some_and(|stroke| stroke != final_stroke)
-        {
-            self.stylesheet_mismatch = true;
-        }
-        self.stylesheet_fill
-            .get_or_insert_with(|| final_fill.to_owned());
-        self.stylesheet_stroke
-            .get_or_insert_with(|| final_stroke.to_owned());
+    pub(crate) fn record_stylesheet_emission(&mut self, typed_fill: bool, typed_stroke: bool) {
+        self.typed_fill_emitted |= typed_fill;
+        self.typed_stroke_emitted |= typed_stroke;
     }
 
     pub(crate) fn record_surface_candidate(&self) {
@@ -691,45 +458,6 @@ impl SequenceControlThemeReceipt {
     pub(crate) fn record_surface_emission(&self) {
         self.emitted_surfaces
             .set(self.emitted_surfaces.get().saturating_add(1));
-    }
-
-    pub(super) fn merge(&mut self, other: Self) {
-        self.effect_requested |= other.effect_requested;
-        self.effect_binding_used |= other.effect_binding_used;
-        self.effect_cleared |= other.effect_cleared;
-        self.effect_unhandled
-            .set(self.effect_unhandled.get() || other.effect_unhandled.get());
-        self.effect_emissions.set(
-            self.effect_emissions
-                .get()
-                .max(other.effect_emissions.get()),
-        );
-        self.static_winners.extend(other.static_winners);
-        self.typed_fill_emissions = self.typed_fill_emissions.max(other.typed_fill_emissions);
-        self.typed_stroke_emissions = self
-            .typed_stroke_emissions
-            .max(other.typed_stroke_emissions);
-        self.stylesheet_mismatch |= other.stylesheet_mismatch;
-        self.surface_candidates.set(
-            self.surface_candidates
-                .get()
-                .max(other.surface_candidates.get()),
-        );
-        self.emitted_surfaces.set(
-            self.emitted_surfaces
-                .get()
-                .max(other.emitted_surfaces.get()),
-        );
-        merge_terminal_value(
-            &mut self.stylesheet_fill,
-            other.stylesheet_fill,
-            &mut self.stylesheet_mismatch,
-        );
-        merge_terminal_value(
-            &mut self.stylesheet_stroke,
-            other.stylesheet_stroke,
-            &mut self.stylesheet_mismatch,
-        );
     }
 
     pub(super) fn route_won(
@@ -753,65 +481,17 @@ impl SequenceControlThemeReceipt {
             && self.surface_candidates.get() == self.emitted_surfaces.get()
     }
 
-    pub(super) fn proves_typed_fill(&self, expected_fill: Option<&str>) -> bool {
-        let Some(expected_fill) = expected_fill else {
-            return false;
-        };
-        self.complete_surfaces()
-            && self.typed_fill_emissions == 1
-            && self.stylesheet_fill.as_deref() == Some(expected_fill)
-            && !self.stylesheet_mismatch
+    pub(super) fn typed_fill_applied(&self) -> bool {
+        self.complete_surfaces() && self.typed_fill_emitted
     }
 
-    pub(super) fn proves_typed_stroke(&self, expected_stroke: Option<&str>) -> bool {
-        let Some(expected_stroke) = expected_stroke else {
-            return false;
-        };
-        self.complete_surfaces()
-            && self.typed_stroke_emissions == 1
-            && self.stylesheet_stroke.as_deref() == Some(expected_stroke)
-            && !self.stylesheet_mismatch
-    }
-}
-
-fn merge_terminal_value(
-    current: &mut Option<String>,
-    incoming: Option<String>,
-    mismatch: &mut bool,
-) {
-    let Some(incoming) = incoming else {
-        return;
-    };
-    if current
-        .as_deref()
-        .is_some_and(|value| value != incoming.as_str())
-    {
-        *mismatch = true;
-    }
-    current.get_or_insert(incoming);
-}
-
-#[derive(Debug, Clone, Default)]
-pub(super) struct SequenceControlThemeState {
-    pub(super) fill_emitted: bool,
-    pub(super) fill_overridden: bool,
-    pub(super) stroke_emitted: bool,
-    pub(super) stroke_overridden: bool,
-    pub(super) receipt: SequenceControlThemeReceipt,
-}
-
-impl SequenceControlThemeState {
-    pub(super) fn merge(&mut self, emission: SequenceControlThemeEmission) {
-        self.fill_emitted |= emission.fill_emitted;
-        self.fill_overridden |= emission.fill_overridden;
-        self.stroke_emitted |= emission.stroke_emitted;
-        self.stroke_overridden |= emission.stroke_overridden;
-        self.receipt.merge(emission.receipt);
+    pub(super) fn typed_stroke_applied(&self) -> bool {
+        self.complete_surfaces() && self.typed_stroke_emitted
     }
 }
 
 /// Complete terminal facts for the Sequence Loop fill/stroke tranche.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct SequenceControlThemeEmission {
     pub(super) fill_emitted: bool,
     pub(super) fill_overridden: bool,
@@ -822,17 +502,15 @@ pub(crate) struct SequenceControlThemeEmission {
 
 impl SequenceControlThemeEmission {
     pub(crate) fn from_terminal_writer(
-        typed_fill: Option<&str>,
         fill_overridden: bool,
-        typed_stroke: Option<&str>,
         stroke_overridden: bool,
         receipt: SequenceControlThemeReceipt,
     ) -> Self {
         let has_surfaces = receipt.surface_candidates.get() != 0;
         Self {
-            fill_emitted: receipt.proves_typed_fill(typed_fill),
+            fill_emitted: receipt.typed_fill_applied(),
             fill_overridden: has_surfaces && fill_overridden,
-            stroke_emitted: receipt.proves_typed_stroke(typed_stroke),
+            stroke_emitted: receipt.typed_stroke_applied(),
             stroke_overridden: has_surfaces && stroke_overridden,
             receipt,
         }
@@ -873,16 +551,6 @@ impl SequenceStaticRectThemeReceipt {
         surface_count != 0 && self.emitted_effects == surface_count
     }
 
-    pub(super) fn merge(&mut self, other: Self) {
-        self.static_winners.extend(other.static_winners);
-        self.emitted_rects = self.emitted_rects.max(other.emitted_rects);
-        self.effect_requested |= other.effect_requested;
-        self.effect_binding_used |= other.effect_binding_used;
-        self.effect_cleared |= other.effect_cleared;
-        self.effect_unhandled |= other.effect_unhandled;
-        self.emitted_effects = self.emitted_effects.max(other.emitted_effects);
-    }
-
     pub(super) fn route_won(
         &self,
         rule_index: usize,
@@ -901,29 +569,8 @@ impl SequenceStaticRectThemeReceipt {
 }
 
 /// Complete terminal emission facts for one Sequence static rectangle paint tranche.
-#[derive(Debug, Clone, Default)]
-pub(super) struct SequenceStaticRectThemeState {
-    pub(super) surface_count: usize,
-    pub(super) fill_emitted: bool,
-    pub(super) fill_overridden: bool,
-    pub(super) stroke_emitted: bool,
-    pub(super) stroke_overridden: bool,
-    pub(super) receipt: SequenceStaticRectThemeReceipt,
-}
-
-impl SequenceStaticRectThemeState {
-    pub(super) fn merge(&mut self, emission: SequenceStaticRectThemeEmission) {
-        self.surface_count = self.surface_count.max(emission.surface_count);
-        self.fill_emitted |= emission.fill_emitted;
-        self.fill_overridden |= emission.fill_overridden;
-        self.stroke_emitted |= emission.stroke_emitted;
-        self.stroke_overridden |= emission.stroke_overridden;
-        self.receipt.merge(emission.receipt);
-    }
-}
-
 /// Complete writer-owned emission facts shared by Note and Activation rectangles.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct SequenceStaticRectThemeEmission {
     pub(super) surface_count: usize,
     pub(super) fill_emitted: bool,
@@ -975,50 +622,26 @@ struct SequenceTextSurfaceReceipt {
 
 #[derive(Debug, Clone, Default)]
 pub(super) struct SequenceBaseTypographyReceipt {
-    expected_font_family: String,
-    expected_font_size_bits: u64,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
-    terminal_svg_observed: bool,
-    stylesheet_verified: bool,
-    inherited_font_stack_occurrences: usize,
-    inherited_font_size_occurrences: usize,
+    inherited_occurrences: Cell<usize>,
 }
 
 impl SequenceBaseTypographyReceipt {
     fn from_plan(plan: &crate::sequence::SequenceTypographyPlan) -> Self {
         Self {
-            expected_font_family: plan.base_font_family_css().to_owned(),
-            expected_font_size_bits: plan.base_font_size_px().to_bits(),
             typed_properties: plan.base_typed_properties().clone(),
-            terminal_svg_observed: false,
-            stylesheet_verified: false,
-            inherited_font_stack_occurrences: 0,
-            inherited_font_size_occurrences: 0,
+            ..Self::default()
         }
     }
 
-    pub(super) const fn terminal_svg_observed(&self) -> bool {
-        self.terminal_svg_observed
-    }
-
-    pub(super) const fn stylesheet_verified(&self) -> bool {
-        self.stylesheet_verified
-    }
-
-    pub(super) const fn inherited_occurrences(&self, property: ThemeTypographyProperty) -> usize {
-        match property {
-            ThemeTypographyProperty::FontStack => self.inherited_font_stack_occurrences,
-            ThemeTypographyProperty::FontSize => self.inherited_font_size_occurrences,
-            ThemeTypographyProperty::FontWeight
-            | ThemeTypographyProperty::FontStyle
-            | ThemeTypographyProperty::LineHeight
-            | ThemeTypographyProperty::LetterSpacing
-            | ThemeTypographyProperty::WordSpacing
-            | ThemeTypographyProperty::Transform
-            | ThemeTypographyProperty::Decoration
-            | ThemeTypographyProperty::TextAlign
-            | ThemeTypographyProperty::WhiteSpace
-            | ThemeTypographyProperty::Wrap => 0,
+    pub(super) fn inherited_occurrences(&self, property: ThemeTypographyProperty) -> usize {
+        if matches!(
+            property,
+            ThemeTypographyProperty::FontStack | ThemeTypographyProperty::FontSize
+        ) {
+            self.inherited_occurrences.get()
+        } else {
+            0
         }
     }
 
@@ -1282,23 +905,12 @@ impl SequenceRoleTypographyReceipt {
         }
         summary
     }
-
-    #[cfg(test)]
-    pub(super) fn seed_complete_surface(
-        &mut self,
-        surface: crate::sequence::SequenceTextSurface,
-        final_fill: &str,
-        typed_fill: Option<&str>,
-    ) {
-        self.record_stylesheet_emission(surface, final_fill, typed_fill);
-        self.record_candidate(surface);
-        self.record_emission(surface);
-    }
 }
 
 /// One operation-local receipt shared by every Sequence role-label terminal writer.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct SequenceTypographyThemeReceipt {
+    enabled: bool,
     pub(super) base: SequenceBaseTypographyReceipt,
     pub(super) actor: SequenceRoleTypographyReceipt,
     pub(super) message: SequenceRoleTypographyReceipt,
@@ -1308,7 +920,11 @@ pub(crate) struct SequenceTypographyThemeReceipt {
 
 impl SequenceTypographyThemeReceipt {
     pub(crate) fn from_plan(plan: &crate::sequence::SequenceTypographyPlan) -> Self {
+        if !plan.has_explicit_theme() {
+            return Self::default();
+        }
         Self {
+            enabled: true,
             base: SequenceBaseTypographyReceipt::from_plan(plan),
             actor: SequenceRoleTypographyReceipt::from_resolved(
                 crate::sequence::SequenceTypographyRole::Actor,
@@ -1329,75 +945,14 @@ impl SequenceTypographyThemeReceipt {
         }
     }
 
-    fn requires_terminal_svg_observation(&self) -> bool {
-        !self.base.typed_properties.is_empty()
-    }
-
-    pub(crate) fn record_terminal_svg(
-        &mut self,
-        svg: &str,
-        diagram_id: &str,
-        work_meter: &crate::resources::OperationWorkMeter,
-    ) -> Result<(), crate::resources::OperationWorkError> {
-        if !self.requires_terminal_svg_observation() {
-            return Ok(());
+    /// The only unclassified Sequence text is the diagram title, emitted without local font
+    /// overrides. Count that actual branch rather than interpreting the completed document.
+    pub(crate) fn record_inherited_text(&self) {
+        if self.enabled {
+            self.base
+                .inherited_occurrences
+                .set(self.base.inherited_occurrences.get().saturating_add(1));
         }
-        work_meter.checkpoint(merman_core::OperationPhase::Emit)?;
-        work_meter.charge(svg.len().div_ceil(64).max(1))?;
-        let Ok(document) = crate::xml_dom::Document::parse(svg) else {
-            return Ok(());
-        };
-        let root = document.root_element();
-        if !root.has_tag_name(("http://www.w3.org/2000/svg", "svg"))
-            || root.attribute("id") != Some(diagram_id)
-        {
-            return Ok(());
-        }
-        let mut styles = document
-            .descendants()
-            .filter(|node| node.has_tag_name(("http://www.w3.org/2000/svg", "style")));
-        let stylesheet = styles
-            .next()
-            .and_then(|style| style.text())
-            .unwrap_or_default();
-        let id = crate::svg::escape_css_identifier(diagram_id);
-        let unique_stylesheet = styles.next().is_none();
-        self.base.terminal_svg_observed = unique_stylesheet;
-        let expected_font_family = self
-            .base
-            .has_typed_property(ThemeTypographyProperty::FontStack)
-            .then_some(self.base.expected_font_family.as_str());
-        let expected_font_size_bits = self
-            .base
-            .has_typed_property(ThemeTypographyProperty::FontSize)
-            .then_some(self.base.expected_font_size_bits);
-        self.base.stylesheet_verified = unique_stylesheet
-            && typography_rule_matches(
-                stylesheet,
-                &format!("#{id}"),
-                expected_font_family,
-                expected_font_size_bits,
-            )
-            && typography_rule_matches(
-                stylesheet,
-                &format!("#{id} svg"),
-                expected_font_family,
-                expected_font_size_bits,
-            )
-            && expected_font_family.is_none_or(|font_family| {
-                font_family_variable_rule_matches(stylesheet, &format!("#{id} :root"), font_family)
-            });
-        for text in document.descendants().filter(is_base_inherited_text) {
-            if terminal_text_inherits_property(text, ThemeTypographyProperty::FontStack) {
-                self.base.inherited_font_stack_occurrences =
-                    self.base.inherited_font_stack_occurrences.saturating_add(1);
-            }
-            if terminal_text_inherits_property(text, ThemeTypographyProperty::FontSize) {
-                self.base.inherited_font_size_occurrences =
-                    self.base.inherited_font_size_occurrences.saturating_add(1);
-            }
-        }
-        Ok(())
     }
 
     pub(super) fn base_property_applied(&self, property: ThemeTypographyProperty) -> bool {
@@ -1442,11 +997,8 @@ impl SequenceTypographyThemeReceipt {
     }
 
     pub(super) fn base_relevant_occurrences(&self) -> usize {
-        self.role_label_candidate_count().saturating_add(
-            self.base
-                .inherited_font_stack_occurrences
-                .max(self.base.inherited_font_size_occurrences),
-        )
+        self.role_label_candidate_count()
+            .saturating_add(self.base.inherited_occurrences.get())
     }
 
     pub(super) fn base_property_relevant_occurrences(
@@ -1518,6 +1070,9 @@ impl SequenceTypographyThemeReceipt {
     }
 
     pub(crate) fn record_candidate(&self, surface: crate::sequence::SequenceTextSurface) {
+        if !self.enabled {
+            return;
+        }
         self.role(surface.role()).record_candidate(surface);
     }
 
@@ -1531,10 +1086,16 @@ impl SequenceTypographyThemeReceipt {
     }
 
     pub(crate) fn record_emission(&self, surface: crate::sequence::SequenceTextSurface) {
+        if !self.enabled {
+            return;
+        }
         self.role(surface.role()).record_emission(surface);
     }
 
     pub(crate) fn record_terminal_text(&self, surface: crate::sequence::SequenceTextSurface) {
+        if !self.enabled {
+            return;
+        }
         self.record_candidate(surface);
         self.record_emission(surface);
     }
@@ -1545,6 +1106,9 @@ impl SequenceTypographyThemeReceipt {
         final_fill: &str,
         typed_fill: Option<&str>,
     ) {
+        if !self.enabled {
+            return;
+        }
         match surface.role() {
             crate::sequence::SequenceTypographyRole::Actor => &mut self.actor,
             crate::sequence::SequenceTypographyRole::Message => &mut self.message,
@@ -1553,142 +1117,6 @@ impl SequenceTypographyThemeReceipt {
         }
         .record_stylesheet_emission(surface, final_fill, typed_fill);
     }
-}
-
-fn typography_rule_matches(
-    stylesheet: &str,
-    selector: &str,
-    expected_font_family: Option<&str>,
-    expected_font_size_bits: Option<u64>,
-) -> bool {
-    let Some(body) = unique_rule_body(stylesheet, selector) else {
-        return false;
-    };
-    let mut font_family_count = 0usize;
-    let mut font_size_count = 0usize;
-    let valid = visit_valid_style_declarations(body, |declaration| match declaration.property() {
-        "font-family" if expected_font_family.is_some() => {
-            font_family_count = font_family_count.saturating_add(1);
-            Some(declaration.value()) == expected_font_family
-        }
-        "font-size" if expected_font_size_bits.is_some() => {
-            font_size_count = font_size_count.saturating_add(1);
-            declaration
-                .value()
-                .strip_suffix("px")
-                .and_then(|value| value.parse::<f64>().ok())
-                .is_some_and(|value| Some(value.to_bits()) == expected_font_size_bits)
-        }
-        _ => true,
-    });
-    valid
-        && font_family_count == usize::from(expected_font_family.is_some())
-        && font_size_count == usize::from(expected_font_size_bits.is_some())
-}
-
-fn font_family_variable_rule_matches(
-    stylesheet: &str,
-    selector: &str,
-    expected_font_family: &str,
-) -> bool {
-    let Some(body) = unique_rule_body(stylesheet, selector) else {
-        return false;
-    };
-    let mut declaration_count = 0usize;
-    let valid = visit_valid_style_declarations(body, |declaration| {
-        if declaration.property() == "--mermaid-font-family" {
-            declaration_count = declaration_count.saturating_add(1);
-            declaration.value() == expected_font_family
-        } else {
-            true
-        }
-    });
-    valid && declaration_count == 1
-}
-
-fn visit_valid_style_declarations(
-    declaration_list: &str,
-    mut visit: impl FnMut(&crate::mermaid_style::ParsedStyleDeclaration<'_>) -> bool,
-) -> bool {
-    let mut valid = true;
-    let mut checkpoint = || Ok::<(), std::convert::Infallible>(());
-    let _ = crate::mermaid_style::visit_style_declaration_boundaries_with_checkpoints(
-        declaration_list,
-        &mut checkpoint,
-        |boundary| {
-            let Some(declaration) = crate::mermaid_style::parse_style_declaration(boundary.raw())
-            else {
-                valid = false;
-                return Ok(false);
-            };
-            if visit(&declaration) {
-                Ok(true)
-            } else {
-                valid = false;
-                Ok(false)
-            }
-        },
-    );
-    valid
-}
-
-fn is_base_inherited_text(node: &crate::xml_dom::Node<'_, '_>) -> bool {
-    node.has_tag_name(("http://www.w3.org/2000/svg", "text"))
-        && node
-            .attribute("class")
-            .is_none_or(|classes| classes.trim().is_empty())
-        && !node
-            .ancestors()
-            .skip(1)
-            .any(|ancestor| ancestor.has_tag_name(("http://www.w3.org/2000/svg", "foreignObject")))
-        && node
-            .descendants()
-            .filter_map(|descendant| descendant.text())
-            .any(|text| !text.trim().is_empty())
-}
-
-fn terminal_text_inherits_property(
-    text: crate::xml_dom::Node<'_, '_>,
-    property: ThemeTypographyProperty,
-) -> bool {
-    let property_name = match property {
-        ThemeTypographyProperty::FontStack => "font-family",
-        ThemeTypographyProperty::FontSize => "font-size",
-        ThemeTypographyProperty::FontWeight
-        | ThemeTypographyProperty::FontStyle
-        | ThemeTypographyProperty::LineHeight
-        | ThemeTypographyProperty::LetterSpacing
-        | ThemeTypographyProperty::WordSpacing
-        | ThemeTypographyProperty::Transform
-        | ThemeTypographyProperty::Decoration
-        | ThemeTypographyProperty::TextAlign
-        | ThemeTypographyProperty::WhiteSpace
-        | ThemeTypographyProperty::Wrap => return false,
-    };
-    if text.attribute(property_name).is_some() {
-        return false;
-    }
-    let mut has_override = false;
-    let valid = visit_valid_style_declarations(
-        text.attribute("style").unwrap_or_default(),
-        |declaration| {
-            has_override |=
-                declaration.property() == property_name || declaration.property() == "font";
-            true
-        },
-    );
-    valid && !has_override
-}
-
-fn unique_rule_body<'a>(stylesheet: &'a str, selector: &str) -> Option<&'a str> {
-    let prefix = format!("{selector}{{");
-    let mut matches = stylesheet.match_indices(&prefix);
-    let (offset, _) = matches.next()?;
-    if matches.next().is_some() {
-        return None;
-    }
-    let body = &stylesheet[offset.saturating_add(prefix.len())..];
-    Some(&body[..body.find('}')?])
 }
 
 pub(super) fn record_style_winners(
@@ -1711,6 +1139,7 @@ mod tests {
         typed_fill: Option<&str>,
     ) -> SequenceTypographyThemeReceipt {
         let mut receipt = SequenceTypographyThemeReceipt {
+            enabled: true,
             base: SequenceBaseTypographyReceipt::default(),
             actor: SequenceRoleTypographyReceipt::default(),
             message: SequenceRoleTypographyReceipt::default(),
@@ -1810,112 +1239,5 @@ mod tests {
                 .message
                 .typography_property_complete(ThemeTypographyProperty::FontSize)
         );
-    }
-
-    #[test]
-    fn terminal_svg_observation_skips_work_without_typed_base_typography() {
-        let mut receipt = math_receipt([], None);
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-
-        receipt
-            .record_terminal_svg("not even xml", "sequence-test", &meter)
-            .expect("an irrelevant terminal SVG requires no observation");
-
-        assert_eq!(meter.used(), 0);
-        assert!(!receipt.base.terminal_svg_observed());
-    }
-
-    #[test]
-    fn terminal_svg_observation_is_charged_before_parsing() {
-        let mut receipt = math_receipt([], None);
-        receipt
-            .base
-            .typed_properties
-            .insert(ThemeTypographyProperty::FontStack);
-        let meter = crate::resources::OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        let invalid_svg = "x".repeat(129);
-
-        receipt
-            .record_terminal_svg(&invalid_svg, "sequence-test", &meter)
-            .expect("an unbounded meter admits the observation");
-
-        assert_eq!(meter.used(), 3);
-        assert!(!receipt.base.terminal_svg_observed());
-    }
-
-    #[test]
-    fn terminal_svg_observation_verifies_only_typed_base_properties() {
-        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" id="sequence-test"><style>
-#sequence-test{font-family:serif;font-size:14px;}
-#sequence-test svg{font-family:serif;font-size:14px;}
-#sequence-test :root{--mermaid-font-family:serif;}
-</style></svg>"#;
-        for property in [
-            ThemeTypographyProperty::FontStack,
-            ThemeTypographyProperty::FontSize,
-        ] {
-            let mut receipt = math_receipt([], None);
-            receipt.base.typed_properties.insert(property);
-            receipt.base.expected_font_family = if property == ThemeTypographyProperty::FontStack {
-                "serif"
-            } else {
-                "sans-serif"
-            }
-            .to_owned();
-            receipt.base.expected_font_size_bits = if property == ThemeTypographyProperty::FontSize
-            {
-                14.0_f64
-            } else {
-                16.0_f64
-            }
-            .to_bits();
-            let meter = crate::resources::OperationWorkMeter::new(
-                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-            );
-
-            receipt
-                .record_terminal_svg(svg, "sequence-test", &meter)
-                .expect("observe valid root typography");
-            assert!(receipt.base.stylesheet_verified(), "{property:?}");
-
-            receipt.base.expected_font_family = "monospace".to_owned();
-            receipt.base.expected_font_size_bits = 20.0_f64.to_bits();
-            receipt
-                .record_terminal_svg(svg, "sequence-test", &meter)
-                .expect("observe mismatching root typography");
-            assert!(!receipt.base.stylesheet_verified(), "{property:?}");
-        }
-    }
-
-    #[test]
-    fn inline_font_family_with_quoted_semicolon_is_not_counted_as_inherited() {
-        let document = crate::xml_dom::Document::parse(
-            r#"<svg><text style='font-family:"a;b",sans-serif'>Visible</text></svg>"#,
-        )
-        .expect("valid sequence text fixture");
-        let text = document.root_element().first_element_child().expect("text");
-
-        assert!(!terminal_text_inherits_property(
-            text,
-            ThemeTypographyProperty::FontStack
-        ));
-    }
-
-    #[test]
-    fn malformed_inline_typography_is_fail_closed_for_inherited_evidence() {
-        let document = crate::xml_dom::Document::parse(
-            r#"<svg><text style='font-family:"unterminated'>Visible</text></svg>"#,
-        )
-        .expect("valid sequence text fixture");
-        let text = document.root_element().first_element_child().expect("text");
-
-        assert!(!terminal_text_inherits_property(
-            text,
-            ThemeTypographyProperty::FontStack
-        ));
     }
 }

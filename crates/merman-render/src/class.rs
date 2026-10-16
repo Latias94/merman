@@ -36,11 +36,10 @@ use self::measured::{MeasuredEdge, MeasuredGraph, MeasuredNode};
 #[cfg(feature = "layout-elk")]
 use merman_layout_elk as elk;
 pub(crate) use theme::{
-    ClassCssThemeBinding, ClassMarkerTerminalExpectation, ClassNodeLabelStyleFacts,
-    ClassNodePaintTerminal, ClassNodeTerminalExpectation, ClassNodeTerminalObservation,
-    ClassRelationTerminalEvent, ClassRelationTerminalExpectation, ClassRelationThemePlan,
-    ClassRelationThemeReceipt, ClassTextPaint, ClassTextTerminalFacts, ClassTextThemePlan,
-    ClassTextThemeReceipt, ClassThemeEvidenceRecorder, ClassTypographyCssEmission,
+    ClassCssThemeBinding, ClassMarkerPaintBinding, ClassNodeLabelStyleFacts, ClassNodePaintBinding,
+    ClassNodePaintOutcomes, ClassRelationPaintOutcome, ClassRelationThemePlan, ClassTextOutcomes,
+    ClassTextPaint, ClassTextTerminalFacts, ClassTextThemePlan, ClassThemeEvidenceRecorder,
+    ClassThemeOutcomes,
 };
 
 type ClassDiagramModel = merman_core::models::class_diagram::ClassDiagram;
@@ -2370,11 +2369,6 @@ fn measure_class_diagram(
     let class_padding = settings.class_padding;
     let text_style = render_config.text_style();
     let html_calc_text_style = render_config.html_calc_text_style();
-    if !typography_theme.seal_layout_font_size(text_style.font_size) {
-        return Err(crate::Error::InvalidModel {
-            message: "Class typography layout font size changed after preparation".to_string(),
-        });
-    }
     let cardinality_text_style = class_cardinality_text_style(text_style);
     let wrap_probe_font_size = settings.wrap_probe_font_size;
     let hide_empty_members_box = settings.hide_empty_members_box;

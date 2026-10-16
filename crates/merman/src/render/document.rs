@@ -7,15 +7,13 @@ use super::RenderError;
 use super::evidence::RenderEvidence;
 #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
 use super::map_export_error;
-#[cfg(any(feature = "png", feature = "jpeg"))]
-use super::target_admission::RenderArtifactKind;
 #[cfg(feature = "pdf")]
 use super::target_admission::native_pdf_admission;
 #[cfg(any(feature = "png", feature = "jpeg"))]
 use super::target_admission::native_raster_admission;
 use super::target_admission::{
-    DocumentPortabilityReport, TargetAdmissionReceipt, artifact_digest, document_digest,
-    document_portability_report, enforce_portability_requirement, standalone_svg_admission,
+    DocumentPortabilityReport, TargetAdmissionReceipt, document_portability_report,
+    document_svg_admission, enforce_portability_requirement, standalone_svg_admission,
 };
 
 /// Successful SVG output and the evidence for the operation that produced it.
@@ -28,19 +26,17 @@ pub struct SvgOutput {
 
 /// Completed graphical document retained as the single source for every terminal target.
 ///
-/// The document owns its sealed SVG, frozen family/session evidence, and standalone-SVG target
-/// admission. PNG, JPEG, and PDF projections reuse this exact object; they never re-enter parsing,
-/// layout, SVG emission, or terminal finalization. Completing the document does not enforce the
-/// standalone-SVG receipt: each terminal target owns its own admission decision, so a
-/// host-dependent SVG cannot preempt an otherwise portable native projection.
+/// The document owns its sealed native SVG and frozen family/session outcomes. PNG, JPEG, and PDF
+/// projections reuse this exact object without repeating parsing, layout, SVG emission, or terminal
+/// finalization. Each terminal target evaluates its own portability; completing a document does not
+/// construct a standalone-SVG target result.
 /// A native font context selected for layout is retained for every native projection. Export
 /// options can share that exact context but cannot replace it or add one after layout completed.
 #[derive(Debug, PartialEq, Eq)]
 pub struct RenderedDocument {
-    svg: merman_render::svg::StandaloneSvgArtifact,
+    svg: merman_render::svg::ResvgCompatibleSvg,
     evidence: Arc<RenderEvidence>,
     portability: DocumentPortabilityReport,
-    standalone_svg_admission: TargetAdmissionReceipt,
     #[cfg(all(
         feature = "native-fonts",
         any(feature = "png", feature = "jpeg", feature = "pdf")
@@ -75,10 +71,9 @@ impl PreparedPngExport<'_> {
         let PreparedRasterTarget {
             document,
             export,
-            report: planned_report,
+            report: _,
         } = self.inner;
         let (bytes, report) = export.encode_png_with_report().map_err(map_export_error)?;
-        debug_assert_eq!(report, planned_report);
         document.finish_raster_export(bytes, report)
     }
 }
@@ -103,10 +98,9 @@ impl PreparedJpegExport<'_> {
         let PreparedRasterTarget {
             document,
             export,
-            report: planned_report,
+            report: _,
         } = self.inner;
         let (bytes, report) = export.encode_jpeg_with_report().map_err(map_export_error)?;
-        debug_assert_eq!(report, planned_report);
         document.finish_raster_export(bytes, report)
     }
 }
@@ -133,10 +127,9 @@ impl PreparedPdfExport<'_> {
         let Self {
             document,
             export,
-            report: planned_report,
+            report: _,
         } = self;
         let (bytes, report) = export.encode_with_report().map_err(map_export_error)?;
-        debug_assert_eq!(report, planned_report);
         document.finish_pdf_export(bytes, report)
     }
 }
@@ -154,14 +147,12 @@ impl RenderedDocument {
         native_fonts: Option<merman_export::NativeFontContext>,
     ) -> Self {
         let (svg, family) = completion.into_output_and_report();
-        let svg = merman_render::svg::StandaloneSvgArtifact::from(svg);
         let evidence = Arc::new(RenderEvidence::from_family(family, required_capabilities));
-        let (portability, standalone_svg_admission) = standalone_svg_evidence(&svg, &evidence);
+        let portability = document_portability_report(&svg, &evidence);
         Self {
             svg,
             evidence,
             portability,
-            standalone_svg_admission,
             #[cfg(all(
                 feature = "native-fonts",
                 any(feature = "png", feature = "jpeg", feature = "pdf")
@@ -174,12 +165,9 @@ impl RenderedDocument {
         self.svg.as_str()
     }
 
-    /// Borrows the immutable terminal SVG together with its retained export resources and proofs.
+    /// Borrows the immutable native SVG and resources used by every export.
     pub fn sealed_svg(&self) -> &merman_render::svg::ResvgCompatibleSvg {
-        match self.svg.as_resvg_compatible() {
-            Some(svg) => svg,
-            None => unreachable!("rendered documents are always finalized through resvg-safe"),
-        }
+        &self.svg
     }
 
     pub fn evidence(&self) -> &RenderEvidence {
@@ -190,32 +178,11 @@ impl RenderedDocument {
         &self.portability
     }
 
-    pub const fn resource_fingerprint(&self) -> merman_render::svg::SvgResourceFingerprint {
-        self.svg.resource_fingerprint()
-    }
-
-    /// Returns the experimental identity of this completed document.
+    /// Evaluates the standalone SVG target only when the caller requests that projection.
     ///
-    /// The digest binds the sealed SVG, resources, operation context, and document-stage evidence.
-    /// Its canonical encoding remains alpha until the document contract is frozen.
-    pub const fn document_digest(&self) -> [u8; 32] {
-        self.standalone_svg_admission.document_digest()
-    }
-
-    /// Returns the standalone-SVG target receipt without interpreting it as document admission.
-    ///
-    /// Callers that publish the SVG directly must apply their own required-admission policy to this
-    /// receipt. Native `export_*` projections enforce the document's portability requirement using
-    /// their own target-owned receipts.
-    pub const fn standalone_svg_admission(&self) -> &TargetAdmissionReceipt {
-        &self.standalone_svg_admission
-    }
-
-    #[cfg(merman_internal_theme_acceptance)]
-    pub(crate) fn svg_artifact_receipt(
-        &self,
-    ) -> Option<&merman_render::__private::SvgArtifactReceipt> {
-        self.svg.svg_artifact_receipt()
+    /// Native exports use their own target outcomes and do not need this result.
+    pub fn standalone_svg_admission(&self) -> TargetAdmissionReceipt {
+        document_svg_admission(&self.svg, &self.portability)
     }
 
     #[cfg(feature = "png")]
@@ -282,20 +249,7 @@ impl RenderedDocument {
         bytes: Vec<u8>,
         export_report: merman_export::RasterExportReport,
     ) -> Result<RasterOutput, RenderError> {
-        let artifact_kind = match export_report.output() {
-            merman_export::RasterOutputKind::Png => RenderArtifactKind::Png,
-            merman_export::RasterOutputKind::Jpeg => RenderArtifactKind::Jpeg,
-            _ => unreachable!("prepared raster report uses a known output kind"),
-        };
-        let admission = native_raster_admission(
-            artifact_kind,
-            &bytes,
-            export_report,
-            &self.evidence,
-            &self.portability,
-            self.document_digest(),
-            self.resource_fingerprint(),
-        );
+        let admission = native_raster_admission(export_report, &self.evidence, &self.portability);
         enforce_portability_requirement(&self.evidence, &admission)?;
         Ok(RasterOutput {
             bytes,
@@ -377,14 +331,7 @@ impl RenderedDocument {
         bytes: Vec<u8>,
         export_report: merman_export::PdfExportReport,
     ) -> Result<PdfOutput, RenderError> {
-        let admission = native_pdf_admission(
-            &bytes,
-            export_report,
-            &self.evidence,
-            &self.portability,
-            self.document_digest(),
-            self.resource_fingerprint(),
-        );
+        let admission = native_pdf_admission(export_report, &self.evidence, &self.portability);
         enforce_portability_requirement(&self.evidence, &admission)?;
         Ok(PdfOutput {
             bytes,
@@ -496,48 +443,6 @@ impl PdfOutput {
     }
 }
 
-fn standalone_svg_evidence(
-    svg: &merman_render::svg::StandaloneSvgArtifact,
-    evidence: &RenderEvidence,
-) -> (DocumentPortabilityReport, TargetAdmissionReceipt) {
-    let portability = document_portability_report(svg, evidence);
-    let public_svg_digest = artifact_digest(svg.as_str().as_bytes());
-    #[cfg(test)]
-    CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
-        if let Some(control) = pending.borrow_mut().take() {
-            control.cancel();
-        }
-    });
-    let native_svg = svg.native_export_svg();
-    let native_svg_digest = if native_svg == svg.as_str() {
-        public_svg_digest
-    } else {
-        artifact_digest(native_svg.as_bytes())
-    };
-    let document_digest = document_digest(
-        public_svg_digest,
-        native_svg_digest,
-        svg.resource_fingerprint(),
-        evidence,
-        &portability,
-    );
-    let admission = standalone_svg_admission(
-        svg,
-        evidence,
-        &portability,
-        document_digest,
-        public_svg_digest,
-    );
-    (portability, admission)
-}
-
-#[cfg(test)]
-thread_local! {
-    static CANCEL_AFTER_ARTIFACT_DIGEST: std::cell::RefCell<Option<merman_core::OperationControl>> = const {
-        std::cell::RefCell::new(None)
-    };
-}
-
 pub(super) fn finish_standalone_svg_target(
     svg: merman_render::svg::StandaloneSvgArtifact,
     family: merman_render::family::FamilyRenderReport,
@@ -546,7 +451,7 @@ pub(super) fn finish_standalone_svg_target(
 ) -> Result<SvgOutput, RenderError> {
     crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
     let evidence = RenderEvidence::from_family(family, required_capabilities);
-    let (_, admission) = standalone_svg_evidence(&svg, &evidence);
+    let admission = standalone_svg_admission(&svg, &evidence);
     crate::operation_runner::checkpoint(control, merman_core::OperationPhase::Postprocess)?;
     enforce_portability_requirement(&evidence, &admission)?;
     Ok(SvgOutput {
@@ -554,122 +459,4 @@ pub(super) fn finish_standalone_svg_target(
         evidence,
         admission,
     })
-}
-
-#[cfg(test)]
-mod tests {
-    use merman_core::OperationControl;
-
-    use super::super::target_admission::{
-        standalone_target_evidence_digest, target_admission_receipt_digest,
-    };
-    use super::super::{RenderOutput, RenderRequest, Renderer, SvgRequest, TargetFontSource};
-
-    #[test]
-    fn public_svg_target_observes_cancellation_during_artifact_identity_sealing() {
-        struct ClearPendingCancellation;
-        impl Drop for ClearPendingCancellation {
-            fn drop(&mut self) {
-                super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
-                    pending.borrow_mut().take();
-                });
-            }
-        }
-
-        let control = OperationControl::new();
-        let _clear = ClearPendingCancellation;
-        super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
-            *pending.borrow_mut() = Some(control.clone());
-        });
-
-        let error = Renderer::new()
-            .render(RenderRequest::svg("info", control, SvgRequest::default()))
-            .expect_err("cancellation during exact identity sealing must prevent publication");
-
-        assert!(matches!(
-            error,
-            super::RenderError::Cancelled(cancelled)
-                if cancelled.reason == merman_core::CancelReason::Requested
-                    && cancelled.phase == merman_core::OperationPhase::Postprocess
-        ));
-    }
-
-    #[test]
-    fn public_document_target_observes_cancellation_during_artifact_identity_sealing() {
-        struct ClearPendingCancellation;
-        impl Drop for ClearPendingCancellation {
-            fn drop(&mut self) {
-                super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
-                    pending.borrow_mut().take();
-                });
-            }
-        }
-
-        let control = OperationControl::new();
-        let _clear = ClearPendingCancellation;
-        super::CANCEL_AFTER_ARTIFACT_DIGEST.with(|pending| {
-            *pending.borrow_mut() = Some(control.clone());
-        });
-
-        let error = Renderer::new()
-            .render(RenderRequest::document(
-                "info",
-                control,
-                SvgRequest::default(),
-            ))
-            .expect_err(
-                "cancellation during exact document identity sealing must prevent publication",
-            );
-
-        assert!(matches!(
-            error,
-            super::RenderError::Cancelled(cancelled)
-                if cancelled.reason == merman_core::CancelReason::Requested
-                    && cancelled.phase == merman_core::OperationPhase::Postprocess
-        ));
-    }
-
-    #[test]
-    fn standalone_target_evidence_digest_binds_font_source() {
-        let output = Renderer::new()
-            .render(RenderRequest::document(
-                "info",
-                OperationControl::new(),
-                SvgRequest::default(),
-            ))
-            .expect("document should render");
-        let RenderOutput::Document(Some(document)) = output else {
-            panic!("expected a rendered document");
-        };
-        let receipt = document.standalone_svg_admission();
-        let digest = |font_source| {
-            standalone_target_evidence_digest(
-                &document.svg,
-                document.evidence(),
-                document.portability(),
-                receipt.status(),
-                receipt.reasons(),
-                font_source,
-            )
-        };
-
-        assert_ne!(
-            digest(TargetFontSource::None),
-            digest(TargetFontSource::Embedded)
-        );
-        assert_eq!(
-            receipt.receipt_digest(),
-            target_admission_receipt_digest(
-                receipt.artifact_kind(),
-                receipt.status(),
-                receipt.reasons(),
-                receipt.font_source(),
-                receipt.resource_fingerprint().as_bytes(),
-                receipt.font_catalog_fingerprint().as_bytes(),
-                receipt.document_digest(),
-                receipt.target_evidence_digest(),
-                receipt.artifact_digest(),
-            )
-        );
-    }
 }

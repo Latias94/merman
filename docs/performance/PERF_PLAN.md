@@ -17,6 +17,34 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 macOS runtime cleanup](native_theme_runtime_cleanup_macos_2026-10-16.md)
+implements the accepted responsibility plan: ordinary generation no longer performs terminal
+XML/reference certification, retired text scans or non-requested output hashes; data interfaces
+avoid public report construction. Five matched-SVG diagnostic rows observe lower latency, including
+Class 1,098→706 µs and Journey 101→38 µs. These are two-pair AB/BA diagnostics after explicit
+resource/API migrations, without A/A calibration or a complete release-range recovery claim.
+The checkpoint records actual native, qualification, bindings and all-family DOM verification,
+plus the local Binaryen packaging failure separately from successful wasm32 execution.
+
+The [October 16 runtime responsibility cleanup plan](../plans/2026-10-16-1800-refactor-theme-runtime-responsibilities-plan.md)
+supersedes earlier instructions to preserve unconditional output observers and their retired
+experimental error/digest contracts. The current cleanup separates generation, opaque-input
+admission, native preparation and private qualification. Dated measurements below remain historical
+evidence; the linked cleanup checkpoint records the fresh integrated validation and its limits.
+
+The [October 16 macOS causal attribution](native_theme_root_cause_macos_2026-10-16.md) directly
+reproduces the theme merge on clean Mermaid-12.2-aligned commits with identical Class/Journey SVGs.
+Current-head sampling identifies mandatory standalone XML/reference validation and the separate
+whole-SVG reserved-token search as major owners; Class parsing is nearly unchanged. These are
+diagnostics, not calibrated latency admission. Preserve the failed/mismatched rows and investigate
+these output observers before another broad theme-cache change.
+
+The [October 16 runtime-responsibility analysis](../research/2026-10-16-theme-rendering-runtime-responsibilities.md)
+reopens whether ordinary generation should incur these observers at all. It proposes separating
+producer correctness, opaque-input admission, consumer preparation, and explicit identities.
+Implementation follows the linked cleanup plan; its changed runtime contracts require fresh
+integrated verification and do not by themselves establish a latency recovery.
+
 The [October 16 overlay-order correction](native_theme_overlay_order_2026-10-16.md) preserves
 actual Map insertion order for overlapping literal roots and their replay. Its sparse index
 contains both ancestor and descendant participants, K <= E; unrelated roots add no entries.

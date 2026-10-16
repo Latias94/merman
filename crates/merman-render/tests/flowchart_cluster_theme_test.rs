@@ -346,7 +346,6 @@ fn flowchart_cluster_explicit_default_paint_reaches_terminal_writers_and_evidenc
             assert_eq!(evidence.applied_count(), 2, "look={look}");
             assert_eq!(evidence.not_applicable_count(), 0, "look={look}");
             assert_eq!(evidence.theme_residual_count(), 0, "look={look}");
-            assert_eq!(evidence.compatibility_residual_count(), 0, "look={look}");
         }
     }
 }

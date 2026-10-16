@@ -772,7 +772,6 @@ fn ishikawa_font_size_is_direct_and_portable_in_classic_and_hand_drawn() {
         assert_eq!(evidence.applied_count(), 1, "look={look}");
         assert_eq!(evidence.not_applicable_count(), 0, "look={look}");
         assert_eq!(evidence.theme_residual_count(), 0, "look={look}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "look={look}");
     }
 }
 
@@ -850,7 +849,6 @@ fn ishikawa_mixed_typography_is_direct_and_portable() {
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1044,7 +1042,6 @@ fn ishikawa_unsupported_typography_sibling_keeps_direct_font_size() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     assert!(
         try_render_ishikawa_with_theme_requirement(

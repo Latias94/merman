@@ -1,4 +1,5 @@
 mod create_text;
+mod css_font;
 mod deterministic;
 mod flowchart_parity;
 mod heuristic;
@@ -9,7 +10,6 @@ mod markdown;
 mod markdown_label;
 mod measure;
 mod metrics;
-mod prepared;
 mod svg_metrics;
 mod types;
 mod visible_style;
@@ -54,16 +54,9 @@ pub(crate) use metrics::{
     style_requests_bold_font_weight, style_requests_italic_font_style,
 };
 
-pub(crate) use prepared::{PREPARED_TEXT_LABEL_ID_PREFIX, PreparedTextLabelId};
-pub(crate) use prepared::{ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight};
+pub(crate) use css_font::{ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight};
 pub(crate) use visible_style::VisibleTextStyleFacts;
 
-/// Workspace-internal reserved-token observation for native export.
-#[doc(hidden)]
-pub mod __private {
-    pub use super::prepared::PreparedTextLabelId;
-}
-pub use prepared::{PreparedTextLayoutReport, TextLayoutFailure};
 pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,
     svg_wrapped_first_line_bbox_height_px,

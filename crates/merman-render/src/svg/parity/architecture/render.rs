@@ -281,8 +281,7 @@ fn render_architecture_diagram_svg_with_model<M: ArchitectureModelAccess>(
 
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let root_viewport =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id)
-            .with_resource_policy(options.resource_policy());
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::ARCHITECTURE, diagram_id);
     let root_document = begin_architecture_document(
         &mut out,
         &root_viewport,

@@ -615,7 +615,7 @@ Important boundaries that a family-level count cannot express:
 | Stage | Evidence owned by the stage |
 | --- | --- |
 | Compile | Valid bounded recipe, fingerprint, declared/inferred capabilities |
-| Family/document | Applicability, property winners, source/compatibility residuals, emitted terminals, prepared-text evidence |
+| Family/document | Applicability, property winners, source and Mermaid compatibility residuals, actual applied styles and unsupported requests |
 | Export | Target-specific resource closure and SVG/PNG/JPEG/PDF admission |
 
 An unevaluated stage cannot upgrade the result to portable. The private C6a ledger covers 18
@@ -624,14 +624,13 @@ eligibility receipt requires that exact ledger; scalar cutovers and JPEG/PDF smo
 C6b equal-depth certification remains paused. Browser SVG qualification and the remaining C7a
 authoring/consumer/preset gates are not complete. These counts do not establish stable readiness.
 
-Route and raster-paint binding receipts are sealed by the opaque
-`FamilyRenderCompletion<ResvgCompatibleSvg>` before the facade separates the output and report.
-The former public seal functions accepting a report plus caller-provided artifact digests are
-removed. The `internal-theme-acceptance` Cargo feature is also removed. The private harness uses
-an explicit workspace cfg through `scripts/run_theme_acceptance.py`; producer Cargo packages
-exclude its independent acceptance modules. `scripts/verify_theme_acceptance_boundary.py` checks
-package lists and compiles a production consumer whose acceptance imports must fail. These
-boundary checks do not qualify presets or close the remaining C7a authoring/consumer gates.
+Family writers own applied styles and real unsupported/residual outcomes. The private acceptance
+harness observes exact immutable output bytes instead of requiring production SVG observation
+sidecars or digest chains. It runs under the explicit workspace cfg through
+`scripts/run_theme_acceptance.py`; published producer packages exclude the private facade module.
+`scripts/verify_theme_acceptance_boundary.py` checks package lists and compiles a production
+consumer whose acceptance imports must fail. These checks do not qualify presets or close the
+remaining C7a authoring/consumer gates. The retired prepared-text marker protocol is not evidence.
 
 Support discovery now has an independent twenty-two-case golden in
 `crates/merman-theme-authoring-fixtures/fixtures/authoring-v1/support.json`. It pins manifest

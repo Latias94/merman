@@ -617,7 +617,6 @@ dependencies = [
  "merman-render",
  "merman-theme-contract",
  "serde_json",
- "sha2",
  "thiserror",
 ]
 

@@ -56,6 +56,18 @@ fn render_pie_from_text_with_options(text: &str, options: &SvgRenderOptions) -> 
         .to_owned()
 }
 
+#[test]
+fn pie_title_remains_valid_xml_when_control_character_removal_joins_cdata_terminators() {
+    let svg = render_pie_from_text("pie title Ω]]\u{1f}>β >\n  \"Alpha\" : 1\n");
+    let document = roxmltree::Document::parse(&svg).expect("the Pie producer must emit valid XML");
+    let title = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("pieTitleText"))
+        .expect("visible Pie title");
+    assert_eq!(title.text(), Some("Ω]]>β >"));
+    assert!(svg.contains("Ω]]&gt;β >"));
+}
+
 fn render_pie_with_theme(text: &str, theme: &DiagramTheme) -> family::RenderedFamilySvg {
     try_render_pie_with_theme_requirement(text, theme, ThemePortabilityRequirement::BestEffort)
         .expect("render themed Pie")
@@ -441,7 +453,6 @@ fn pie_static_title_fill_is_verified_from_scoped_stylesheet_and_visible_title() 
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -467,7 +478,6 @@ pie title Source title
     assert_eq!(source_evidence.applied_count(), 0);
     assert_eq!(source_evidence.not_applicable_count(), 1);
     assert_eq!(source_evidence.theme_residual_count(), 0);
-    assert_eq!(source_evidence.compatibility_residual_count(), 0);
 
     let absent = try_render_pie_with_theme_requirement(
         "pie\n  \"Alpha\" : 1\n",
@@ -481,7 +491,6 @@ pie title Source title
     assert_eq!(absent_evidence.applied_count(), 0);
     assert_eq!(absent_evidence.not_applicable_count(), 1);
     assert_eq!(absent_evidence.theme_residual_count(), 0);
-    assert_eq!(absent_evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -499,7 +508,6 @@ fn pie_static_title_fill_tracks_frontmatter_titles() {
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -523,11 +531,6 @@ fn pie_title_fill_is_independent_from_legacy_text_fill() {
     assert_eq!(evidence.required_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(
-        evidence.compatibility_residual_count(),
-        0,
-        "typed Pie title and section text routes have no compatibility residual"
-    );
 }
 
 #[test]
@@ -566,7 +569,6 @@ fn pie_typed_font_stack_reaches_layout_stylesheet_and_terminal_evidence() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -594,7 +596,6 @@ pie title Source font
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -652,7 +653,6 @@ fn pie_font_size_only_is_explicitly_unsupported_without_a_legacy_bridge() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -680,7 +680,6 @@ fn pie_mixed_font_stack_and_size_keeps_the_stack_but_fails_closed() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -704,7 +703,6 @@ fn pie_explicit_default_title_fill_is_typed_and_verified() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -742,7 +740,6 @@ fn pie_explicit_default_text_fill_is_typed_and_verified() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 fn pie_rules_theme(rules: impl IntoIterator<Item = ThemeRule>) -> DiagramTheme {
@@ -815,7 +812,6 @@ fn pie_shadowed_default_rules_follow_property_winners() {
                 0,
                 "{target:?}/{default_first}"
             );
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -850,7 +846,6 @@ fn pie_text_ordinals_are_residual_when_they_win_any_occurrence() {
                 1,
                 "{selector:?}/{variant:?}"
             );
-            assert_eq!(evidence.compatibility_residual_count(), 0);
             let error = match try_render_pie_with_theme_requirement(
                 source,
                 &theme,
@@ -922,7 +917,6 @@ fn pie_text_ordinals_respect_shadowing_and_absent_occurrences() {
         assert_eq!(evidence.applied_count(), usize::from(later_static));
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -959,7 +953,6 @@ fn pie_text_ordinal_does_not_select_shared_static_css() {
             "{selector:?}"
         );
         assert_eq!(evidence.theme_residual_count(), 1, "{selector:?}");
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -1002,7 +995,6 @@ pie
                 evidence.theme_residual_count(),
                 usize::from(typography_sibling)
             );
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -1574,7 +1566,6 @@ fn pie_static_fill_rule_outranks_the_typed_palette_for_slices_and_legend() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1604,7 +1595,6 @@ pie
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1627,7 +1617,6 @@ pie
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1646,7 +1635,6 @@ fn pie_static_fill_is_not_applicable_without_visible_slices() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1697,7 +1685,6 @@ fn pie_later_ordinal_fill_prevents_static_fill_from_claiming_that_occurrence() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1723,7 +1710,6 @@ fn pie_explicit_default_fill_is_typed_and_verified() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1775,7 +1761,6 @@ fn pie_ordinal_stroke_rules_fail_closed_for_matching_slice_occurrences() {
         assert_eq!(evidence.applied_count(), 0, "{case}");
         assert_eq!(evidence.not_applicable_count(), 0, "{case}");
         assert_eq!(evidence.theme_residual_count(), 1, "{case}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "{case}");
 
         let error = match try_render_pie_with_theme_requirement(
             source,
@@ -1897,7 +1882,6 @@ fn pie_static_stroke_is_verified_from_slice_and_outer_circle_css() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -1934,7 +1918,6 @@ fn pie_explicit_default_stroke_is_verified_from_slice_and_outer_circle_css() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -1977,7 +1960,6 @@ fn pie_static_stroke_respects_per_site_mermaid_ownership() {
         assert_eq!(evidence.applied_count(), 1, "{owned_key}");
         assert_eq!(evidence.not_applicable_count(), 0, "{owned_key}");
         assert_eq!(evidence.theme_residual_count(), 0, "{owned_key}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "{owned_key}");
     }
 }
 
@@ -2013,5 +1995,4 @@ pie
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }

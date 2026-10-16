@@ -384,7 +384,6 @@ fn class_typed_font_stack_reaches_scoped_css_and_strict_receipt() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[cfg(feature = "layout-elk")]
@@ -461,7 +460,6 @@ fn class_mixed_typography_composes_without_legacy_overlay() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     try_render_class_svg_with_theme_and_engine(
         source,
@@ -497,7 +495,6 @@ fn class_typed_font_size_outranks_root_layout_fallback() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -570,7 +567,6 @@ fn class_cardinality_geometry_keeps_mermaids_fixed_font_size() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -596,7 +592,6 @@ fn class_explicit_theme_font_size_ownership_outranks_typed_font_size() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -624,7 +619,6 @@ classDiagram
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new())
         .err()
@@ -657,7 +651,6 @@ fn class_unsupported_typography_is_property_local_to_the_typed_font_stack() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = match try_render_class_svg_with_theme_and_engine(source, &theme, Engine::new()) {
         Ok(_) => panic!("strict Class must reject unsupported font weight"),
@@ -2189,7 +2182,6 @@ fn class_explicit_default_node_surfaces_preserve_source_owned_occurrences() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -4914,7 +4906,6 @@ fn class_native_namespace_and_interface_paint_reaches_text_terminals() {
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 2, "layout={layout}, paint={css}");
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -4967,7 +4958,6 @@ fn class_namespace_title_scalar_has_a_direct_terminal() {
                     );
                     assert_eq!(evidence.applied_count(), 1);
                     assert_eq!(evidence.theme_residual_count(), 0);
-                    assert_eq!(evidence.compatibility_residual_count(), 0);
                 }
             }
         }
@@ -5562,7 +5552,6 @@ note for Account "Audit note"
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.accounted_count(), evidence.required_count());
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 

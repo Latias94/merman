@@ -235,8 +235,6 @@ pub mod sequence;
 #[cfg(feature = "diagram-state")]
 pub mod state;
 pub mod svg;
-#[cfg(merman_internal_theme_acceptance)]
-mod svg_artifact_receipts;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -307,14 +305,6 @@ pub mod __private {
     pub const MAX_NATIVE_SHADOW_STAGES: usize =
         crate::diagram_theme::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;
 
-    #[cfg(merman_internal_theme_acceptance)]
-    pub use crate::svg_artifact_receipts::{
-        SvgArtifactReceipt, SvgAttributeObservation, SvgElementObservation, SvgFontFaceObservation,
-        SvgStyleDeclarationObservation, SvgStyleRuleObservation, SvgStylesheetObservation,
-    };
-
-    pub use crate::text::__private::PreparedTextLabelId;
-
     #[cfg(all(merman_internal_theme_acceptance, feature = "layout-cytoscape"))]
     pub use crate::architecture_text_receipt::{
         ArchitectureTextReceipt, ArchitectureTextRole, ArchitectureTextTerminal,
@@ -364,7 +354,6 @@ pub mod __private {
         not_applicable_count: usize,
         theme_residual_count: usize,
         source_residual_count: usize,
-        compatibility_residual_count: usize,
         mermaid_compatibility_residual_count: usize,
         output_mutated: bool,
     }
@@ -379,7 +368,6 @@ pub mod __private {
             not_applicable_count: usize,
             theme_residual_count: usize,
             source_residual_count: usize,
-            compatibility_residual_count: usize,
             mermaid_compatibility_residual_count: usize,
             output_mutated: bool,
         ) -> Self {
@@ -391,7 +379,6 @@ pub mod __private {
                 not_applicable_count,
                 theme_residual_count,
                 source_residual_count,
-                compatibility_residual_count,
                 mermaid_compatibility_residual_count,
                 output_mutated,
             }
@@ -425,10 +412,6 @@ pub mod __private {
             self.source_residual_count
         }
 
-        pub const fn compatibility_residual_count(self) -> usize {
-            self.compatibility_residual_count
-        }
-
         pub const fn mermaid_compatibility_residual_count(self) -> usize {
             self.mermaid_compatibility_residual_count
         }
@@ -457,6 +440,23 @@ pub mod __private {
     }
 
     impl RootEvidenceSummary {
+        pub(crate) fn from_root(root: &crate::diagram_theme::RootThemeReport) -> Self {
+            let required_count = root.required_mechanisms().len();
+            let applied_count = root.applied_mechanisms().len();
+            let residual_count = root.residuals().len();
+            Self {
+                status: root.verification(),
+                required_count,
+                accounted_count: applied_count.saturating_add(residual_count),
+                applied_count,
+                residual_count,
+                output_mutated: root.residuals().iter().any(|residual| {
+                    residual.reason()
+                        == crate::diagram_theme::RootThemeResidualReason::OutputMutation
+                }),
+            }
+        }
+
         pub const fn status(self) -> crate::diagram_theme::RootThemeVerification {
             self.status
         }
@@ -482,29 +482,26 @@ pub mod __private {
         }
     }
 
-    /// Moves user explanations to the facade after it has read the completed report.
-    pub fn into_theme_diagnostics(
+    /// Moves the completed session and explanations to their consuming facade.
+    pub fn into_session_and_theme_diagnostics(
         report: FamilyRenderReport,
-    ) -> Box<[crate::family::ThemeDiagnostic]> {
-        report.into_theme_diagnostics()
+    ) -> (
+        crate::environment::RenderSessionReport,
+        Box<[crate::family::ThemeDiagnostic]>,
+    ) {
+        report.into_session_and_theme_diagnostics()
     }
 
     /// Projects renderer-private root evidence without exporting the mechanism ledger.
     pub fn root_evidence(report: &FamilyRenderReport) -> RootEvidenceSummary {
-        let root = report.root_theme_report();
-        let required_count = root.required_mechanisms().len();
-        let applied_count = root.applied_mechanisms().len();
-        let residual_count = root.residuals().len();
-        RootEvidenceSummary {
-            status: root.verification(),
-            required_count,
-            accounted_count: applied_count.saturating_add(residual_count),
-            applied_count,
-            residual_count,
-            output_mutated: root.residuals().iter().any(|residual| {
-                residual.reason() == crate::diagram_theme::RootThemeResidualReason::OutputMutation
-            }),
-        }
+        RootEvidenceSummary::from_root(report.root_theme_report())
+    }
+
+    /// Borrows only the actual facts needed for standalone SVG admission, without freezing reports.
+    pub fn standalone_admission_summary(
+        rendered: &crate::family::RenderedStandaloneSvg,
+    ) -> (RootEvidenceSummary, FamilyEvidenceSummary, bool) {
+        rendered.admission_summary()
     }
 
     /// Returns the bounded set of root capabilities proved by the terminal SVG consumer.
@@ -795,8 +792,6 @@ pub enum Error {
     InvalidModel { message: String },
     #[error("parsed diagram is bound to a different theme session")]
     ThemeParseBindingMismatch,
-    #[error(transparent)]
-    TextLayout(crate::text::TextLayoutFailure),
     #[error(transparent)]
     ThemeAdmission(#[from] crate::diagram_theme::ThemeAdmissionError),
     #[error(

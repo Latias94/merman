@@ -304,6 +304,36 @@ test("success envelopes are strict while preserving unknown future fields", () =
   }
 });
 
+test("data-only responses require operation identity and omit metadata", () => {
+  const envelope = JSON.parse(successEnvelope(SVG_EXPECTATION, "<svg>你好</svg>"));
+  delete envelope.result.metadata_json;
+  const dataOnly = { includeMetadata: false };
+  assert.equal(
+    decodeWireResponse(JSON.stringify(envelope), SVG_EXPECTATION, dataOnly),
+    "<svg>你好</svg>",
+  );
+  assert.throws(
+    () => decodeWireResponse(JSON.stringify(envelope), SVG_EXPECTATION),
+    MermanInvalidTransportError,
+  );
+  assert.throws(
+    () => decodeWireResponse(successEnvelope(), SVG_EXPECTATION, dataOnly),
+    /metadata for a data-only operation/i,
+  );
+  envelope.result.operation_id = "semantic-json";
+  assert.throws(
+    () => decodeWireResponse(JSON.stringify(envelope), SVG_EXPECTATION, dataOnly),
+    /identity/i,
+  );
+  assert.throws(
+    () => decodeWireResponse(errorEnvelope(), PNG_EXPECTATION, {
+      ...dataOnly,
+      requireUnavailable: true,
+    }),
+    MermanOperationError,
+  );
+});
+
 test("success metadata integer tokens and deterministic policy remain exact", () => {
   const exactMetadata =
     '{"version":1e0,"operation_id":"svg","media_type":"image/svg+xml",' +

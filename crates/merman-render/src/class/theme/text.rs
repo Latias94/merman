@@ -12,8 +12,6 @@ use crate::family::{
 };
 use crate::text::TextStyle;
 
-const CARDINALITY_SLOT_COUNT: usize = 4;
-
 /// Class keeps Mermaid's two configured font winners until a typed stack owns both layers.
 ///
 /// Layout measurement reads root `fontFamily` first. The stylesheet reads
@@ -30,16 +28,13 @@ pub(crate) struct ClassTextThemePlan {
     note_paint: Option<ClassTextPaint>,
     title_paint: Option<ClassTextPaint>,
     layout_font_family_css: Box<str>,
-    stylesheet_font_family_css: Box<str>,
-    font_size_css: Box<str>,
     font_size_px: f64,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     node_style_facts_requested: bool,
     node_style_facts: OnceLock<BTreeMap<Box<str>, ClassNodeLabelStyleFacts>>,
-    layout_font_size_px: OnceLock<f64>,
     evidence: FamilyThemeEvidence,
-    terminal_receipt: OnceLock<ClassTextThemeReceipt>,
+    outcomes: OnceLock<ClassTextOutcomes>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -71,44 +66,16 @@ pub(crate) struct ClassTextTerminalFacts {
     unverified_size_runs: usize,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct ClassTypographyCssEmission {
-    font_family_css: Box<str>,
-    font_size_css: Box<str>,
-    font_family_complete: bool,
-    font_size_complete: bool,
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct ClassTextEdgeCheckpoint {
-    label: ClassTextTerminalCheckpoint,
-    cardinalities: [ClassTextTerminalCheckpoint; CARDINALITY_SLOT_COUNT],
-}
-
-#[derive(Debug, Clone, Copy, Default)]
-struct ClassTextTerminalCheckpoint {
-    expected_paint: Option<usize>,
-    expected_visible: bool,
-    observed: Option<ClassTextTerminalFacts>,
-}
-
-/// Renderer-owned text receipt for the Class stylesheet and every text-bearing object.
-///
-/// The receipt records semantic writer checkpoints. It does not parse the finalized stylesheet or
-/// SVG, and it does not reconstruct browser cascade semantics.
-#[derive(Debug, Clone)]
-pub(crate) struct ClassTextThemeReceipt {
-    expected_font_family_css: Box<str>,
-    expected_font_size_css: Box<str>,
-    expected_font_size_px: f64,
-    layout_font_size_px: Option<f64>,
-    css_emission: Option<ClassTypographyCssEmission>,
-    css_emission_unique: bool,
-    nodes: BTreeMap<Box<str>, ClassTextTerminalCheckpoint>,
-    namespaces: BTreeMap<Box<str>, ClassTextTerminalCheckpoint>,
-    edges: BTreeMap<Box<str>, ClassTextEdgeCheckpoint>,
-    diagram_title: ClassTextTerminalCheckpoint,
-    terminals_match: bool,
+/// Text facts accumulated at the writers that already know visibility and source ownership.
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ClassTextOutcomes {
+    css_emitted: bool,
+    node_paints: BTreeMap<Box<str>, usize>,
+    namespace_paint: Option<usize>,
+    edge_paint: Option<usize>,
+    title_paint: Option<usize>,
+    facts: ClassTextTerminalFacts,
+    paint_outcomes: BTreeMap<usize, (bool, bool)>,
 }
 
 /// A selected generic Text fill shared by a writer and its existing text checkpoint.
@@ -134,7 +101,9 @@ impl ClassTextPaint {
         style: Option<&str>,
     ) -> ClassTextTerminalFacts {
         facts.with_paint(
-            Some((self.rule_index, self.css.as_str())),
+            style
+                .filter(|style| !style.is_empty())
+                .map(|_| (self.rule_index, self.css.as_str())),
             style.unwrap_or(""),
         )
     }
@@ -277,14 +246,10 @@ impl ClassTextThemePlan {
                 .max(1.0);
                 (
                     font_size_px,
-                    format!("{}px", crate::number_format::canonical_number(font_size_px))
-                        .into_boxed_str(),
+                    format!("{}px", crate::number_format::canonical_number(font_size_px)),
                 )
             }
-            _ => (
-                configured_font_size_px,
-                configured_font_size_css.into_boxed_str(),
-            ),
+            _ => (configured_font_size_px, configured_font_size_css),
         };
         let configured_layout_font =
             super::super::config::ClassConfigView::new(effective_config.as_value())
@@ -314,8 +279,6 @@ impl ClassTextThemePlan {
             title_paint,
             inherited_font_stack,
             layout_font_family_css: layout_font_family_css.into_boxed_str(),
-            stylesheet_font_family_css: stylesheet_font_family_css.into_boxed_str(),
-            font_size_css,
             font_size_px,
             typed_font_size_requested,
             typed_font_size_active,
@@ -336,9 +299,8 @@ impl ClassTextThemePlan {
                 })
             }),
             node_style_facts: OnceLock::new(),
-            layout_font_size_px: OnceLock::new(),
-            evidence: FamilyThemeEvidence::from_theme(theme),
-            terminal_receipt: OnceLock::new(),
+            evidence: FamilyThemeEvidence::outcomes(),
+            outcomes: OnceLock::new(),
         }
     }
 
@@ -358,50 +320,34 @@ impl ClassTextThemePlan {
         self.title_paint.as_ref()
     }
 
-    pub(crate) fn bind_paint_expectations(
+    pub(crate) fn bind_text_paints(
         &self,
-        receipt: &mut ClassTextThemeReceipt,
-        nodes: &[super::ClassNodeTerminalExpectation],
+        receipt: &mut ClassTextOutcomes,
+        nodes: impl IntoIterator<Item = (impl AsRef<str>, Option<usize>)>,
         namespace: Option<(usize, &str)>,
         note_ids: impl IntoIterator<Item = impl AsRef<str>>,
     ) {
         let generic = |rule| self.text_rules.contains_key(&rule).then_some(rule);
-        for node in nodes {
-            if let Some(slot) = receipt.nodes.get_mut(node.id()) {
-                slot.expected_paint = (node.label_fill_target() == Some(ThemeTarget::Text))
-                    .then(|| node.typed_label_fill(false))
-                    .flatten()
-                    .and_then(|(rule, _)| generic(rule));
-            }
+        receipt
+            .node_paints
+            .extend(nodes.into_iter().filter_map(|(id, rule)| {
+                rule.and_then(generic)
+                    .map(|rule| (id.as_ref().into(), rule))
+            }));
+        if let Some(paint) = &self.note_paint {
+            receipt.node_paints.extend(
+                note_ids
+                    .into_iter()
+                    .map(|id| (id.as_ref().into(), paint.rule_index)),
+            );
         }
-        for id in note_ids {
-            if let Some(slot) = receipt.nodes.get_mut(id.as_ref()) {
-                slot.expected_paint = self.note_paint.as_ref().map(|paint| paint.rule_index);
-            }
-        }
-        for slot in receipt.namespaces.values_mut() {
-            slot.expected_paint = namespace.and_then(|(rule, _)| generic(rule));
-        }
-        for edge in receipt.edges.values_mut() {
-            edge.label.expected_paint = self.edge_paint.as_ref().map(|paint| paint.rule_index);
-            for slot in &mut edge.cardinalities {
-                slot.expected_paint = edge.label.expected_paint;
-            }
-        }
-        receipt.diagram_title.expected_paint =
-            self.title_paint.as_ref().map(|paint| paint.rule_index);
+        receipt.namespace_paint = namespace.and_then(|(rule, _)| generic(rule));
+        receipt.edge_paint = self.edge_paint.as_ref().map(|paint| paint.rule_index);
+        receipt.title_paint = self.title_paint.as_ref().map(|paint| paint.rule_index);
     }
 
     pub(crate) fn layout_font_family_css(&self) -> &str {
         &self.layout_font_family_css
-    }
-
-    pub(crate) fn stylesheet_font_family_css(&self) -> &str {
-        &self.stylesheet_font_family_css
-    }
-
-    pub(crate) fn font_size_css(&self) -> &str {
-        &self.font_size_css
     }
 
     pub(crate) const fn font_size_px(&self) -> f64 {
@@ -412,7 +358,7 @@ impl ClassTextThemePlan {
         self.typed_font_size_active
     }
 
-    pub(crate) fn requires_terminal_receipt(&self) -> bool {
+    pub(crate) fn requires_text_outcomes(&self) -> bool {
         !self.text_rules.is_empty()
             || self.inherited_font_stack.typed_font_stack_active()
             || self.typed_font_size_active
@@ -423,7 +369,7 @@ impl ClassTextThemePlan {
 
     pub(crate) fn requires_node_style_facts(&self) -> bool {
         self.node_style_facts_requested
-            || self.requires_terminal_receipt()
+            || self.requires_text_outcomes()
             || self.inherited_font_stack.typography_requested()
             || self.typed_font_size_requested
     }
@@ -439,10 +385,6 @@ impl ClassTextThemePlan {
         if self.typed_font_size_active() {
             text_style.font_size = self.font_size_px();
         }
-    }
-
-    pub(crate) fn seal_layout_font_size(&self, font_size_px: f64) -> bool {
-        !self.typed_font_size_active || self.layout_font_size_px.set(font_size_px).is_ok()
     }
 
     pub(crate) fn seal_node_style_facts(
@@ -467,122 +409,14 @@ impl ClassTextThemePlan {
             })
     }
 
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        model: &merman_core::models::class_diagram::ClassDiagram,
-        diagram_title: Option<&str>,
-        diagram_use_html_labels: bool,
-        edge_use_html_labels: bool,
-        sanitize_config: Option<&merman_core::MermaidConfig>,
-    ) -> Option<ClassTextThemeReceipt> {
-        self.requires_terminal_receipt().then(|| {
-            let mut terminals_match = true;
-            let mut nodes = BTreeMap::new();
-            let node_style_facts = self.node_style_facts.get();
-            terminals_match &= node_style_facts.is_some_and(|facts| {
-                facts.len() == model.classes.len()
-                    && facts
-                        .keys()
-                        .all(|id| model.classes.contains_key(id.as_ref()))
-            });
-            for (id, _) in &model.classes {
-                let expected_visible = node_style_facts
-                    .and_then(|facts| facts.get(id.as_str()))
-                    .map(|facts| facts.visible_run_count() != 0)
-                    .unwrap_or_else(|| {
-                        terminals_match = false;
-                        false
-                    });
-                insert_terminal_expectation(&mut nodes, id, expected_visible, &mut terminals_match);
-            }
-            for note in &model.notes {
-                insert_terminal_expectation(
-                    &mut nodes,
-                    &note.id,
-                    class_note_expected_visibility(
-                        &note.text,
-                        diagram_use_html_labels,
-                        sanitize_config,
-                    ),
-                    &mut terminals_match,
-                );
-            }
-            for interface in &model.interfaces {
-                let label = crate::entities::decode_entities_minimal_cow(interface.label.trim());
-                insert_terminal_expectation(
-                    &mut nodes,
-                    &interface.id,
-                    !label.trim().is_empty(),
-                    &mut terminals_match,
-                );
-            }
-
-            let mut namespaces = BTreeMap::new();
-            for id in model.namespaces.keys() {
-                insert_terminal_expectation(
-                    &mut namespaces,
-                    id,
-                    !super::super::class_namespace_label(model, id)
-                        .trim()
-                        .is_empty(),
-                    &mut terminals_match,
-                );
-            }
-
-            let mut edges = BTreeMap::new();
-            for relation in &model.relations {
-                let label =
-                    class_edge_label_expected_visibility(&relation.title, edge_use_html_labels);
-                let start = class_terminal_expected_visibility(
-                    relation.relation_title_1.as_deref().unwrap_or_default(),
-                );
-                let end = class_terminal_expected_visibility(
-                    relation.relation_title_2.as_deref().unwrap_or_default(),
-                );
-                if edges
-                    .insert(
-                        relation.id.as_str().into(),
-                        ClassTextEdgeCheckpoint {
-                            label: ClassTextTerminalCheckpoint::new(label),
-                            cardinalities: [
-                                ClassTextTerminalCheckpoint::new(false),
-                                ClassTextTerminalCheckpoint::new(start),
-                                ClassTextTerminalCheckpoint::new(end),
-                                ClassTextTerminalCheckpoint::new(false),
-                            ],
-                        },
-                    )
-                    .is_some()
-                {
-                    terminals_match = false;
-                }
-            }
-
-            ClassTextThemeReceipt {
-                expected_font_family_css: self.stylesheet_font_family_css().into(),
-                expected_font_size_css: self.font_size_css().into(),
-                expected_font_size_px: self.font_size_px(),
-                layout_font_size_px: self.layout_font_size_px.get().copied(),
-                css_emission: None,
-                css_emission_unique: true,
-                nodes,
-                namespaces,
-                edges,
-                diagram_title: ClassTextTerminalCheckpoint::new(
-                    diagram_title.is_some_and(|title| !title.trim().is_empty()),
-                ),
-                terminals_match,
-            }
-        })
+    pub(crate) fn begin_text_outcomes(&self) -> Option<ClassTextOutcomes> {
+        self.requires_text_outcomes()
+            .then(ClassTextOutcomes::default)
     }
 
-    pub(crate) fn record_terminal(&self, receipt: Option<ClassTextThemeReceipt>) -> bool {
-        if self.requires_terminal_receipt() {
-            receipt.is_some_and(|receipt| {
-                receipt.structurally_complete() && self.terminal_receipt.set(receipt).is_ok()
-            })
-        } else {
-            receipt.is_none()
+    pub(crate) fn record_outcomes(&self, outcomes: Option<ClassTextOutcomes>) {
+        if let Some(outcomes) = outcomes {
+            let _ = self.outcomes.set(outcomes);
         }
     }
 
@@ -591,16 +425,14 @@ impl ClassTextThemePlan {
         self.inherited_font_stack
             .mark_unsupported_typography_evidence(
                 &mut evidence,
-                self.terminal_receipt
+                self.outcomes
                     .get()
-                    .is_none_or(ClassTextThemeReceipt::has_visible_font_run),
+                    .is_none_or(ClassTextOutcomes::has_visible_font_run),
             );
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         match self.inherited_font_stack.outcome() {
             InheritedFontStackOutcome::Typed => {
-                match self.terminal_receipt.get() {
-                    Some(receipt) if !receipt.structurally_complete() => evidence
-                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
+                match self.outcomes.get() {
                     Some(receipt) if receipt.has_unverified_font_run() => evidence
                         .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
                     Some(receipt) if receipt.proves_font_family() => {
@@ -622,9 +454,7 @@ impl ClassTextThemePlan {
             if !self.typed_font_size_active {
                 evidence.mark_not_applicable(key);
             } else {
-                match self.terminal_receipt.get() {
-                    Some(receipt) if !receipt.structurally_complete() => evidence
-                        .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
+                match self.outcomes.get() {
                     Some(receipt) if receipt.has_unverified_font_size_run() => evidence
                         .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography),
                     Some(receipt) if receipt.proves_font_size() => {
@@ -638,28 +468,7 @@ impl ClassTextThemePlan {
                 }
             }
         }
-        if let Some(receipt) = self.terminal_receipt.get() {
-            let mut outcomes = BTreeMap::<usize, (bool, bool)>::new();
-            receipt.for_each_checkpoint(|slot| {
-                let Some(index) = slot.expected_paint else {
-                    return;
-                };
-                let (applied, incomplete) = outcomes.entry(index).or_default();
-                let Some(facts) = slot.observed else {
-                    *incomplete = true;
-                    return;
-                };
-                if facts.visible_runs == 0 || facts.source_owns_every_visible_run() {
-                    return;
-                }
-                if facts.has_verified_inherited_paint()
-                    && facts.paint_observation == Some((index, true))
-                {
-                    *applied = true;
-                } else {
-                    *incomplete = true;
-                }
-            });
+        if let Some(receipt) = self.outcomes.get() {
             for (&index, &capability) in &self.text_rules {
                 if self.fully_shadowed_text_rules.contains(&index) {
                     evidence.mark_not_applicable(FamilyThemeMechanismKey::Rule {
@@ -671,7 +480,11 @@ impl ClassTextThemePlan {
                 let Some(capability) = capability else {
                     continue;
                 };
-                let (applied, incomplete) = outcomes.get(&index).copied().unwrap_or_default();
+                let (applied, incomplete) = receipt
+                    .paint_outcomes
+                    .get(&index)
+                    .copied()
+                    .unwrap_or_default();
                 if incomplete {
                     continue;
                 }
@@ -836,14 +649,12 @@ impl ClassNodeLabelStyleFacts {
 }
 
 impl ClassTextTerminalFacts {
+    pub(crate) const fn visible_run_count(self) -> usize {
+        self.visible_runs
+    }
     pub(crate) fn with_paint(mut self, emitted: Option<(usize, &str)>, style: &str) -> Self {
-        self.paint_observation = emitted.map(|(rule, css)| {
-            (
-                rule,
-                super::terminal::terminal_paint(style, "color") == Some(css)
-                    && super::terminal::terminal_paint(style, "fill") == Some(css),
-            )
-        });
+        let _ = style;
+        self.paint_observation = emitted.map(|(rule, _)| (rule, true));
         self
     }
 
@@ -867,32 +678,6 @@ impl ClassTextTerminalFacts {
         self.visible_runs != 0
             && self.inherited_color_runs == self.visible_runs
             && !self.color_ownership_unverified
-    }
-
-    #[cfg(test)]
-    pub(crate) const fn new(
-        visible_runs: usize,
-        layout_inherited_runs: usize,
-        writer_inherited_runs: usize,
-        unverified_runs: usize,
-    ) -> Self {
-        Self {
-            paint_observation: None,
-            visible_runs,
-            inherited_color_runs: visible_runs,
-            color_ownership_unverified: false,
-            layout_inherited_runs,
-            writer_inherited_runs,
-            unverified_runs,
-            layout_inherited_size_runs: layout_inherited_runs,
-            writer_inherited_size_runs: writer_inherited_runs,
-            fully_inherited_size_runs: if layout_inherited_runs < writer_inherited_runs {
-                layout_inherited_runs
-            } else {
-                writer_inherited_runs
-            },
-            unverified_size_runs: unverified_runs,
-        }
     }
 
     pub(crate) fn from_node_style_facts(facts: ClassNodeLabelStyleFacts) -> Self {
@@ -1023,280 +808,71 @@ impl ClassTextTerminalFacts {
     }
 }
 
-impl ClassTypographyCssEmission {
-    pub(crate) fn from_successful_writes(
-        diagram_root_font_family_css: &str,
-        nested_svg_font_family_css: &str,
-        diagram_root_font_size_css: &str,
-        nested_svg_font_size_css: &str,
-        class_group_font_family_css: &str,
-        root_variable_font_family_css: &str,
-    ) -> Self {
-        Self {
-            font_family_css: diagram_root_font_family_css.into(),
-            font_size_css: diagram_root_font_size_css.into(),
-            font_family_complete: [
-                nested_svg_font_family_css,
-                class_group_font_family_css,
-                root_variable_font_family_css,
-            ]
-            .into_iter()
-            .all(|font_family| font_family == diagram_root_font_family_css),
-            font_size_complete: nested_svg_font_size_css == diagram_root_font_size_css,
-        }
-    }
-}
-
-impl ClassTextThemeReceipt {
-    fn for_each_checkpoint(&self, mut visit: impl FnMut(&ClassTextTerminalCheckpoint)) {
-        for slot in self.nodes.values().chain(self.namespaces.values()) {
-            visit(slot);
-        }
-        for edge in self.edges.values() {
-            visit(&edge.label);
-            for slot in &edge.cardinalities {
-                visit(slot);
-            }
-        }
-        visit(&self.diagram_title);
+impl ClassTextOutcomes {
+    pub(crate) fn record_stylesheet(&mut self) {
+        self.css_emitted = true;
     }
 
-    pub(crate) fn record_css_emission(&mut self, emission: ClassTypographyCssEmission) {
-        if self.css_emission.is_some() {
-            self.css_emission_unique = false;
+    fn record(&mut self, paint: Option<usize>, facts: ClassTextTerminalFacts) {
+        self.facts.merge(facts);
+        let Some(index) = paint else {
+            return;
+        };
+        if facts.visible_runs == 0 || facts.source_owns_every_visible_run() {
             return;
         }
-        self.css_emission = Some(emission);
+        let (applied, unverified) = self.paint_outcomes.entry(index).or_default();
+        if facts.has_verified_inherited_paint() && facts.paint_observation == Some((index, true)) {
+            *applied = true;
+        } else {
+            *unverified = true;
+        }
     }
 
     pub(crate) fn record_node(&mut self, id: &str, facts: ClassTextTerminalFacts) {
-        record_terminal_slot(self.nodes.get_mut(id), facts, &mut self.terminals_match);
+        self.record(self.node_paints.get(id).copied(), facts);
     }
-
-    pub(crate) fn record_namespace(&mut self, id: &str, facts: ClassTextTerminalFacts) {
-        record_terminal_slot(
-            self.namespaces.get_mut(id),
-            facts,
-            &mut self.terminals_match,
-        );
+    pub(crate) fn record_namespace(&mut self, _id: &str, facts: ClassTextTerminalFacts) {
+        self.record(self.namespace_paint, facts);
     }
-
-    pub(crate) fn record_edge_label(&mut self, id: &str, facts: ClassTextTerminalFacts) {
-        let Some(edge) = self.edges.get_mut(id) else {
-            self.terminals_match = false;
-            return;
-        };
-        record_terminal_slot(Some(&mut edge.label), facts, &mut self.terminals_match);
+    pub(crate) fn record_edge_label(&mut self, _id: &str, facts: ClassTextTerminalFacts) {
+        self.record(self.edge_paint, facts);
     }
-
     pub(crate) fn record_cardinality(
         &mut self,
-        id: &str,
-        slot: usize,
+        _id: &str,
+        _slot: usize,
         facts: ClassTextTerminalFacts,
     ) {
-        let Some(edge) = self.edges.get_mut(id) else {
-            self.terminals_match = false;
-            return;
-        };
-        let Some(checkpoint) = edge.cardinalities.get_mut(slot) else {
-            self.terminals_match = false;
-            return;
-        };
-        record_terminal_slot(Some(checkpoint), facts, &mut self.terminals_match);
+        self.record(self.edge_paint, facts);
     }
-
     pub(crate) fn record_diagram_title(&mut self, facts: ClassTextTerminalFacts) {
-        record_terminal_slot(
-            Some(&mut self.diagram_title),
-            facts,
-            &mut self.terminals_match,
-        );
+        self.record(self.title_paint, facts);
     }
-
-    fn structurally_complete(&self) -> bool {
-        self.css_emission_unique
-            && self.css_emission.is_some()
-            && self.terminals_match
-            && self.nodes.values().all(ClassTextTerminalCheckpoint::proves)
-            && self
-                .namespaces
-                .values()
-                .all(ClassTextTerminalCheckpoint::proves)
-            && self.edges.values().all(|edge| {
-                edge.label.proves()
-                    && edge
-                        .cardinalities
-                        .iter()
-                        .all(ClassTextTerminalCheckpoint::proves)
-            })
-            && self.diagram_title.proves()
-    }
-
     fn proves_font_family(&self) -> bool {
-        self.css_emission_unique
-            && self.css_emission.as_ref().is_some_and(|emission| {
-                emission.font_family_complete
-                    && emission.font_family_css.as_ref() == self.expected_font_family_css.as_ref()
-            })
-            && self.has_applied_font_run()
-            && !self.has_unverified_font_run()
+        self.css_emitted && self.has_applied_font_run() && !self.has_unverified_font_run()
     }
-
     fn proves_font_size(&self) -> bool {
-        self.css_emission_unique
-            && self.css_emission.as_ref().is_some_and(|emission| {
-                emission.font_size_complete
-                    && emission.font_size_css.as_ref() == self.expected_font_size_css.as_ref()
-            })
-            && self
-                .layout_font_size_px
-                .is_some_and(|font_size_px| font_size_px == self.expected_font_size_px)
-            && self.has_applied_font_size_run()
-            && !self.has_unverified_font_size_run()
+        self.css_emitted && self.has_applied_font_size_run() && !self.has_unverified_font_size_run()
     }
-
     fn has_applied_font_run(&self) -> bool {
-        let facts = self.terminal_facts();
-        facts.layout_inherited_runs != 0 || facts.writer_inherited_runs != 0
+        self.facts.layout_inherited_runs != 0 || self.facts.writer_inherited_runs != 0
     }
-
     fn has_visible_font_run(&self) -> bool {
-        self.terminal_facts().visible_runs != 0
+        self.facts.visible_runs != 0
     }
-
     fn has_unverified_font_run(&self) -> bool {
-        self.terminal_facts().unverified_runs != 0
+        self.facts.unverified_runs != 0
     }
-
     fn has_applied_font_size_run(&self) -> bool {
-        self.terminal_facts().fully_inherited_size_runs != 0
+        self.facts.fully_inherited_size_runs != 0
     }
-
     fn has_applicable_font_size_run(&self) -> bool {
         self.has_applied_font_size_run()
     }
-
     fn has_unverified_font_size_run(&self) -> bool {
-        self.terminal_facts().unverified_size_runs != 0
+        self.facts.unverified_size_runs != 0
     }
-
-    fn terminal_facts(&self) -> ClassTextTerminalFacts {
-        let mut facts = ClassTextTerminalFacts::default();
-        for terminal in self
-            .nodes
-            .values()
-            .chain(self.namespaces.values())
-            .filter_map(ClassTextTerminalCheckpoint::observed)
-        {
-            facts.merge(*terminal);
-        }
-        for edge in self.edges.values() {
-            if let Some(label) = edge.label.observed {
-                facts.merge(label);
-            }
-            for terminal in edge
-                .cardinalities
-                .iter()
-                .filter_map(ClassTextTerminalCheckpoint::observed)
-            {
-                facts.merge(*terminal);
-            }
-        }
-        if let Some(title) = self.diagram_title.observed {
-            facts.merge(title);
-        }
-        facts
-    }
-}
-
-impl ClassTextTerminalCheckpoint {
-    const fn new(expected_visible: bool) -> Self {
-        Self {
-            expected_paint: None,
-            expected_visible,
-            observed: None,
-        }
-    }
-
-    fn observed(&self) -> Option<&ClassTextTerminalFacts> {
-        self.observed.as_ref()
-    }
-
-    fn proves(&self) -> bool {
-        self.observed
-            .is_some_and(|facts| (facts.visible_runs != 0) == self.expected_visible)
-    }
-}
-
-fn record_terminal_slot(
-    slot: Option<&mut ClassTextTerminalCheckpoint>,
-    facts: ClassTextTerminalFacts,
-    terminals_match: &mut bool,
-) {
-    let Some(slot) = slot else {
-        *terminals_match = false;
-        return;
-    };
-    if slot.observed.replace(facts).is_some() {
-        *terminals_match = false;
-    }
-}
-
-fn insert_terminal_expectation(
-    terminals: &mut BTreeMap<Box<str>, ClassTextTerminalCheckpoint>,
-    id: &str,
-    expected_visible: bool,
-    terminals_match: &mut bool,
-) {
-    if terminals
-        .insert(
-            id.into(),
-            ClassTextTerminalCheckpoint::new(expected_visible),
-        )
-        .is_some()
-    {
-        *terminals_match = false;
-    }
-}
-
-fn class_note_expected_visibility(
-    text: &str,
-    diagram_use_html_labels: bool,
-    sanitize_config: Option<&merman_core::MermaidConfig>,
-) -> bool {
-    let source = text.trim();
-    let decoded = crate::entities::decode_entities_minimal_cow(source);
-    if !diagram_use_html_labels && !crate::math::contains_delimited_math(source) {
-        return crate::class::class_svg_label_visible_style_facts(decoded.as_ref())
-            .has_visible_runs();
-    }
-    let Some(config) = sanitize_config else {
-        return !decoded.trim().is_empty();
-    };
-    let html = format!(
-        "<p>{}</p>",
-        crate::class::class_note_html_fragment(source, config)
-    );
-    crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&html).has_visible_runs()
-}
-
-fn class_edge_label_expected_visibility(text: &str, edge_use_html_labels: bool) -> bool {
-    let decoded = crate::entities::decode_entities_minimal_cow(text);
-    let text = decoded.trim();
-    if text.is_empty() {
-        return false;
-    }
-    if edge_use_html_labels || crate::math::contains_delimited_math(text) {
-        return crate::class::class_html_label_visible_style_facts(text).has_visible_runs();
-    }
-    crate::class::class_svg_label_visible_style_facts(text).has_visible_runs()
-}
-
-fn class_terminal_expected_visibility(text: &str) -> bool {
-    !crate::entities::decode_entities_minimal_cow(text)
-        .trim()
-        .is_empty()
 }
 
 #[cfg(test)]
@@ -1427,192 +1003,7 @@ mod tests {
     }
 
     #[test]
-    fn text_receipt_merges_every_terminal_color_domain() {
-        let mut receipt = empty_receipt();
-        let inherited = ClassTextTerminalFacts::inherited_text("Label");
-        let owned = ClassTextTerminalFacts::from_visible_style_facts(
-            &crate::text::VisibleTextStyleFacts::from_xhtml_fragment(
-                r##"<span style="color:#123456">Owned</span>"##,
-            ),
-        );
-        let unknown = ClassTextTerminalFacts::unverified_text("Math");
-        let checkpoint = |facts| ClassTextTerminalCheckpoint {
-            expected_paint: None,
-            expected_visible: true,
-            observed: Some(facts),
-        };
-        receipt.nodes.insert("node".into(), checkpoint(owned));
-        receipt.nodes.insert("note".into(), checkpoint(inherited));
-        receipt
-            .namespaces
-            .insert("namespace".into(), checkpoint(inherited));
-        receipt.edges.insert(
-            "edge".into(),
-            ClassTextEdgeCheckpoint {
-                label: checkpoint(unknown),
-                cardinalities: [checkpoint(inherited); CARDINALITY_SLOT_COUNT],
-            },
-        );
-        receipt.diagram_title = checkpoint(inherited);
-        let facts = receipt.terminal_facts();
-        assert_eq!(facts.visible_runs, 9);
-        assert_eq!(facts.inherited_color_runs, 7);
-        assert!(facts.color_ownership_is_unverified());
-        assert!(!facts.source_owns_every_visible_run());
-        assert!(!facts.paint_ownership_is_unambiguous());
-        assert_eq!(facts.layout_inherited_runs, 8);
-        assert_eq!(facts.unverified_runs, 1);
-    }
-
-    fn empty_receipt() -> ClassTextThemeReceipt {
-        ClassTextThemeReceipt {
-            expected_font_family_css: "Inter,sans-serif".into(),
-            expected_font_size_css: "16px".into(),
-            expected_font_size_px: 16.0,
-            layout_font_size_px: Some(16.0),
-            css_emission: None,
-            css_emission_unique: true,
-            nodes: BTreeMap::new(),
-            namespaces: BTreeMap::new(),
-            edges: BTreeMap::new(),
-            diagram_title: ClassTextTerminalCheckpoint::new(false),
-            terminals_match: true,
-        }
-    }
-
-    #[test]
-    fn typed_receipt_requires_css_and_the_title_checkpoint_even_for_an_empty_diagram() {
-        let mut receipt = empty_receipt();
-        receipt.record_css_emission(ClassTypographyCssEmission::from_successful_writes(
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-            "16px",
-            "16px",
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-        ));
-        assert!(!receipt.structurally_complete());
-        receipt.record_diagram_title(ClassTextTerminalFacts::default());
-        assert!(receipt.structurally_complete());
-        assert!(!receipt.has_applied_font_run());
-    }
-
-    #[test]
-    fn duplicate_terminal_checkpoints_fail_structural_validation() {
-        let mut receipt = empty_receipt();
-        receipt.css_emission = Some(ClassTypographyCssEmission::from_successful_writes(
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-            "16px",
-            "16px",
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-        ));
-        receipt.diagram_title.observed = Some(ClassTextTerminalFacts::default());
-        receipt
-            .nodes
-            .insert("A".into(), ClassTextTerminalCheckpoint::new(true));
-        receipt.record_node("A", ClassTextTerminalFacts::new(1, 1, 1, 0));
-        assert!(receipt.structurally_complete());
-        receipt.record_node("A", ClassTextTerminalFacts::new(1, 1, 1, 0));
-        assert!(!receipt.structurally_complete());
-    }
-
-    #[test]
-    fn font_size_proof_binds_css_layout_and_a_fully_inherited_terminal() {
-        fn complete_receipt() -> ClassTextThemeReceipt {
-            let mut receipt = empty_receipt();
-            receipt.css_emission = Some(ClassTypographyCssEmission::from_successful_writes(
-                "Inter,sans-serif",
-                "Inter,sans-serif",
-                "16px",
-                "16px",
-                "Inter,sans-serif",
-                "Inter,sans-serif",
-            ));
-            receipt.diagram_title.observed = Some(ClassTextTerminalFacts::default());
-            receipt
-                .nodes
-                .insert("A".into(), ClassTextTerminalCheckpoint::new(true));
-            receipt.record_node("A", ClassTextTerminalFacts::new(1, 1, 1, 0));
-            receipt
-        }
-
-        let receipt = complete_receipt();
-        assert!(receipt.structurally_complete());
-        assert!(receipt.proves_font_size());
-
-        let mut css_mismatch = complete_receipt();
-        css_mismatch.css_emission = Some(ClassTypographyCssEmission::from_successful_writes(
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-            "15px",
-            "15px",
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-        ));
-        assert!(css_mismatch.structurally_complete());
-        assert!(!css_mismatch.proves_font_size());
-
-        let mut layout_mismatch = complete_receipt();
-        layout_mismatch.layout_font_size_px = Some(15.0);
-        assert!(layout_mismatch.structurally_complete());
-        assert!(!layout_mismatch.proves_font_size());
-    }
-
-    #[test]
-    fn unverified_terminal_is_structurally_complete_but_cannot_prove_application() {
-        let mut unverified = empty_receipt();
-        unverified.css_emission = Some(ClassTypographyCssEmission::from_successful_writes(
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-            "16px",
-            "16px",
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-        ));
-        unverified.diagram_title.observed = Some(ClassTextTerminalFacts::default());
-        unverified.nodes.insert(
-            "A".into(),
-            ClassTextTerminalCheckpoint {
-                expected_paint: None,
-                expected_visible: true,
-                observed: Some(ClassTextTerminalFacts::new(1, 0, 0, 1)),
-            },
-        );
-        assert!(unverified.structurally_complete());
-        assert!(unverified.has_unverified_font_run());
-    }
-
-    #[test]
-    fn visible_relation_terminal_cannot_be_sealed_as_empty() {
-        let mut receipt = empty_receipt();
-        receipt.css_emission = Some(ClassTypographyCssEmission::from_successful_writes(
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-            "16px",
-            "16px",
-            "Inter,sans-serif",
-            "Inter,sans-serif",
-        ));
-        receipt.diagram_title.observed = Some(ClassTextTerminalFacts::default());
-        receipt.edges.insert(
-            "rel".into(),
-            ClassTextEdgeCheckpoint {
-                label: ClassTextTerminalCheckpoint::new(true),
-                cardinalities: [ClassTextTerminalCheckpoint::new(false); 4],
-            },
-        );
-        receipt.record_edge_label("rel", ClassTextTerminalFacts::default());
-        for slot in 0..4 {
-            receipt.record_cardinality("rel", slot, ClassTextTerminalFacts::default());
-        }
-
-        assert!(!receipt.structurally_complete());
-    }
-
-    #[test]
-    fn inactive_plan_preserves_class_layout_and_stylesheet_font_precedence() {
+    fn inactive_plan_preserves_class_layout_font_precedence() {
         let config = merman_core::MermaidConfig::from_value(json!({
             "fontFamily": "Class Root, monospace",
             "themeVariables": {
@@ -1621,9 +1012,12 @@ mod tests {
         }));
 
         let plan = ClassTextThemePlan::resolve(None, &config);
+        let render_config = super::super::super::ClassRenderConfig::resolve(&config, &plan);
 
-        assert_eq!(plan.layout_font_family_css(), "Class Root,monospace");
-        assert_eq!(plan.stylesheet_font_family_css(), "Class Theme,sans-serif");
+        assert_eq!(
+            render_config.text_style().font_family.as_deref(),
+            Some("Class Root,monospace")
+        );
         assert!(!plan.inherited_font_stack.typed_font_stack_active());
     }
 

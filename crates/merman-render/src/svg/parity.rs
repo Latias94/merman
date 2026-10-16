@@ -11,7 +11,7 @@ use crate::model::*;
         reason = "Common SVG imports are consumed by the selected family emitters."
     )
 )]
-use crate::text::{PreparedTextLabelId, TextMeasurer, TextStyle, WrapMode};
+use crate::text::{TextMeasurer, TextStyle, WrapMode};
 use crate::{Error, Result};
 #[cfg_attr(
     not(feature = "all-diagrams"),
@@ -40,7 +40,7 @@ mod architecture;
 #[cfg(feature = "diagram-block")]
 mod block;
 #[cfg(feature = "diagram-block")]
-pub(crate) use block::block_edge_path_data;
+pub(crate) use block::block_edge_is_visible;
 #[cfg(feature = "diagram-c4")]
 mod c4;
 #[cfg(feature = "diagram-class")]
@@ -412,10 +412,6 @@ pub fn sanitize_svg_id(raw: &str) -> String {
 
     if out.is_empty() || out == "m" {
         "m-untitled".to_string()
-    } else if PreparedTextLabelId::is_svg_id_candidate(&out) {
-        // Native admission rejects this reserved text-token namespace. Keep caller-owned
-        // diagram ids outside it so ordinary labels cannot collide with reserved tokens.
-        format!("m-user-{out}")
     } else {
         out
     }
@@ -448,7 +444,6 @@ struct SvgDiagramIdSanitizationPlan<'a> {
     trimmed: &'a str,
     output_bytes: usize,
     uses_fallback: bool,
-    avoids_reserved_namespace: bool,
 }
 
 fn checkpoint_svg_diagram_id_scan(
@@ -496,7 +491,6 @@ fn plan_svg_diagram_id_sanitization<'a>(
             trimmed,
             output_bytes: "m-untitled".len(),
             uses_fallback: true,
-            avoids_reserved_namespace: false,
         });
     }
 
@@ -512,7 +506,6 @@ fn plan_svg_diagram_id_sanitization<'a>(
     let first = sanitize_char(first_raw);
     let mut output_bytes = 0usize;
     let mut first_output = None;
-    let mut reserved_prefix_matches = true;
     let mut previous_was_dash = false;
     let mut append = |ch: char| -> Result<()> {
         if ch == '-' && previous_was_dash {
@@ -520,12 +513,6 @@ fn plan_svg_diagram_id_sanitization<'a>(
         }
         previous_was_dash = ch == '-';
         first_output.get_or_insert(ch);
-        if let Some(expected) = crate::text::PREPARED_TEXT_LABEL_ID_PREFIX
-            .as_bytes()
-            .get(output_bytes)
-        {
-            reserved_prefix_matches &= ch as u8 == *expected;
-        }
         output_bytes = output_bytes.checked_add(1).ok_or_else(|| {
             Error::from(session.work_meter().terminate_svg_byte_count_overflow(
                 crate::resources::ResourceLimitPhase::SvgOutput,
@@ -552,25 +539,14 @@ fn plan_svg_diagram_id_sanitization<'a>(
         output_bytes -= 1;
     }
     let uses_fallback = output_bytes == 0 || (output_bytes == 1 && first_output == Some('m'));
-    let avoids_reserved_namespace = !uses_fallback
-        && reserved_prefix_matches
-        && output_bytes >= crate::text::PREPARED_TEXT_LABEL_ID_PREFIX.len();
     if uses_fallback {
         output_bytes = "m-untitled".len();
-    } else if avoids_reserved_namespace {
-        output_bytes = output_bytes.checked_add("m-user-".len()).ok_or_else(|| {
-            Error::from(session.work_meter().terminate_svg_byte_count_overflow(
-                crate::resources::ResourceLimitPhase::SvgOutput,
-                OperationPhase::Emit,
-            ))
-        })?;
     }
     session.checkpoint(OperationPhase::Emit)?;
     Ok(SvgDiagramIdSanitizationPlan {
         trimmed,
         output_bytes,
         uses_fallback,
-        avoids_reserved_namespace,
     })
 }
 
@@ -600,9 +576,6 @@ fn materialize_svg_diagram_id(
         return Ok(output);
     }
 
-    if plan.avoids_reserved_namespace {
-        output.push_str("m-user-");
-    }
     let sanitize_char = |ch: char| {
         if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
             ch
@@ -1085,10 +1058,6 @@ impl<'a> SvgExecution<'a> {
         &self,
     ) -> std::sync::Arc<crate::diagram_theme::ThemeResourcePolicy> {
         self.family.session().effective_theme_resource_policy()
-    }
-
-    pub(crate) fn resource_policy(&self) -> crate::resources::RenderResourcePolicy {
-        self.family.session().resource_policy()
     }
 
     /// Replays a terminal observed while an SVG ID was being projected.
@@ -1738,7 +1707,7 @@ mod diagram_id_projection_tests {
     }
 
     #[test]
-    fn reserved_diagram_id_prefix_is_included_in_controlled_byte_preflight() {
+    fn normalized_diagram_id_is_included_in_controlled_byte_preflight() {
         use crate::resources::{RenderResourcePolicy, ResourceLimitId};
         let request = SvgRenderOptions {
             diagram_id: Some("merman-prepared-state-17".into()),

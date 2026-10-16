@@ -988,17 +988,10 @@ mod tests {
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        let seed = {
-            let session = merman_render::environment::RenderEnvironment::deterministic()
-                .begin_session()
-                .unwrap();
-            let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
-            crate::font_environment::ExportFontPlanSeed::from_native_context(
-                &sealed,
-                &context,
-                observer.clone(),
-            )
-        };
+        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
+            &context,
+            observer.clone(),
+        );
         let tree = usvg::Tree::from_str(source, &options).unwrap();
         context.check().unwrap();
         assert!(!tree.root().children().is_empty());
@@ -1048,17 +1041,10 @@ mod tests {
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        let seed = {
-            let session = merman_render::environment::RenderEnvironment::deterministic()
-                .begin_session()
-                .unwrap();
-            let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
-            crate::font_environment::ExportFontPlanSeed::from_native_context(
-                &sealed,
-                &context,
-                observer.clone(),
-            )
-        };
+        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
+            &context,
+            observer.clone(),
+        );
         let tree = usvg::Tree::from_str(source, &options)
             .expect("bounded system fixture parses through export resolver");
         let glyphs = tree
@@ -1097,17 +1083,10 @@ mod tests {
         let mut options = usvg::Options::default();
         let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
-        let seed = {
-            let session = merman_render::environment::RenderEnvironment::deterministic()
-                .begin_session()
-                .unwrap();
-            let sealed = merman_render::svg::finalize_resvg_svg(source, &session).unwrap();
-            crate::font_environment::ExportFontPlanSeed::from_native_context(
-                &sealed,
-                &context,
-                observer.clone(),
-            )
-        };
+        let seed = crate::font_environment::ExportFontPlanSeed::from_native_context(
+            &context,
+            observer.clone(),
+        );
         let tree = usvg::Tree::from_str(source, &options)
             .expect("explicit fixture parses through discovery resolver");
         let glyphs = tree

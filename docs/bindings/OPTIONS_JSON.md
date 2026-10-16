@@ -184,6 +184,15 @@ Generic binding operation metadata records the selected policy as
 `"runtime_policy": "deterministic"` or `"runtime_policy": "native"`. Hosts should retain that
 metadata with rendered or analyzed output when reproducibility matters.
 
+Data-only helpers request bytes before execution and do not build or serialize operation metadata.
+Web `renderSvg` and its host-text-measurer variant use that route; `renderSvgResult` retains the
+complete result. Node `renderSvg`/`renderSvgSync` and SVG-plan string helpers use the same route.
+The Node wire request's optional `include_metadata: false` selects a success result containing
+`operation_id`, `media_type` and `data`, with no `metadata_json`; omission retains the full
+`executeOperation` result. Both routes share option admission, strict errors, cancellation and
+timeout handling. There is no metadata fallback on the string route, so SDK and runtime artifacts
+must match.
+
 PNG and JPEG operations also include an `output_plan` object with requested and effective pixel
 dimensions and scale. PDF operations include requested and effective filter-image scale and pixel
 counts. ASCII operations include the selected projection and encoding, primary and emitted
@@ -609,7 +618,7 @@ per-request tightening use the same contract as semantic and SVG limits.
 | `resources.limits.max_model_nesting_depth` | positive integer | profile value | Maximum semantic nesting depth before layout. |
 | `resources.limits.max_layout_work_units` | positive integer | profile value | Deterministic family-accounted derived geometry and layout candidate work. |
 | `resources.limits.max_svg_bytes` | positive integer | profile value | SVG bytes checked after emission and after postprocessing. |
-| `resources.limits.max_svg_elements` | positive integer | profile value | SVG element cardinality checked before recursive postprocessing. |
+| `resources.limits.max_svg_elements` | positive integer | profile value | Admitted SVG cardinality and reference-expanded work at SVG input, postprocessing and native-conversion boundaries; not ordinary producer output cardinality. |
 | `resources.limits.max_ascii_grid_cells` | positive integer | profile value | Checked logical extent for grid-backed terminal renderers. |
 | `resources.limits.max_ascii_layout_work_units` | positive integer | profile value | Deterministic ASCII planning, traversal, routing, and paint work. |
 | `resources.limits.max_ascii_document_cells` | positive integer | profile value | Aggregate display cells across logical terminal document rows. |

@@ -24,9 +24,8 @@ use crate::resources::{OperationWorkError, OperationWorkMeter, RenderResourcePol
 use crate::text::TextStyle;
 
 use super::{
-    StateCompatibilityPlan, StateEffectPlan, StateNodeEffectPlan, StatePendingTerminalMechanism,
-    StateTerminalPaintProperty, StateTerminalSurface, StateThemeTerminalExpectation,
-    StateThemeTerminalOccurrence, StateThemeTerminalPlan, StateThemeTerminalReceipt,
+    StateAppliedThemeOutcome, StateCompatibilityPlan, StateEffectPlan, StateNodeEffectPlan,
+    StateTerminalPaintProperty, StateTerminalSurface, StateThemeOutcomes, StateThemeSurface,
 };
 
 /// One source-resolved font decision shared by State measurement and SVG emission.
@@ -226,39 +225,6 @@ impl StateEdgeStylePlan {
     pub(crate) const fn resolved_label_typography(&self) -> &ResolvedLabelTypography {
         &self.label_typography
     }
-
-    fn terminal_path_signature(&self) -> String {
-        if self.path_style_attr.is_empty() {
-            "fill:none;;;fill:none".to_string()
-        } else {
-            format!("fill:none;;;fill:none;{}", self.path_style_attr)
-        }
-    }
-
-    fn terminal_marker_signature(&self) -> String {
-        terminal_signature([self.marker_style_attr.as_str()])
-    }
-
-    fn terminal_label_signature(&self, html_labels: bool) -> String {
-        if html_labels {
-            terminal_signature([self.label_div_style_prefix.as_str()])
-        } else {
-            terminal_native_text_style_signature(&self.label_style_attr)
-        }
-    }
-
-    fn terminal_label_background_signature(&self, html_labels: bool) -> String {
-        if html_labels {
-            terminal_signature([
-                self.label_background_div_style_prefix.as_str(),
-                self.label_background_fallback_fill
-                    .as_deref()
-                    .unwrap_or_default(),
-            ])
-        } else {
-            terminal_signature([self.label_background_style_attr.as_str()])
-        }
-    }
 }
 
 impl StateNodeStylePlan {
@@ -378,111 +344,6 @@ impl StateNodeStylePlan {
     pub(crate) const fn effect(&self) -> Option<&StateNodeEffectPlan> {
         self.effect.as_ref()
     }
-
-    fn terminal_shape_signature(
-        &self,
-        node: &StateDiagramRenderNode,
-        target: ThemeTarget,
-        compatibility: &StateCompatibilityPlan,
-    ) -> String {
-        let split_paths = target == ThemeTarget::Composite && compatibility.is_hand_drawn()
-            || matches!(
-                node.shape.as_str(),
-                "stateEnd" | "fork" | "join" | "choice" | "note"
-            )
-            || node.shape != "rectWithTitle" && compatibility.is_hand_drawn();
-        if split_paths {
-            terminal_signature([
-                self.fill_path_style_attr.as_str(),
-                self.stroke_path_style_attr.as_str(),
-            ])
-        } else if node.shape == "stateStart" {
-            terminal_signature([self.semantic_shape_style_attr.as_str()])
-        } else {
-            terminal_signature([self.shape_style_attr.as_str()])
-        }
-    }
-
-    fn terminal_label_signature(&self, html_labels: bool) -> String {
-        if html_labels {
-            terminal_signature([
-                self.label_style_attr.as_str(),
-                self.div_style_prefix.as_str(),
-            ])
-        } else {
-            terminal_native_text_style_signature(&self.label_style_attr)
-        }
-    }
-
-    fn terminal_composite_header_signature(
-        &self,
-        compatibility: &StateCompatibilityPlan,
-    ) -> String {
-        if compatibility.is_hand_drawn() {
-            terminal_signature([
-                self.composite_header_fill_path_style_attr.as_str(),
-                self.composite_header_stroke_path_style_attr.as_str(),
-            ])
-        } else {
-            terminal_signature([self.composite_header_style_attr.as_str()])
-        }
-    }
-
-    fn terminal_composite_header_label_signature(&self, html_labels: bool) -> String {
-        let style = if self.composite_header_text_style_attr.is_empty() {
-            self.label_style_attr.as_str()
-        } else {
-            self.composite_header_text_style_attr.as_str()
-        };
-        let div_style = if self.composite_header_text_div_style_prefix.is_empty() {
-            self.div_style_prefix.as_str()
-        } else {
-            self.composite_header_text_div_style_prefix.as_str()
-        };
-        if html_labels {
-            terminal_signature([style, div_style])
-        } else {
-            terminal_native_text_style_signature(style)
-        }
-    }
-
-    fn terminal_special_state_inner_signature(&self) -> String {
-        terminal_signature([
-            self.special_state_inner_fill_path_style_attr.as_str(),
-            self.special_state_inner_stroke_path_style_attr.as_str(),
-        ])
-    }
-}
-
-fn terminal_signature<'a>(parts: impl IntoIterator<Item = &'a str>) -> String {
-    parts
-        .into_iter()
-        .filter(|part| !part.trim().is_empty())
-        .collect::<Vec<_>>()
-        .join("\u{1f}")
-}
-
-fn terminal_native_text_style_signature(style: &str) -> String {
-    let mut declarations = Vec::new();
-    for declaration in style
-        .split(';')
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
-        let Some((property, value)) = declaration.split_once(':') else {
-            continue;
-        };
-        let property = if property.trim().eq_ignore_ascii_case("color") {
-            "fill"
-        } else {
-            property.trim()
-        };
-        let value = value.trim();
-        if !property.is_empty() && !value.is_empty() {
-            declarations.push(format!("{property}:{value}"));
-        }
-    }
-    declarations.join(";")
 }
 
 #[derive(Debug, Clone)]
@@ -505,7 +366,7 @@ pub(crate) struct StateStylePlan {
     effects: StateEffectPlan,
     residuals: Vec<SourceStyleResidual>,
     theme_evidence: FamilyThemeEvidence,
-    terminal_theme: StateThemeTerminalPlan,
+    terminal_theme: StateThemeOutcomes,
 }
 
 #[derive(Debug)]
@@ -514,7 +375,8 @@ struct StateThemeEvidenceBuilder<'a> {
     uses: Vec<StateThemeUse>,
     observed_targets: BTreeSet<ThemeTarget>,
     available_palettes: BTreeSet<ThemeTarget>,
-    consumed_palettes: BTreeMap<ThemeTarget, BTreeSet<StateThemeTerminalOccurrence>>,
+    consumed_palettes: BTreeMap<ThemeTarget, BTreeSet<StateThemeSurface>>,
+    residual_palettes: BTreeSet<ThemeTarget>,
     applied_effect_bindings: BTreeSet<StateEffectBindingKey>,
     residual_effect_bindings: BTreeSet<StateEffectBindingKey>,
     suppressed_effect_bindings: BTreeSet<StateEffectBindingKey>,
@@ -523,8 +385,7 @@ struct StateThemeEvidenceBuilder<'a> {
     config_typography_owned: BTreeSet<ThemeTypographyProperty>,
     base_typography_applied: BTreeSet<ThemeTypographyProperty>,
     base_typography_residual: BTreeSet<ThemeTypographyProperty>,
-    base_typography_occurrences:
-        BTreeMap<ThemeTypographyProperty, BTreeSet<StateThemeTerminalOccurrence>>,
+    base_typography_occurrences: BTreeMap<ThemeTypographyProperty, BTreeSet<StateThemeSurface>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -554,7 +415,7 @@ impl StateEffectBindingKey {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum StateThemePropertyOutcome {
-    PendingTerminal,
+    Selected,
     Applied,
     Residual(FamilyThemeResidualReason),
     SupersededBySource,
@@ -569,14 +430,14 @@ struct StateThemePropertyUse {
 
 #[derive(Debug)]
 struct StateThemeUse {
-    occurrence: StateThemeTerminalOccurrence,
+    occurrence: StateThemeSurface,
     properties: Vec<StateThemePropertyUse>,
 }
 
 #[derive(Debug)]
 struct StateThemeEvidenceResolution {
     planned: FamilyThemeEvidence,
-    pending_terminal: BTreeMap<FamilyThemeMechanismKey, StatePendingTerminalMechanism>,
+    selected_outcomes: BTreeMap<FamilyThemeMechanismKey, StateAppliedThemeOutcome>,
 }
 
 impl<'a> StateThemeEvidenceBuilder<'a> {
@@ -593,6 +454,7 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             observed_targets: BTreeSet::new(),
             available_palettes: BTreeSet::new(),
             consumed_palettes: BTreeMap::new(),
+            residual_palettes: BTreeSet::new(),
             applied_effect_bindings: BTreeSet::new(),
             residual_effect_bindings: BTreeSet::new(),
             suppressed_effect_bindings: BTreeSet::new(),
@@ -606,10 +468,15 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
     }
 
     fn observe_target(&mut self, target: ThemeTarget) {
-        self.observed_targets.insert(target);
+        if self.theme.is_some() {
+            self.observed_targets.insert(target);
+        }
     }
 
     fn observe_text(&mut self, target: ThemeTarget) {
+        if self.theme.is_none() {
+            return;
+        }
         self.has_visible_text = true;
         self.observe_target(ThemeTarget::Text);
         self.observe_target(target);
@@ -619,7 +486,8 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
         &mut self,
         semantic: Option<&ResolvedThemeStyle>,
         shadowed_source_properties: &BTreeSet<ResolvedStyleProperty>,
-        occurrence: StateThemeTerminalOccurrence,
+        occurrence: StateThemeSurface,
+        source: Option<&crate::text::VisibleTextStyleFacts>,
     ) {
         if self.base_typography_properties.is_empty() {
             return;
@@ -635,6 +503,10 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             {
                 continue;
             }
+            if source.is_some_and(|source| source_typography_is_unverified(source, *property)) {
+                self.base_typography_residual.insert(*property);
+                continue;
+            }
             match property {
                 ThemeTypographyProperty::FontStack
                 | ThemeTypographyProperty::FontSize
@@ -644,7 +516,7 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
                     self.base_typography_occurrences
                         .entry(*property)
                         .or_default()
-                        .insert(occurrence.clone());
+                        .insert(occurrence);
                 }
                 ThemeTypographyProperty::LetterSpacing
                 | ThemeTypographyProperty::WordSpacing
@@ -660,6 +532,81 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
                 }
             }
         }
+    }
+
+    fn observe_html_text_source(
+        &mut self,
+        use_id: Option<StateThemeUseId>,
+        source: &crate::text::VisibleTextStyleFacts,
+    ) {
+        let Some(use_id) = use_id else {
+            return;
+        };
+        for property in &mut self.uses[use_id.0].properties {
+            if matches!(
+                property.outcome,
+                StateThemePropertyOutcome::SupersededBySource
+            ) {
+                continue;
+            }
+            match property.property {
+                ResolvedStyleProperty::Fill => {
+                    if !source.parse_valid()
+                        || source.unverified_portable_color_run_count() != 0
+                        || (source.inherited_color_run_count() != 0
+                            && source.inherited_color_run_count() != source.visible_run_count())
+                    {
+                        property.outcome = StateThemePropertyOutcome::Residual(
+                            FamilyThemeResidualReason::UnsupportedPaint,
+                        );
+                    } else if source.has_visible_runs() && source.inherited_color_run_count() == 0 {
+                        property.outcome = StateThemePropertyOutcome::SupersededBySource;
+                    }
+                }
+                ResolvedStyleProperty::Typography(kind)
+                    if source_typography_is_unverified(source, kind) =>
+                {
+                    property.outcome = StateThemePropertyOutcome::Residual(
+                        FamilyThemeResidualReason::UnsupportedTypography,
+                    );
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn observe_html_palette_source(
+        &mut self,
+        target: ThemeTarget,
+        source: &crate::text::VisibleTextStyleFacts,
+    ) -> bool {
+        if source.parse_valid() && source.inherited_color_run_count() == source.visible_run_count()
+        {
+            return true;
+        }
+        if !source.parse_valid()
+            || source.unverified_portable_color_run_count() != 0
+            || source.inherited_color_run_count() != 0
+        {
+            self.residual_palettes.insert(target);
+        }
+        false
+    }
+}
+
+fn source_typography_is_unverified(
+    source: &crate::text::VisibleTextStyleFacts,
+    property: ThemeTypographyProperty,
+) -> bool {
+    if !source.parse_valid() {
+        return true;
+    }
+    match property {
+        ThemeTypographyProperty::FontStack => source.unverified_font_family_run_count() != 0,
+        ThemeTypographyProperty::FontSize => source.unverified_font_size_run_count() != 0,
+        ThemeTypographyProperty::FontWeight => source.unverified_font_weight_run_count() != 0,
+        ThemeTypographyProperty::FontStyle => source.unverified_font_style_run_count() != 0,
+        _ => false,
     }
 }
 
@@ -813,7 +760,6 @@ impl StateStylePlan {
             resolved_theme,
             compatibility.typography_config_owned.clone(),
         );
-        let mut terminal_expectations = Vec::new();
         let has_title = title.is_some_and(|value| !value.trim().is_empty());
         if has_title {
             theme_evidence.observe_text(ThemeTarget::Title);
@@ -860,7 +806,8 @@ impl StateStylePlan {
             theme_evidence.observe_base_typography_use(
                 semantic_title_text.as_ref(),
                 &BTreeSet::new(),
-                StateThemeTerminalOccurrence::Title,
+                StateThemeSurface::Title,
+                None,
             );
         }
         let title_fill_owned = compatibility.owns(
@@ -870,9 +817,8 @@ impl StateStylePlan {
         let title_style_attr = resolved_theme
             .zip(semantic_title_text.as_ref())
             .map(|(theme, style)| {
-                let use_id = has_title.then(|| {
-                    theme_evidence.consume_text_style(style, StateThemeTerminalOccurrence::Title)
-                });
+                let use_id = has_title
+                    .then(|| theme_evidence.consume_text_style(style, StateThemeSurface::Title));
                 if title_fill_owned {
                     theme_evidence.shadow_source_property(use_id, ResolvedStyleProperty::Fill);
                 }
@@ -887,12 +833,6 @@ impl StateStylePlan {
                 compact_style_attr(&emission)
             })
             .unwrap_or_default();
-        if has_title && !title_style_attr.is_empty() {
-            terminal_expectations.push(StateThemeTerminalExpectation::new(
-                StateThemeTerminalOccurrence::Title,
-                title_style_attr.clone(),
-            ));
-        }
 
         let semantic_transition_marker = resolve_theme_style(
             resolved_theme,
@@ -1002,34 +942,6 @@ impl StateStylePlan {
                 &mut effects,
                 work_meter,
             )?;
-            if participates {
-                terminal_expectations.push(StateThemeTerminalExpectation::new(
-                    StateThemeTerminalOccurrence::NodeShape(node.id.clone()),
-                    node_plan.terminal_shape_signature(node, target, &compatibility),
-                ));
-                if label_ordinal.is_some() && composite_header_ordinal.is_none() {
-                    terminal_expectations.push(StateThemeTerminalExpectation::new(
-                        StateThemeTerminalOccurrence::NodeLabel(node.id.clone()),
-                        node_plan.terminal_label_signature(html_labels),
-                    ));
-                }
-                if composite_header_ordinal.is_some() {
-                    terminal_expectations.push(StateThemeTerminalExpectation::new(
-                        StateThemeTerminalOccurrence::CompositeHeader(node.id.clone()),
-                        node_plan.terminal_composite_header_signature(&compatibility),
-                    ));
-                    terminal_expectations.push(StateThemeTerminalExpectation::new(
-                        StateThemeTerminalOccurrence::CompositeHeaderLabel(node.id.clone()),
-                        node_plan.terminal_composite_header_label_signature(html_labels),
-                    ));
-                }
-                if special_state_inner_ordinal.is_some() {
-                    terminal_expectations.push(StateThemeTerminalExpectation::new(
-                        StateThemeTerminalOccurrence::SpecialStateInner(node.id.clone()),
-                        node_plan.terminal_special_state_inner_signature(),
-                    ));
-                }
-            }
             nodes.insert(node.id.clone(), node_plan);
         }
 
@@ -1057,7 +969,7 @@ impl StateStylePlan {
                 }
             }
             let edge_plan = prepare_edge(
-                edge.id.as_str(),
+                &edge.label,
                 &base_text_style,
                 resolved_theme,
                 ordinal,
@@ -1068,35 +980,12 @@ impl StateStylePlan {
                 &mut theme_evidence,
                 work_meter,
             )?;
-            if ordinal.is_some() {
-                terminal_expectations.push(StateThemeTerminalExpectation::new(
-                    StateThemeTerminalOccurrence::EdgePath(edge.id.clone()),
-                    edge_plan.terminal_path_signature(),
-                ));
-                if marker_ordinal.is_some() && !edge_plan.marker_style_attr().is_empty() {
-                    terminal_expectations.push(StateThemeTerminalExpectation::new(
-                        StateThemeTerminalOccurrence::EdgeMarker(edge.id.clone()),
-                        edge_plan.terminal_marker_signature(),
-                    ));
-                }
-                if label_ordinal.is_some() {
-                    terminal_expectations.push(StateThemeTerminalExpectation::new(
-                        StateThemeTerminalOccurrence::EdgeLabel(edge.id.clone()),
-                        edge_plan.terminal_label_signature(html_labels),
-                    ));
-                    terminal_expectations.push(StateThemeTerminalExpectation::new(
-                        StateThemeTerminalOccurrence::EdgeLabelBackground(edge.id.clone()),
-                        edge_plan.terminal_label_background_signature(html_labels),
-                    ));
-                }
-            }
             edges.insert(edge.id.clone(), edge_plan);
         }
 
         let theme_resolution = theme_evidence.finish();
         let planned_theme_evidence = theme_resolution.planned;
-        let terminal_theme =
-            StateThemeTerminalPlan::new(terminal_expectations, theme_resolution.pending_terminal);
+        let terminal_theme = StateThemeOutcomes::new(theme_resolution.selected_outcomes);
         let plan = Self {
             compatibility,
             structured_typography,
@@ -1196,102 +1085,18 @@ impl StateStylePlan {
             .count()
     }
 
-    pub(crate) fn begin_terminal_theme_receipt(
-        &self,
-        include_nodes: bool,
-        include_edges: bool,
-    ) -> StateThemeTerminalReceipt {
+    pub(crate) fn record_output_visibility(&self, include_nodes: bool, include_edges: bool) {
         self.terminal_theme
-            .begin_receipt(include_nodes, include_edges)
-    }
-
-    pub(crate) fn record_terminal_theme_receipt(&self, receipt: StateThemeTerminalReceipt) -> bool {
-        self.terminal_theme.record_terminal(receipt)
+            .record_output_visibility(include_nodes, include_edges);
     }
 
     pub(crate) fn finish_theme_evidence(&self) -> FamilyThemeEvidence {
         self.terminal_theme.finish_evidence(&self.theme_evidence)
     }
 
-    pub(crate) fn record_title_terminal_emission(
-        &self,
-        receipt: &mut StateThemeTerminalReceipt,
-        emitted_range: std::ops::Range<usize>,
-    ) {
-        receipt.record_emission_if_expected(StateThemeTerminalOccurrence::Title, emitted_range);
-    }
-
-    pub(crate) fn record_node_terminal_emission(
-        &self,
-        receipt: &mut StateThemeTerminalReceipt,
-        node_id: &str,
-        emitted_range: std::ops::Range<usize>,
-    ) {
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::NodeShape(node_id.to_string()),
-            emitted_range.clone(),
-        );
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::NodeLabel(node_id.to_string()),
-            emitted_range.clone(),
-        );
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::CompositeHeader(node_id.to_string()),
-            emitted_range.clone(),
-        );
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::CompositeHeaderLabel(node_id.to_string()),
-            emitted_range.clone(),
-        );
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::SpecialStateInner(node_id.to_string()),
-            emitted_range,
-        );
-    }
-
-    pub(crate) fn record_edge_path_terminal_emission(
-        &self,
-        receipt: &mut StateThemeTerminalReceipt,
-        edge_id: &str,
-        emitted_range: std::ops::Range<usize>,
-    ) {
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::EdgePath(edge_id.to_string()),
-            emitted_range,
-        );
-    }
-
-    pub(crate) fn record_edge_marker_terminal_emission(
-        &self,
-        receipt: &mut StateThemeTerminalReceipt,
-        edge_id: &str,
-        emitted_range: std::ops::Range<usize>,
-    ) {
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::EdgeMarker(edge_id.to_string()),
-            emitted_range,
-        );
-    }
-
-    pub(crate) fn record_edge_label_terminal_emission(
-        &self,
-        receipt: &mut StateThemeTerminalReceipt,
-        edge_id: &str,
-        emitted_range: std::ops::Range<usize>,
-    ) {
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::EdgeLabel(edge_id.to_string()),
-            emitted_range.clone(),
-        );
-        receipt.record_emission_if_expected(
-            StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.to_string()),
-            emitted_range,
-        );
-    }
-
     #[cfg(test)]
     pub(crate) fn finish_theme_evidence_for_plan_test(&self) -> FamilyThemeEvidence {
-        self.terminal_theme.record_complete_for_plan_test();
+        self.record_output_visibility(true, true);
         self.finish_theme_evidence()
     }
 
@@ -1326,7 +1131,7 @@ impl StateThemeEvidenceBuilder<'_> {
         &mut self,
         style: &ResolvedThemeStyle,
         geometry: StateGeometrySupport,
-        occurrence: StateThemeTerminalOccurrence,
+        occurrence: StateThemeSurface,
     ) -> StateThemeUseId {
         let use_id = self.begin_use(style, occurrence);
         self.consume_paint(
@@ -1390,7 +1195,7 @@ impl StateThemeEvidenceBuilder<'_> {
     fn consume_text_style(
         &mut self,
         style: &ResolvedThemeStyle,
-        occurrence: StateThemeTerminalOccurrence,
+        occurrence: StateThemeSurface,
     ) -> StateThemeUseId {
         let use_id = self.begin_use(style, occurrence);
         self.consume_paint(
@@ -1484,7 +1289,7 @@ impl StateThemeEvidenceBuilder<'_> {
     fn consume_html_background_style(
         &mut self,
         style: &ResolvedThemeStyle,
-        occurrence: StateThemeTerminalOccurrence,
+        occurrence: StateThemeSurface,
     ) -> StateThemeUseId {
         let use_id = self.begin_use(style, occurrence);
         self.consume_paint(
@@ -1574,11 +1379,7 @@ impl StateThemeEvidenceBuilder<'_> {
         color
     }
 
-    fn record_series_color_emission(
-        &mut self,
-        target: ThemeTarget,
-        occurrence: StateThemeTerminalOccurrence,
-    ) {
+    fn record_series_color_emission(&mut self, target: ThemeTarget, occurrence: StateThemeSurface) {
         self.consumed_palettes
             .entry(target)
             .or_default()
@@ -1665,11 +1466,11 @@ impl StateThemeEvidenceBuilder<'_> {
 
     fn finish(self) -> StateThemeEvidenceResolution {
         let mut evidence = FamilyThemeEvidence::from_theme(self.theme);
-        let mut pending_terminal = BTreeMap::new();
+        let mut selected_outcomes = BTreeMap::new();
         let Some(theme) = self.theme else {
             return StateThemeEvidenceResolution {
                 planned: evidence,
-                pending_terminal,
+                selected_outcomes,
             };
         };
 
@@ -1689,9 +1490,9 @@ impl StateThemeEvidenceBuilder<'_> {
                     if occurrences.is_empty() {
                         evidence.mark_not_applicable(key);
                     } else {
-                        pending_terminal.insert(
+                        selected_outcomes.insert(
                             key,
-                            StatePendingTerminalMechanism {
+                            StateAppliedThemeOutcome {
                                 capabilities: typography_capabilities(&BTreeSet::from([*property])),
                                 occurrences,
                             },
@@ -1704,22 +1505,18 @@ impl StateThemeEvidenceBuilder<'_> {
         }
 
         let mut consumed_rules = BTreeMap::<usize, BTreeSet<ResolvedStyleProperty>>::new();
-        let mut pending_rules = BTreeMap::<
-            usize,
-            (
-                BTreeSet<ResolvedStyleProperty>,
-                BTreeSet<StateThemeTerminalOccurrence>,
-            ),
-        >::new();
+        let mut selected_rules =
+            BTreeMap::<usize, (BTreeSet<ResolvedStyleProperty>, BTreeSet<StateThemeSurface>)>::new(
+            );
         let mut residual_rules = BTreeMap::new();
         for use_record in &self.uses {
             for property in &use_record.properties {
                 match property.outcome {
-                    StateThemePropertyOutcome::PendingTerminal => {
+                    StateThemePropertyOutcome::Selected => {
                         let (properties, occurrences) =
-                            pending_rules.entry(property.rule_index).or_default();
+                            selected_rules.entry(property.rule_index).or_default();
                         properties.insert(property.property);
-                        occurrences.insert(use_record.occurrence.clone());
+                        occurrences.insert(use_record.occurrence);
                     }
                     StateThemePropertyOutcome::Applied => {
                         consumed_rules
@@ -1742,12 +1539,12 @@ impl StateThemeEvidenceBuilder<'_> {
             };
             if let Some(reason) = residual_rules.get(&index).copied() {
                 evidence.mark_residual(key, reason);
-            } else if let Some((pending_properties, occurrences)) = pending_rules.get(&index) {
+            } else if let Some((selected_properties, occurrences)) = selected_rules.get(&index) {
                 let mut properties = consumed_rules.get(&index).cloned().unwrap_or_default();
-                properties.extend(pending_properties.iter().copied());
-                pending_terminal.insert(
+                properties.extend(selected_properties.iter().copied());
+                selected_outcomes.insert(
                     key,
-                    StatePendingTerminalMechanism {
+                    StateAppliedThemeOutcome {
                         capabilities: rule_capabilities(theme, rule, &properties),
                         occurrences: occurrences.clone(),
                     },
@@ -1764,10 +1561,12 @@ impl StateThemeEvidenceBuilder<'_> {
 
         for target in theme.family_ordinal_palette_targets() {
             let key = FamilyThemeMechanismKey::OrdinalPalette { target };
-            if let Some(occurrences) = self.consumed_palettes.get(&target) {
-                pending_terminal.insert(
+            if self.residual_palettes.contains(&target) {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedOrdinalPalette);
+            } else if let Some(occurrences) = self.consumed_palettes.get(&target) {
+                selected_outcomes.insert(
                     key,
-                    StatePendingTerminalMechanism {
+                    StateAppliedThemeOutcome {
                         capabilities: BTreeSet::from([ThemeCapability::SolidPaint]),
                         occurrences: occurrences.clone(),
                     },
@@ -1803,14 +1602,14 @@ impl StateThemeEvidenceBuilder<'_> {
 
         StateThemeEvidenceResolution {
             planned: evidence,
-            pending_terminal,
+            selected_outcomes,
         }
     }
 
     fn begin_use(
         &mut self,
         style: &ResolvedThemeStyle,
-        occurrence: StateThemeTerminalOccurrence,
+        occurrence: StateThemeSurface,
     ) -> StateThemeUseId {
         let use_id = StateThemeUseId(self.uses.len());
         let properties = style
@@ -2054,7 +1853,7 @@ impl StateThemeEvidenceBuilder<'_> {
                 use_id,
                 origin.rule_index(),
                 ResolvedStyleProperty::Typography(property),
-                StateThemePropertyOutcome::PendingTerminal,
+                StateThemePropertyOutcome::Selected,
             );
         }
     }
@@ -2070,7 +1869,7 @@ impl StateThemeEvidenceBuilder<'_> {
                 use_id,
                 origin.rule_index(),
                 kind,
-                StateThemePropertyOutcome::PendingTerminal,
+                StateThemePropertyOutcome::Selected,
             );
         }
     }
@@ -2395,11 +2194,7 @@ fn prepare_node(
         .flatten();
     let geometry_support = state_geometry_support(node);
     let shape_use = ordinal.zip(semantic_shape.as_ref()).map(|(_, style)| {
-        theme_evidence.consume_shape_style(
-            style,
-            geometry_support,
-            StateThemeTerminalOccurrence::NodeShape(node.id.clone()),
-        )
+        theme_evidence.consume_shape_style(style, geometry_support, StateThemeSurface::Node)
     });
     let effect = shape_use.and_then(|use_id| {
         let theme = resolved_theme?;
@@ -2419,11 +2214,7 @@ fn prepare_node(
     let label_use = label_ordinal
         .zip(semantic_label.as_ref())
         .map(|(_, style)| {
-            let occurrence = if target == ThemeTarget::Composite {
-                StateThemeTerminalOccurrence::CompositeHeaderLabel(node.id.clone())
-            } else {
-                StateThemeTerminalOccurrence::NodeLabel(node.id.clone())
-            };
+            let occurrence = StateThemeSurface::Node;
             theme_evidence.consume_text_style(style, occurrence)
         });
     if shape_fill_owned {
@@ -2453,7 +2244,7 @@ fn prepare_node(
             theme_evidence.consume_shape_style(
                 style,
                 StateGeometrySupport::NONE,
-                StateThemeTerminalOccurrence::CompositeHeader(node.id.clone()),
+                StateThemeSurface::Node,
             )
         });
     if composite_header_fill_owned {
@@ -2485,7 +2276,7 @@ fn prepare_node(
             theme_evidence.consume_shape_style(
                 style,
                 StateGeometrySupport::NONE,
-                StateThemeTerminalOccurrence::SpecialStateInner(node.id.clone()),
+                StateThemeSurface::Node,
             )
         });
     if special_state_inner_fill_owned {
@@ -2822,31 +2613,45 @@ fn prepare_node(
     }
     label_typography.canonicalize_emission(&mut label_emission);
 
+    let label_source =
+        (resolved_theme.is_some() && compatibility.html_labels() && label_ordinal.is_some())
+            .then(|| {
+                let mut text = node
+                    .label
+                    .as_ref()
+                    .map(super::state_value_to_label_text)
+                    .unwrap_or_else(|| node.id.clone());
+                if node.shape == "rectWithTitle"
+                    && let Some(description) = &node.description
+                {
+                    text.push_str("<br/>");
+                    text.push_str(&description.join("<br/>"));
+                }
+                super::state_label_source_style_facts(&text)
+            })
+            .flatten();
+    if let Some(source) = &label_source {
+        theme_evidence.observe_html_text_source(label_use, source);
+        if label_uses_series_color {
+            label_uses_series_color =
+                theme_evidence.observe_html_palette_source(label_target, source);
+        }
+    }
     if label_ordinal.is_some() {
-        let occurrence = if target == ThemeTarget::Composite {
-            StateThemeTerminalOccurrence::CompositeHeaderLabel(node.id.clone())
-        } else {
-            StateThemeTerminalOccurrence::NodeLabel(node.id.clone())
-        };
+        let occurrence = StateThemeSurface::Node;
         theme_evidence.observe_base_typography_use(
             semantic_label.as_ref(),
             &shadowed_label_properties,
             occurrence,
+            label_source.as_ref(),
         );
     }
 
     if fill_uses_series_color {
-        theme_evidence.record_series_color_emission(
-            target,
-            StateThemeTerminalOccurrence::NodeShape(node.id.clone()),
-        );
+        theme_evidence.record_series_color_emission(target, StateThemeSurface::Node);
     }
     if label_uses_series_color {
-        let occurrence = if target == ThemeTarget::Composite {
-            StateThemeTerminalOccurrence::CompositeHeaderLabel(node.id.clone())
-        } else {
-            StateThemeTerminalOccurrence::NodeLabel(node.id.clone())
-        };
+        let occurrence = StateThemeSurface::Node;
         theme_evidence.record_series_color_emission(label_target, occurrence);
     }
 
@@ -2959,7 +2764,7 @@ fn css_opacity_is_valid_zero(value: &str) -> bool {
     reason = "Edge preparation receives distinct source, theme, text, and work inputs"
 )]
 fn prepare_edge(
-    edge_id: &str,
+    label_source: &str,
     base_text_style: &TextStyle,
     resolved_theme: Option<&ResolvedDiagramTheme>,
     ordinal: Option<usize>,
@@ -3016,7 +2821,7 @@ fn prepare_edge(
         let use_id = theme_evidence.consume_shape_style(
             style,
             StateGeometrySupport::NONE,
-            StateThemeTerminalOccurrence::EdgePath(edge_id.to_string()),
+            StateThemeSurface::Edge,
         );
         if transition_stroke_owned {
             theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Stroke);
@@ -3032,10 +2837,8 @@ fn prepare_edge(
         && let Some(color) = series_stroke
     {
         append_style_declaration(&mut path_style_attr, "stroke", color);
-        theme_evidence.record_series_color_emission(
-            ThemeTarget::Transition,
-            StateThemeTerminalOccurrence::EdgePath(edge_id.to_string()),
-        );
+        theme_evidence
+            .record_series_color_emission(ThemeTarget::Transition, StateThemeSurface::Edge);
     }
     let semantic_marker = resolve_theme_style(
         resolved_theme,
@@ -3056,7 +2859,7 @@ fn prepare_edge(
         let use_id = theme_evidence.consume_shape_style(
             style,
             StateGeometrySupport::NONE,
-            StateThemeTerminalOccurrence::EdgeMarker(edge_id.to_string()),
+            StateThemeSurface::Edge,
         );
         if marker_fill_owned {
             theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Fill);
@@ -3082,15 +2885,12 @@ fn prepare_edge(
         && let Some(style) = semantic_label_background.as_ref()
     {
         let use_id = if html_labels {
-            theme_evidence.consume_html_background_style(
-                style,
-                StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.to_string()),
-            )
+            theme_evidence.consume_html_background_style(style, StateThemeSurface::Edge)
         } else {
             theme_evidence.consume_shape_style(
                 style,
                 StateGeometrySupport::NONE,
-                StateThemeTerminalOccurrence::EdgeLabelBackground(edge_id.to_string()),
+                StateThemeSurface::Edge,
             )
         };
         if label_background_fill_owned {
@@ -3110,16 +2910,18 @@ fn prepare_edge(
         label_ordinal,
         work_meter,
     )?;
+    let source = (resolved_theme.is_some() && html_labels && label_ordinal.is_some())
+        .then(|| super::state_label_source_style_facts(label_source))
+        .flatten();
     let mut label_emission = IndexMap::<String, EmittedDeclaration>::new();
     if let Some((theme, style)) = resolved_theme.zip(semantic_label.as_ref()) {
-        let use_id = label_ordinal.map(|_| {
-            theme_evidence.consume_text_style(
-                style,
-                StateThemeTerminalOccurrence::EdgeLabel(edge_id.to_string()),
-            )
-        });
+        let use_id = label_ordinal
+            .map(|_| theme_evidence.consume_text_style(style, StateThemeSurface::Edge));
         if label_fill_owned {
             theme_evidence.shadow_source_property(use_id, ResolvedStyleProperty::Fill);
+        }
+        if let Some(source) = &source {
+            theme_evidence.observe_html_text_source(use_id, source);
         }
         append_theme_base_text_emission(theme, &mut label_emission);
         append_semantic_text_emission(style, &mut label_emission);
@@ -3136,10 +2938,14 @@ fn prepare_edge(
         if let Some(color) = color {
             insert_emitted(&mut label_emission, "color", color);
         }
-        if color_uses_series {
+        if color_uses_series
+            && source.as_ref().is_none_or(|source| {
+                theme_evidence.observe_html_palette_source(ThemeTarget::TransitionLabel, source)
+            })
+        {
             theme_evidence.record_series_color_emission(
                 ThemeTarget::TransitionLabel,
-                StateThemeTerminalOccurrence::EdgeLabel(edge_id.to_string()),
+                StateThemeSurface::Edge,
             );
         }
     }
@@ -3147,7 +2953,8 @@ fn prepare_edge(
         theme_evidence.observe_base_typography_use(
             semantic_label.as_ref(),
             &BTreeSet::new(),
-            StateThemeTerminalOccurrence::EdgeLabel(edge_id.to_string()),
+            StateThemeSurface::Edge,
+            source.as_ref(),
         );
     }
     let label_typography = ResolvedLabelTypography::new(resolve_semantic_text_style(
@@ -3897,6 +3704,64 @@ mod tests {
             }],
         )
         .expect("valid shadow graph")
+    }
+
+    #[test]
+    fn html_author_paint_is_owned_by_the_source_or_remains_unknown() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::StateLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
+        let key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::StateLabel,
+        };
+        for (label, applied, source_owned, unknown) in [
+            ("Ready", true, false, false),
+            (
+                "<span style='color:#abcdef'>Ready</span>",
+                false,
+                true,
+                false,
+            ),
+            ("<span class='host'>Ready</span>", false, false, true),
+            (
+                "<span style='color:var(--ink)'>Ready</span>",
+                false,
+                false,
+                true,
+            ),
+        ] {
+            let mut model = StateDiagramRenderModel::default();
+            let mut node = semantic_node("Ready", "rect");
+            node.label = Some(json!(label));
+            model.nodes.push(node);
+            let (_, evidence) = resolve_theme_plan_with_evidence(
+                &model,
+                &json!({"htmlLabels": true}),
+                &resolved,
+                None,
+            );
+            assert_eq!(evidence.applied().contains(&key), applied, "{label}");
+            assert_eq!(
+                evidence.not_applicable_mechanisms().contains(&key),
+                source_owned,
+                "{label}"
+            );
+            assert_eq!(
+                evidence.residuals().iter().any(|item| item.key() == &key),
+                unknown,
+                "{label}"
+            );
+        }
     }
 
     #[test]

@@ -37,13 +37,14 @@ than maintaining a separate copy. Earlier records still require fresh execution.
 The workspace-only Rust runner executes the exact Brutalist and Spotless catalog
 recipes on the declared `native-flowchart-state-sequence-system-fonts-v1` profile for
 Flowchart/State/Sequence SVG and PNG. It checks terminal styles, raster coverage and label ink,
-admission reasons, residuals, and artifact/resource identity.
+admission reasons, residuals, and actual source, recipe, font-catalog and artifact identity.
 State PNG uses 1x; Flowchart and Sequence use 4x so thin lines and label paint remain observable.
 Flowchart places its labeled edge inside a contrasting subgraph: missing or incorrectly faded
 label paint must fail the raster check. Its opaque typed background owns its alpha, so the current
 qualifier requires opacity 1 and authored RGB pixels without Mermaid's legacy 0.5 fade.
-The first-release qualification schema is 1. Unpublished earlier receipts cannot acquire
-Flowchart cells: source, profile, and complete replayed record identities must match. Each observation records its
+The qualification record, Rust execution summary, profile revision and archive companion use
+schema 2. Schema-1 records must be regenerated; no placeholder digests or compatibility defaults
+upgrade old evidence. Earlier records cannot acquire current cells: source, profile, and complete replayed record identities must match. Each observation records its
 scenario's `png_scale`; SVG remains in diagram units.
 The profile requires working system fonts and reports **HostDependent**. It does not bundle a font,
 inject rules, or claim portable output. See [coverage](diagram-theme-coverage.md) for other families.
@@ -56,7 +57,7 @@ system fonts, classic Flowchart and Sequence looks, Dagre for Flowchart, the ori
 recipe and default resource limits. Successful observations remain **HostDependent**. State is not
 part of this profile.
 
-The existing sealed SVG observer checks canvas paint, gradient/grid geometry and compositing;
+The private runner observes its actual immutable SVG and checks canvas paint, gradient/grid geometry and compositing;
 family-specific surfaces, borders, typography, series order, markers and label ownership; and
 the bound glow primitives, colors and composition chain. Internal filter-result names may change
 when their connections remain equivalent. These are fixed writer/scenario checks, not a general
@@ -87,23 +88,24 @@ python3 scripts/qualify_theme_presets.py --check target/preset-qualification.jso
 Add `--cli path/to/merman-cli` to both commands to qualify an existing production CLI on this
 host. The checker sends each Rust-owned source through `render --theme-preset`, uses the declared
 PNG scale and `resvg-safe` SVG pipeline, and requires exact output bytes. It reuses the bounded
-release-process runner; it does not interpret SVG/CSS or reconstruct renderer receipts. A missing
+release-process runner; it does not interpret SVG/CSS or reconstruct runtime receipts. A missing
 observation, changed source/output, or executable replacement rejects qualification.
 
-The schema-1 record contains:
+The schema-2 record contains:
 
 - The clean source commit and lockfile digest.
 - The actual executable digest identified by Cargo's artifact output, build command, Rust toolchain,
-  and host identity. The source commit and binary bind compiler, renderer, writer, target-receipt
-  encoding, and qualification code together without maintaining another source dependency graph.
-- Each preset's qualification profile/schema and exact recipe/resource fingerprints.
+  and host identity. The source commit and binary bind compiler, renderer, writer and qualification
+  code together without maintaining another source dependency graph.
+- Each preset's qualification profile/schema and compiled recipe/font-catalog fingerprints.
 - Each declared source text/digest, family, target, admission status/reasons, font source, residual counts, and
-  document/artifact/target-evidence/target-receipt digests produced by the Rust runner.
+  SHA-256 of its actual output bytes, computed by the private runner. Production outputs do not
+  generate document, target-evidence or target-receipt digest chains for qualification.
 - When `--cli` is supplied, its executable digest, render configuration, SVG pipeline, and count
   of outputs that matched the qualified bytes. `cli: null` makes the absence of this check explicit.
 
 `--check` rebuilds and reruns the same production qualification before comparing the full record.
-A changed commit, executable, toolchain, host, font-dependent artifact, or nested receipt rejects
+A changed commit, executable, toolchain, host, font-dependent artifact, or nested observation rejects
 replay. Source, lockfile, and executable identity are also checked across each execution. Run this
 in a dedicated checkout without concurrent source edits. The record has no signature and is not
 accepted as authority by deserializing it: a successful check requires a fresh execution.
@@ -112,6 +114,22 @@ A record is specific to the checkout/build path and host where it was made; debu
 metadata may change the binary digest in another checkout. Generate that candidate's own record
 rather than weakening the comparison. Store records as CI artifacts or under ignored `target/`,
 not as self-updating checked-in source fixtures.
+
+## Runtime and qualification ownership
+
+The non-published `merman-theme-acceptance` crate owns SVG/CSS observations and scenario mutation
+checks. It parses the exact SVG retained by the runner; ordinary production output carries no
+acceptance observer, observation checksum or second content-identity chain. Runtime target outcomes
+still supply the real artifact kind, admission status, reasons and font source. The runner hashes
+actual source and SVG/PNG bytes, and the Python wrapper binds the executable, source revision and
+lockfile. Compiled recipe/font-catalog fingerprints identify the theme actually selected for the
+run; they do not certify family application or portable output. The compiled font catalog is not
+a hash of the host's installed fonts; host identity and actual font-dependent output hashes remain
+part of replay.
+
+The retired prepared-text marker protocol has no qualification requirement. Live mathematical
+rendering, font availability, actual native text, labels, effects and raster contribution checks
+remain part of the declared scenarios.
 
 ## Release preflight
 
@@ -174,8 +192,7 @@ constructors now require the profile and admission arguments; there is no implic
 
 Constructing a Rust cell is only constructing metadata, not issuing proof. Built-in scopes remain
 empty. The archive companion below projects fresh evidence only for its declared profile and actual
-artifact build. Flowchart now reports HostDependent without bridge residuals for the fixed
-native-candidate admission sources; qualification additionally checks the declared title, subgraph,
+artifact build. Flowchart reports HostDependent for the fixed native-candidate admission sources; qualification additionally checks the declared title, subgraph,
 node, and labeled-edge scenario. Sequence retains unsupported
 generic-text requests only where completed role writers do not cover their fills, or other
 requested facets remain unsupported. The seven retained compatibility recipes and the fixed 18-cell C6a ledger keep
@@ -196,13 +213,14 @@ SVG/PNG cells: Flowchart/State/Sequence for Brutalist and Spotless, and Flowchar
 for Cyberpunk. A mismatch in production metadata or output bytes rejects the join.
 The three native candidates retain alpha maturity and report `host_dependent` under the declared
 system-font profile; the seven retained presets keep empty scope. The companion binds the final
-archive and executable hashes, source revision, host, recipe/resource identities, and scenario
-conditions. It excludes private target receipts and does not modify the binary or archive.
+archive and executable hashes, source revision, host, recipe/font-catalog identities, and scenario
+conditions. It excludes private scenario checks and does not modify the binary or archive.
 
 The archive `--preset-qualification-check` mode reruns qualification and checks both the execution
 record and its companion. Missing or stale companions reject verification. A standalone
 `qualify_theme_presets.py --cli` run keeps its artifact catalog inside the execution record; only
-archive verification emits the archive-bound companion. Qualification records use schema 1.
+archive verification emits the archive-bound companion. Qualification records and archive companions use schema 2; the embedded production preset catalog
+remains schema 1.
 
 Production Rust and SDK discovery continues to expose the shared unqualified catalog. A downloaded
 JSON file is not itself a qualification authority: consumers need its trusted release provenance

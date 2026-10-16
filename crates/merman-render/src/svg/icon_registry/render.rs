@@ -293,10 +293,10 @@ fn render_resolved_icon_inner(
                 .checkpoint(OperationPhase::Postprocess)
                 .map_err(crate::Error::from)
         },
-        &mut |elements, tree_depth| {
+        &mut |elements, _tree_depth| {
             request
                 .work_meter
-                .preflight_svg_structure(elements, tree_depth, OperationPhase::Postprocess)
+                .preflight_svg_element_count(elements, OperationPhase::Postprocess)
                 .map_err(crate::Error::from)
         },
     );

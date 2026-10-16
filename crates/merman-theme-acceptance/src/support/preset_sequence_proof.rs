@@ -1,15 +1,15 @@
 //! Exact catalog Sequence scenario, using the existing C6 observers and raster decoder.
 
+use crate::svg_observation::SvgArtifactObservation;
 use merman::__theme_acceptance::TargetArtifactView;
 use merman::svg::ThemePreset;
 use merman::{RasterOutput, RenderedDocument};
-use merman_render::__private::SvgArtifactReceipt;
 
 use super::state_proof::verify_host_admission;
 use crate::observation::C6TargetArtifact;
 use crate::runner::{
     C6ProofError, C6ProofResult,
-    artifact_observation::sealed_svg_receipt,
+    artifact_observation::observed_svg,
     c6_sequence_proof::{
         SequenceLineProofStyle, SequenceProofContract, SequenceRectProofStyle,
         prove_sequence_png_with_raster, prove_sequence_svg, require_exact_writer_declaration,
@@ -110,7 +110,7 @@ pub(super) fn verify(
         font_family: None,
     };
     let artifact = C6TargetArtifact::new(TargetArtifactView::from_rendered_document(document));
-    let observed = sealed_svg_receipt(&artifact)?;
+    let observed = observed_svg(&artifact)?;
     check_labels(observed, palette)?;
     let proof = prove_sequence_svg(contract, &artifact)?;
     let raster = prove_sequence_png_with_raster(
@@ -147,7 +147,7 @@ pub(super) fn verify(
     Ok(())
 }
 
-fn check_labels(receipt: &SvgArtifactReceipt, palette: Palette) -> C6ProofResult<()> {
+fn check_labels(receipt: &SvgArtifactObservation, palette: Palette) -> C6ProofResult<()> {
     let root = receipt
         .root_id()
         .ok_or_else(|| C6ProofError::new("preset-sequence-root", "missing root ID"))?;
@@ -235,7 +235,6 @@ mod tests {
         Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest, Renderer,
         TargetAdmissionReason, TargetAdmissionStatus,
     };
-    use sha2::Digest as _;
 
     #[test]
     fn neo_sequence_preserves_note_pixels_and_rejects_mixed_filter_evidence() {
@@ -262,7 +261,7 @@ mod tests {
             };
             let artifact =
                 C6TargetArtifact::new(TargetArtifactView::from_rendered_document(&document));
-            let observed = sealed_svg_receipt(&artifact).unwrap();
+            let observed = observed_svg(&artifact).unwrap();
             assert!(observed.elements().iter().any(|node| {
                 node.tag_name() == "rect"
                     && node.has_class("note")
@@ -308,20 +307,12 @@ mod tests {
             panic!("missing Sequence document")
         };
         let palette = Palette::for_preset(ThemePreset::Spotless).unwrap();
-        let receipt = SvgArtifactReceipt::observe_svg_for_test(
-            document.svg(),
-            sha2::Sha256::digest(document.svg().as_bytes()).into(),
-        )
-        .unwrap();
+        let receipt = SvgArtifactObservation::observe(document.svg()).unwrap();
         check_labels(&receipt, palette).unwrap();
         for (old, new) in [("Hello", "Changed"), ("Remember", "")] {
             assert!(document.svg().contains(old));
             let changed = document.svg().replace(old, new);
-            let receipt = SvgArtifactReceipt::observe_svg_for_test(
-                &changed,
-                sha2::Sha256::digest(changed.as_bytes()).into(),
-            )
-            .unwrap();
+            let receipt = SvgArtifactObservation::observe(&changed).unwrap();
             let error = check_labels(&receipt, palette).unwrap_err();
             assert!(error.to_string().contains("preset-sequence-label"));
         }

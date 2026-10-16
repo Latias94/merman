@@ -319,7 +319,6 @@ gitGraph
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -801,7 +800,6 @@ fn gitgraph_direct_font_stack_is_not_bounded_by_the_legacy_assignment_ceiling() 
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 fn has_class(node: &roxmltree::Node<'_, '_>, class: &str) -> bool {
@@ -1701,7 +1699,6 @@ fn gitgraph_qualified_edge_stroke_accounts_only_real_default_occurrence_winners(
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1823,7 +1820,6 @@ fn gitgraph_node_palette_strokes_survive_static_node_stroke_on_its_actual_tag_su
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -3134,7 +3130,6 @@ fn gitgraph_node_stroke_reaches_tag_terminal_without_compatibility_residuals() {
         assert_eq!(evidence.applied_count(), 1, "{theme_name}");
         assert_eq!(evidence.not_applicable_count(), 0, "{theme_name}");
         assert_eq!(evidence.theme_residual_count(), 0, "{theme_name}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "{theme_name}");
     }
 }
 
@@ -3197,7 +3192,6 @@ fn gitgraph_node_stroke_preserves_state_fill_across_themes_and_default_selectors
                 assert_eq!(evidence.applied_count(), 1);
                 assert_eq!(evidence.not_applicable_count(), 0);
                 assert_eq!(evidence.theme_residual_count(), 0);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
             }
         }
     }
@@ -3251,7 +3245,6 @@ fn gitgraph_node_stroke_respects_only_the_selected_source_or_config_owner() {
                     assert_eq!(evidence.applied_count(), usize::from(!owned));
                     assert_eq!(evidence.not_applicable_count(), usize::from(owned));
                     assert_eq!(evidence.theme_residual_count(), 0);
-                    assert_eq!(evidence.compatibility_residual_count(), 0);
                 },
             );
         }
@@ -3296,7 +3289,6 @@ fn gitgraph_node_stroke_requires_a_visible_unowned_terminal() {
                 assert_eq!(evidence.applied_count(), 0, "{case}/{owner}");
                 assert_eq!(evidence.not_applicable_count(), 1, "{case}/{owner}");
                 assert_eq!(evidence.theme_residual_count(), 0, "{case}/{owner}");
-                assert_eq!(evidence.compatibility_residual_count(), 0, "{case}/{owner}");
             },
         );
     }
@@ -3427,7 +3419,6 @@ fn gitgraph_node_stroke_respects_gradient_fallback_and_explicit_stop_owners() {
                     "{case}/{owner}"
                 );
                 assert_eq!(evidence.theme_residual_count(), 0, "{case}/{owner}");
-                assert_eq!(evidence.compatibility_residual_count(), 0, "{case}/{owner}");
             },
         );
     }
@@ -3488,7 +3479,6 @@ fn gitgraph_node_fill_and_stroke_do_not_certify_an_unsupported_font() {
             assert_eq!(evidence.applied_count(), 0);
             assert_eq!(evidence.not_applicable_count(), 0);
             assert_eq!(evidence.theme_residual_count(), 1);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
             let error = match try_render_gitgraph_with_theme_and_engine(
                 source,
                 &theme,
@@ -3568,7 +3558,6 @@ fn gitgraph_static_node_stroke_and_palette_keep_terminal_ownership_in_either_ord
             assert_eq!(evidence.applied_count(), 2);
             assert_eq!(evidence.not_applicable_count(), 0);
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -3635,7 +3624,6 @@ fn gitgraph_node_fill_and_stroke_preserve_property_level_source_and_config_owner
                         assert_eq!(evidence.applied_count(), usize::from(!entirely_owned));
                         assert_eq!(evidence.not_applicable_count(), usize::from(entirely_owned));
                         assert_eq!(evidence.theme_residual_count(), 0);
-                        assert_eq!(evidence.compatibility_residual_count(), 0);
                     },
                 );
             }
@@ -3695,7 +3683,6 @@ fn gitgraph_node_fill_and_stroke_are_independently_portable_in_the_same_rule() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 
     let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
@@ -3722,7 +3709,6 @@ fn gitgraph_node_fill_and_stroke_are_independently_portable_in_the_same_rule() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let rendered = try_render_gitgraph_with_theme_and_engine(
         source,
@@ -3741,7 +3727,6 @@ fn gitgraph_node_fill_and_stroke_are_independently_portable_in_the_same_rule() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

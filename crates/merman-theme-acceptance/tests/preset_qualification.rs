@@ -16,7 +16,7 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
         assert_eq!(report.preset(), preset);
         assert_eq!(report.recipe_fingerprint(), theme.recipe_fingerprint());
         assert_eq!(
-            report.resource_fingerprint(),
+            report.font_catalog_fingerprint(),
             theme.report().font_catalog_fingerprint().as_bytes()
         );
         assert_eq!(report.observations().len(), 6);
@@ -36,16 +36,9 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
         for (pair, family) in report.observations().chunks_exact(2).zip(families) {
             assert_eq!(pair[0].artifact_kind(), RenderArtifactKind::Svg);
             assert_eq!(pair[1].artifact_kind(), RenderArtifactKind::Png);
-            assert_eq!(
-                pair[0].target_receipt().document_digest(),
-                pair[1].target_receipt().document_digest()
-            );
             assert_eq!(pair[0].source_digest(), pair[1].source_digest());
             assert_ne!(pair[0].source_digest(), &[0; 32]);
-            assert_ne!(
-                pair[0].target_receipt().artifact_digest(),
-                pair[1].target_receipt().artifact_digest()
-            );
+            assert_ne!(pair[0].artifact_digest(), pair[1].artifact_digest());
             for observation in pair {
                 assert_eq!(observation.spec().family_id(), family);
                 // These bounded native scenes consume the current candidate recipes.
@@ -74,7 +67,6 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                     if native_candidate { 0 } else { 1 },
                     "only retained recipes select a Mermaid fallback theme"
                 );
-                assert_eq!(observation.bridge_residual_count(), 0);
                 // Typed role paints reach the bounded terminals in these catalog scenes.
                 assert_eq!(
                     observation.theme_residual_count(),
@@ -150,7 +142,7 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
             )
         };
         assert_eq!(receipt.profile_id(), profile);
-        assert_eq!(receipt.schema_revision(), 1);
+        assert_eq!(receipt.schema_revision(), 2);
         assert_eq!(receipt.report().preset(), preset);
         assert_eq!(receipt.report().observations().len(), 6);
         for (observation, family) in receipt.report().observations().iter().zip([
@@ -177,7 +169,6 @@ fn native_presets_qualify_only_the_declared_host_dependent_profile() {
             );
             assert_eq!(observation.status(), TargetAdmissionStatus::HostDependent);
             assert_eq!(observation.theme_residual_count(), 0);
-            assert_eq!(observation.bridge_residual_count(), 0);
             assert_eq!(observation.mermaid_residual_count(), 0);
         }
         let entry = receipt.catalog_entry().unwrap();

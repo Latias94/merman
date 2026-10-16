@@ -86,9 +86,8 @@ fn mermaid_base_css_fragments_keep_parity_order() {
         r#"#diag :root{--mermaid-font-family:"trebuchet ms",verdana,arial,sans-serif;}"#
     ));
 
-    let er = er_css_with_resolved_typography("diag", &er_binding(&cfg))
-        .expect("valid ER theme colors")
-        .css;
+    let er =
+        er_css_with_resolved_typography("diag", &er_binding(&cfg)).expect("valid ER theme colors");
     assert_fragments_in_order(
         &er,
         &[
@@ -194,9 +193,7 @@ fn explicit_empty_root_font_omits_the_rule_without_changing_theme_font() {
         });
         for css in [
             info_css_with_config("diag", &config),
-            er_css_with_resolved_typography("diag", &er_binding(&config))
-                .unwrap()
-                .css,
+            er_css_with_resolved_typography("diag", &er_binding(&config)).unwrap(),
         ] {
             assert!(css.starts_with("#diag{font-family:Arial,sans-serif;"));
             assert!(!css.contains("--mermaid-font-family"));
@@ -212,9 +209,7 @@ fn shared_and_er_css_keep_theme_font_separate_from_root_custom_property() {
     });
     for css in [
         info_css_with_config("diag", &config),
-        er_css_with_resolved_typography("diag", &er_binding(&config))
-            .unwrap()
-            .css,
+        er_css_with_resolved_typography("diag", &er_binding(&config)).unwrap(),
     ] {
         assert!(css.starts_with("#diag{font-family:Arial,sans-serif;"));
         assert!(css.ends_with("#diag :root{--mermaid-font-family:Courier,monospace;}"));
@@ -353,9 +348,8 @@ fn er_css_honors_mermaid_11_15_theme_options() {
         }
     });
 
-    let css = er_css_with_resolved_typography("er", &er_binding(&cfg))
-        .expect("valid ER theme colors")
-        .css;
+    let css =
+        er_css_with_resolved_typography("er", &er_binding(&cfg)).expect("valid ER theme colors");
 
     assert!(css.contains(
         r#"#er{font-family:"ibm plex sans",arial,sans-serif;font-size:18px;fill:#101010;}"#

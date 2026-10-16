@@ -108,9 +108,8 @@ fn write_er_style_with_font_family(
     binding: &crate::er::ErCssBinding,
     border_colors: &[String],
     background_colors: &[String],
-) -> Result<(String, String)> {
-    let emission = er_css_with_resolved_typography(diagram_id, binding)?;
-    let css = emission.css;
+) -> Result<()> {
+    let css = er_css_with_resolved_typography(diagram_id, binding)?;
     let insertion_point = er_redux_color_css_insertion_point(&css, diagram_id);
 
     out.push_str("<style>");
@@ -129,7 +128,7 @@ fn write_er_style_with_font_family(
     }
     out.push_str("</style>");
     out.checkpoint()?;
-    Ok((emission.font_family.into(), emission.font_size.into()))
+    Ok(())
 }
 
 fn er_subgraph_label_fragment(subgraph: &crate::er::ErSubgraph) -> String {
@@ -195,7 +194,7 @@ fn render_er_subgraph_cluster(
     cluster: &crate::model::LayoutCluster,
     subgraph: &crate::er::ErSubgraph,
     context: ErSubgraphRenderContext<'_>,
-    receipt: &mut crate::er::ErEntityThemeReceipt,
+    receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
 ) -> Result<()> {
     let source_style = context
         .theme
@@ -294,7 +293,7 @@ fn render_er_subgraph_clusters(
     clusters: &[crate::model::LayoutCluster],
     model: &merman_core::diagrams::er::ErDiagramRenderModel,
     context: ErSubgraphRenderContext<'_>,
-    receipt: &mut crate::er::ErEntityThemeReceipt,
+    receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
 ) -> Result<()> {
     for cluster in clusters {
         let Some(subgraph) = model.subgraphs.iter().find(|item| item.id == cluster.id) else {
@@ -521,28 +520,34 @@ pub(crate) fn render_er_diagram_svg_model(
         )?;
     }
 
-    let visible_relation_edges = edges
-        .iter()
-        .filter(|edge| options.debug.include_edges && edge.points.len() >= 2)
-        .collect::<Vec<_>>();
-    let relation_terminals = visible_relation_edges
-        .iter()
-        .map(|edge| {
-            let relationship_index = er_rel_idx_from_edge_id(&edge.id);
-            crate::er::ErRelationTerminalExpectation::new(
-                edge.id.clone(),
-                edge.start_marker
-                    .as_deref()
-                    .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker)),
-                edge.end_marker
-                    .as_deref()
-                    .map(|marker| er_unified_marker_id(diagram_id, diagram_type, marker)),
-                relationship_index.and_then(|index| entity_theme.typed_relation_stroke(index)),
-            )
-        })
-        .collect::<Vec<_>>();
-    let mut entity_theme_receipt =
-        entity_theme.begin_terminal_receipt(relation_terminals, options.debug.include_edges);
+    // Marker paint is a drawing decision shared by the visible relations that reference it.
+    // The default renderer needs no relation completion domain or copied marker expectations.
+    let mut relation_marker_paints = std::collections::BTreeMap::new();
+    let mut marker_conflicts = std::collections::BTreeSet::new();
+    if options.debug.include_edges && entity_theme.has_relation_stroke() {
+        for edge in edges.iter().filter(|edge| edge.points.len() >= 2) {
+            let Some(stroke) = er_rel_idx_from_edge_id(&edge.id)
+                .and_then(|index| entity_theme.typed_relation_stroke(index))
+            else {
+                continue;
+            };
+            for marker in [edge.start_marker.as_deref(), edge.end_marker.as_deref()]
+                .into_iter()
+                .flatten()
+            {
+                let id = er_unified_marker_id(diagram_id, diagram_type, marker);
+                let selected = relation_marker_paints.entry(id).or_insert(stroke);
+                if selected.1 != stroke.1 {
+                    marker_conflicts.insert(selected.0);
+                    marker_conflicts.insert(stroke.0);
+                }
+            }
+        }
+    }
+    let mut entity_theme_receipt = entity_theme.begin_terminal_receipt();
+    for rule_index in marker_conflicts {
+        entity_theme_receipt.record_marker_conflict(rule_index);
+    }
 
     let include_md_parent = edges.iter().any(|e| {
         matches!(
@@ -584,11 +589,6 @@ pub(crate) fn render_er_diagram_svg_model(
             font_style: None,
         };
         let (title_left, title_right) = measurer.measure_svg_title_bbox_x(title, &title_style);
-        entity_theme_receipt.record_diagram_title_measurement_with_typography(
-            title,
-            title_style.font_family.as_deref(),
-            title_style.font_size,
-        );
         let (title_ascent, title_descent) = crate::text::svg_text_vertical_extents_px(
             measurer,
             title,
@@ -673,7 +673,7 @@ pub(crate) fn render_er_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    let (emitted_font_family, emitted_font_size) = write_er_style_with_font_family(
+    write_er_style_with_font_family(
         &mut out,
         diagram_id.semantic_str(),
         data_look,
@@ -681,8 +681,6 @@ pub(crate) fn render_er_diagram_svg_model(
         redux_border_colors,
         redux_background_colors,
     )?;
-    entity_theme_receipt
-        .record_typography_css_emission_with_font_size(&emitted_font_family, &emitted_font_size);
 
     // Mermaid wraps diagram content (defs + root) in a single `<g>` element.
     out.push_str("<g>");
@@ -698,11 +696,7 @@ pub(crate) fn render_er_diagram_svg_model(
             [("mdParentStart", "0", "190"), ("mdParentEnd", "19", "20")]
         {
             let marker_id = format!("{diagram_id}_{diagram_type}-{suffix}");
-            let expected = entity_theme_receipt.expects_relation_marker(&marker_id);
-            let expected_stroke = entity_theme_receipt.relation_marker_stroke(&marker_id);
-            let emitted_stroke = expected_stroke
-                .as_ref()
-                .map(|(rule_index, css)| (*rule_index, css.as_str()));
+            let emitted_stroke = relation_marker_paints.get(&marker_id).copied();
             write_er_marker_definition(
                 &mut out,
                 &marker_id,
@@ -719,10 +713,6 @@ pub(crate) fn render_er_diagram_svg_model(
                 r#"<path d="M 18,7 L9,13 L1,7 L9,1 Z"/>"#,
                 emitted_stroke,
             )?;
-            if expected {
-                entity_theme_receipt
-                    .record_checkpointed_relation_marker(&marker_id, emitted_stroke);
-            }
         }
     }
 
@@ -806,11 +796,7 @@ pub(crate) fn render_er_diagram_svg_model(
         ),
     ] {
         let marker_id = format!("{diagram_id}_{diagram_type}-{suffix}");
-        let expected = entity_theme_receipt.expects_relation_marker(&marker_id);
-        let expected_stroke = entity_theme_receipt.relation_marker_stroke(&marker_id);
-        let emitted_stroke = expected_stroke
-            .as_ref()
-            .map(|(rule_index, css)| (*rule_index, css.as_str()));
+        let emitted_stroke = relation_marker_paints.get(&marker_id).copied();
         let content = if neo_marker {
             match suffix {
                 "onlyOneStart" => format!(
@@ -870,9 +856,6 @@ pub(crate) fn render_er_diagram_svg_model(
             &content,
             emitted_stroke,
         )?;
-        if expected {
-            entity_theme_receipt.record_checkpointed_relation_marker(&marker_id, emitted_stroke);
-        }
     }
 
     let mut entity_by_id: std::collections::HashMap<&str, &crate::er::ErEntity> =
@@ -2129,7 +2112,6 @@ pub(crate) fn render_er_diagram_svg_model(
         );
         out.push_str("</text>\n");
         out.checkpoint()?;
-        entity_theme_receipt.record_diagram_title_emission("erDiagramTitleText", title);
         entity_theme_receipt.record_diagram_title_paint(title, title_style);
     }
 

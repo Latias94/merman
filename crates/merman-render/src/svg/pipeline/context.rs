@@ -214,6 +214,13 @@ impl<'a> SvgPostprocessExecution<'a> {
             .map_err(Into::into)
     }
 
+    pub(crate) fn preflight_svg_element_count(self, elements: usize) -> crate::Result<()> {
+        self.session
+            .work_meter()
+            .preflight_svg_element_count(elements, OperationPhase::Postprocess)
+            .map_err(Into::into)
+    }
+
     pub(crate) fn selector_index_limit(self, actual: usize, maximum: usize) -> crate::Error {
         let policy = self.resource_policy();
         ResourceLimitExceeded {

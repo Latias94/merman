@@ -1,15 +1,14 @@
+use std::cell::RefCell;
 use std::collections::BTreeMap;
-use std::sync::Mutex;
 
 use super::observation::{
     SequenceRuleObservation, observe_control_rule, observe_lifeline_rule, observe_message_rule,
     observe_sequence_number_rule, observe_static_rect_rule, observe_typography_rule,
 };
 use super::receipts::{
-    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceControlThemeState,
-    SequenceLifelineThemeEmission, SequenceMessageThemeEmission, SequenceNumberLabelThemeEmission,
-    SequenceNumberLabelThemeState, SequenceStaticRectThemeEmission, SequenceStaticRectThemeState,
-    SequenceThemeEvidenceState, SequenceTypographyThemeReceipt,
+    SequenceActorThemeReceipt, SequenceControlThemeEmission, SequenceLifelineThemeEmission,
+    SequenceMessageThemeEmission, SequenceNumberLabelThemeEmission,
+    SequenceStaticRectThemeEmission, SequenceThemeEvidenceState, SequenceTypographyThemeReceipt,
 };
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemePaintKind, FamilyThemeRuleFacet,
@@ -26,10 +25,16 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 /// Records actual Sequence writer emission so program routes alone cannot manufacture evidence.
 #[derive(Debug, Default)]
 pub(crate) struct SequenceThemeEvidenceRecorder {
-    state: Mutex<SequenceThemeEvidenceState>,
+    state: Option<RefCell<SequenceThemeEvidenceState>>,
 }
 
 impl SequenceThemeEvidenceRecorder {
+    pub(crate) fn new(enabled: bool) -> Self {
+        Self {
+            state: enabled.then(|| RefCell::new(SequenceThemeEvidenceState::default())),
+        }
+    }
+
     #[allow(
         clippy::too_many_arguments,
         reason = "Terminal recording receives independent emitted actor surfaces"
@@ -45,53 +50,53 @@ impl SequenceThemeEvidenceRecorder {
         actor_stroke_overridden: bool,
         actor_style_receipt: SequenceActorThemeReceipt,
     ) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.actor_count = state.actor_count.max(actor_count);
-        state.actor_fill_emitted |= actor_count != 0 && actor_fill_emitted;
-        state.actor_fill_unhandled |= actor_count != 0 && actor_fill_unhandled;
-        state.actor_fill_overridden |= actor_count != 0 && actor_fill_overridden;
-        state.actor_stroke_emitted |= actor_count != 0 && actor_stroke_emitted;
-        state.actor_stroke_unhandled |= actor_count != 0 && actor_stroke_unhandled;
-        state.actor_stroke_overridden |= actor_count != 0 && actor_stroke_overridden;
-        state.actor_style_receipt.merge(actor_style_receipt);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
+        state.actor_count = actor_count;
+        state.actor_fill_emitted = actor_count != 0 && actor_fill_emitted;
+        state.actor_fill_unhandled = actor_count != 0 && actor_fill_unhandled;
+        state.actor_fill_overridden = actor_count != 0 && actor_fill_overridden;
+        state.actor_stroke_emitted = actor_count != 0 && actor_stroke_emitted;
+        state.actor_stroke_unhandled = actor_count != 0 && actor_stroke_unhandled;
+        state.actor_stroke_overridden = actor_count != 0 && actor_stroke_overridden;
+        state.actor_style_receipt = actor_style_receipt;
     }
 
     pub(crate) fn record_note_emission(&self, emission: SequenceStaticRectThemeEmission) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.note.merge(emission);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
+        state.note = emission;
     }
 
     pub(crate) fn record_lifeline_emission(&self, emission: SequenceLifelineThemeEmission) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.lifeline.merge(emission);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
+        state.lifeline = emission;
     }
 
     pub(crate) fn record_message_emission(&self, emission: SequenceMessageThemeEmission) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.message.merge(emission);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
+        state.message = emission;
     }
 
     pub(crate) fn record_sequence_number_emission(
         &self,
         emission: SequenceNumberLabelThemeEmission,
     ) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.sequence_number.merge(emission);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
+        state.sequence_number = emission;
     }
 
     pub(crate) fn record_control_emission(
@@ -99,30 +104,30 @@ impl SequenceThemeEvidenceRecorder {
         target: ThemeTarget,
         emission: SequenceControlThemeEmission,
     ) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
         if target == ThemeTarget::Loop {
-            state.loop_frame.merge(emission);
+            state.loop_frame = emission;
         } else {
-            state.keyword_background.merge(emission);
+            state.keyword_background = emission;
         }
     }
 
     pub(crate) fn record_activation_emission(&self, emission: SequenceStaticRectThemeEmission) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
-        state.activation.merge(emission);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
+        state.activation = emission;
     }
 
     pub(crate) fn record_typography_emission(&self, receipt: SequenceTypographyThemeReceipt) {
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(state) = &self.state else {
+            return;
+        };
+        let mut state = state.borrow_mut();
         debug_assert!(
             state.typography.is_none(),
             "Sequence role typography is sealed once per terminal SVG"
@@ -157,10 +162,10 @@ impl SequenceThemeEvidenceRecorder {
             return Ok(());
         }
 
-        let mut state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let Some(state) = &self.state else {
+            return Ok(());
+        };
+        let mut state = state.borrow_mut();
         let Some(typography) = state.typography.as_ref() else {
             return Ok(());
         };
@@ -173,12 +178,10 @@ impl SequenceThemeEvidenceRecorder {
         let number_fill_covered = number.receipt.text_candidates == 0
             || (number.fill_emitted
                 && !number.fill_overridden
-                && number
-                    .receipt
-                    .proves_typed_fill(number.receipt.stylesheet_fill.as_deref()));
+                && number.receipt.typed_fill_applied());
         let text_fill_covered =
             title_count == 0 && typography.role_fills_cover_all_labels() && number_fill_covered;
-        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        let mut evidence = FamilyThemeEvidence::outcomes();
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
@@ -201,14 +204,13 @@ impl SequenceThemeEvidenceRecorder {
 
     pub(crate) fn finish(&self, theme: Option<&ResolvedDiagramTheme>) -> FamilyThemeEvidence {
         let mut evidence = FamilyThemeEvidence::from_theme(theme);
-        let state = self
-            .state
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .clone();
         let Some(theme) = theme else {
             return evidence;
         };
+        let Some(state) = &self.state else {
+            return evidence;
+        };
+        let state = state.borrow();
 
         let mut actor_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
         let mut lifeline_rules = BTreeMap::<usize, SequenceRuleObservation>::new();
@@ -857,8 +859,8 @@ impl SequenceThemeEvidenceRecorder {
             &base_typography_routes,
         );
         finish_typography_rules(&mut evidence, state.typography.as_ref(), typography_rules);
-        if let Some(unsupported_text) = state.unsupported_text {
-            evidence.merge_accounted_from(unsupported_text);
+        if let Some(unsupported_text) = &state.unsupported_text {
+            evidence.merge_accounted_from(unsupported_text.clone());
         }
         evidence
     }
@@ -903,14 +905,9 @@ fn finish_base_typography(
             FamilyThemeDisposition::TypedAdapter => {
                 if relevant_occurrences == 0 || !receipt.base.has_typed_property(*property) {
                     evidence.mark_not_applicable(key);
-                } else if !receipt.base.terminal_svg_observed()
-                    || receipt.base_property_incomplete(*property)
-                {
-                    // The route reached a visible surface, but the final SVG has not provided
-                    // enough independent facts to promote it.
-                } else if receipt.base_property_applied(*property)
-                    && receipt.base.stylesheet_verified()
-                {
+                } else if receipt.base_property_incomplete(*property) {
+                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                } else if receipt.base_property_applied(*property) {
                     evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
                 } else {
                     // A visible typed route whose terminal evidence is missing or mismatched is
@@ -980,7 +977,7 @@ fn finish_line_rules(
 
 fn finish_sequence_number_rules(
     evidence: &mut FamilyThemeEvidence,
-    sequence_number: &SequenceNumberLabelThemeState,
+    sequence_number: &SequenceNumberLabelThemeEmission,
     rules: BTreeMap<usize, SequenceRuleObservation>,
 ) {
     for (rule_index, observation) in rules {
@@ -1005,7 +1002,7 @@ fn finish_sequence_number_rules(
 fn finish_control_rules(
     evidence: &mut FamilyThemeEvidence,
     target: ThemeTarget,
-    surface: &SequenceControlThemeState,
+    surface: &SequenceControlThemeEmission,
     rules: BTreeMap<usize, SequenceRuleObservation>,
 ) {
     for (rule_index, observation) in rules {
@@ -1030,7 +1027,7 @@ fn finish_control_rules(
 fn finish_static_rect_rules(
     evidence: &mut FamilyThemeEvidence,
     target: ThemeTarget,
-    surface: &SequenceStaticRectThemeState,
+    surface: &SequenceStaticRectThemeEmission,
     rules: BTreeMap<usize, SequenceRuleObservation>,
 ) {
     for (rule_index, observation) in rules {

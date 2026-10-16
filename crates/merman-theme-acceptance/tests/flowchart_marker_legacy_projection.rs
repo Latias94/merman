@@ -7,7 +7,6 @@
 
 #![cfg(all(merman_internal_theme_acceptance, feature = "png"))]
 
-use merman::__theme_acceptance::TargetArtifactView;
 use merman::svg::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
     ThemeStylePatch, ThemeTarget, ThemeVariant,
@@ -16,7 +15,7 @@ use merman::{
     DiagramFamilyId, Engine, MermaidConfig, OperationControl, RenderOutput, RenderRequest,
     RenderedDocument, Renderer,
 };
-use merman_render::__private::SvgArtifactReceipt;
+use merman_theme_acceptance::svg_observation::SvgArtifactObservation;
 
 const FAMILIES: [DiagramFamilyId; 2] = [DiagramFamilyId::FLOWCHART, DiagramFamilyId::SWIMLANE];
 const PROFILES: [(&str, bool); 4] = [
@@ -87,7 +86,7 @@ fn render(renderer: &Renderer, source: &str, theme: DiagramTheme) -> RenderedDoc
     document
 }
 
-fn marker_references(receipt: &SvgArtifactReceipt) -> Vec<String> {
+fn marker_references(receipt: &SvgArtifactObservation) -> Vec<String> {
     assert!(receipt.has_native_text());
     assert!(!receipt.has_foreign_object());
     assert!(
@@ -177,9 +176,8 @@ fn marker_requests_do_not_recolor_flowchart_or_swimlane_native_output() {
             let renderer = Renderer::new().with_engine(engine(look));
             let baseline = render(&renderer, &source, baseline_theme.clone());
             assert_eq!(baseline.evidence().family_id(), family);
-            let baseline_view = TargetArtifactView::from_rendered_document(&baseline);
-            let baseline_references =
-                marker_references(baseline_view.svg_artifact_receipt().unwrap());
+            let baseline_view = SvgArtifactObservation::observe(baseline.svg()).unwrap();
+            let baseline_references = marker_references(&baseline_view);
             let baseline_raster = raster(&baseline);
             assert!(baseline_raster.width() > 1 && baseline_raster.height() > 1);
             assert!(
@@ -199,9 +197,9 @@ fn marker_requests_do_not_recolor_flowchart_or_swimlane_native_output() {
                             marker_theme(family, variant, stroke, transparent),
                         );
                         assert_eq!(document.evidence().family_id(), family, "{context}");
-                        let view = TargetArtifactView::from_rendered_document(&document);
+                        let view = SvgArtifactObservation::observe(document.svg()).unwrap();
                         assert_eq!(
-                            marker_references(view.svg_artifact_receipt().unwrap()),
+                            marker_references(&view),
                             baseline_references,
                             "marker references changed: {context}"
                         );

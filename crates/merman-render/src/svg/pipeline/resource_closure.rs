@@ -1,77 +1,7 @@
 use cssparser::{BasicParseErrorKind, Parser, SourceLocation, Token};
-use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
-use std::fmt;
 
-const SVG_RESOURCE_FINGERPRINT_DOMAIN: &[u8] = b"merman.svg-export-resources.v1";
 const CSS_RESOURCE_NESTING_HARD_LIMIT: u8 = 64;
-
-#[cfg(test)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub(super) struct ResourceFingerprintWork {
-    pub calls: usize,
-    pub svg_bytes: usize,
-}
-
-#[cfg(test)]
-thread_local! {
-    static RESOURCE_FINGERPRINT_WORK: std::cell::Cell<Option<ResourceFingerprintWork>> = const {
-        std::cell::Cell::new(None)
-    };
-}
-
-/// Counts only final resource fingerprints, excluding text/math receipts and verification hashes.
-/// The previous thread-local scope is restored even if the operation panics.
-#[cfg(test)]
-pub(super) fn measure_resource_fingerprint_work<T>(
-    operation: impl FnOnce() -> T,
-) -> (T, ResourceFingerprintWork) {
-    struct Restore(Option<ResourceFingerprintWork>);
-    impl Drop for Restore {
-        fn drop(&mut self) {
-            RESOURCE_FINGERPRINT_WORK.set(self.0);
-        }
-    }
-    let _restore = Restore(RESOURCE_FINGERPRINT_WORK.replace(Some(Default::default())));
-    let output = operation();
-    let work = RESOURCE_FINGERPRINT_WORK
-        .get()
-        .expect("resource fingerprint scope is active");
-    (output, work)
-}
-
-/// Stable identity of the resources retained by one sealed SVG artifact.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct SvgResourceFingerprint([u8; 32]);
-
-impl SvgResourceFingerprint {
-    pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
-    }
-
-    pub fn to_hex(self) -> String {
-        let mut out = String::with_capacity(64);
-        for byte in self.0 {
-            use std::fmt::Write as _;
-            write!(&mut out, "{byte:02x}").expect("writing to String cannot fail");
-        }
-        out
-    }
-}
-
-impl fmt::Debug for SvgResourceFingerprint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("SvgResourceFingerprint")
-            .field(&self.to_hex())
-            .finish()
-    }
-}
-
-impl fmt::Display for SvgResourceFingerprint {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&self.to_hex())
-    }
-}
 
 /// Terminal inventory of same-document and inline resources referenced by a sealed SVG.
 ///
@@ -186,29 +116,6 @@ impl SvgResourceClosureBuilder {
     }
 }
 
-pub(crate) fn fingerprint_svg_resources(
-    svg: &str,
-    font_catalog_fingerprint: &[u8; 32],
-    font_source_policy: &crate::diagram_theme::FontSourcePolicy,
-) -> SvgResourceFingerprint {
-    #[cfg(test)]
-    RESOURCE_FINGERPRINT_WORK.with(|counter| {
-        counter.set(counter.get().map(|mut work| {
-            work.calls += 1;
-            work.svg_bytes += svg.len();
-            work
-        }));
-    });
-    let mut hasher = Sha256::new();
-    update_len_prefixed(&mut hasher, SVG_RESOURCE_FINGERPRINT_DOMAIN);
-    update_len_prefixed(&mut hasher, svg.as_bytes());
-    update_len_prefixed(&mut hasher, font_catalog_fingerprint);
-    for source in font_source_policy.priority() {
-        update_len_prefixed(&mut hasher, source.id().as_bytes());
-    }
-    SvgResourceFingerprint(hasher.finalize().into())
-}
-
 fn collect_css_urls<'i>(
     parser: &mut Parser<'i>,
     resources: &mut SvgResourceClosureBuilder,
@@ -296,11 +203,6 @@ fn observe_url(resources: &mut SvgResourceClosureBuilder, url: &str, scope: CssR
     {
         resources.observe_inline_data_resource();
     }
-}
-
-fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
-    hasher.update((bytes.len() as u64).to_le_bytes());
-    hasher.update(bytes);
 }
 
 #[cfg(test)]

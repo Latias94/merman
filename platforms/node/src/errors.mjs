@@ -864,7 +864,12 @@ export function abortError() {
 export function decodeWireResponse(
   value,
   expectation,
-  { allowedCancellationReasons = [], requireUnavailable = false, availableCapabilityIds = [] } = {},
+  {
+    includeMetadata = true,
+    allowedCancellationReasons = [],
+    requireUnavailable = false,
+    availableCapabilityIds = [],
+  } = {},
 ) {
   const cancellationReasons = validateAllowedCancellationReasons(allowedCancellationReasons);
   const envelope = parseTransportJsonText(
@@ -904,7 +909,7 @@ export function decodeWireResponse(
       "Merman transport executed an operation that its runtime catalog does not advertise.",
     );
   }
-  return validateSuccessResult(envelope.result, expectation);
+  return validateSuccessResult(envelope.result, expectation, includeMetadata);
 }
 
 function validateAllowedCancellationReasons(reasons) {
@@ -960,7 +965,7 @@ function validateEnvelopeHeader(envelope, label) {
   }
 }
 
-function validateSuccessResult(result, expectation) {
+function validateSuccessResult(result, expectation, includeMetadata) {
   if (
     !isPlainJsonObject(result) ||
     typeof result.operation_id !== "string" ||
@@ -968,7 +973,7 @@ function validateSuccessResult(result, expectation) {
     typeof result.media_type !== "string" ||
     result.media_type.length === 0 ||
     typeof result.data !== "string" ||
-    typeof result.metadata_json !== "string"
+    (includeMetadata && typeof result.metadata_json !== "string")
   ) {
     throw new MermanInvalidTransportError("Merman transport returned an invalid result envelope.");
   }
@@ -987,11 +992,6 @@ function validateSuccessResult(result, expectation) {
     "response data",
     NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
   );
-  assertUtf8Field(
-    result.metadata_json,
-    "response metadata_json",
-    NODE_TRANSPORT_FIELD_LIMITS.metadata_json_utf8_bytes,
-  );
   if (
     !expectation ||
     result.operation_id !== expectation.operation_id ||
@@ -1001,6 +1001,19 @@ function validateSuccessResult(result, expectation) {
       "Merman transport result identity does not match the requested operation contract.",
     );
   }
+  if (!includeMetadata) {
+    if (Object.hasOwn(result, "metadata_json")) {
+      throw new MermanInvalidTransportError(
+        "Merman transport returned metadata for a data-only operation.",
+      );
+    }
+    return result.data;
+  }
+  assertUtf8Field(
+    result.metadata_json,
+    "response metadata_json",
+    NODE_TRANSPORT_FIELD_LIMITS.metadata_json_utf8_bytes,
+  );
   const metadata = parseTransportJsonText(
     result.metadata_json,
     "nested operation metadata",

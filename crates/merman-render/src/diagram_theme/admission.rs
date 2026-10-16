@@ -276,76 +276,6 @@ impl Default for FontSourcePolicy {
     }
 }
 
-/// Fallback applied after a host text-layout backend is unavailable, rejects, or lacks evidence.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[non_exhaustive]
-pub enum HostMeasurementFallback {
-    AcceptHostDependent,
-}
-
-impl HostMeasurementFallback {
-    pub const ALL: &'static [Self] = &[Self::AcceptHostDependent];
-
-    pub const fn id(self) -> &'static str {
-        match self {
-            Self::AcceptHostDependent => "accept-host-dependent",
-        }
-    }
-}
-
-impl std::fmt::Display for HostMeasurementFallback {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.id())
-    }
-}
-
-/// Ordered host-owned measurement fallback policy.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct HostMeasurementFallbackPolicy {
-    priority: Vec<HostMeasurementFallback>,
-}
-
-impl HostMeasurementFallbackPolicy {
-    pub(crate) const EMPTY: Self = Self {
-        priority: Vec::new(),
-    };
-
-    pub fn new(
-        priority: impl IntoIterator<Item = HostMeasurementFallback>,
-    ) -> Result<Self, ThemeAdmissionError> {
-        let priority = priority.into_iter().collect::<Vec<_>>();
-        reject_duplicate_fallbacks(&priority)?;
-        Ok(Self { priority })
-    }
-
-    pub fn priority(&self) -> impl ExactSizeIterator<Item = HostMeasurementFallback> + '_ {
-        self.priority.iter().copied()
-    }
-
-    pub fn contains(&self, fallback: HostMeasurementFallback) -> bool {
-        self.priority.contains(&fallback)
-    }
-
-    pub fn first(&self) -> Option<HostMeasurementFallback> {
-        self.priority.first().copied()
-    }
-
-    pub fn restrict_with(&self, restriction: &Self) -> Self {
-        let allowed = restriction
-            .priority
-            .iter()
-            .copied()
-            .collect::<BTreeSet<_>>();
-        let priority = self
-            .priority
-            .iter()
-            .copied()
-            .filter(|fallback| allowed.contains(fallback))
-            .collect();
-        Self { priority }
-    }
-}
-
 /// Trusted compatibility lane that typed theme specs cannot enable by themselves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -571,7 +501,6 @@ pub(crate) struct ResolvedThemeAdmission {
     host_allowed_capabilities: BTreeSet<ThemeCapability>,
     host_allowed_text_capabilities: BTreeSet<TextLayoutCapability>,
     font_sources: FontSourcePolicy,
-    measurement_fallbacks: HostMeasurementFallbackPolicy,
     portability: ThemePortabilityRequirement,
     trusted_lanes: TrustedThemeLanes,
 }
@@ -602,7 +531,6 @@ pub(crate) fn resolve_theme_admission(
         host_allowed_capabilities: requirements.required_capabilities.clone(),
         host_allowed_text_capabilities: requirements.required_text_capabilities.clone(),
         font_sources: font_sources.restrict_to(catalog.available_sources())?,
-        measurement_fallbacks: HostMeasurementFallbackPolicy::default(),
         portability,
         trusted_lanes: admission.trusted_lanes.clone(),
     })
@@ -614,7 +542,6 @@ impl ResolvedThemeAdmission {
             host_allowed_capabilities: self.host_allowed_capabilities.clone(),
             host_allowed_text_capabilities: self.host_allowed_text_capabilities.clone(),
             font_sources: self.font_sources.clone(),
-            measurement_fallbacks: self.measurement_fallbacks.clone(),
             portability: self.portability,
             trusted_lanes: self.trusted_lanes.clone(),
         }
@@ -622,10 +549,6 @@ impl ResolvedThemeAdmission {
 
     pub const fn font_source_policy(&self) -> &FontSourcePolicy {
         &self.font_sources
-    }
-
-    pub const fn measurement_fallback_policy(&self) -> &HostMeasurementFallbackPolicy {
-        &self.measurement_fallbacks
     }
 
     pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
@@ -646,7 +569,6 @@ pub struct ThemeHostAdmissionReport {
     host_allowed_capabilities: BTreeSet<ThemeCapability>,
     host_allowed_text_capabilities: BTreeSet<TextLayoutCapability>,
     font_sources: FontSourcePolicy,
-    measurement_fallbacks: HostMeasurementFallbackPolicy,
     portability: ThemePortabilityRequirement,
     trusted_lanes: TrustedThemeLanes,
 }
@@ -664,10 +586,6 @@ impl ThemeHostAdmissionReport {
 
     pub const fn font_source_policy(&self) -> &FontSourcePolicy {
         &self.font_sources
-    }
-
-    pub const fn measurement_fallback_policy(&self) -> &HostMeasurementFallbackPolicy {
-        &self.measurement_fallbacks
     }
 
     pub const fn portability_requirement(&self) -> ThemePortabilityRequirement {
@@ -690,8 +608,6 @@ pub enum ThemeAdmissionError {
     EmptyThemeFontSources,
     #[error("theme and host font-source policies have no source in common")]
     EmptyFontSourceIntersection,
-    #[error("measurement fallback policy contains duplicate fallback `{0}`")]
-    DuplicateMeasurementFallback(HostMeasurementFallback),
     #[error("theme capability `{0}` is disabled by the host")]
     ThemeCapabilityDenied(ThemeCapability),
     #[error("text-layout capability `{0}` is disabled by the host")]
@@ -710,28 +626,12 @@ fn reject_duplicate_font_sources(priority: &[FontSource]) -> Result<(), ThemeAdm
     Ok(())
 }
 
-fn reject_duplicate_fallbacks(
-    priority: &[HostMeasurementFallback],
-) -> Result<(), ThemeAdmissionError> {
-    let mut seen = BTreeSet::new();
-    for fallback in priority {
-        if !seen.insert(*fallback) {
-            return Err(ThemeAdmissionError::DuplicateMeasurementFallback(*fallback));
-        }
-    }
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn source_policy(values: &[FontSource]) -> FontSourcePolicy {
         FontSourcePolicy::new(values.iter().copied()).unwrap()
-    }
-
-    fn fallback_policy(values: &[HostMeasurementFallback]) -> HostMeasurementFallbackPolicy {
-        HostMeasurementFallbackPolicy::new(values.iter().copied()).unwrap()
     }
 
     fn resolve(
@@ -789,61 +689,17 @@ mod tests {
     }
 
     #[test]
-    fn source_and_fallback_policies_reject_duplicates() {
+    fn source_policies_reject_duplicates() {
         assert_eq!(
             FontSourcePolicy::new([FontSource::Embedded, FontSource::Embedded]),
             Err(ThemeAdmissionError::DuplicateFontSource(
                 FontSource::Embedded
             ))
         );
-        assert_eq!(
-            HostMeasurementFallbackPolicy::new([
-                HostMeasurementFallback::AcceptHostDependent,
-                HostMeasurementFallback::AcceptHostDependent
-            ]),
-            Err(ThemeAdmissionError::DuplicateMeasurementFallback(
-                HostMeasurementFallback::AcceptHostDependent
-            ))
-        );
     }
 
     #[test]
-    fn fallback_intersection_is_complete_and_preserves_host_priority() {
-        let all = HostMeasurementFallback::ALL;
-        let mask_count = 1_usize << all.len();
-        for host_mask in 0..mask_count {
-            for restriction_mask in 0..mask_count {
-                let host_values = all
-                    .iter()
-                    .enumerate()
-                    .filter(|(index, _)| host_mask & (1 << index) != 0)
-                    .map(|(_, value)| *value)
-                    .collect::<Vec<_>>();
-                let restriction_values = all
-                    .iter()
-                    .rev()
-                    .enumerate()
-                    .filter(|(index, _)| restriction_mask & (1 << index) != 0)
-                    .map(|(_, value)| *value)
-                    .collect::<Vec<_>>();
-                let host = fallback_policy(&host_values);
-                let restriction = fallback_policy(&restriction_values);
-                let actual = host
-                    .restrict_with(&restriction)
-                    .priority()
-                    .collect::<Vec<_>>();
-                let expected = host_values
-                    .iter()
-                    .copied()
-                    .filter(|value| restriction_values.contains(value))
-                    .collect::<Vec<_>>();
-                assert_eq!(actual, expected);
-            }
-        }
-    }
-
-    #[test]
-    fn system_font_catalog_has_no_prepared_layout_fallbacks() {
+    fn system_font_catalog_resolves_system_sources() {
         let resolved = resolve_theme_admission(
             &ThemeAdmissionPolicy::permissive(),
             &FontSourcePolicy::default(),
@@ -856,13 +712,6 @@ mod tests {
         assert_eq!(
             resolved.font_source_policy(),
             &FontSourcePolicy::system_only()
-        );
-        assert!(
-            resolved
-                .measurement_fallback_policy()
-                .priority()
-                .next()
-                .is_none()
         );
     }
 
@@ -907,15 +756,6 @@ mod tests {
                 .priority()
                 .collect::<Vec<_>>(),
             vec![FontSource::Embedded]
-        );
-        assert_eq!(
-            fallback_policy(&[HostMeasurementFallback::AcceptHostDependent,])
-                .restrict_with(&fallback_policy(&[
-                    HostMeasurementFallback::AcceptHostDependent
-                ]))
-                .priority()
-                .collect::<Vec<_>>(),
-            vec![HostMeasurementFallback::AcceptHostDependent]
         );
         assert_eq!(
             ThemePortabilityRequirement::BestEffort

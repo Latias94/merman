@@ -1,66 +1,10 @@
 use super::super::*;
 
-#[derive(Debug)]
-struct SequenceTextSurfaceCssEmission {
-    final_fill: String,
-    typed_fill: Option<String>,
-}
-
-#[derive(Debug)]
-pub(super) struct SequenceThemeCssEmission {
-    sequence_number_fill: String,
-    typed_sequence_number_fill: Option<String>,
-    text_surfaces: [SequenceTextSurfaceCssEmission; 7],
-    frame_stroke: String,
-    keyword_fill: String,
-    typed_keyword_fill: Option<String>,
-    keyword_stroke: String,
-    typed_keyword_stroke: Option<String>,
-}
-
-impl SequenceThemeCssEmission {
-    pub(super) fn sequence_number_fill(&self) -> &str {
-        self.sequence_number_fill.as_str()
-    }
-
-    pub(super) fn typed_sequence_number_fill(&self) -> Option<&str> {
-        self.typed_sequence_number_fill.as_deref()
-    }
-
-    pub(super) fn text_surface_fill(
-        &self,
-        surface: crate::sequence::SequenceTextSurface,
-    ) -> (&str, Option<&str>) {
-        let emission = &self.text_surfaces[surface.index()];
-        (emission.final_fill.as_str(), emission.typed_fill.as_deref())
-    }
-
-    pub(super) fn frame_stroke(&self) -> &str {
-        &self.frame_stroke
-    }
-
-    pub(super) fn keyword_fill(&self) -> &str {
-        self.keyword_fill.as_str()
-    }
-
-    pub(super) fn typed_keyword_fill(&self) -> Option<&str> {
-        self.typed_keyword_fill.as_deref()
-    }
-
-    pub(super) fn keyword_stroke(&self) -> &str {
-        self.keyword_stroke.as_str()
-    }
-
-    pub(super) fn typed_keyword_stroke(&self) -> Option<&str> {
-        self.typed_keyword_stroke.as_deref()
-    }
-}
-
 pub(super) fn write_sequence_css(
     mut out: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
     prepared: &crate::sequence::SequencePreparedCss,
-) -> Result<SequenceThemeCssEmission> {
+) -> Result<()> {
     out.checkpoint()?;
     // Mirrors Mermaid 12 `diagrams/sequence/styles.js` + shared base stylesheet ordering.
     // Keep `:root` last (matches upstream fixtures).
@@ -309,26 +253,8 @@ pub(super) fn write_sequence_css(
             id, id, id, typed_activation_stroke
         );
     }
-    let mut text_surfaces =
-        crate::sequence::SequenceTextSurface::ALL.map(|surface| SequenceTextSurfaceCssEmission {
-            final_fill: prepared.text[surface.index()].baseline_fill.clone(),
-            typed_fill: None,
-        });
     for group in &prepared.text_groups {
-        if write_sequence_text_surface_css_group(
-            &mut out,
-            &id,
-            &group.declarations,
-            &group.surfaces,
-        ) {
-            for surface in &group.surfaces {
-                let text = &prepared.text[surface.index()];
-                if text.typed_fill {
-                    text_surfaces[surface.index()].final_fill = text.fill.clone();
-                    text_surfaces[surface.index()].typed_fill = Some(text.fill.clone());
-                }
-            }
-        }
+        write_sequence_text_surface_css_group(&mut out, &id, &group.declarations, &group.surfaces);
     }
     let _ = write!(
         &mut out,
@@ -341,22 +267,7 @@ pub(super) fn write_sequence_css(
         prepared.root_font.as_str(),
     )?;
     out.checkpoint()?;
-    Ok(SequenceThemeCssEmission {
-        sequence_number_fill: prepared.number_fill.clone(),
-        typed_sequence_number_fill: prepared
-            .typed_number_fill
-            .then(|| prepared.number_fill.clone()),
-        text_surfaces,
-        frame_stroke: prepared.frame_stroke.clone(),
-        keyword_fill: prepared.keyword_fill.clone(),
-        typed_keyword_fill: prepared
-            .typed_keyword_fill
-            .then(|| prepared.keyword_fill.clone()),
-        keyword_stroke: prepared.keyword_stroke.clone(),
-        typed_keyword_stroke: prepared
-            .typed_keyword_stroke
-            .then(|| prepared.keyword_stroke.clone()),
-    })
+    Ok(())
 }
 
 fn write_sequence_text_surface_css_group(
@@ -510,7 +421,7 @@ mod tests {
     }
 
     #[test]
-    fn prepared_text_groups_emit_all_seven_final_surfaces_with_fresh_receipts() {
+    fn prepared_text_groups_emit_all_seven_final_surfaces() {
         let rules = [
             (ThemeTarget::ActorLabel, "#123456"),
             (ThemeTarget::MessageLabel, "#234567"),
@@ -533,9 +444,9 @@ mod tests {
             ]
         );
         let mut first = String::new();
-        let first_emission = write_sequence_css(&mut first, "seq", &binding).unwrap();
+        write_sequence_css(&mut first, "seq", &binding).unwrap();
         let mut second = String::new();
-        let second_emission = write_sequence_css(&mut second, "seq", &binding).unwrap();
+        write_sequence_css(&mut second, "seq", &binding).unwrap();
         assert_eq!(first, second);
         for surface in crate::sequence::SequenceTextSurface::ALL {
             let expected = match surface.role() {
@@ -544,16 +455,9 @@ mod tests {
                 crate::sequence::SequenceTypographyRole::Note => "#345678",
                 crate::sequence::SequenceTypographyRole::Loop => "#456789",
             };
-            assert_eq!(
-                first_emission.text_surface_fill(surface),
-                (expected, Some(expected))
-            );
-            assert_eq!(
-                second_emission.text_surface_fill(surface),
-                (expected, Some(expected))
-            );
             for selector in surface.terminal_selectors().split(',') {
                 assert!(first.contains(&format!("#seq {selector}")));
+                assert!(first.contains(&format!("fill:{expected}")));
             }
         }
     }
@@ -783,7 +687,7 @@ mod tests {
                 ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
             )],
         );
-        let emission = write_sequence_css(
+        write_sequence_css(
             &mut css,
             crate::svg::escape_css_identifier("seq:prod").as_str(),
             &binding,
@@ -794,8 +698,6 @@ mod tests {
         assert!(css.contains(owner));
         assert_eq!(css.matches(owner).count(), 1);
         assert!(!css.contains(r#"#seq\:prod .sequenceNumber{fill:#fedcba;}"#));
-        assert_eq!(emission.sequence_number_fill(), "#123456");
-        assert_eq!(emission.typed_sequence_number_fill(), Some("#123456"));
     }
 
     #[test]

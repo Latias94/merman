@@ -2693,9 +2693,11 @@ dependencies = [
  "merman-export",
  "merman-render",
  "png",
+ "quick-xml",
  "roxmltree 0.21.1",
  "serde_json",
  "sha2",
+ "svgtypes 0.16.1",
  "thiserror 2.0.21",
 ]
 

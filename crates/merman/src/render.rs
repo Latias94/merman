@@ -823,6 +823,46 @@ impl Renderer {
     /// then the graphical target's SVG environment policy. Semantic and ASCII targets use the
     /// renderer's input defaults when neither the request nor the renderer overrides them.
     pub fn render(&self, request: RenderRequest<'_>) -> Result<RenderOutput, RenderError> {
+        let (semantic, target) = self.parse_request(request)?;
+        let Some(semantic) = semantic else {
+            #[cfg(feature = "ascii")]
+            if matches!(&target, RenderTarget::Ascii(_)) {
+                return Err(RenderError::NoDiagram);
+            }
+            return Ok(RenderOutput::empty(target));
+        };
+        semantic.render(target)
+    }
+
+    /// Renders an SVG request into its bytes without constructing unrequested output metadata.
+    ///
+    /// Parse, resource, pipeline, native-font and cancellation behavior matches [`Self::render`].
+    /// `RequirePortable` still evaluates the actual selected output and returns the same admission
+    /// errors. This method accepts only requests constructed for [`RenderTarget::Svg`].
+    #[cfg(feature = "svg")]
+    pub fn render_svg_data(
+        &self,
+        request: RenderRequest<'_>,
+    ) -> Result<Option<String>, RenderError> {
+        if !matches!(&request.target, RenderTarget::Svg(_)) {
+            return Err(RenderError::UnsupportedTarget(
+                "render_svg_data requires an SVG request",
+            ));
+        }
+        let (semantic, target) = self.parse_request(request)?;
+        let Some(semantic) = semantic else {
+            return Ok(None);
+        };
+        let RenderTarget::Svg(request) = semantic.admit_target(target)? else {
+            unreachable!("SVG data request retains its target during admission");
+        };
+        render_svg_data_target(semantic, request).map(Some)
+    }
+
+    fn parse_request(
+        &self,
+        request: RenderRequest<'_>,
+    ) -> Result<(Option<SemanticArtifact>, RenderTarget), RenderError> {
         let RenderRequest {
             source,
             target,
@@ -858,14 +898,7 @@ impl Renderer {
         )?;
         let semantic =
             operation.parse_render_model(source, parse_options.unwrap_or(self.parse_options))?;
-        let Some(semantic) = semantic else {
-            #[cfg(feature = "ascii")]
-            if matches!(&target, RenderTarget::Ascii(_)) {
-                return Err(RenderError::NoDiagram);
-            }
-            return Ok(RenderOutput::empty(target));
-        };
-        semantic.render(target)
+        Ok((semantic, target))
     }
 
     /// Prepares a format-neutral semantic artifact through the same runner used by `render`.
@@ -1119,8 +1152,7 @@ impl SemanticArtifact {
             .map_err(RenderError::from)
     }
 
-    /// Consumes this operation-owned semantic artifact into one typed output target.
-    pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
+    fn admit_target(&self, target: RenderTarget) -> Result<RenderTarget, RenderError> {
         #[cfg(feature = "native-fonts")]
         let target = target.normalize_native_font_context()?;
         #[cfg(feature = "native-fonts")]
@@ -1191,6 +1223,12 @@ impl SemanticArtifact {
                 .into());
             }
         }
+        Ok(target)
+    }
+
+    /// Consumes this operation-owned semantic artifact into one typed output target.
+    pub fn render(self, target: RenderTarget) -> Result<RenderOutput, RenderError> {
+        let target = self.admit_target(target)?;
         match target {
             RenderTarget::Semantic => Ok(RenderOutput::Semantic(Some(self))),
             #[cfg(feature = "svg")]
@@ -1274,6 +1312,58 @@ fn render_svg_target(
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
     output
+}
+
+#[cfg(feature = "svg")]
+fn render_svg_data_target(
+    semantic: SemanticArtifact,
+    request: SvgRequest,
+) -> Result<String, RenderError> {
+    #[cfg(feature = "native-fonts")]
+    request.environment.check_native_fonts()?;
+    let (rendered, operation) = prepare_rendered_family_svg(semantic, &request)?;
+    let finalized = merman_render::__private::finalize_standalone_for_target_admission(
+        rendered,
+        request.pipeline.as_ref(),
+    )
+    .map_err(RenderError::from)?;
+    let result = finish_standalone_svg_data(
+        finalized,
+        request.environment.theme_portability_requirement(),
+        &operation.control,
+    );
+    #[cfg(feature = "native-fonts")]
+    request.environment.check_native_fonts()?;
+    result
+}
+
+#[cfg(feature = "svg")]
+fn finish_standalone_svg_data(
+    finalized: merman_render::family::RenderedStandaloneSvg,
+    requirement: merman_render::diagram_theme::ThemePortabilityRequirement,
+    control: &OperationControl,
+) -> Result<String, RenderError> {
+    crate::operation_runner::checkpoint(control, OperationPhase::Postprocess)?;
+    let admission = if requirement
+        == merman_render::diagram_theme::ThemePortabilityRequirement::RequirePortable
+    {
+        let (root, family, host_measurements) =
+            merman_render::__private::standalone_admission_summary(&finalized);
+        let theme_evidence = evidence::theme_evidence_from_summaries(root, family);
+        Some(target_admission::standalone_svg_admission_from_summary(
+            finalized.artifact(),
+            finalized.family_id(),
+            theme_evidence,
+            host_measurements,
+        ))
+    } else {
+        None
+    };
+    crate::operation_runner::checkpoint(control, OperationPhase::Postprocess)?;
+    if let Some(admission) = admission {
+        target_admission::enforce_required_portability(&admission)?;
+    }
+    Ok(finalized.into_string())
 }
 
 #[cfg(feature = "svg")]

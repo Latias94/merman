@@ -1,8 +1,6 @@
 use super::super::roughjs_common::{ops_to_svg_path_d, parse_hex_color_to_srgba};
 use super::super::*;
-use crate::ishikawa::{
-    IshikawaTextThemePlan, IshikawaTextThemeReceipt, IshikawaTypographyTerminal,
-};
+use crate::ishikawa::IshikawaTextThemePlan;
 use crate::model::{
     IshikawaBranchLayout, IshikawaCauseLabelGroupLayout, IshikawaLabelBoxLayout,
     IshikawaLineLayout, IshikawaSubGroupLayout, IshikawaTextLayout,
@@ -50,7 +48,7 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         super::super::util::css_selector_diagram_id(diagram_id),
         theme,
-        &mut text_terminals.receipt,
+        text_theme,
     );
     out.push_str(r#"</style><g/><g class="ishikawa">"#);
     out.checkpoint()?;
@@ -72,11 +70,6 @@ pub(crate) fn render_ishikawa_diagram_svg_with_theme(
     out.push_str("</g></svg>\n");
     out.checkpoint()?;
     let rooted = root_document.complete(out.finish()?)?;
-    if !text_theme.record_terminal(text_terminals.into_receipt()) {
-        return Err(Error::InvalidModel {
-            message: "Ishikawa text styling receipt did not match the terminal SVG".to_string(),
-        });
-    }
     Ok(rooted)
 }
 
@@ -452,21 +445,11 @@ fn push_rough_group(
 
 struct IshikawaTextTerminalWriter<'a> {
     plan: &'a IshikawaTextThemePlan,
-    receipt: IshikawaTextThemeReceipt,
-    next_visible_index: usize,
 }
 
 impl<'a> IshikawaTextTerminalWriter<'a> {
     fn new(plan: &'a IshikawaTextThemePlan) -> Self {
-        Self {
-            plan,
-            receipt: plan.begin_terminal_receipt(),
-            next_visible_index: 0,
-        }
-    }
-
-    fn into_receipt(self) -> IshikawaTextThemeReceipt {
-        self.receipt
+        Self { plan }
     }
 
     fn push_head_text(
@@ -476,7 +459,6 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
         dx: f64,
         dy: f64,
     ) -> Result<()> {
-        let emitted_index = self.visible_index(text);
         let transform_x = text.x + dx;
         let transform_y = text.y + dy;
         let first_y = -((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
@@ -490,7 +472,7 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
             fmt(transform_x),
             fmt(transform_y)
         );
-        self.push_fill_style(out, emitted_index);
+        self.push_fill_style(out, text);
         out.push('>');
         for (idx, line) in text.lines.iter().enumerate() {
             let _ = write!(
@@ -509,7 +491,6 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
         }
         out.push_str("</text>");
         out.checkpoint()?;
-        self.record_checkpointed_text(emitted_index, text, IshikawaTypographyTerminal::Head);
         Ok(())
     }
 
@@ -520,7 +501,6 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
         dx: f64,
         dy: f64,
     ) -> Result<()> {
-        let emitted_index = self.visible_index(text);
         let first_y =
             text.y + dy - ((text.lines.len().saturating_sub(1)) as f64 * text.line_height) / 2.0;
         let _ = write!(
@@ -531,7 +511,7 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
             fmt(text.x + dx),
             fmt(first_y)
         );
-        self.push_fill_style(out, emitted_index);
+        self.push_fill_style(out, text);
         out.push('>');
         if text.lines.is_empty() {
             escape_xml_into(out, &text.text);
@@ -554,44 +534,19 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
         }
         out.push_str("</text>");
         out.checkpoint()?;
-        self.record_checkpointed_text(
-            emitted_index,
-            text,
-            IshikawaTypographyTerminal::InheritedBaseSize,
-        );
         Ok(())
     }
 
-    fn visible_index(&self, text: &IshikawaTextLayout) -> Option<usize> {
-        (!text.text.trim().is_empty()).then_some(self.next_visible_index)
-    }
-
-    fn push_fill_style(&self, out: &mut impl SvgOutput, emitted_index: Option<usize>) {
-        let Some((_, fill)) = emitted_index.and_then(|index| self.plan.typed_fill(index)) else {
+    fn push_fill_style(&self, out: &mut impl SvgOutput, text: &IshikawaTextLayout) {
+        let Some(fill) = self.plan.typed_fill() else {
             return;
         };
+        if text.text.trim().is_empty() {
+            return;
+        }
         out.push_str(r#" style="fill:"#);
         escape_attr_into(out, fill);
         out.push_str(r#" !important;""#);
-    }
-
-    fn record_checkpointed_text(
-        &mut self,
-        emitted_index: Option<usize>,
-        text: &IshikawaTextLayout,
-        typography_terminal: IshikawaTypographyTerminal,
-    ) {
-        let Some(emitted_index) = emitted_index else {
-            return;
-        };
-        let emitted_fill = self.plan.typed_fill(emitted_index);
-        self.receipt.record_checkpointed_text(
-            emitted_index,
-            &text.class_name,
-            emitted_fill,
-            typography_terminal,
-        );
-        self.next_visible_index = self.next_visible_index.saturating_add(1);
     }
 }
 
@@ -599,7 +554,7 @@ fn write_ishikawa_css(
     css: &mut impl SvgOutput,
     diagram_id: impl Copy + std::fmt::Display,
     theme: &crate::ishikawa::IshikawaCssBinding,
-    text_receipt: &mut IshikawaTextThemeReceipt,
+    text_theme: &IshikawaTextThemePlan,
 ) {
     let _ = write!(
         css,
@@ -611,7 +566,7 @@ fn write_ishikawa_css(
         line_color = theme.line_color,
         main_bkg = theme.main_bkg,
     );
-    text_receipt.write_text_rules(css, diagram_id, &theme.text_color);
+    text_theme.write_text_rules(css, diagram_id, &theme.text_color);
     let _ = write!(
         css,
         "#{diagram_id} .ishikawa .ishikawa-label {{ text-anchor: end; }}\

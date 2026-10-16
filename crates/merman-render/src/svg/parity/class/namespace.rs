@@ -31,8 +31,8 @@ pub(super) fn render_class_namespace_cluster_group(
     content_bounds: &mut Option<Bounds>,
     clusters: &[LayoutCluster],
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
-    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
+    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
 ) -> crate::Result<std::time::Duration> {
     let clusters_start = ctx.timing.start();
     out.push_str(r#"<g class="clusters">"#);
@@ -56,7 +56,7 @@ fn render_class_namespace_cluster(
     content_bounds: &mut Option<Bounds>,
     cluster: &LayoutCluster,
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
 ) -> Result<crate::class::ClassTextTerminalFacts> {
     render_class_namespace_cluster_at(
         out,
@@ -77,7 +77,7 @@ fn render_class_namespace_cluster_at(
     cluster: &LayoutCluster,
     (left, top): (f64, f64),
     ctx: ClassNamespaceClusterGroupContext<'_>,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
 ) -> Result<crate::class::ClassTextTerminalFacts> {
     let w = cluster.width.max(1.0);
     let h = cluster.height.max(1.0);
@@ -150,12 +150,10 @@ fn render_class_namespace_cluster_at(
     out.push_str("</g></g>");
     out.checkpoint()?;
     let (fill_rule, stroke_rule) = ctx.relation_theme.cluster_paint_rule_indices();
-    theme_receipt.record_cluster(&cluster.id, fill_rule, stroke_rule, terminal_style);
+    theme_receipt.record_cluster(fill_rule, stroke_rule);
     if let Some((rule, _)) = title_paint {
         theme_receipt.record_namespace_title(
-            &cluster.id,
             rule,
-            emitted_title_style,
             label_w > 0.0 && !cluster.title.trim().is_empty(),
             typography.has_verified_inherited_paint(),
         );
@@ -198,8 +196,8 @@ pub(super) fn render_class_namespace_clusters_in_root(
     root_ns_id: &str,
     root_dx: f64,
     root_dy: f64,
-    theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
-    typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
+    theme_receipt: &mut crate::class::ClassThemeOutcomes,
+    typography_receipt: &mut Option<crate::class::ClassTextOutcomes>,
 ) -> crate::Result<()> {
     out.push_str(r#"<g class="clusters">"#);
     out.checkpoint()?;

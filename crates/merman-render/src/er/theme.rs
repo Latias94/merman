@@ -22,9 +22,7 @@ use terminal::{
     EntityExpectation, ErTableRowTerminalId, ErTextTerminalId, ExpectedPaint,
     TextTerminalExpectation,
 };
-pub(crate) use terminal::{
-    ErAttributeTextRole, ErEntityThemeReceipt, ErRelationTerminalExpectation,
-};
+pub(crate) use terminal::{ErAttributeTextRole, ErEntityThemeReceipt};
 
 type ErStyleDeclaration = crate::diagram_theme::PreparedSourceStyleDeclaration;
 
@@ -38,10 +36,6 @@ pub(crate) struct ErBaseFontSizePlan {
 }
 
 impl ErBaseFontSizePlan {
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "The family terminal receipt reconciles emitted geometry, paint, and source ownership."
-    )]
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &merman_core::MermaidConfig,
@@ -315,11 +309,9 @@ fn last_source_style_value<'a>(
 pub(crate) struct ErEntityThemePlan {
     css_binding: css_binding::ErCssBinding,
     entity_indices: BTreeMap<String, usize>,
-    entity_terminal_occurrences: Vec<(usize, ThemeVariant)>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
     subgraph_source_styles: BTreeMap<String, ErEntitySourceStyle>,
     inherited_font_stack: InheritedFontStackPlan,
-    base_font_size: ErBaseFontSizePlan,
     has_visible_typography: bool,
     font_stack_pending: bool,
     font_stack_residual: bool,
@@ -328,7 +320,6 @@ pub(crate) struct ErEntityThemePlan {
     font_size_residual: bool,
     font_size_not_applicable: bool,
     font_size_layout_verified: bool,
-    typography_title: Option<Box<str>>,
     expectations: Vec<EntityExpectation>,
     text_terminal_evidence_enabled: bool,
     text_terminals: BTreeMap<ErTextTerminalId, TextTerminalExpectation>,
@@ -336,7 +327,7 @@ pub(crate) struct ErEntityThemePlan {
     relation_strokes: Vec<ErRelationStrokeVisual>,
     evidence: FamilyThemeEvidence,
     pending: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
-    terminal_receipt: OnceLock<ErEntityThemeReceipt>,
+    terminal_receipt: OnceLock<terminal::ErThemeOutcomes>,
 }
 
 #[derive(Debug, Clone)]
@@ -374,15 +365,15 @@ impl ErEntityThemePlan {
         );
         // Layout is the final authority for entity visibility. Keep source indices intact
         // because ordinal rules and paint checkpoints use semantic model identities.
-        let visible_entity_ids = layout
-            .nodes
-            .iter()
+        let visible_entity_ids = theme
+            .into_iter()
+            .flat_map(|_| layout.nodes.iter())
             .filter(|node| !node.is_cluster)
             .map(|node| node.id.as_str())
             .collect::<BTreeSet<_>>();
-        let entity_terminal_occurrences = model
-            .entities
-            .values()
+        let entity_terminal_occurrences = theme
+            .into_iter()
+            .flat_map(|_| model.entities.values())
             .enumerate()
             .filter(|(_, entity)| visible_entity_ids.contains(entity.id.as_str()))
             .map(|(index, _)| (index + 1, ThemeVariant::Default))
@@ -420,11 +411,9 @@ impl ErEntityThemePlan {
             return Self {
                 css_binding,
                 entity_indices,
-                entity_terminal_occurrences,
                 entity_source_styles,
                 subgraph_source_styles,
                 inherited_font_stack,
-                base_font_size,
                 has_visible_typography: false,
                 font_stack_pending: false,
                 font_stack_residual: false,
@@ -433,7 +422,6 @@ impl ErEntityThemePlan {
                 font_size_residual: false,
                 font_size_not_applicable: false,
                 font_size_layout_verified: false,
-                typography_title: None,
                 expectations: Vec::new(),
                 text_terminal_evidence_enabled: false,
                 text_terminals: BTreeMap::new(),
@@ -567,11 +555,6 @@ impl ErEntityThemePlan {
                 .abs()
                     < 1e-6
                 && (layout.prepared_labels.relationship_font_size_px() - 14.0).abs() < 1e-6);
-        let typography_title = if font_stack_pending || font_size_pending {
-            diagram_title.map(Into::into)
-        } else {
-            None
-        };
         let mut expectations = expectations;
         let mut winner_properties = BTreeSet::<(usize, ThemeTarget, ResolvedStyleProperty)>::new();
         let mut expected_capabilities =
@@ -891,11 +874,9 @@ impl ErEntityThemePlan {
         Self {
             css_binding,
             entity_indices,
-            entity_terminal_occurrences,
             entity_source_styles,
             subgraph_source_styles,
             inherited_font_stack,
-            base_font_size,
             has_visible_typography,
             font_stack_pending,
             font_stack_residual,
@@ -904,7 +885,6 @@ impl ErEntityThemePlan {
             font_size_residual,
             font_size_not_applicable,
             font_size_layout_verified,
-            typography_title,
             expectations,
             text_terminal_evidence_enabled: needs_text_terminal_evidence,
             text_terminals,
@@ -923,14 +903,6 @@ impl ErEntityThemePlan {
 
     pub(crate) fn css_binding(&self) -> &css_binding::ErCssBinding {
         &self.css_binding
-    }
-
-    pub(crate) fn font_family_css(&self) -> &str {
-        self.inherited_font_stack.font_family_css()
-    }
-
-    pub(crate) fn font_size_css(&self) -> &str {
-        self.base_font_size.font_size_css()
     }
 
     pub(crate) fn source_style(&self, entity_index: usize) -> Option<&ErEntitySourceStyle> {
@@ -970,6 +942,9 @@ impl ErEntityThemePlan {
     }
 
     pub(crate) fn typed_entity_name(&self, entity_id: &str) -> Option<(usize, &str)> {
+        if self.text_terminals.is_empty() {
+            return None;
+        }
         self.typed_text_terminal(&ErTextTerminalId::entity_name(entity_id))
     }
 
@@ -979,6 +954,9 @@ impl ErEntityThemePlan {
         row_index: usize,
         role: ErAttributeTextRole,
     ) -> Option<(usize, &str)> {
+        if self.text_terminals.is_empty() {
+            return None;
+        }
         self.typed_text_terminal(&ErTextTerminalId::attribute(entity_id, row_index, role))
     }
 
@@ -1001,10 +979,19 @@ impl ErEntityThemePlan {
         entity_id: &str,
         row_index: usize,
     ) -> Option<(usize, &str)> {
+        if self.table_rows.is_empty() {
+            return None;
+        }
         self.table_rows
             .get(&ErTableRowTerminalId::new(entity_id, row_index))?
             .as_ref()
             .map(|expected| (expected.rule_index, expected.css.as_str()))
+    }
+
+    pub(crate) fn has_relation_stroke(&self) -> bool {
+        self.relation_strokes
+            .iter()
+            .any(|stroke| stroke.paint.is_some())
     }
 
     pub(crate) fn typed_relation_stroke(&self, relationship_index: usize) -> Option<(usize, &str)> {
@@ -1022,50 +1009,15 @@ impl ErEntityThemePlan {
             .unwrap_or("")
     }
 
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        relation_terminals: Vec<ErRelationTerminalExpectation>,
-        include_relation_labels: bool,
-    ) -> ErEntityThemeReceipt {
-        let text_terminals = self
-            .text_terminals
-            .iter()
-            .filter(|(id, _)| include_relation_labels || !id.is_relation_label())
-            .map(|(id, expectation)| (id.clone(), expectation.clone()))
-            .collect();
-        let receipt = ErEntityThemeReceipt::new(
-            self.expectations.clone(),
-            text_terminals,
-            self.table_rows.clone(),
-            self.font_stack_pending
-                .then(|| self.font_family_css().into()),
-        )
-        .with_entity_terminal_domain(&self.entity_terminal_occurrences)
-        .with_typography_font_size(self.font_size_pending.then(|| {
-            (
-                self.font_size_css().into(),
-                self.base_font_size.font_size_px(),
-                self.font_size_layout_verified,
-            )
-        }))
-        .with_typography_title(self.typography_title.clone());
-        let receipt = if self.text_terminal_evidence_enabled {
-            receipt
-        } else {
-            receipt.without_text_terminals()
-        };
-        receipt.with_relation_terminals(relation_terminals)
+    pub(crate) fn begin_terminal_receipt(&self) -> ErEntityThemeReceipt<'_> {
+        ErEntityThemeReceipt::new(self)
     }
 
-    pub(crate) fn record_terminal(&self, receipt: ErEntityThemeReceipt) -> bool {
-        // Terminal completeness protects all renderer-owned paint/geometry receipts. Typography
-        // ownership is deliberately evaluated later: an unmeasured source font is a legitimate
-        // BestEffort residual and must not abort SVG emission. RequirePortable rejects that
-        // residual through the frozen family report instead.
+    pub(crate) fn record_terminal(&self, receipt: ErEntityThemeReceipt<'_>) -> bool {
         if self.pending.is_empty() && !self.font_stack_pending && !self.font_size_pending {
             return true;
         }
-        receipt.proves_complete() && self.terminal_receipt.set(receipt).is_ok()
+        self.terminal_receipt.set(receipt.into_outcomes()).is_ok()
     }
 
     pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
@@ -1097,6 +1049,7 @@ impl ErEntityThemePlan {
         let font_size_key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
         if self.font_size_pending {
             if let Some(receipt) = self.terminal_receipt.get()
+                && self.font_size_layout_verified
                 && receipt.matches_font_size()
             {
                 evidence
@@ -1268,10 +1221,6 @@ fn insert_text_terminal(
                 visual: visual::ErTextVisual::default(),
                 visible_run_count: facts.visible_run_count(),
                 inherited_color_run_count: facts.inherited_color_run_count(),
-                inherited_font_family_run_count: facts.inherited_font_family_run_count(),
-                unverified_font_family_run_count: facts.unverified_font_family_run_count(),
-                inherited_font_size_run_count: facts.inherited_font_size_run_count(),
-                unverified_font_size_run_count: facts.unverified_font_size_run_count(),
             },
         );
     }

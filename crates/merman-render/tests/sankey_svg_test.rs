@@ -262,7 +262,6 @@ fn sankey_typed_text_fill_reaches_root_and_outlined_label_foreground() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -391,7 +390,6 @@ fn sankey_palette_and_typography_evidence_compose_without_shadowing() {
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -440,7 +438,6 @@ fn sankey_typed_font_stack_reaches_every_inherited_css_surface_and_terminal_labe
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -480,7 +477,6 @@ fn sankey_typed_font_stack_covers_both_outlined_label_passes() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -549,7 +545,6 @@ fn sankey_explicit_font_family_owners_outrank_the_typed_stack() {
         assert_eq!(evidence.applied_count(), 0, "owner={owner}");
         assert_eq!(evidence.not_applicable_count(), 1, "owner={owner}");
         assert_eq!(evidence.theme_residual_count(), 0, "owner={owner}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "owner={owner}");
     }
 }
 
@@ -573,7 +568,6 @@ fn sankey_direct_font_stack_is_not_bounded_by_the_retired_bridge_limit() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -602,7 +596,6 @@ fn sankey_font_size_is_unsupported_without_recreating_the_legacy_projection() {
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = render_sankey_with_theme_requirement(
         source,
@@ -646,7 +639,6 @@ fn sankey_mixed_font_stack_and_size_fails_closed() {
     assert_eq!(evidence.accounted_count(), 2);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]

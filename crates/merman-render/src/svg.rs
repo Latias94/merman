@@ -45,14 +45,18 @@ mod pipeline;
 pub(crate) mod scanner;
 
 pub(crate) use css_identifier::escape_css_identifier;
-pub(crate) use fallback::{
-    FALLBACK_BACKGROUND_FILL_DATA_ATTR, FALLBACK_OCCURRENCE_DATA_ATTR,
-    PREPARED_TEXT_LABEL_DATA_ATTR,
-};
+#[cfg(feature = "diagram-railroad")]
+pub use fallback::foreign_object_label_fallback_svg_text;
 pub(crate) use icon_registry::IconCurrentColorUse;
+pub use icon_registry::{
+    IconPack, IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind,
+    IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
+    icon_registry_resource_limit_descriptors,
+};
 #[cfg(all(feature = "layout-cytoscape", feature = "diagram-architecture"))]
 pub(crate) use parity::render_architecture_family_artifact;
 pub(crate) use parity::theme as render_theme;
+pub use parity::*;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
@@ -60,29 +64,16 @@ pub(crate) use parity::theme as render_theme;
 ))]
 pub(crate) use parity::{FlowchartEdgeStylePlan, FlowchartNodeLayoutView, FlowchartPreparedNodes};
 pub(crate) use parity::{RootThemeAppliedSvg, render_builtin_family_artifact};
-pub(crate) use pipeline::SvgPipelineBuffer;
 pub(crate) use pipeline::SvgPostprocessExecution;
-#[cfg(feature = "diagram-railroad")]
-pub(crate) use pipeline::decode_xml_style_text_with_checkpoints;
-pub(crate) use pipeline::reject_reserved_prepared_text_tokens;
-
-pub use fallback::foreign_object_label_fallback_svg_text;
-pub use icon_registry::{
-    IconPack, IconRegistry, IconRegistryBuildError, IconRegistryBuildErrorKind,
-    IconRegistryBuilder, IconRegistryResourceLimitDescriptor, IconRegistryResourceLimitId,
-    icon_registry_resource_limit_descriptors,
-};
-pub use parity::*;
 pub use pipeline::{
     CssOverridePolicy, CssOverridePostprocessor, ForeignObjectFallbackPostprocessor,
     ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StandaloneSvgArtifact,
     StandaloneSvgTerminalStatus, StripForeignObjectPostprocessor, SvgFinalizationReport,
     SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgReferencePlan, SvgResourceClosure, SvgResourceFingerprint,
-    finalize_resvg_svg, rebase_svg_ids, validate_static_inline_svg,
-    validate_static_inline_svg_admission,
+    SvgPostprocessor, SvgReferencePlan, SvgResourceClosure, finalize_resvg_svg, rebase_svg_ids,
+    validate_static_inline_svg, validate_static_inline_svg_admission,
 };
 
 #[cfg(feature = "diagram-block")]
-pub(crate) use parity::block_edge_path_data;
+pub(crate) use parity::block_edge_is_visible;

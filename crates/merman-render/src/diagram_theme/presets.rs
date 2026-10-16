@@ -128,7 +128,7 @@ impl ThemePresetDescriptor {
     /// Describes this recipe under the effective compiler policy without granting qualification.
     pub fn describe(self, compiler: &DiagramThemeCompiler) -> ThemePresetMetadataV1 {
         let availability_reason_ids = compiler
-            .compile_preset(self.preset())
+            .validate_preset(self.preset())
             .err()
             .map(|error| vec![theme_preset_unavailability_reason(&error).to_owned()])
             .unwrap_or_default();
@@ -248,8 +248,8 @@ pub const fn theme_preset_descriptors() -> &'static [ThemePresetDescriptor] {
 
 /// Describes built-in presets using this artifact's effective recipe compiler policy.
 ///
-/// Availability is evaluated through the production preset compiler. Maturity and scoped
-/// qualification declarations come directly from the catalog and are not promoted by compilation.
+/// Availability uses recipe validation under the compiler's resource policy. Maturity and scoped
+/// qualification declarations come directly from the catalog and are not promoted by validation.
 pub fn describe_theme_presets(compiler: &DiagramThemeCompiler) -> Vec<ThemePresetMetadataV1> {
     theme_preset_descriptors()
         .iter()
@@ -1069,7 +1069,7 @@ mod tests {
     }
 
     #[test]
-    fn preset_final_composition_obeys_effect_budget_on_export_and_compile() {
+    fn preset_final_composition_obeys_effect_budget_on_export_compile_and_discovery() {
         let compiler = DiagramThemeCompiler::new().with_resource_policy(
             ThemeResourcePolicy::interactive()
                 .with_limit(ThemeResourceLimitId::MaxEffectPrimitivesPerGraph, 1)
@@ -1084,6 +1084,22 @@ mod tests {
         );
         assert!(compiler.compile_preset(ThemePreset::Cyberpunk).is_err());
         assert!(compiler.export_preset(ThemePreset::EditorLight).is_ok());
+        let descriptions = describe_theme_presets(&compiler);
+        let cyberpunk = descriptions
+            .iter()
+            .find(|descriptor| descriptor.id == ThemePreset::Cyberpunk.id())
+            .unwrap();
+        assert!(!cyberpunk.available);
+        assert_eq!(
+            cyberpunk.availability_reason_ids,
+            ["theme-preset.resource-policy-rejected"]
+        );
+        let editor_light = descriptions
+            .iter()
+            .find(|descriptor| descriptor.id == ThemePreset::EditorLight.id())
+            .unwrap();
+        assert!(editor_light.available);
+        assert!(editor_light.availability_reason_ids.is_empty());
     }
 
     #[test]

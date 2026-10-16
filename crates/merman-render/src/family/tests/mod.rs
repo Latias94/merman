@@ -1598,7 +1598,6 @@ fn require_portable_accepts_flowchart_typed_node_paint_after_svg_emission() {
     let report = rendered.style_report();
     assert_eq!(report.evaluation(), FamilyStyleEvaluation::Evaluated);
     assert_eq!(report.verification(), FamilyStyleVerification::Verified);
-    assert_eq!(report.compatibility_residual_count(), 0);
     assert_eq!(
         report.theme_applied_mechanisms(),
         &[FamilyThemeMechanismKey::Rule {
@@ -1652,7 +1651,6 @@ fn require_portable_accepts_swimlane_typed_node_paint_after_svg_emission() {
     let report = rendered.style_report();
     assert_eq!(report.evaluation(), FamilyStyleEvaluation::Evaluated);
     assert_eq!(report.verification(), FamilyStyleVerification::Verified);
-    assert_eq!(report.compatibility_residual_count(), 0);
     assert_eq!(
         report.theme_applied_mechanisms(),
         &[FamilyThemeMechanismKey::Rule {
@@ -1992,7 +1990,6 @@ fn require_portable_accepts_flowchart_and_swimlane_node_stroke_width_after_emiss
             rendered.style_report().verification(),
             FamilyStyleVerification::Verified
         );
-        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
         assert_eq!(
             rendered.style_report().theme_applied_mechanisms(),
             &[FamilyThemeMechanismKey::Rule {
@@ -2519,7 +2516,6 @@ end
             ]
         );
         assert!(rendered.style_report().theme_residuals().is_empty());
-        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
     }
 }
 
@@ -2571,7 +2567,6 @@ fn sequence_oversized_base_font_stack_is_proved_by_terminal_svg() {
         ]
     );
     assert!(rendered.style_report().theme_residuals().is_empty());
-    assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -3603,7 +3598,6 @@ fn class_mixed_direct_width_and_scalar_paint_share_terminal_evidence() {
         assert!(rendered.svg().contains("stroke:#2563eb !important"));
         assert_eq!(rendered.style_report().theme_applied_mechanisms().len(), 1);
         assert!(rendered.style_report().theme_residuals().is_empty());
-        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
     }
 }
 
@@ -5225,7 +5219,6 @@ fn require_portable_accepts_flowchart_typed_edge_stroke_after_svg_emission() {
     );
     let report = rendered.style_report();
     assert_eq!(report.verification(), FamilyStyleVerification::Verified);
-    assert_eq!(report.compatibility_residual_count(), 0);
     assert_eq!(
         report.theme_applied_mechanisms(),
         &[FamilyThemeMechanismKey::Rule {
@@ -6404,7 +6397,6 @@ fn sequence_message_stroke_winner_marks_shadowed_fill_not_applicable() {
             }],
             "a shadowed Message fill winner is not the terminal signal-color owner"
         );
-        assert_eq!(rendered.style_report().compatibility_residual_count(), 0);
         assert!(rendered.style_report().theme_residuals().is_empty());
     }
 }

@@ -54,8 +54,7 @@ pub(super) fn write_class_css(
     diagram_id: &str,
     typography_theme: &crate::class::ClassTextThemePlan,
     relation_theme: &crate::class::ClassRelationThemePlan,
-    seal_typography_emission: bool,
-) -> Result<Option<crate::class::ClassTypographyCssEmission>> {
+) -> Result<()> {
     let theme = typography_theme.css_binding();
     let id = crate::svg::escape_css_identifier(diagram_id);
     let info_css = typography_theme.common_css();
@@ -72,7 +71,7 @@ pub(super) fn write_class_css(
     let stroke_width = relation_theme.relation_width().compatibility_css();
     let edge_label_background = theme.edge_label_background.as_str();
 
-    let base_font_emission = info_css.write_prefix_with_font_emission(out, diagram_id)?;
+    let _base_font_emission = info_css.write_prefix_with_font_emission(out, diagram_id)?;
     write_class_palette_css(out, &id, theme)?;
 
     let _ = write!(
@@ -111,7 +110,6 @@ pub(super) fn write_class_css(
         id.as_str()
     );
     out.checkpoint()?;
-    let class_group_font_family_css = font_family;
     let _ = write!(
         out,
         r#"#{} .node rect,#{} .node circle,#{} .node ellipse,#{} .node polygon,#{} .node path{{fill:{};stroke:{};stroke-width:{};}}#{} .divider{{stroke:{};stroke-width:1;}}#{} g.clickable{{cursor:pointer;}}#{} g.classGroup rect{{fill:{};stroke:{};}}#{} g.classGroup line{{stroke:{};stroke-width:1;}}#{} .classLabel .box{{stroke:none;stroke-width:0;fill:{};opacity:0.5;}}#{} .classLabel .label{{fill:{};font-size:10px;}}#{} .relation{{stroke:{};stroke-width:{};fill:none;}}#{} .dashed-line{{stroke-dasharray:3;}}#{} .dotted-line{{stroke-dasharray:1 2;}}"#,
@@ -178,18 +176,10 @@ pub(super) fn write_class_css(
 
     write_class_icon_css(out, &id);
     out.checkpoint()?;
-    let root_font_emission = info_css.write_root_with_font_emission(out, diagram_id, diagram_id)?;
+    let _root_font_emission =
+        info_css.write_root_with_font_emission(out, diagram_id, diagram_id)?;
 
-    Ok(seal_typography_emission.then(|| {
-        crate::class::ClassTypographyCssEmission::from_successful_writes(
-            base_font_emission.diagram_root_font_family_css(),
-            base_font_emission.nested_svg_font_family_css(),
-            base_font_emission.diagram_root_font_size_css(),
-            base_font_emission.nested_svg_font_size_css(),
-            class_group_font_family_css,
-            root_font_emission.font_family_css(),
-        )
-    }))
+    Ok(())
 }
 
 #[cfg(test)]
@@ -255,7 +245,7 @@ mod tests {
     }
 
     #[test]
-    fn class_css_emission_requires_every_writer_checkpoint() {
+    fn class_css_propagates_writer_checkpoint_failure() {
         let mermaid_config = merman_core::MermaidConfig::default();
         let typography_theme = crate::class::ClassTextThemePlan::resolve(None, &mermaid_config);
         let meter = crate::resources::OperationWorkMeter::new(
@@ -267,15 +257,13 @@ mod tests {
                 .with_cluster_domain(None, &mermaid_config, 0, &meter)
                 .unwrap();
         let mut successful = CheckpointSink::default();
-        let emission = write_class_css(
+        write_class_css(
             &mut successful,
             "class-css-receipt",
             &typography_theme,
             &relation_theme,
-            true,
         )
         .expect("write complete Class CSS");
-        assert!(emission.is_some());
 
         for checkpoint in 1..=successful.checkpoint_count {
             let mut rejecting = CheckpointSink::rejecting(checkpoint);
@@ -284,9 +272,8 @@ mod tests {
                 "class-css-receipt",
                 &typography_theme,
                 &relation_theme,
-                true,
             )
-            .expect_err("a failed Class CSS checkpoint must prevent receipt emission");
+            .expect_err("a failed Class CSS checkpoint must prevent successful CSS output");
             assert!(matches!(error, crate::Error::InvalidModel { .. }));
         }
     }

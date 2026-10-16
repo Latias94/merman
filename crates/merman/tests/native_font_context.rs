@@ -542,7 +542,7 @@ mod document_context_contract {
                 .unwrap(),
             SOURCE,
         );
-        let digest = document.document_digest();
+        let svg = document.svg().to_owned();
         let evidence = document.evidence().clone();
 
         #[cfg(feature = "png")]
@@ -565,7 +565,7 @@ mod document_context_contract {
                 merman::svg::export::svg_to_png(document.sealed_svg(), &options).unwrap();
             assert_eq!(actual.bytes(), expected);
             assert_eq!(actual.bytes(), explicit.bytes());
-            assert_eq!(actual.admission().document_digest(), digest);
+            assert_eq!(actual.evidence(), &evidence);
         }
         #[cfg(feature = "jpeg")]
         {
@@ -587,7 +587,7 @@ mod document_context_contract {
                 merman::svg::export::svg_to_jpeg(document.sealed_svg(), &options).unwrap();
             assert_eq!(actual.bytes(), expected);
             assert_eq!(actual.bytes(), explicit.bytes());
-            assert_eq!(actual.admission().document_digest(), digest);
+            assert_eq!(actual.evidence(), &evidence);
         }
         #[cfg(feature = "pdf")]
         {
@@ -610,9 +610,9 @@ mod document_context_contract {
                     .unwrap();
             assert_eq!(actual.bytes(), expected);
             assert_eq!(actual.bytes(), explicit.bytes());
-            assert_eq!(actual.admission().document_digest(), digest);
+            assert_eq!(actual.evidence(), &evidence);
         }
-        assert_eq!(document.document_digest(), digest);
+        assert_eq!(document.svg(), svg);
         assert_eq!(document.evidence(), &evidence);
     }
 

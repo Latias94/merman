@@ -372,14 +372,12 @@ pub(crate) fn render_kanban_diagram_svg(
         ..root_svg::RootDomProfile::default()
     };
     let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::KANBAN, diagram_id)
-            .with_resource_policy(options.resource_policy())
-            .write_open(
-                &mut out,
-                root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
-                    .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
-                root_chrome,
-            )?;
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::KANBAN, diagram_id).write_open(
+            &mut out,
+            root_svg::RootViewportSpec::mermaid(root_bounds, layout.use_max_width)
+                .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(vb_w)),
+            root_chrome,
+        )?;
     options.checkpoint_emit()?;
 
     let mut task_theme_receipt = task_theme.begin_terminal_receipt(

@@ -284,15 +284,11 @@ fn push_mindmap_shadow_defs(
     out.checkpoint()
 }
 
-struct MindmapCssEmission {
-    font_family_css: Box<str>,
-}
-
 fn mindmap_css(
     out: &mut impl SvgOutput,
     diagram_id: impl SvgDiagramIdValue,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
-) -> Result<MindmapCssEmission> {
+) -> Result<()> {
     // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last within the Mermaid baseline. The typed terminal overlay is appended after
@@ -302,7 +298,7 @@ fn mindmap_css(
     let use_gradient = binding.use_gradient;
     let id = super::super::util::css_selector_diagram_id(diagram_id);
     let fragment_id = diagram_id;
-    let prefix = binding
+    binding
         .common
         .write_prefix_with_font_emission(out, diagram_id)?;
 
@@ -547,9 +543,7 @@ fn mindmap_css(
         out.checkpoint()?;
     }
     out.checkpoint()?;
-    Ok(MindmapCssEmission {
-        font_family_css: prefix.diagram_root_font_family_css().into(),
-    })
+    Ok(())
 }
 
 fn write_mindmap_edge_label(
@@ -728,7 +722,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let parse_work = std::cell::Cell::new(0);
         let work_meter = options.work_meter();
         let sink = crate::html::HtmlSanitizeSink::new(
-            work_meter.max_svg_bytes().unwrap_or(usize::MAX),
+            work_meter
+                .policy()
+                .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+                .unwrap_or(usize::MAX),
             work_meter,
             &parse_work,
             merman_core::OperationPhase::Emit,
@@ -837,18 +834,13 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let mut node_palette_receipt = node_palette.begin_terminal_receipt();
     out.push_str("<style>");
     out.checkpoint()?;
-    let css = mindmap_css(
+    mindmap_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         node_palette,
     )?;
     out.push_str("</style>");
     out.checkpoint()?;
-    node_palette_receipt.record_typography_css(&css.font_family_css);
-    node_palette_receipt.record_node_paint_css(
-        writer_tokens.main_background_css(),
-        writer_tokens.node_border_css(),
-    );
     let mindmap_theme = binding.theme.as_ref();
     let neo_branch_uses_main_background =
         use_gradient || matches!(mindmap_theme, "redux" | "redux-dark" | "neutral");

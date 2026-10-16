@@ -805,18 +805,11 @@ where
     })
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(super) struct ErCssEmission {
-    pub(super) css: String,
-    pub(super) font_family: Box<str>,
-    pub(super) font_size: Box<str>,
-}
-
 #[cfg(feature = "diagram-er")]
 pub(super) fn er_css_with_resolved_typography<I>(
     diagram_id: I,
     values: &crate::er::ErCssBinding,
-) -> Result<ErCssEmission>
+) -> Result<String>
 where
     I: SvgDiagramIdValue,
 {
@@ -826,7 +819,6 @@ where
     let id = CssSelectorDiagramId(diagram_id);
     let fragment_id = FragmentDiagramId(diagram_id);
     let font = &values.font_family;
-    let font_size_css = &values.font_size_css;
     let text_color = &values.text_color;
     let line_color = &values.line_color;
     let main_bkg = &values.main_bkg;
@@ -905,11 +897,7 @@ where
         id, cluster_bkg, cluster_border, id, title_color, id, title_color
     );
     values.common.write_root(&mut out, id, fragment_id)?;
-    Ok(ErCssEmission {
-        css: out,
-        font_family: font.clone().into_boxed_str(),
-        font_size: font_size_css.clone().into_boxed_str(),
-    })
+    Ok(out)
 }
 
 /// Structured values emitted for Pie routes whose terminal evidence requires stylesheet proof.

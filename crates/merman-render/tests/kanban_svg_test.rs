@@ -574,7 +574,6 @@ fn kanban_static_task_fill_reaches_each_terminal_rect_without_palette_fallback()
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -600,7 +599,6 @@ fn kanban_static_task_fill_respects_the_mermaid_background_owner() {
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -642,7 +640,6 @@ fn kanban_static_task_stroke_reaches_each_terminal_rect() {
         assert_eq!(evidence.applied_count(), 1);
         assert_eq!(evidence.not_applicable_count(), 0);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -671,7 +668,6 @@ fn kanban_static_task_stroke_respects_the_mermaid_node_border_owner() {
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1423,7 +1419,6 @@ fn kanban_text_fill_replaces_the_legacy_default_without_changing_other_surfaces(
                 assert_eq!(evidence.required_count(), 1);
                 assert_eq!(evidence.applied_count(), 1);
                 assert_eq!(evidence.theme_residual_count(), 0);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
             }
         }
     }
@@ -1478,7 +1473,6 @@ fn kanban_text_fill_preserves_config_and_more_specific_label_owners() {
             if config_owned { 2 } else { 0 }
         );
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 
@@ -1669,7 +1663,6 @@ fn kanban_retired_title_fill_is_not_applicable_and_preserves_final_svg() {
                 assert_eq!(evidence.applied_count(), 0);
                 assert_eq!(evidence.not_applicable_count(), 1);
                 assert_eq!(evidence.theme_residual_count(), 0);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
             }
         }
     }
@@ -1832,7 +1825,6 @@ fn kanban_typed_font_size_reaches_measurement_layout_css_and_evidence() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1886,7 +1878,6 @@ fn kanban_typed_font_size_yields_to_explicit_theme_variable_ownership() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1971,7 +1962,6 @@ fn kanban_unsupported_typography_is_property_local_to_the_typed_base_properties(
     assert_eq!(evidence.accounted_count(), 3);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 
     let error = match try_render_kanban_with_theme_and_engine(
         source,

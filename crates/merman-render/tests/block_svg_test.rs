@@ -446,7 +446,6 @@ fn block_generic_text_paint_is_bound_to_node_text_terminals() {
     );
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -947,7 +946,6 @@ fn block_mixed_base_typography_fails_closed() {
     assert_eq!(evidence.accounted_count(), 3);
     assert_eq!(evidence.applied_count(), 2);
     assert_eq!(evidence.theme_residual_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -1090,7 +1088,6 @@ fn block_ordinal_palette_is_not_applicable_when_typed_fill_wins() {
     let evidence = merman_render::__private::family_evidence(completion.report());
 
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
 }
 
@@ -1109,7 +1106,6 @@ fn block_ordinal_palette_is_not_applicable_when_source_fill_wins() {
     let evidence = merman_render::__private::family_evidence(completion.report());
 
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
 }
 
@@ -1358,7 +1354,6 @@ fn block_explicit_default_fill_uses_the_typed_writer() {
     let completion = rendered.into_completion();
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -2492,7 +2487,6 @@ fn block_absent_text_rules_have_no_terminal_even_with_frontmatter_and_composite_
                     assert_eq!(evidence.applied_count(), 0);
                     assert_eq!(evidence.not_applicable_count(), 1);
                     assert_eq!(evidence.theme_residual_count(), 0);
-                    assert_eq!(evidence.compatibility_residual_count(), 0);
                 }
             }
         }
@@ -2540,7 +2534,6 @@ fn absent_block_text_siblings_do_not_suppress_typed_node_paint() {
             assert_eq!(evidence.applied_count(), 1);
             assert_eq!(evidence.not_applicable_count(), 1);
             assert_eq!(evidence.theme_residual_count(), 0);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -2575,7 +2568,6 @@ fn block_edge_label_background_typed_route_has_a_real_css_consumer() {
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.required_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
@@ -2623,7 +2615,6 @@ fn block_background_reconciles_missing_labels_and_explicit_config() {
                 assert_eq!(evidence.required_count(), 1);
                 assert_eq!(evidence.applied_count(), applied);
                 assert_eq!(evidence.not_applicable_count(), 1 - applied);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
                 assert_eq!(evidence.theme_residual_count(), 0);
             }
         }
@@ -2758,7 +2749,6 @@ fn block_edge_static_paint_is_written_only_to_visible_edge_paths() {
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
                 assert_eq!(evidence.applied_count(), 1);
-                assert_eq!(evidence.compatibility_residual_count(), 0);
             }
         }
     }
@@ -3058,7 +3048,6 @@ fn block_cluster_static_paint_reaches_only_composite_shells() {
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.applied_count(), 1);
-            assert_eq!(evidence.compatibility_residual_count(), 0);
         }
     }
 }
@@ -3477,7 +3466,6 @@ fn block_marker_static_paint_uses_independent_real_facets() {
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
                 assert_eq!(evidence.applied_count(), if split { 2 } else { 1 });
-                assert_eq!(evidence.compatibility_residual_count(), 0);
             }
         }
     }

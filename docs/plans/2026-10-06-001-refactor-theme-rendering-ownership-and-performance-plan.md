@@ -9,6 +9,11 @@ execution: code
 
 # Fearless Refactor of Theme Configuration and SVG Rendering Ownership
 
+> Historical plan: the [October 16 responsibility cleanup](2026-10-16-1800-refactor-theme-runtime-responsibilities-plan.md)
+> supersedes requirements to retain unconditional output validation, retired marker protocols,
+> acceptance sidecars and runtime digest chains. Preserve dated measurements and completion claims
+> as records of their original revisions; they are not current runtime obligations.
+
 ## Goal Capsule
 
 **Objective:** Preserve every admitted diagram, theme, SVG, error, cancellation, resource-limit and public-consumer contract while removing avoidable repeated configuration materialization, stale artifact transitions and unnecessary evidence construction.

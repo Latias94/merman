@@ -307,7 +307,6 @@ fn cynefin_typed_text_fill_reaches_all_visible_text_selectors() {
         assert_eq!(evidence.applied_count(), 1, "case={case}");
         assert_eq!(evidence.not_applicable_count(), 0, "case={case}");
         assert_eq!(evidence.theme_residual_count(), 0, "case={case}");
-        assert_eq!(evidence.compatibility_residual_count(), 0, "case={case}");
         assert_eq!(
             evidence.mermaid_compatibility_residual_count(),
             0,
@@ -432,7 +431,6 @@ fn cynefin_explicit_text_color_outranks_typed_text_fill() {
     assert_eq!(evidence.applied_count(), 0);
     assert_eq!(evidence.not_applicable_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -620,7 +618,6 @@ fn cynefin_typed_font_stack_drives_measurement_css_and_terminal_evidence() {
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -649,7 +646,6 @@ fn cynefin_empty_item_does_not_invalidate_font_stack_terminal_evidence() {
     assert_eq!(evidence.accounted_count(), 1);
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -678,7 +674,6 @@ fn cynefin_direct_font_stack_exceeds_the_retired_legacy_bridge_limit() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
 }
 
 #[test]
@@ -731,7 +726,6 @@ fn cynefin_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
     }
 }
 

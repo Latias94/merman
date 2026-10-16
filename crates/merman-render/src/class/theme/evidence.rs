@@ -13,15 +13,9 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
-use super::{ClassRelationThemePlan, ClassRelationThemeReceipt, ClassTerminalReceiptSummary};
+use super::{ClassRelationThemePlan, ClassThemeOutcomeSummary, ClassThemeOutcomes};
 
-#[derive(Debug, Clone, Copy)]
-enum ClassThemeEvidenceRequest {
-    CompletionOnly,
-    ThemeEvidence,
-}
-
-/// Terminal Class theme ledger. The SVG writer may seal it only after the completed root exists.
+/// Theme outcomes recorded by successful Class writers.
 #[derive(Debug)]
 pub(crate) struct ClassThemeEvidenceRecorder {
     expected_relation_paths: usize,
@@ -29,9 +23,8 @@ pub(crate) struct ClassThemeEvidenceRecorder {
     node_count: usize,
     cluster_label_count: usize,
     table_group_lengths: Vec<usize>,
-    request: ClassThemeEvidenceRequest,
-    // Some(None) records completion without retaining the ordinary-render receipt.
-    terminal_receipt: OnceLock<Option<ClassTerminalReceiptSummary>>,
+    requested: bool,
+    outcomes: OnceLock<ClassThemeOutcomeSummary>,
 }
 
 impl ClassThemeEvidenceRecorder {
@@ -49,29 +42,15 @@ impl ClassThemeEvidenceRecorder {
             node_count,
             cluster_label_count,
             table_group_lengths,
-            request: if theme.is_some() {
-                ClassThemeEvidenceRequest::ThemeEvidence
-            } else {
-                ClassThemeEvidenceRequest::CompletionOnly
-            },
-            terminal_receipt: OnceLock::new(),
+            requested: theme.is_some(),
+            outcomes: OnceLock::new(),
         }
     }
 
-    pub(crate) fn record_terminal(&self, receipt: ClassRelationThemeReceipt<'_>) -> bool {
-        if receipt.expected_relation_count() != self.expected_relation_paths
-            || receipt.expected_note_attachment_count() != self.expected_note_paths
-            || receipt.expected_node_count() < self.node_count
-            || receipt.expected_cluster_count() != self.cluster_label_count
-            || !receipt.proves_complete()
-        {
-            return false;
+    pub(crate) fn record_outcomes(&self, outcomes: ClassThemeOutcomes) {
+        if self.requested {
+            let _ = self.outcomes.set(outcomes.into_summary());
         }
-        let retained_receipt = match self.request {
-            ClassThemeEvidenceRequest::CompletionOnly => None,
-            ClassThemeEvidenceRequest::ThemeEvidence => Some(receipt.into_terminal_summary()),
-        };
-        self.terminal_receipt.set(retained_receipt).is_ok()
     }
 
     pub(crate) fn finish(
@@ -84,18 +63,15 @@ impl ClassThemeEvidenceRecorder {
         let Some(theme) = theme else {
             return Ok(evidence);
         };
-        let receipt = self.terminal_receipt.get().and_then(Option::as_ref);
+        let receipt = self.outcomes.get();
         let receipt_summary = receipt;
-        if let Some(summary) = receipt_summary {
-            work_meter.charge(summary.work_units())?;
-        }
         let has_relations = self.expected_relation_paths != 0;
         let visible_node_count = receipt
-            .map(ClassTerminalReceiptSummary::expected_node_count)
+            .map(ClassThemeOutcomeSummary::node_count)
             .unwrap_or(self.node_count);
         let mut rules = BTreeMap::<(usize, ThemeTarget), ClassRuleObservation>::new();
         let background_count =
-            receipt.and_then(ClassTerminalReceiptSummary::edge_label_background_count);
+            receipt.and_then(ClassThemeOutcomeSummary::edge_label_background_count);
         let mut background_winners = BTreeSet::new();
         if let Some(count) = background_count.filter(|count| *count > 0) {
             let has_ordinals = theme.family_rules().any(|(_, rule)| {
@@ -169,14 +145,13 @@ impl ClassThemeEvidenceRecorder {
                             visible_node_count != 0
                                 && if matches!(
                                     (target, property),
-                                    (ThemeTarget::Node, ResolvedStyleProperty::Fill)
-                                        | (ThemeTarget::Node, ResolvedStyleProperty::Stroke)
-                                        | (ThemeTarget::NodeLabel, ResolvedStyleProperty::Fill)
+                                    (
+                                        ThemeTarget::Node,
+                                        ResolvedStyleProperty::Fill | ResolvedStyleProperty::Stroke
+                                    ) | (ThemeTarget::NodeLabel, ResolvedStyleProperty::Fill)
                                 ) {
                                     receipt_summary.is_some_and(|summary| {
-                                        summary.has_node_paint_winner_rule(
-                                            rule_index, target, property,
-                                        )
+                                        summary.selected_node_paint(rule_index, target, property)
                                     })
                                 } else {
                                     plan.node_route_won(rule_index, target, selector, facet)
@@ -207,12 +182,12 @@ impl ClassThemeEvidenceRecorder {
                                 if receipt.is_some_and(|receipt| {
                                     if target == ThemeTarget::EdgeLabelBackground {
                                         property == ResolvedStyleProperty::Fill
-                                            && receipt.proves_edge_label_background(rule_index)
+                                            && receipt.applied_edge_label_background(rule_index)
                                     } else if target == ThemeTarget::Title {
                                         property == ResolvedStyleProperty::Fill
-                                            && receipt.proves_typed_namespace_title(rule_index)
+                                            && receipt.applied_namespace_title(rule_index)
                                     } else {
-                                        receipt.proves_typed_cluster_paint(rule_index, property)
+                                        receipt.applied_cluster_paint(rule_index, property)
                                     }
                                 }) {
                                     observation.capabilities.insert(match facet {
@@ -296,7 +271,7 @@ impl ClassThemeEvidenceRecorder {
                                 if winner != rule_index {
                                     observation.incomplete = true;
                                 } else if receipt.is_some_and(|receipt| {
-                                    receipt.proves_typed_stroke(rule_index, property)
+                                    receipt.applied_stroke(rule_index, property)
                                 }) {
                                     observation.capabilities.insert(if css == "transparent" {
                                         ThemeCapability::TransparentPaint
@@ -322,7 +297,7 @@ impl ClassThemeEvidenceRecorder {
                                 if winner != rule_index {
                                     observation.incomplete = true;
                                 } else if receipt
-                                    .is_some_and(ClassTerminalReceiptSummary::proves_typed_width)
+                                    .is_some_and(ClassThemeOutcomeSummary::applied_width)
                                 {
                                     observation
                                         .capabilities
@@ -377,8 +352,7 @@ impl ClassThemeEvidenceRecorder {
             )
             .with_fill_fully_overridden(plan.cluster_plan.fill.config_owned()),
         );
-        if let Some(count) =
-            receipt.and_then(ClassTerminalReceiptSummary::edge_label_background_count)
+        if let Some(count) = receipt.and_then(ClassThemeOutcomeSummary::edge_label_background_count)
         {
             unsupported_domains.push(
                 UnsupportedTerminalDomain::fallbacks_only(
@@ -397,7 +371,7 @@ impl ClassThemeEvidenceRecorder {
             TerminalVariantDomain::uniform(visible_node_count, ThemeVariant::Default),
         ));
         if let Some(marker_count) =
-            receipt_summary.and_then(ClassTerminalReceiptSummary::visible_marker_occurrence_count)
+            receipt_summary.map(ClassThemeOutcomeSummary::visible_marker_occurrence_count)
         {
             unsupported_domains.push(UnsupportedTerminalDomain::direct(
                 ThemeTarget::Marker,
@@ -449,7 +423,7 @@ struct ClassRuleObservation {
 
 fn observe_terminal_node_paint(
     observation: &mut ClassRuleObservation,
-    receipt: Option<&ClassTerminalReceiptSummary>,
+    receipt: Option<&ClassThemeOutcomeSummary>,
     rule_index: usize,
     target: ThemeTarget,
     property: ResolvedStyleProperty,
@@ -459,7 +433,7 @@ fn observe_terminal_node_paint(
         observation.incomplete = true;
         return;
     };
-    if receipt.proves_typed_node_paint(rule_index, target, property) {
+    if receipt.applied_node_paint(rule_index, target, property) {
         observation.capabilities.insert(match facet {
             FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Transparent)
             | FamilyThemeRuleFacet::Stroke(FamilyThemePaintKind::Transparent) => {
@@ -471,9 +445,7 @@ fn observe_terminal_node_paint(
             }
             _ => unreachable!("guarded Class direct node paint"),
         });
-    } else if receipt.is_complete()
-        && !receipt.has_effective_node_paint_rule(rule_index, target, property)
-    {
+    } else if !receipt.has_node_paint(rule_index, target, property) {
         observation.suppressed = true;
     } else {
         observation.incomplete = true;
@@ -507,149 +479,6 @@ mod tests {
             .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
             .expect("compile Class terminal fixture")
             .resolve(DiagramFamilyId::CLASS)
-    }
-
-    #[test]
-    fn terminal_recorder_rejects_wrong_counts_and_duplicate_seals() {
-        let complete_receipt = |count| {
-            let relations = (0..count)
-                .map(|index| super::super::ClassRelationTerminalExpectation::new(index, None, None))
-                .collect::<Vec<_>>();
-            let mut receipt = ClassRelationThemeReceipt::new(relations, Vec::new(), None, false);
-            for index in 0..count {
-                receipt.record_relation(super::super::ClassRelationTerminalEvent {
-                    relation_index: index,
-                    start_marker: None,
-                    end_marker: None,
-                    emitted_stroke: None,
-                    terminal_style: ";;;",
-                    hand_drawn_stroke: None,
-                    typed_width_emitted: false,
-                });
-            }
-            receipt
-        };
-        let recorder = ClassThemeEvidenceRecorder::new(None, 2, 0, 0, 0, Vec::new());
-        assert!(!recorder.record_terminal(complete_receipt(1)));
-        assert!(recorder.record_terminal(complete_receipt(2)));
-        assert!(!recorder.record_terminal(complete_receipt(2)));
-    }
-
-    #[test]
-    fn terminal_recorder_retains_only_requested_theme_evidence() {
-        let theme = resolved_fill(ThemeTarget::Marker, None);
-        for request in [None, Some(&theme)] {
-            let recorder = ClassThemeEvidenceRecorder::new(request, 1, 0, 0, 0, Vec::new());
-            let mut receipt = ClassRelationThemeReceipt::new(
-                vec![super::super::ClassRelationTerminalExpectation::new(
-                    0, None, None,
-                )],
-                Vec::new(),
-                None,
-                false,
-            );
-            assert!(!recorder.record_terminal(receipt.clone()));
-            assert!(recorder.terminal_receipt.get().is_none());
-            receipt.record_relation(super::super::ClassRelationTerminalEvent {
-                relation_index: 0,
-                start_marker: None,
-                end_marker: None,
-                emitted_stroke: None,
-                terminal_style: "",
-                hand_drawn_stroke: None,
-                typed_width_emitted: false,
-            });
-            assert!(recorder.record_terminal(receipt.clone()));
-            let retained = recorder.terminal_receipt.get().expect("completed render");
-            assert_eq!(retained.is_some(), request.is_some());
-            assert!(!recorder.record_terminal(receipt));
-        }
-    }
-
-    #[test]
-    fn terminal_recorder_requires_layout_cluster_count_and_completed_checkpoints() {
-        let recorder = ClassThemeEvidenceRecorder::new(None, 0, 0, 0, 1, Vec::new());
-        assert!(!recorder.record_terminal(ClassRelationThemeReceipt::new(
-            Vec::new(),
-            Vec::new(),
-            None,
-            false
-        )));
-        let mut receipt = ClassRelationThemeReceipt::new_with_clusters(
-            Vec::new(),
-            Vec::new(),
-            None,
-            false,
-            super::super::ClassClusterTerminalExpectation {
-                ids: vec!["Outer".into()],
-                ..Default::default()
-            },
-        );
-        assert!(!recorder.record_terminal(receipt.clone()));
-        receipt.record_cluster("Outer", None, None, "");
-        assert!(recorder.record_terminal(receipt));
-    }
-
-    #[test]
-    fn terminal_recorder_requires_source_note_attachment_count() {
-        let recorder = ClassThemeEvidenceRecorder::new(None, 0, 1, 0, 0, Vec::new());
-        assert!(!recorder.record_terminal(ClassRelationThemeReceipt::new(
-            Vec::new(),
-            Vec::new(),
-            None,
-            false,
-        )));
-        let mut receipt = ClassRelationThemeReceipt::new(Vec::new(), Vec::new(), None, false)
-            .with_note_attachments(vec![2]);
-        assert!(!recorder.record_terminal(receipt.clone()));
-        receipt.record_note_attachment(2, None, "", None);
-        assert!(recorder.record_terminal(receipt));
-    }
-
-    #[test]
-    fn visible_relation_marker_keeps_unsupported_paint_as_a_residual() {
-        let theme = resolved_fill(ThemeTarget::Marker, None);
-        let recorder = ClassThemeEvidenceRecorder::new(Some(&theme), 1, 0, 0, 0, Vec::new());
-        let mut receipt = ClassRelationThemeReceipt::new(
-            vec![super::super::ClassRelationTerminalExpectation::new(
-                0,
-                Some("extensionStart"),
-                None,
-            )],
-            vec![super::super::ClassMarkerTerminalExpectation::new(
-                "extensionStart",
-                false,
-            )],
-            None,
-            false,
-        );
-        receipt.record_marker("extensionStart", false, None, None);
-        receipt.record_relation(super::super::ClassRelationTerminalEvent {
-            relation_index: 0,
-            start_marker: Some("extensionStart"),
-            end_marker: None,
-            emitted_stroke: None,
-            terminal_style: ";;;",
-            hand_drawn_stroke: None,
-            typed_width_emitted: false,
-        });
-        assert!(recorder.record_terminal(receipt));
-
-        let evidence = recorder
-            .finish(
-                Some(&theme),
-                &ClassRelationThemePlan::default(),
-                &work_meter(),
-            )
-            .expect("reconcile visible Class marker evidence");
-        assert_eq!(evidence.residuals().len(), 1);
-        assert_eq!(
-            evidence.residuals()[0].key(),
-            &FamilyThemeMechanismKey::Rule {
-                index: 0,
-                target: ThemeTarget::Marker,
-            }
-        );
     }
 
     #[test]

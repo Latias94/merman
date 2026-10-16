@@ -364,7 +364,6 @@ fn packet_dark_presets_pair_each_text_role_with_its_terminal_background() {
         assert_eq!(evidence.applied_count(), 4);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
     }
 }
@@ -971,7 +970,6 @@ fn packet_typed_font_stack_reaches_root_css_and_visible_text_inherits_it() {
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
@@ -1021,7 +1019,6 @@ fn packet_explicit_mermaid_font_paths_outrank_typed_font_stack() {
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
-        assert_eq!(evidence.compatibility_residual_count(), 0);
         assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
     }
 }
@@ -1074,7 +1071,6 @@ fn packet_direct_font_stack_is_not_limited_by_the_legacy_bridge_budget() {
     let evidence = merman_render::__private::family_evidence(completion.report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.theme_residual_count(), 0);
-    assert_eq!(evidence.compatibility_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 

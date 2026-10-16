@@ -165,10 +165,6 @@ fn render_state_diagram_svg_with_plan(
         label_sidecar,
         effect_evidence,
         style_plan,
-        theme_receipt: std::cell::RefCell::new(style_plan.begin_terminal_theme_receipt(
-            options.debug.include_nodes,
-            options.debug.include_edges,
-        )),
         rough_cache,
     };
 
@@ -322,8 +318,7 @@ fn render_state_diagram_svg_with_plan(
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));
     let root_context =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::STATE, diagram_id)
-            .with_resource_policy(options.resource_policy());
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::STATE, diagram_id);
     let mut root_chrome = root_svg::RootChrome::new(diagram_id, "stateDiagram");
     root_chrome.class = Some("statediagram");
     root_chrome.aria_labelledby = aria_labelledby.as_deref();
@@ -454,22 +449,17 @@ fn render_state_diagram_svg_with_plan(
         viewport_padding,
     );
 
-    let document_len_before_root_finalize = out.len();
     let root_document = root_context.finish_document(
         &mut out,
         root_document,
         root_svg::RootViewportSpec::responsive(root_bounds)
             .with_max_width(root_svg::RootMaxWidth::CssSixSignificant(root_bounds.width)),
     )?;
-    ctx.theme_receipt
-        .borrow_mut()
-        .shift_emissions_after_prefix_rewrite(document_len_before_root_finalize, out.len());
 
     drop(_g_viewbox);
     let _g_finalize = timing.section(&mut timings.finalize_svg);
 
     if let Some((title, title_x, title_y)) = title_emission {
-        let terminal_start = out.len();
         let _ = write!(
             &mut out,
             r#"<text text-anchor="middle" x="{}" y="{}" class="statediagramTitleText""#,
@@ -485,19 +475,11 @@ fn render_state_diagram_svg_with_plan(
         }
         let _ = write!(&mut out, ">{}</text>", escape_xml_display(title));
         out.checkpoint()?;
-        style_plan.record_title_terminal_emission(
-            &mut ctx.theme_receipt.borrow_mut(),
-            terminal_start..out.len(),
-        );
     }
     out.push_str("</svg>\n");
     let out = out.finish()?;
 
-    ctx.theme_receipt
-        .borrow_mut()
-        .observe_svg(&out, options.work_meter())?;
-    let terminal_theme_receipt = ctx.theme_receipt.borrow().clone();
-    let _ = style_plan.record_terminal_theme_receipt(terminal_theme_receipt);
+    style_plan.record_output_visibility(options.debug.include_nodes, options.debug.include_edges);
 
     drop(_g_finalize);
     timings.total = total_timer
@@ -989,7 +971,6 @@ fn render_state_cluster(
     let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
         return;
     };
-    let terminal_start = out.len();
 
     let data_look = state_data_look(ctx);
     let effective_look = state_effective_look(ctx);
@@ -1141,11 +1122,6 @@ fn render_state_cluster(
                 fmt(stroke_width),
                 escape_attr(&stroke_style),
             );
-            ctx.style_plan.record_node_terminal_emission(
-                &mut ctx.theme_receipt.borrow_mut(),
-                cluster_id,
-                terminal_start..out.len(),
-            );
             return;
         }
         let _ = write!(
@@ -1158,11 +1134,6 @@ fn render_state_cluster(
             fmt(cluster.width.max(1.0)),
             fmt(cluster.height.max(1.0)),
             escape_attr(data_look),
-        );
-        ctx.style_plan.record_node_terminal_emission(
-            &mut ctx.theme_receipt.borrow_mut(),
-            cluster_id,
-            terminal_start..out.len(),
         );
         return;
     }
@@ -1316,11 +1287,6 @@ fn render_state_cluster(
             inner_shape
         );
     }
-    ctx.style_plan.record_node_terminal_emission(
-        &mut ctx.theme_receipt.borrow_mut(),
-        cluster_id,
-        terminal_start..out.len(),
-    );
 }
 
 #[cfg(test)]

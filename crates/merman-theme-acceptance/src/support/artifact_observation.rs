@@ -1,26 +1,20 @@
-use merman_render::__private::{SvgArtifactReceipt, SvgElementObservation};
+use crate::svg_observation::{SvgArtifactObservation, SvgElementObservation};
 
 use super::{C6ProofError, C6ProofResult, C6TargetArtifact};
 
-pub(crate) fn sealed_svg_receipt<'a>(
+pub(crate) fn observed_svg<'a>(
     artifact: &'a C6TargetArtifact<'a>,
-) -> C6ProofResult<&'a SvgArtifactReceipt> {
-    let receipt = artifact.svg_artifact_receipt().ok_or_else(|| {
+) -> C6ProofResult<&'a SvgArtifactObservation> {
+    artifact.svg_observation().ok_or_else(|| {
         C6ProofError::new(
-            "renderer-svg-observation",
-            "renderer did not seal a generic SVG artifact observation",
+            "qualification-svg-observation",
+            "could not observe the scenario SVG",
         )
-    })?;
-    c6_ensure!(
-        "renderer-svg-observation",
-        receipt.proves_artifact(artifact.receipt().artifact_digest()),
-        "generic SVG artifact observation is not bound to the target admission artifact"
-    );
-    Ok(receipt)
+    })
 }
 
 pub(crate) fn has_ancestor_class(
-    receipt: &SvgArtifactReceipt,
+    receipt: &SvgArtifactObservation,
     element: &SvgElementObservation,
     class_name: &str,
 ) -> bool {
@@ -38,7 +32,7 @@ pub(crate) fn has_ancestor_class(
 }
 
 pub(crate) fn subtree_style_value<'a>(
-    receipt: &'a SvgArtifactReceipt,
+    receipt: &'a SvgArtifactObservation,
     element: &'a SvgElementObservation,
     property: &str,
 ) -> Option<&'a str> {

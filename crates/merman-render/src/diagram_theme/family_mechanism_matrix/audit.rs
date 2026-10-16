@@ -1,8 +1,7 @@
-//! Current route invariants over the independently enumerated matrix domain.
+//! Selector-domain enumeration shared by support discovery and route invariants.
 
 use super::*;
 
-#[cfg(test)]
 pub(super) fn for_each_matrix_selector(mut visit: impl FnMut(FamilyThemeSelectorShape)) {
     for variant in std::iter::once(None).chain(ThemeVariant::ALL.iter().copied().map(Some)) {
         visit(FamilyThemeSelectorShape::Static { variant });

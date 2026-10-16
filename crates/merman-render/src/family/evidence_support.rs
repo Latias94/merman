@@ -101,18 +101,6 @@ impl DirectPaintTerminalLedger {
             .any(|((candidate, _), count)| *candidate == rule_index && *count != 0)
     }
 
-    pub(crate) fn has_effective_property(
-        &self,
-        rule_index: usize,
-        property: ResolvedStyleProperty,
-    ) -> bool {
-        self.effective_by_property
-            .get(&(rule_index, property))
-            .copied()
-            .unwrap_or(0)
-            != 0
-    }
-
     pub(crate) fn proves_property(
         &self,
         terminal_complete: bool,
@@ -124,19 +112,6 @@ impl DirectPaintTerminalLedger {
         terminal_complete
             && effective != 0
             && self.emitted_by_property.get(&key).copied().unwrap_or(0) == effective
-    }
-
-    #[cfg(test)]
-    pub(crate) fn proves_rule(&self, terminal_complete: bool, rule_index: usize) -> bool {
-        let effective_properties = self
-            .effective_by_property
-            .keys()
-            .filter_map(|(candidate, property)| (*candidate == rule_index).then_some(*property))
-            .collect::<Vec<_>>();
-        !effective_properties.is_empty()
-            && effective_properties
-                .into_iter()
-                .all(|property| self.proves_property(terminal_complete, rule_index, property))
     }
 }
 

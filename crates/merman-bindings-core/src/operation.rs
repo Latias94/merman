@@ -323,11 +323,8 @@ struct BindingOperationExecution {
 }
 
 impl BindingOperationExecution {
-    fn into_data(self) -> Result<Vec<u8>, BindingError> {
-        u64::try_from(self.output.data.len()).map_err(|_| {
-            BindingError::internal("operation result byte length exceeds unsigned 64-bit range")
-        })?;
-        Ok(self.output.data)
+    fn into_data(self) -> Vec<u8> {
+        self.output.data
     }
 
     fn into_result(
@@ -398,7 +395,7 @@ impl PreparedOneShotExecution {
                 control,
                 ..
             } => execute_one_shot_theme_authoring_output(operation, &compiler, source, &control)
-                .and_then(|output| BindingOperationExecution { operation, output }.into_data()),
+                .map(|output| output.data),
         }
     }
 }
@@ -929,7 +926,10 @@ impl BindingOperationOutput {
     }
 
     #[cfg(feature = "ascii")]
-    pub(crate) fn ascii(output: merman::ascii::AsciiOutput) -> Self {
+    pub(crate) fn ascii(output: merman::ascii::AsciiOutput, include_metadata: bool) -> Self {
+        if !include_metadata {
+            return Self::plain(output.into_bytes());
+        }
         let plan = BindingOutputPlan::Ascii(BindingAsciiOutputPlan::from_output(&output));
         Self {
             data: output.into_bytes(),
@@ -1236,11 +1236,21 @@ impl ValidatedArtifactContract {
         })
     }
 
-    pub(crate) fn execute_once_data(
+    /// Executes one operation without producing result metadata.
+    pub fn execute_once_data(
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<Vec<u8>, BindingError> {
-        self.prepare_one_shot_execution(&request, BindingEngineServices::new())?
+        self.execute_once_data_with_services(request, BindingEngineServices::new())
+    }
+
+    /// Executes one data-only operation with immutable constructor services.
+    pub fn execute_once_data_with_services(
+        &self,
+        request: BindingOperationRequest<'_>,
+        services: BindingEngineServices,
+    ) -> Result<Vec<u8>, BindingError> {
+        self.prepare_one_shot_execution(&request, services)?
             .execute_data(request.source, request.uri)
     }
 }
@@ -1251,21 +1261,23 @@ impl BindingEngine {
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<BindingOperationResult, BindingError> {
-        self.execute_request(request)
+        self.execute_request(request, true)
             .and_then(|execution| execution.into_result(self.runtime_policy_id()))
     }
 
-    pub(crate) fn execute_data(
+    /// Executes one operation without producing result metadata.
+    pub fn execute_data(
         &self,
         request: BindingOperationRequest<'_>,
     ) -> Result<Vec<u8>, BindingError> {
-        self.execute_request(request)
-            .and_then(BindingOperationExecution::into_data)
+        self.execute_request(request, false)
+            .map(BindingOperationExecution::into_data)
     }
 
     fn execute_request(
         &self,
         request: BindingOperationRequest<'_>,
+        include_metadata: bool,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = resolve_operation_request(&request)?;
         let control = request.control_or_default();
@@ -1275,9 +1287,13 @@ impl BindingEngine {
         let prepared = self.prepare_request_overlay(operation, request.options_json)?;
         let admitted = self.admit_operation(operation)?;
         let output = match prepared {
-            crate::engine::PreparedRequestOverlay::Unchanged => {
-                self.execute_admitted_output(admitted, request.source, request.uri, control.clone())
-            }
+            crate::engine::PreparedRequestOverlay::Unchanged => self.execute_admitted_output(
+                admitted,
+                request.source,
+                request.uri,
+                control.clone(),
+                include_metadata,
+            ),
             crate::engine::PreparedRequestOverlay::Override(configs) => self
                 .execute_request_projection(
                     admitted,
@@ -1285,6 +1301,7 @@ impl BindingEngine {
                     request.source,
                     request.uri,
                     control.clone(),
+                    include_metadata,
                 ),
         }?;
         control
@@ -1300,7 +1317,7 @@ impl BindingEngine {
         uri: Option<&[u8]>,
         control: OperationControl,
     ) -> Result<BindingOperationResult, BindingError> {
-        self.execute_admitted_request(admitted, source, uri, control)
+        self.execute_admitted_request(admitted, source, uri, control, true)
             .and_then(|execution| execution.into_result(self.runtime_policy_id()))
     }
 
@@ -1311,8 +1328,8 @@ impl BindingEngine {
         uri: Option<&[u8]>,
         control: OperationControl,
     ) -> Result<Vec<u8>, BindingError> {
-        self.execute_admitted_request(admitted, source, uri, control)
-            .and_then(BindingOperationExecution::into_data)
+        self.execute_admitted_request(admitted, source, uri, control, false)
+            .map(BindingOperationExecution::into_data)
     }
 
     fn execute_admitted_request(
@@ -1321,9 +1338,11 @@ impl BindingEngine {
         source: &[u8],
         uri: Option<&[u8]>,
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<BindingOperationExecution, BindingError> {
         let operation = admitted.operation();
-        let output = self.execute_admitted_output(admitted, source, uri, control)?;
+        let output =
+            self.execute_admitted_output(admitted, source, uri, control, include_metadata)?;
         Ok(BindingOperationExecution { operation, output })
     }
 
@@ -1333,6 +1352,7 @@ impl BindingEngine {
         source: &[u8],
         uri: Option<&[u8]>,
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<BindingOperationOutput, BindingError> {
         control
             .checkpoint_at(OperationPhase::Parse)
@@ -1355,17 +1375,19 @@ impl BindingEngine {
                     ))
                 }
             }
-            OperationKey::Png => self.render_png_output(source, control.clone()),
-            OperationKey::Jpeg => self.render_jpeg_output(source, control.clone()),
-            OperationKey::Pdf => self.render_pdf_output(source, control.clone()),
-            OperationKey::Svg => self.render_svg_output(source, control.clone()),
+            OperationKey::Png => self.render_png_output(source, control.clone(), include_metadata),
+            OperationKey::Jpeg => {
+                self.render_jpeg_output(source, control.clone(), include_metadata)
+            }
+            OperationKey::Pdf => self.render_pdf_output(source, control.clone(), include_metadata),
+            OperationKey::Svg => self.render_svg_output(source, control.clone(), include_metadata),
             OperationKey::SvgPlanJson => self
                 .svg_plan_json_data(source, control.clone())
                 .map(BindingOperationOutput::plain),
             #[cfg(feature = "ascii")]
             OperationKey::Ascii => self
                 .render_ascii_output(source, control.clone())
-                .map(BindingOperationOutput::ascii),
+                .map(|output| BindingOperationOutput::ascii(output, include_metadata)),
             #[cfg(not(feature = "ascii"))]
             OperationKey::Ascii => self
                 .render_ascii_data(source, control.clone())
@@ -2057,6 +2079,49 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_data_execution_matches_result_without_serializing_metadata() {
+        let engine = BindingEngine::new(b"").unwrap();
+        for options in [
+            b"".as_slice(),
+            br##"{"theme":{"spec":{"canvas":{"base":"#f7f3e8"}}}}"##.as_slice(),
+            br#"{"svg":{"pipeline":"resvg-safe"}}"#.as_slice(),
+        ] {
+            let request = BindingOperationRequest::new("svg", b"flowchart TD\nA --> B")
+                .with_options_json(options);
+            let result = engine.execute(request.clone()).unwrap();
+            assert!(result.metadata().theme_execution_evidence().is_some());
+
+            reset_metadata_serialization_count();
+            assert_eq!(engine.execute_data(request.clone()).unwrap(), result.data());
+            assert_eq!(metadata_serialization_count(), 0);
+
+            reset_metadata_serialization_count();
+            assert_eq!(execute_once_data(request).unwrap(), result.data());
+            assert_eq!(metadata_serialization_count(), 0);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn svg_data_execution_preserves_source_and_resource_errors() {
+        let engine = BindingEngine::new(b"").unwrap();
+        for (source, options) in [
+            (b"not a diagram".as_slice(), b"".as_slice()),
+            (b"flowchart TD\nA[unfinished".as_slice(), b"".as_slice()),
+            (
+                b"flowchart TD\nA --> B".as_slice(),
+                br#"{"resources":{"limits":{"max_svg_bytes":64}}}"#.as_slice(),
+            ),
+        ] {
+            let request = BindingOperationRequest::new("svg", source).with_options_json(options);
+            let expected = engine.execute(request.clone()).unwrap_err();
+            assert_eq!(engine.execute_data(request.clone()).unwrap_err(), expected);
+            assert_eq!(execute_once_data(request).unwrap_err(), expected);
+        }
+    }
+
     #[test]
     fn reusable_engine_rejects_ambiguous_analysis_wrappers_at_construction() {
         let error = BindingEngine::from_options(
@@ -2396,13 +2461,19 @@ mod tests {
         let engine = BindingEngine::from_options(b"").unwrap();
         let pre_cancelled = OperationControl::new();
         pre_cancelled.cancel();
+        let request = BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
+            .with_control(pre_cancelled);
         let error = engine
-            .execute(
-                BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
-                    .with_control(pre_cancelled),
-            )
+            .execute(request.clone())
             .expect_err("a pre-cancelled request must not produce render output");
         assert_structured_requested_cancellation(&error, "admission");
+        assert_eq!(engine.execute_data(request.clone()).unwrap_err(), error);
+        assert_eq!(execute_once_data(request).unwrap_err(), error);
+
+        let request = BindingOperationRequest::new(operation_id, b"flowchart TD\nA --> B")
+            .with_control(OperationControl::new().with_deadline(std::time::Duration::ZERO));
+        let error = engine.execute(request.clone()).unwrap_err();
+        assert_eq!(engine.execute_data(request).unwrap_err(), error);
     }
 
     fn assert_structured_requested_cancellation(error: &BindingError, phase: &'static str) {

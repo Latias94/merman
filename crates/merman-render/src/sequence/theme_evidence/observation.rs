@@ -1,8 +1,9 @@
 use std::collections::BTreeSet;
 
 use super::receipts::{
-    SequenceControlThemeState, SequenceLifelineThemeState, SequenceMessageThemeState,
-    SequenceNumberLabelThemeState, SequenceRoleTypographyReceipt, SequenceStaticRectThemeState,
+    SequenceControlThemeEmission, SequenceLifelineThemeEmission, SequenceMessageThemeEmission,
+    SequenceNumberLabelThemeEmission, SequenceRoleTypographyReceipt,
+    SequenceStaticRectThemeEmission,
 };
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape,
@@ -22,7 +23,7 @@ pub(super) struct SequenceRuleObservation {
 }
 
 pub(super) fn observe_control_rule(
-    surface: &SequenceControlThemeState,
+    surface: &SequenceControlThemeEmission,
     observation: &mut SequenceRuleObservation,
     disposition: FamilyThemeDisposition,
     rule_index: usize,
@@ -100,7 +101,7 @@ pub(super) fn observe_control_rule(
 }
 
 pub(super) fn observe_static_rect_rule(
-    surface: &SequenceStaticRectThemeState,
+    surface: &SequenceStaticRectThemeEmission,
     observation: &mut SequenceRuleObservation,
     disposition: FamilyThemeDisposition,
     rule_index: usize,
@@ -185,7 +186,7 @@ pub(super) fn observe_static_rect_rule(
 }
 
 pub(super) fn observe_message_rule(
-    message: &SequenceMessageThemeState,
+    message: &SequenceMessageThemeEmission,
     observation: &mut SequenceRuleObservation,
     disposition: FamilyThemeDisposition,
     rule_index: usize,
@@ -266,7 +267,7 @@ pub(super) fn observe_message_rule(
 }
 
 pub(super) fn observe_sequence_number_rule(
-    sequence_number: &SequenceNumberLabelThemeState,
+    sequence_number: &SequenceNumberLabelThemeEmission,
     observation: &mut SequenceRuleObservation,
     disposition: FamilyThemeDisposition,
     rule_index: usize,
@@ -307,7 +308,7 @@ pub(super) fn observe_sequence_number_rule(
 }
 
 pub(super) fn observe_lifeline_rule(
-    lifeline: &SequenceLifelineThemeState,
+    lifeline: &SequenceLifelineThemeEmission,
     observation: &mut SequenceRuleObservation,
     disposition: FamilyThemeDisposition,
     rule_index: usize,

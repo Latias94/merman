@@ -14,35 +14,33 @@ mod css_binding;
 mod evidence;
 mod namespace_title;
 mod node;
+mod outcomes;
 mod paint;
 mod relation_width;
-mod terminal;
 mod text;
 
 use cluster::ClassClusterThemePlan;
 pub(crate) use css_binding::ClassCssThemeBinding;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
 use namespace_title::ClassNamespaceTitleThemePlan;
+pub(crate) use node::ClassNodePaintBinding;
 use node::ClassNodeThemePlan;
-pub(crate) use relation_width::ClassRelationWidthBinding;
-use terminal::ClassClusterTerminalExpectation;
-pub(crate) use terminal::ClassTerminalReceiptSummary;
-pub(crate) use terminal::{
-    ClassMarkerTerminalExpectation, ClassNodePaintTerminal, ClassNodeTerminalExpectation,
-    ClassNodeTerminalObservation, ClassRelationTerminalEvent, ClassRelationTerminalExpectation,
-    ClassRelationThemeReceipt,
+pub(crate) use outcomes::ClassThemeOutcomeSummary;
+pub(crate) use outcomes::{
+    ClassMarkerPaintBinding, ClassNodePaintOutcomes, ClassRelationPaintOutcome, ClassThemeOutcomes,
 };
+pub(crate) use relation_width::ClassRelationWidthBinding;
 pub(crate) use text::{
-    ClassNodeLabelStyleFacts, ClassTextPaint, ClassTextTerminalFacts, ClassTextThemePlan,
-    ClassTextThemeReceipt, ClassTypographyCssEmission,
+    ClassNodeLabelStyleFacts, ClassTextOutcomes, ClassTextPaint, ClassTextTerminalFacts,
+    ClassTextThemePlan,
 };
 
 /// Prepared final Class relation paint winner shared by bounds, SVG emission, and evidence.
 /// Node resolution stays behind the same crate-private handle for existing renderer callers.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassRelationThemePlan {
+    theme_requested: bool,
     stroke_binding: paint::ClassPaintBinding,
-    note_attachment_indices: Vec<usize>,
     stroke_width: ClassRelationWidthBinding,
     static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
@@ -51,7 +49,7 @@ pub(crate) struct ClassRelationThemePlan {
     namespace_title_plan: ClassNamespaceTitleThemePlan,
     track_edge_label_backgrounds: bool,
     mermaid_owns_edge_label_background: bool,
-    edge_label_background: Option<terminal::ExpectedPaint>,
+    edge_label_background: Option<outcomes::ClassSelectedPaint>,
 }
 
 impl ClassRelationThemePlan {
@@ -123,7 +121,7 @@ impl ClassRelationThemePlan {
             )
             .map(|paint| {
                 let (css, rule_index, _) = paint.into_parts();
-                terminal::ExpectedPaint {
+                outcomes::ClassSelectedPaint {
                     target: ThemeTarget::EdgeLabelBackground,
                     rule_index,
                     css: css.into_string(),
@@ -219,7 +217,7 @@ impl ClassRelationThemePlan {
         }
         .map(|paint| {
             let (css, rule_index, _) = paint.into_parts();
-            terminal::ExpectedPaint {
+            outcomes::ClassSelectedPaint {
                 target: ThemeTarget::Edge,
                 rule_index,
                 css: css.into_string(),
@@ -228,8 +226,8 @@ impl ClassRelationThemePlan {
         stroke_binding.lower(&style, stroke_is_specified, candidate);
         stroke_width.lower(theme, &style);
         Ok(Self {
+            theme_requested: true,
             stroke_binding,
-            note_attachment_indices: Vec::new(),
             stroke_width,
             static_winner_rules,
             ordinal_winner_rules,
@@ -305,13 +303,6 @@ impl ClassRelationThemePlan {
         )
     }
 
-    pub(crate) fn with_note_attachments(mut self, indices: Vec<usize>) -> Self {
-        // Note attachments share static edge paint, but do not enter the relation ordinal or
-        // stroke-width domains. Retain declaration indices, including gaps from unattached notes.
-        self.note_attachment_indices = indices;
-        self
-    }
-
     pub(crate) fn relation_width(&self) -> &ClassRelationWidthBinding {
         &self.stroke_width
     }
@@ -322,64 +313,20 @@ impl ClassRelationThemePlan {
             .map(|expected| (expected.rule_index, expected.css.as_str()))
     }
 
-    #[cfg(test)]
-    pub(crate) fn begin_terminal_receipt(
+    pub(crate) fn begin_outcomes(
         &self,
-        relations: Vec<ClassRelationTerminalExpectation>,
-        markers: Vec<ClassMarkerTerminalExpectation>,
-        hand_drawn: bool,
-    ) -> ClassRelationThemeReceipt<'static> {
-        ClassRelationThemeReceipt::new(
-            relations,
-            if self.stroke_binding.typed().is_some() {
-                markers
-            } else {
-                Vec::new()
-            },
-            self.stroke_binding.stroke_receipt(),
-            hand_drawn,
+        markers: Vec<ClassMarkerPaintBinding>,
+    ) -> ClassThemeOutcomes {
+        ClassThemeOutcomes::new(
+            self.theme_requested,
+            markers,
+            self.stroke_binding.stroke_property(),
+            self.track_edge_label_backgrounds,
         )
-        .with_note_attachments(self.note_attachment_indices.clone())
-        .with_edge_label_backgrounds(self.track_edge_label_backgrounds)
-        .with_edge_label_background_paint(self.edge_label_background.clone())
     }
 
-    pub(crate) fn begin_terminal_receipt_with_nodes<'nodes>(
-        &self,
-        nodes: &'nodes [ClassNodeTerminalExpectation],
-        unique_node_domain: bool,
-        cluster_ids: Vec<String>,
-        relations: Vec<ClassRelationTerminalExpectation>,
-        markers: Vec<ClassMarkerTerminalExpectation>,
-        hand_drawn: bool,
-    ) -> ClassRelationThemeReceipt<'nodes> {
-        ClassRelationThemeReceipt::new_with_clusters(
-            relations,
-            if self.stroke_binding.typed().is_some() {
-                markers
-            } else {
-                Vec::new()
-            },
-            self.stroke_binding.stroke_receipt(),
-            hand_drawn,
-            ClassClusterTerminalExpectation {
-                ids: cluster_ids,
-                fill: self.cluster_plan.fill.typed().cloned(),
-                stroke: self.cluster_plan.stroke.typed().cloned(),
-                namespace_title: self.namespace_title_plan.fill.typed().cloned(),
-            },
-        )
-        .with_note_attachments(self.note_attachment_indices.clone())
-        .with_edge_label_backgrounds(self.track_edge_label_backgrounds)
-        .with_edge_label_background_paint(self.edge_label_background.clone())
-        .with_borrowed_nodes(nodes, unique_node_domain)
-    }
-
-    pub(crate) fn resolve_node_expectations(
-        &self,
-        node_ids: impl IntoIterator<Item = String>,
-    ) -> Vec<ClassNodeTerminalExpectation> {
-        self.node_plan.resolve_expectations(node_ids)
+    pub(crate) fn node_paint(&self, ordinal: usize) -> &ClassNodePaintBinding {
+        self.node_plan.paint(ordinal)
     }
 
     fn route_won(
@@ -453,13 +400,14 @@ mod tests {
             .unwrap();
             if clear_stroke {
                 assert!(plan.typed_stroke().is_none());
-                assert!(plan.stroke_binding.stroke_receipt().is_none());
+                assert!(plan.stroke_binding.stroke_property().is_none());
                 assert_eq!(plan.stroke_binding.action_rule(), Some(0));
             } else {
                 assert_eq!(plan.typed_stroke(), Some((0, "#123456")));
-                let receipt = plan.stroke_binding.stroke_receipt().unwrap();
-                assert_eq!(receipt.property, ResolvedStyleProperty::Fill);
-                assert_eq!(receipt.css, plan.stroke_binding.css());
+                assert_eq!(
+                    plan.stroke_binding.stroke_property(),
+                    Some(ResolvedStyleProperty::Fill)
+                );
             }
             assert_eq!(plan.relation_css_default(), "#333333");
         }
@@ -498,7 +446,7 @@ mod tests {
             assert_eq!(plan.stroke_binding.css(), token);
             assert_eq!(plan.relation_css_default(), token);
             assert_eq!(plan.typed_stroke(), None);
-            assert_eq!(plan.stroke_binding.stroke_receipt(), None);
+            assert_eq!(plan.stroke_binding.stroke_property(), None);
         }
         // Host colors enter the core theme derivation before Class binding. Opaque CSS is
         // therefore rejected here even though the renderer preserves already prepared tokens.
@@ -510,59 +458,5 @@ mod tests {
                 .parse_metadata_sync("classDiagram\nA --> B\n")
                 .is_err()
         );
-    }
-
-    #[test]
-    fn relation_width_receipt_requires_every_terminal_checkpoint() {
-        use crate::diagram_theme::{
-            DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-        };
-        let theme = DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(
-                    ThemeRule::new(
-                        ThemeTarget::Edge,
-                        ThemeStylePatch::default().with_stroke_width(6.0).unwrap(),
-                    ),
-                )),
-            )
-            .unwrap()
-            .resolve(crate::DiagramFamilyId::CLASS);
-        let work_meter =
-            OperationWorkMeter::new(crate::resources::RenderResourcePolicy::interactive());
-        let plan = ClassRelationThemePlan::resolve(
-            Some(&theme),
-            &merman_core::MermaidConfig::empty_object(),
-            2,
-            0,
-            &work_meter,
-        )
-        .unwrap();
-        assert_eq!(plan.relation_width().typed_emission(), Some((0, 6.0)));
-        let relations = (0..2)
-            .map(|index| ClassRelationTerminalExpectation::new(index, None, None))
-            .collect();
-        let mut receipt = plan.begin_terminal_receipt(relations, Vec::new(), false);
-        receipt.record_relation(ClassRelationTerminalEvent {
-            relation_index: 0,
-            start_marker: None,
-            end_marker: None,
-            emitted_stroke: None,
-            terminal_style: ";;;",
-            hand_drawn_stroke: None,
-            typed_width_emitted: true,
-        });
-        assert!(!receipt.proves_typed_width());
-
-        receipt.record_relation(ClassRelationTerminalEvent {
-            relation_index: 1,
-            start_marker: None,
-            end_marker: None,
-            emitted_stroke: None,
-            terminal_style: ";;;",
-            hand_drawn_stroke: None,
-            typed_width_emitted: true,
-        });
-        assert!(receipt.proves_typed_width());
     }
 }

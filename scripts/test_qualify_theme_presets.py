@@ -44,6 +44,7 @@ class PresetQualificationTests(unittest.TestCase):
 
     def test_replay_rejects_build_host_and_nested_artifact_drift(self):
         record = {
+            "schema_version": 2,
             "source_commit": "source-a", "executable_sha256": "binary-a",
             "host": {"system": "host-a"},
             "qualification": {"cells": [{"artifact_digest": "artifact-a"}]},
@@ -61,10 +62,11 @@ class PresetQualificationTests(unittest.TestCase):
 
 
     def test_replay_preserves_json_types_and_ignores_object_key_order(self):
-        record = {"schema_version": 1, "render_config": {"htmlLabels": False}, "scale": 1.0}
-        verify_record({"scale": 1.0, "render_config": {"htmlLabels": False}, "schema_version": 1}, record)
+        record = {"schema_version": 2, "render_config": {"htmlLabels": False}, "scale": 1.0}
+        verify_record({"scale": 1.0, "render_config": {"htmlLabels": False}, "schema_version": 2}, record)
         for changed in [
             {**record, "schema_version": True},
+            {**record, "schema_version": 1},
             {**record, "render_config": {"htmlLabels": 0}},
             {**record, "scale": 1},
         ]:
@@ -80,7 +82,7 @@ class CliQualificationTests(unittest.TestCase):
         self.binary.write_bytes(b"production binary")
         self.payloads = {"svg": b"qualified SVG bytes", "png": b"qualified PNG bytes"}
         source = "stateDiagram-v2\n[*] --> Active\n"
-        self.qualification = {"presets": [{"preset": "brutalist", "cells": [
+        self.qualification = {"schema_version": 2, "presets": [{"preset": "brutalist", "cells": [
             {"source_id": "state-v1", "source": source,
              "source_digest": hashlib.sha256(source.encode()).hexdigest(),
              "output": output, "png_scale": 4.0,
@@ -235,9 +237,14 @@ class CliQualificationTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "source digest differs"):
             qualify_cli(self.binary, self.qualification, runner=self.run_cli)
 
+    def test_cli_rejects_retired_qualification_schema(self):
+        self.qualification["schema_version"] = 1
+        with self.assertRaisesRegex(RuntimeError, "Unsupported qualification schema"):
+            qualify_cli(self.binary, self.qualification, runner=self.run_cli)
+
     def test_cli_rejects_missing_observations_or_replaced_executable(self):
         with self.assertRaisesRegex(RuntimeError, "actual target observations"):
-            qualify_cli(self.binary, {"presets": []}, runner=self.run_cli)
+            qualify_cli(self.binary, {"schema_version": 2, "presets": []}, runner=self.run_cli)
 
         def replacing_cli(command, **options):
             self.binary.write_bytes(b"replaced executable")
@@ -247,8 +254,8 @@ class CliQualificationTests(unittest.TestCase):
             qualify_cli(self.binary, self.qualification, runner=replacing_cli)
 
     def test_replay_rejects_different_cli_identity(self):
-        record = {"cli": {"executable_sha256": "cli-a", "matched_outputs": 2}}
-        changed = {"cli": {"executable_sha256": "cli-b", "matched_outputs": 2}}
+        record = {"schema_version": 2, "cli": {"executable_sha256": "cli-a", "matched_outputs": 2}}
+        changed = {"schema_version": 2, "cli": {"executable_sha256": "cli-b", "matched_outputs": 2}}
         with self.assertRaisesRegex(RuntimeError, "Stale"):
             verify_record(record, changed)
 

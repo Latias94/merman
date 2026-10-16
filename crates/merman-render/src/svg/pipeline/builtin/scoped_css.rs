@@ -447,7 +447,7 @@ mod tests {
     }
 
     #[test]
-    fn scoped_css_pipeline_preserves_xml_whitespace_and_rejects_form_feed() {
+    fn scoped_css_pipeline_preserves_xml_whitespace_and_removes_forbidden_scalars() {
         let svg = r#"<svg id="diagram"><g/></svg>"#;
         let session = render_session();
         let out = SvgPipeline::parity()
@@ -459,22 +459,15 @@ mod tests {
         assert!(out.contains("#diagram #diagram \n\t \r \r\n + * {color: red;}"));
         crate::xml_dom::Document::parse(&out).expect("injected CSS must remain valid XML");
 
-        let error = SvgPipeline::parity()
+        let out = SvgPipeline::parity()
             .with_postprocessor(ScopedCssPostprocessor::new(
                 "& \n\t \r \u{000C} \r\n + *{color: red;}",
             ))
             .process_to_string(svg, &session)
-            .expect_err("CSS form feed cannot be emitted as literal XML 1.0 text");
-        assert!(
-            matches!(
-                &error,
-                Error::SvgPostprocess { pass, message }
-                    if pass == "validate-well-formed-svg"
-                        && message.contains("U+000C")
-                        && message.contains("forbidden in XML 1.0")
-            ),
-            "{error}"
-        );
+            .expect("forbidden XML scalars are removed at the opaque output boundary");
+        assert!(!out.contains('\u{000C}'));
+        assert!(out.contains("color: red;"));
+        crate::xml_dom::Document::parse(&out).expect("injected CSS must remain valid XML");
     }
 
     #[test]

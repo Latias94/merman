@@ -12,6 +12,9 @@ macro_rules! c6_ensure {
     };
 }
 
+#[path = "support/svg_observation.rs"]
+pub mod svg_observation;
+
 #[cfg(feature = "png")]
 mod observation;
 

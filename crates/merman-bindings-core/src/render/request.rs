@@ -51,14 +51,26 @@ impl RenderRequestPlan {
         &self,
         source: &str,
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
+        let request = self.request(
+            source,
+            merman::RenderTarget::Svg(self.svg_for_operation(&control)?),
+            control,
+        );
+        if !include_metadata {
+            let svg = self
+                .renderer
+                .render_svg_data(request)
+                .map_err(|error| classify_render_error(error, self.resource_profile))?
+                .ok_or_else(no_diagram_error)?;
+            return Ok(crate::operation::BindingOperationOutput::plain(
+                svg.into_bytes(),
+            ));
+        }
         let output = self
             .renderer
-            .render(self.request(
-                source,
-                merman::RenderTarget::Svg(self.svg_for_operation(&control)?),
-                control,
-            ))
+            .render(request)
             .map_err(|error| classify_render_error(error, self.resource_profile))?;
         let RenderOutput::Svg(svg) = output else {
             return Err(unexpected_render_output("svg"));
@@ -147,6 +159,7 @@ impl RenderRequestPlan {
         &self,
         source: &str,
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
@@ -163,6 +176,11 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("png"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        if !include_metadata {
+            return Ok(crate::operation::BindingOperationOutput::plain(
+                output.into_bytes(),
+            ));
+        }
         let plan = output.plan();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
@@ -178,6 +196,7 @@ impl RenderRequestPlan {
         &self,
         source: &str,
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
@@ -194,6 +213,11 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("jpeg"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        if !include_metadata {
+            return Ok(crate::operation::BindingOperationOutput::plain(
+                output.into_bytes(),
+            ));
+        }
         let plan = output.plan();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
@@ -209,6 +233,7 @@ impl RenderRequestPlan {
         &self,
         source: &str,
         control: OperationControl,
+        include_metadata: bool,
     ) -> Result<crate::operation::BindingOperationOutput, BindingError> {
         let output = self
             .renderer
@@ -225,6 +250,11 @@ impl RenderRequestPlan {
             return Err(unexpected_render_output("pdf"));
         };
         let output = output.ok_or_else(no_diagram_error)?;
+        if !include_metadata {
+            return Ok(crate::operation::BindingOperationOutput::plain(
+                output.into_bytes(),
+            ));
+        }
         let plan = output.plan();
         let evidence =
             BindingThemeExecutionEvidence::project(output.evidence(), output.admission())?;
@@ -997,10 +1027,20 @@ mod tests {
         let request = crate::BindingOperationRequest::new("svg", PORTABILITY_SOURCE)
             .with_options_json(&strict);
         let once = crate::execute_once(request.clone()).expect_err("unsupported strict one shot");
-        let reusable = crate::BindingEngine::new(b"")
-            .expect("reusable engine")
-            .execute(request)
+        let engine = crate::BindingEngine::new(b"").expect("reusable engine");
+        let reusable = engine
+            .execute(request.clone())
             .expect_err("unsupported strict request overlay");
+        assert_eq!(
+            engine
+                .execute_data(request.clone())
+                .expect_err("strict data request overlay"),
+            reusable,
+        );
+        assert_eq!(
+            crate::operation::execute_once_data(request).expect_err("strict one-shot data"),
+            once,
+        );
         let based = crate::BindingEngine::new(&strict)
             .expect("strict engine configuration")
             .execute(crate::BindingOperationRequest::new(

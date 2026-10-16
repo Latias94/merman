@@ -59,8 +59,8 @@ use crate::model::*;
 use crate::resources::ResourceLimitPhase;
 use crate::svg::{
     FlowchartEdgeTraceCollector, ResvgCompatibleSvg, StandaloneSvgArtifact, SvgDebugOptions,
-    SvgPipeline, SvgPipelineBuffer, SvgPipelinePreset, SvgPostprocessExecution,
-    SvgPostprocessMetadata, SvgRenderOptions,
+    SvgPipeline, SvgPipelinePreset, SvgPostprocessExecution, SvgPostprocessMetadata,
+    SvgRenderOptions,
 };
 #[cfg(feature = "diagram-wardley")]
 use crate::wardley::WardleyDiagramLayout;
@@ -646,6 +646,22 @@ impl FamilyStyleView<'_> {
 }
 
 impl FamilyStyleReport {
+    pub(crate) fn evidence_summary(&self) -> crate::__private::FamilyEvidenceSummary {
+        let accounted_count =
+            self.theme_applied.len() + self.theme_not_applicable.len() + self.theme_residuals.len();
+        crate::__private::FamilyEvidenceSummary::new(
+            crate::__private::FamilyEvidenceStatus::from_verification(self.verification()),
+            self.theme_required.len(),
+            accounted_count,
+            self.theme_applied.len(),
+            self.theme_not_applicable.len(),
+            self.theme_residuals.len(),
+            self.residuals.len(),
+            self.mermaid_compatibility_residual_count,
+            self.output_mutated,
+        )
+    }
+
     fn from_plan(plan: ResolvedFamilyStylePlan) -> Self {
         let mut residuals = Vec::new();
         let evaluation = match &plan.payload {
@@ -762,11 +778,6 @@ impl FamilyStyleReport {
         &self.theme_residuals
     }
 
-    /// Returns zero because historical family compatibility contributions are retired.
-    pub const fn compatibility_residual_count(&self) -> usize {
-        0
-    }
-
     fn view(&self) -> FamilyStyleView<'_> {
         FamilyStyleView {
             family_id: self.family_id,
@@ -832,8 +843,10 @@ impl FamilyRenderReport {
         &self.theme_diagnostics
     }
 
-    pub(crate) fn into_theme_diagnostics(self) -> Box<[ThemeDiagnostic]> {
-        self.theme_diagnostics
+    pub(crate) fn into_session_and_theme_diagnostics(
+        self,
+    ) -> (RenderSessionReport, Box<[ThemeDiagnostic]>) {
+        (self.session, self.theme_diagnostics)
     }
 
     pub fn family_kind(&self) -> RenderFamilyKind {
@@ -867,21 +880,7 @@ impl FamilyRenderReport {
     }
 
     pub(crate) fn evidence_summary(&self) -> crate::__private::FamilyEvidenceSummary {
-        let accounted_count = self.style.theme_applied.len()
-            + self.style.theme_not_applicable.len()
-            + self.style.theme_residuals.len();
-        crate::__private::FamilyEvidenceSummary::new(
-            crate::__private::FamilyEvidenceStatus::from_verification(self.style.verification()),
-            self.style.theme_required.len(),
-            accounted_count,
-            self.style.theme_applied.len(),
-            self.style.theme_not_applicable.len(),
-            self.style.theme_residuals.len(),
-            self.style.residuals.len(),
-            self.style.compatibility_residual_count(),
-            self.style.mermaid_compatibility_residual_count,
-            self.style.output_mutated,
-        )
+        self.style.evidence_summary()
     }
 
     pub fn theme_recipe_fingerprint(&self) -> Option<ThemeRecipeFingerprint> {
@@ -903,6 +902,7 @@ struct FamilyRenderContext {
 pub(crate) struct FamilyThemeEvidence {
     required: Vec<FamilyThemeMechanismKey>,
     required_index: BTreeSet<FamilyThemeMechanismKey>,
+    outcome_delta: bool,
     accounted_index: BTreeSet<FamilyThemeMechanismKey>,
     applied: Vec<FamilyThemeMechanismKey>,
     applied_capabilities: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
@@ -911,6 +911,14 @@ pub(crate) struct FamilyThemeEvidence {
 }
 
 impl FamilyThemeEvidence {
+    /// Collects only this consumer's outcomes; the family owner holds the request set.
+    pub(crate) fn outcomes() -> Self {
+        Self {
+            outcome_delta: true,
+            ..Self::default()
+        }
+    }
+
     pub(crate) fn from_theme(theme: Option<&ResolvedDiagramTheme>) -> Self {
         let Some(theme) = theme else {
             return Self::default();
@@ -938,15 +946,21 @@ impl FamilyThemeEvidence {
         key: FamilyThemeMechanismKey,
         capabilities: impl IntoIterator<Item = ThemeCapability>,
     ) {
-        if self.required_index.contains(&key) && self.accounted_index.insert(key.clone()) {
+        if (self.outcome_delta || self.required_index.contains(&key))
+            && self.accounted_index.insert(key.clone())
+        {
             let capabilities = capabilities.into_iter().collect::<BTreeSet<_>>();
-            self.applied.push(key.clone());
-            self.applied_capabilities.insert(key, capabilities);
+            if !capabilities.is_empty() {
+                self.applied_capabilities.insert(key.clone(), capabilities);
+            }
+            self.applied.push(key);
         }
     }
 
     pub(crate) fn mark_not_applicable(&mut self, key: FamilyThemeMechanismKey) {
-        if self.required_index.contains(&key) && self.accounted_index.insert(key.clone()) {
+        if (self.outcome_delta || self.required_index.contains(&key))
+            && self.accounted_index.insert(key.clone())
+        {
             self.not_applicable.push(key);
         }
     }
@@ -956,7 +970,9 @@ impl FamilyThemeEvidence {
         key: FamilyThemeMechanismKey,
         reason: FamilyThemeResidualReason,
     ) {
-        if self.required_index.contains(&key) && self.accounted_index.insert(key.clone()) {
+        if (self.outcome_delta || self.required_index.contains(&key))
+            && self.accounted_index.insert(key.clone())
+        {
             self.residuals.push(FamilyThemeResidual { key, reason });
         }
     }
@@ -1041,6 +1057,7 @@ impl FamilyThemeEvidence {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn applied_capabilities(&self) -> BTreeSet<ThemeCapability> {
         self.applied_capabilities
             .values()
@@ -1049,7 +1066,6 @@ impl FamilyThemeEvidence {
     }
 
     pub(crate) fn merge_accounted_from(&mut self, mut other: Self) {
-        debug_assert_eq!(self.required, other.required);
         for key in other.applied {
             let capabilities = other.applied_capabilities.remove(&key).unwrap_or_default();
             self.mark_applied_with_capabilities(key, capabilities);
@@ -1232,16 +1248,17 @@ impl ResolvedFamilyStylePlan {
         emitted: Option<crate::__private::NativeSvgFilterReceipt>,
         expected_application_count: usize,
     ) {
-        let effect_capabilities_applied =
-            self.theme_evidence
-                .applied_capabilities()
-                .iter()
-                .any(|capability| {
-                    matches!(
-                        capability,
-                        ThemeCapability::Shadow | ThemeCapability::SvgFilter
-                    )
-                });
+        let effect_capabilities_applied = self
+            .theme_evidence
+            .applied_capabilities
+            .values()
+            .flatten()
+            .any(|capability| {
+                matches!(
+                    capability,
+                    ThemeCapability::Shadow | ThemeCapability::SvgFilter
+                )
+            });
         if !effect_capabilities_applied {
             self.native_filter_receipt = None;
             return;
@@ -3264,8 +3281,7 @@ impl GanttTimeAxisDiagnostics {
 /// let forged: RenderedFamilySvg = String::from("<svg xmlns=\"http://www.w3.org/2000/svg\"/>");
 /// ```
 pub struct RenderedFamilySvg {
-    svg: SvgPipelineBuffer,
-    prepared_text_evidence_valid: bool,
+    svg: String,
     prepared_math_evidence: PreparedMathEvidenceLease,
     prepared_math_evidence_valid: bool,
     root_theme: RootThemeReport,
@@ -3353,31 +3369,27 @@ impl RenderedFamilySvg {
 
     /// Applies an output pipeline while retaining the renderer-owned family capability.
     pub fn apply_pipeline(self, pipeline: &SvgPipeline) -> Result<Self> {
-        self.apply_pipeline_with_portability_and_xml_facts(pipeline, true, false)
+        self.apply_pipeline_with_portability(pipeline, true)
     }
 
-    fn apply_pipeline_with_portability_and_xml_facts(
+    fn apply_pipeline_with_portability(
         mut self,
         pipeline: &SvgPipeline,
         enforce_portability: bool,
-        retain_xml_facts: bool,
     ) -> Result<Self> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
         let output_metadata = self.output_metadata()?;
-        self.prepared_text_evidence_valid &=
-            pipeline.preserves_prepared_text_evidence(output_metadata.family_id());
         let requires_prepared_math_projection = pipeline.requires_prepared_math_projection();
         let preserves_prepared_math = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
         let supplies_prepared_math = self.prepared_math_evidence_valid
             && (preserves_prepared_math || requires_prepared_math_projection);
         let source_svg = std::mem::take(&mut self.svg);
-        let processed_svg = pipeline.process_owned_buffer_with_metadata_and_math_evidence(
+        let processed_svg = pipeline.process_generated_with_metadata_and_math_evidence(
             source_svg,
             &output_metadata,
             &self.session,
             supplies_prepared_math.then_some(&self.prepared_math_evidence),
-            retain_xml_facts,
         )?;
         self.svg = processed_svg;
         if !preserves_prepared_math {
@@ -3425,8 +3437,6 @@ impl RenderedFamilySvg {
             .theme_portability_requirement()
             .unwrap_or(ThemePortabilityRequirement::BestEffort);
         let output_metadata = self.output_metadata()?;
-        let prepared_text_evidence_valid = self.prepared_text_evidence_valid
-            && pipeline.preserves_prepared_text_evidence(output_metadata.family_id());
         let prepared_math_evidence_valid = self.prepared_math_evidence_valid
             && pipeline.preserves_prepared_math_evidence(output_metadata.family_id());
         if !self.prepared_math_evidence.is_empty() && !prepared_math_evidence_valid {
@@ -3441,10 +3451,9 @@ impl RenderedFamilySvg {
             PreparedMathEvidenceLease::default()
         };
         let svg = pipeline.process_owned_resvg_compatible_with_metadata_and_evidence(
-            self.svg.into_string(),
+            self.svg,
             &output_metadata,
             &self.session,
-            prepared_text_evidence_valid,
             prepared_math_evidence,
             prepared_math_evidence_valid,
         )?;
@@ -3511,7 +3520,7 @@ impl RenderedFamilySvg {
                 Ok(finalized.into_standalone())
             }
             Some(pipeline) => self
-                .apply_pipeline_with_portability_and_xml_facts(pipeline, enforce_portability, true)?
+                .apply_pipeline_with_portability(pipeline, enforce_portability)?
                 .finalize_exact_standalone(pipeline),
             None => {
                 let pipeline = SvgPipeline::parity();
@@ -3522,12 +3531,7 @@ impl RenderedFamilySvg {
 
     fn finalize_exact_standalone(self, pipeline: &SvgPipeline) -> Result<RenderedStandaloneSvg> {
         self.session.checkpoint(OperationPhase::Postprocess)?;
-        let artifact = StandaloneSvgArtifact::finalize_exact_buffer(
-            self.svg,
-            self.prepared_text_evidence_valid,
-            pipeline,
-            &self.session,
-        )?;
+        let artifact = StandaloneSvgArtifact::finalize_exact(self.svg, pipeline, &self.session)?;
         self.session.checkpoint(OperationPhase::Postprocess)?;
         Ok(RenderedStandaloneSvg {
             artifact,
@@ -3551,7 +3555,6 @@ impl RenderedFamilySvg {
     pub fn into_completion(self) -> FamilyRenderCompletion<String> {
         let Self {
             svg,
-            prepared_text_evidence_valid: _,
             prepared_math_evidence: _,
             prepared_math_evidence_valid: _,
             root_theme,
@@ -3561,7 +3564,7 @@ impl RenderedFamilySvg {
             required_capabilities: _,
         } = self;
         FamilyRenderCompletion {
-            output: svg.into_string(),
+            output: svg,
             report: FamilyRenderReport::freeze(root_theme, style_report, session),
         }
     }
@@ -3619,6 +3622,20 @@ pub struct RenderedStandaloneSvg {
 }
 
 impl RenderedStandaloneSvg {
+    pub(crate) fn admission_summary(
+        &self,
+    ) -> (
+        crate::__private::RootEvidenceSummary,
+        crate::__private::FamilyEvidenceSummary,
+        bool,
+    ) {
+        (
+            crate::__private::RootEvidenceSummary::from_root(&self.root_theme),
+            self.style_report.evidence_summary(),
+            self.session.has_host_measurements(),
+        )
+    }
+
     pub fn artifact(&self) -> &StandaloneSvgArtifact {
         &self.artifact
     }
@@ -3629,6 +3646,11 @@ impl RenderedStandaloneSvg {
 
     pub const fn family_id(&self) -> DiagramFamilyId {
         self.style_report.family_id()
+    }
+
+    /// Returns the SVG bytes without materializing a completion report.
+    pub fn into_string(self) -> String {
+        self.artifact.into_string()
     }
 
     pub fn into_completion(self) -> FamilyRenderCompletion<StandaloneSvgArtifact> {
@@ -3872,10 +3894,6 @@ impl FamilyRenderArtifact {
             context.invalidate_for_output_mutation();
         }
         context.ensure_portable()?;
-        crate::svg::reject_reserved_prepared_text_tokens(
-            &svg,
-            SvgPostprocessExecution::new(context.session()),
-        )?;
         let (session, style_report) = context.into_session_and_style_report();
         ensure_root_theme_portable(
             &root_theme,
@@ -3892,8 +3910,7 @@ impl FamilyRenderArtifact {
         }
 
         Ok(RenderedFamilySvg {
-            svg: SvgPipelineBuffer::new(svg),
-            prepared_text_evidence_valid: true,
+            svg,
             prepared_math_evidence,
             prepared_math_evidence_valid: true,
             root_theme,
