@@ -3,7 +3,10 @@ use std::collections::VecDeque;
 use super::MERMAID_DOM_ID_PREFIX;
 use crate::diagrams::{
     jison_unicode::is_mermaid_unicode_text,
-    scan::{consume_line_ending, is_ecmascript_inline_whitespace, is_ecmascript_whitespace},
+    scan::{
+        ScanStep, TokenScanner, consume_line_ending, is_ecmascript_inline_whitespace,
+        is_ecmascript_whitespace,
+    },
 };
 
 #[derive(Debug, Clone)]
@@ -119,10 +122,6 @@ impl<'input> Lexer<'input> {
             pending: VecDeque::new(),
             mode: Mode::Default,
         }
-    }
-
-    pub(super) fn position(&self) -> usize {
-        self.pos
     }
 
     fn peek(&self) -> Option<u8> {
@@ -653,26 +652,16 @@ impl<'input> Lexer<'input> {
         if self.mode != Mode::ClassBody {
             return None;
         }
-        self.skip_ws();
-        if self.pos >= self.input.len() {
-            return Some(Err(LexError::new(
-                "EOF inside class body",
-                crate::SourceSpan::new(self.pos, self.pos),
-            )));
-        }
         if self.peek() == Some(b'}') {
             return None;
         }
         if self.peek() == Some(b'{') {
+            let start = self.pos;
+            self.pos += 1;
             return Some(Err(LexError::new(
                 "Unexpected '{' inside class body",
-                crate::SourceSpan::new(self.pos, self.pos + 1),
+                crate::SourceSpan::new(start, self.pos),
             )));
-        }
-        // Newlines inside a class body are ignored by Mermaid's lexer.
-        while let Some(end) = consume_line_ending(self.input, self.pos) {
-            self.pos = end;
-            self.skip_ws();
         }
         let start = self.pos;
         let s = self.read_to_newline();
@@ -682,115 +671,168 @@ impl<'input> Lexer<'input> {
     fn emit(
         &mut self,
         token: (usize, Tok, usize),
-    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        Some(Ok(token))
+    ) -> ScanStep<std::result::Result<(usize, Tok, usize), LexError>> {
+        ScanStep::Emit(Ok(token))
     }
 
     fn emit_result(
         &mut self,
         token: std::result::Result<(usize, Tok, usize), LexError>,
-    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        Some(token)
+    ) -> ScanStep<std::result::Result<(usize, Tok, usize), LexError>> {
+        ScanStep::Emit(token)
     }
 }
 
-impl<'input> Iterator for Lexer<'input> {
-    type Item = std::result::Result<(usize, Tok, usize), LexError>;
+impl TokenScanner for Lexer<'_> {
+    type Event = std::result::Result<(usize, Tok, usize), LexError>;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn scan_step(&mut self) -> ScanStep<Self::Event> {
         if let Some(tok) = self.pending.pop_front() {
             return self.emit(tok);
         }
 
-        loop {
-            self.skip_ws();
-            if self.pos >= self.input.len() {
-                if self.mode == Mode::ClassBody {
-                    return Some(Err(LexError::new(
-                        "EOF inside class body",
-                        crate::SourceSpan::new(self.pos, self.pos),
-                    )));
-                }
-                return None;
+        self.skip_ws();
+        if self.pos >= self.input.len() {
+            if self.mode == Mode::ClassBody {
+                self.mode = Mode::Default;
+                return ScanStep::Emit(Err(LexError::new(
+                    "EOF inside class body",
+                    crate::SourceSpan::new(self.pos, self.pos),
+                )));
             }
-
-            if self.lex_comment() {
-                continue;
-            }
-
-            if let Some(tok) = self.lex_rest_of_line() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_click_call() {
-                return self.emit(tok);
-            }
-
-            if self.mode == Mode::ClassBody
-                && let Some(end) = consume_line_ending(self.input, self.pos)
-            {
-                self.pos = end;
-                continue;
-            }
-
-            if let Some(tok) = self.lex_callback_name() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_link_target() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_member() {
-                return self.emit_result(tok);
-            }
-
-            if let Some(tok) = self.lex_newline() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_acc_title() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_acc_descr() {
-                return self.emit_result(tok);
-            }
-
-            if let Some(tok) = self.lex_direction() {
-                return self.emit_result(tok);
-            }
-
-            if let Some(tok) = self.lex_keyword() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_callback_args() {
-                return self.emit_result(tok);
-            }
-
-            if let Some(tok) = self.lex_punct() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_label() {
-                return self.emit(tok);
-            }
-
-            if let Some(tok) = self.lex_str() {
-                return self.emit_result(tok);
-            }
-
-            if let Some(tok) = self.lex_name() {
-                return self.emit(tok);
-            }
-
-            let start = self.pos;
-            let _ = self.bump();
-            return Some(Err(LexError::new(
-                format!("Unexpected character at {start}"),
-                crate::SourceSpan::new(start, self.pos),
-            )));
+            return ScanStep::End;
         }
+
+        if self.lex_comment() {
+            return ScanStep::Skip;
+        }
+
+        if let Some(tok) = self.lex_rest_of_line() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_click_call() {
+            return self.emit(tok);
+        }
+
+        if self.mode == Mode::ClassBody
+            && let Some(end) = consume_line_ending(self.input, self.pos)
+        {
+            self.pos = end;
+            return ScanStep::Skip;
+        }
+
+        if let Some(tok) = self.lex_callback_name() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_link_target() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_member() {
+            return self.emit_result(tok);
+        }
+
+        if let Some(tok) = self.lex_newline() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_acc_title() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_acc_descr() {
+            return self.emit_result(tok);
+        }
+
+        if let Some(tok) = self.lex_direction() {
+            return self.emit_result(tok);
+        }
+
+        if let Some(tok) = self.lex_keyword() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_callback_args() {
+            return self.emit_result(tok);
+        }
+
+        if let Some(tok) = self.lex_punct() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_label() {
+            return self.emit(tok);
+        }
+
+        if let Some(tok) = self.lex_str() {
+            return self.emit_result(tok);
+        }
+
+        if let Some(tok) = self.lex_name() {
+            return self.emit(tok);
+        }
+
+        let start = self.pos;
+        let _ = self.bump();
+        ScanStep::Emit(Err(LexError::new(
+            format!("Unexpected character at {start}"),
+            crate::SourceSpan::new(start, self.pos),
+        )))
+    }
+}
+
+impl Iterator for Lexer<'_> {
+    type Item = <Self as TokenScanner>::Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Lexer;
+
+    #[test]
+    fn cancellation_interrupts_skipped_comments_inside_a_class_body() {
+        let input = format!(
+            "classDiagram\nclass A {{\n{}}}\n",
+            "%% comment\n".repeat(1_024)
+        );
+        let mut lexer = Lexer::new(&input);
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(1);
+        let error = crate::diagrams::scan::collect_lexical_events(&mut lexer, &control)
+            .expect_err("skipped comments must observe cancellation before the closing brace");
+        assert_eq!(error.reason, crate::CancelReason::Requested);
+        assert!(lexer.pos > 0 && lexer.pos < input.len());
+    }
+
+    #[test]
+    fn unterminated_class_body_emits_its_eof_error_once() {
+        let events: Vec<_> = Lexer::new("classDiagram\nclass A {\nmember\n")
+            .take(16)
+            .collect();
+        assert!(events.len() < 16, "EOF must terminate after its diagnostic");
+        assert_eq!(events.iter().filter(|event| event.is_err()).count(), 1);
+    }
+
+    #[test]
+    fn unexpected_class_body_brace_is_consumed_before_recovery() {
+        let events: Vec<_> = Lexer::new("classDiagram\nclass A {\n{\n}\nclass B\n")
+            .take(32)
+            .collect();
+        assert!(
+            events.len() < 32,
+            "recovery must consume the rejected brace"
+        );
+        assert_eq!(events.iter().filter(|event| event.is_err()).count(), 1);
+        assert!(
+            events.iter().any(|event| {
+                matches!(event, Ok((_, super::Tok::Name(name), _)) if name == "B")
+            })
+        );
     }
 }
