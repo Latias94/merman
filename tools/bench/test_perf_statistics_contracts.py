@@ -199,6 +199,69 @@ class CompareSelfStatisticsContractsTest(unittest.TestCase):
         self.assertEqual(over_cap.scheduled_pairs, 24)
         self.assertTrue(over_cap.exceeds_cap)
 
+    @staticmethod
+    def _low_latency_side(*, low: float = -100.0, high: float = 100.0) -> dict:
+        return {
+            "status": "stable", "complete_pairs": 8, "expected_pairs": 8,
+            "identity_bounds": {
+                "log_ratio": {"lower": -0.002, "upper": 0.002},
+                "absolute_ns": {"lower": low, "upper": high},
+            },
+            "order_effect_bounds": {
+                "log_ratio": {"lower": -0.001, "upper": 0.001},
+                "absolute_ns": {"lower": low, "upper": high},
+            },
+            "sigma": {"log_ratio": 0.001, "absolute_ns": 50.0},
+        }
+
+    def test_low_latency_thresholds_use_frozen_baseline_and_both_aa_sides(self) -> None:
+        sides = {side: self._low_latency_side() for side in ("base", "head")}
+        sides["head"]["order_effect_bounds"]["log_ratio"] = {
+            "lower": -0.04, "upper": 0.03,
+        }
+        result = compare_self._low_latency_calibration(
+            baseline_ns=40_000.0, side_summaries=sides, max_pairs=32,
+        )
+        self.assertTrue(result["stable"])
+        self.assertAlmostEqual(result["noise"]["log_ratio"], 0.04)
+        self.assertAlmostEqual(result["thresholds"]["log_ratio"], 0.12)
+        self.assertAlmostEqual(
+            result["thresholds"]["absolute_ns"], 40_000 * (1 - math.exp(-0.12)),
+        )
+        self.assertEqual(result["required_pairs"], 8)
+
+    def test_low_latency_rejects_biased_aa_even_inside_generic_equivalence_margin(self) -> None:
+        result = compare_self._low_latency_calibration(
+            baseline_ns=40_000.0,
+            side_summaries={"base": self._low_latency_side(low=10.0),
+                            "head": self._low_latency_side()},
+            max_pairs=32,
+        )
+        self.assertFalse(result["stable"])
+        self.assertIn("base_identity_absolute_ns_contains_zero", result["reasons"])
+
+    def test_low_latency_rejects_noise_and_power_over_preregistered_cap(self) -> None:
+        sides = {side: self._low_latency_side(low=-1_001, high=1_001)
+                 for side in ("base", "head")}
+        sides["head"]["sigma"]["absolute_ns"] = 100_000.0
+        result = compare_self._low_latency_calibration(
+            baseline_ns=40_000.0, side_summaries=sides, max_pairs=8,
+        )
+        self.assertFalse(result["stable"])
+        self.assertIn("absolute_noise_within_limit", result["reasons"])
+        self.assertIn("required_pairs_fit_cap", result["reasons"])
+        self.assertGreater(result["required_pairs"], 8)
+
+    def test_low_latency_does_not_admit_incomplete_aa(self) -> None:
+        sides = {side: self._low_latency_side() for side in ("base", "head")}
+        sides["head"] = {"status": "contract_failure", "stable": False,
+                         "complete_pairs": 7, "expected_pairs": 8}
+        result = compare_self._low_latency_calibration(
+            baseline_ns=40_000.0, side_summaries=sides, max_pairs=32,
+        )
+        self.assertFalse(result["stable"])
+        self.assertIn("head_complete_aa_schedule", result["reasons"])
+
     def test_suite_exit_code_uses_contract_regression_inconclusive_priority(self) -> None:
         cases = [
             (["diagnostic_advisory"], 0),

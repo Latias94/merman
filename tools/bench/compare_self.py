@@ -2815,6 +2815,91 @@ def _summarize_calibration(
     }
 
 
+def _low_latency_calibration(
+    *,
+    baseline_ns: float,
+    side_summaries: dict[str, dict[str, Any]],
+    max_pairs: int,
+) -> dict[str, Any]:
+    """Freeze row thresholds from independent A/A observations before fresh A/B."""
+    checks: dict[str, bool] = {}
+    noise = {"log_ratio": 0.0, "absolute_ns": 0.0}
+    for side in ("base", "head"):
+        summary = side_summaries[side]
+        complete = (
+            summary.get("status") != "contract_failure"
+            and summary.get("complete_pairs") == summary.get("expected_pairs")
+        )
+        checks[f"{side}_complete_aa_schedule"] = complete
+        if not complete:
+            continue
+        for effect in ("identity", "order_effect"):
+            for metric in noise:
+                bounds = summary[f"{effect}_bounds"][metric]
+                checks[f"{side}_{effect}_{metric}_contains_zero"] = (
+                    bounds["lower"] <= 0.0 <= bounds["upper"]
+                )
+                noise[metric] = max(
+                    noise[metric], abs(bounds["lower"]), abs(bounds["upper"])
+                )
+    checks["relative_noise_within_limit"] = noise["log_ratio"] <= -math.log(0.95)
+    checks["absolute_noise_within_limit"] = noise["absolute_ns"] <= min(
+        1_000.0, 0.05 * baseline_ns
+    )
+    relative_threshold = max(-math.log(0.90), 3.0 * noise["log_ratio"])
+    absolute_threshold = max(
+        1_000.0,
+        min(50_000.0, baseline_ns * -math.expm1(-relative_threshold)),
+        3.0 * noise["absolute_ns"],
+    )
+    power: dict[str, dict[str, Any]] = {}
+    for side, summary in side_summaries.items():
+        if not checks[f"{side}_complete_aa_schedule"]:
+            continue
+        power[side] = {
+            metric: asdict(required_pair_count(
+                sigma=summary["sigma"][metric],
+                minimum_detectable_effect=threshold,
+                max_pairs=max_pairs,
+            ))
+            for metric, threshold in (
+                ("log_ratio", relative_threshold), ("absolute_ns", absolute_threshold)
+            )
+        }
+    required = max(
+        (count["required_pairs"] for side in power.values() for count in side.values()),
+        default=8,
+    )
+    checks["required_pairs_fit_cap"] = required <= max_pairs
+    return {
+        "mode": "low_latency_public_operation",
+        "baseline_ns": baseline_ns,
+        "noise": noise,
+        "thresholds": {"log_ratio": relative_threshold, "absolute_ns": absolute_threshold},
+        "required_pairs": required,
+        "power": power,
+        "checks": checks,
+        "stable": all(checks.values()),
+        "reasons": [name for name, passed in checks.items() if not passed],
+    }
+
+
+def _low_latency_baselines(args: argparse.Namespace) -> dict[str, float]:
+    baselines: dict[str, float] = {}
+    for value in getattr(args, "low_latency_baseline_ns", []):
+        name, separator, raw_ns = value.partition("=")
+        try:
+            baseline = float(raw_ns)
+        except ValueError as error:
+            raise ContractViolation("--low-latency-baseline-ns requires FIXTURE=NS") from error
+        if not separator or not name or name in baselines:
+            raise ContractViolation("low-latency frozen baselines need unique fixture names")
+        if not math.isfinite(baseline) or not 0.0 < baseline < 500_000.0:
+            raise ContractViolation("low-latency frozen baseline must be positive and below 500 us")
+        baselines[name] = baseline
+    return baselines
+
+
 def _verification_errors(
     runner: PreparedRunner, *, timeout_seconds: int
 ) -> list[str]:
@@ -2971,6 +3056,7 @@ def _comparison_row(
         "output_identity": contract.get("output_identity"),
         "pair_count": len(pairs),
         "required_pairs": required_pairs,
+        "thresholds": {"log_ratio": relative_threshold, "absolute_ns": absolute_threshold_ns},
         "evidence_mode": evidence_mode,
         "bootstrap": {
             "seed": bootstrap_seed,
@@ -3193,6 +3279,23 @@ def write_decision_markdown(path: Path, report: dict[str, Any]) -> None:
             f"{fmt_time(row.get('head_ns'))} | {relative_text} | {absolute_text} | "
             f"`{row['outcome']}` | `{row.get('improvement_outcome') or '-'}` |"
         )
+    materiality = method.get("materiality_contract", {})
+    if materiality.get("mode") == "low_latency_public_operation":
+        lines.extend([
+            "", "## Low-latency Materiality", "",
+            "Thresholds and the fixed confirmation count were derived after independent A/A "
+            "and before fresh A/B. Every selected row must pass calibration.", "",
+            "| fixture | frozen baseline | relative noise (log) | absolute noise | relative threshold (log) | absolute threshold | required pairs | stable |",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
+        ])
+        for name, policy in materiality.get("rows", {}).items():
+            lines.append(
+                f"| `{name}` | {fmt_time(policy['baseline_ns'])} | "
+                f"{policy['noise']['log_ratio']:.6g} | {fmt_time(policy['noise']['absolute_ns'])} | "
+                f"{policy['thresholds']['log_ratio']:.6g} | "
+                f"{fmt_time(policy['thresholds']['absolute_ns'])} | "
+                f"{policy['required_pairs']} | `{policy['stable']}` |"
+            )
     if report.get("contract_errors"):
         lines.extend(["", "## Contract Errors", ""])
         for error in report["contract_errors"]:
@@ -3238,6 +3341,18 @@ def _validate_args(args: argparse.Namespace) -> None:
         raise ContractViolation(
             "--reuse-discovery-json requires clean confirmation checkouts"
         )
+    low_latency = _low_latency_baselines(args)
+    if low_latency:
+        if args.evidence_mode != "confirmation" or args.discovery_only:
+            raise ContractViolation("low-latency baselines require fresh confirmation sampling")
+        if args.max_pairs > 64:
+            raise ContractViolation("low-latency --max-pairs must not exceed 64")
+        if args.allow_dirty:
+            raise ContractViolation("low-latency confirmation requires frozen clean revisions")
+        if (args.relative_threshold_percent != 10.0
+                or args.absolute_threshold_ns is not None
+                or args.absolute_threshold_us is not None):
+            raise ContractViolation("low-latency derived thresholds cannot be overridden")
     if args.evidence_mode == "diagnostic" and not 1 <= args.pairs <= 4:
         raise ContractViolation("diagnostic --pairs must be between one and four")
     if args.calibration_pairs < 8 or args.calibration_pairs % 2 != 0:
@@ -3572,6 +3687,13 @@ def _shared_target_freeze_plan(
 
 
 def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> None:
+    low_latency = _low_latency_baselines(args)
+    if low_latency:
+        report["method"]["materiality_contract"] = {
+            "mode": "low_latency_public_operation",
+            "frozen_baselines_ns": low_latency,
+            "max_pairs": args.max_pairs,
+        }
     sample_size = report["method"]["sample_size"]
     warm_up = report["method"]["warm_up_seconds"]
     measurement = report["method"]["measurement_seconds"]
@@ -3652,6 +3774,14 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         )
     if not contracts:
         raise ContractViolation("no benchmark fixtures were selected")
+    if low_latency:
+        for field in ("relative_threshold_percent", "relative_threshold_log",
+                      "absolute_threshold_ns", "absolute_threshold_us"):
+            report["method"][field] = None
+        if set(low_latency) != {item["name"] for item in contracts}:
+            raise ContractViolation("low-latency frozen baselines must cover exactly the selected rows")
+        if any(lane is None or lane.kind != "public" for lane in operation_lanes):
+            raise ContractViolation("low-latency mode requires registered public operation lanes")
     if args.evidence_mode == "confirmation":
         _validate_confirmation_operation_contract(
             contracts,
@@ -3747,6 +3877,10 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
         "multiplicity_adjustment": "bonferroni",
         "components": "two metrics per comparable benchmark",
     }
+    if low_latency:
+        report["method"]["materiality_contract"]["calibration_confidence_family_size"] = (
+            4 * confidence_family_size
+        )
     if reuse_source is not None:
         report["method"]["discovery_reuse"]["status"] = "verified"
     if not comparable:
@@ -3888,6 +4022,7 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             "head": {"rounds": head_aa["rounds"], "rows": {}, "errors": head_aa["errors"]},
         }
         required_by_row: dict[str, int] = {}
+        low_latency_rows: dict[str, dict[str, Any]] = {}
         stable_rows: list[dict[str, Any]] = []
         for item in comparable:
             name = item["name"]
@@ -3895,15 +4030,32 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                 calibration[side]["rows"][name] = _summarize_calibration(
                     aa["rows"][name],
                     expected_pairs=args.calibration_pairs,
-                    relative_mde=relative_threshold,
-                    absolute_mde_ns=absolute_threshold_ns,
+                    relative_mde=-math.log(0.95) if low_latency else relative_threshold,
+                    absolute_mde_ns=(
+                        min(1_000.0, 0.05 * low_latency[name])
+                        if low_latency else absolute_threshold_ns
+                    ),
                     max_pairs=args.max_pairs,
                     confidence_level=args.confidence_level,
                     bootstrap_seed=_stable_seed(args.bootstrap_seed, "calibration", side, name),
                     bootstrap_resamples=args.bootstrap_resamples,
-                    confidence_family_size=confidence_family_size,
+                    confidence_family_size=(
+                        4 * confidence_family_size if low_latency else confidence_family_size
+                    ),
                 )
             side_summaries = [calibration[side]["rows"][name] for side in ("base", "head")]
+            if low_latency:
+                policy = _low_latency_calibration(
+                    baseline_ns=low_latency[name],
+                    side_summaries={side: calibration[side]["rows"][name]
+                                    for side in ("base", "head")},
+                    max_pairs=args.max_pairs,
+                )
+                low_latency_rows[name] = policy
+                required_by_row[name] = policy["required_pairs"]
+                if policy["stable"]:
+                    stable_rows.append(item)
+                continue
             available_required = [
                 summary.get("required_pairs", {}).get("maximum", 8)
                 for summary in side_summaries
@@ -3924,8 +4076,15 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             "max_pairs": args.max_pairs,
             "exceeds_cap": suite_required > args.max_pairs,
         }
+        if low_latency:
+            calibration["side_summary_contract"] = "preliminary equivalence; low_latency_rows owns admission"
+            calibration["low_latency_rows"] = low_latency_rows
+            calibration["suite"]["all_rows_stable"] = len(stable_rows) == len(contracts)
+            report["method"]["materiality_contract"]["rows"] = low_latency_rows
+            report["method"]["materiality_contract"]["fixed_confirmation_pairs"] = scheduled_pairs
         report["calibration"] = calibration
-        if stable_rows and not report["contract_errors"]:
+        if (stable_rows and not report["contract_errors"]
+                and (not low_latency or len(stable_rows) == len(contracts))):
             schedule = _run_ab_schedule(
                 base=base,
                 head=head,
@@ -3971,11 +4130,15 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
             elif name in schedule["errors"]:
                 forced = "contract_failure"
                 reason = schedule["errors"][name]
-            elif item not in stable_rows:
+            elif item not in stable_rows or (low_latency and len(stable_rows) != len(contracts)):
                 forced = "inconclusive"
                 reasons: list[str] = []
-                for side in ("base", "head"):
-                    reasons.extend(calibration[side]["rows"][name].get("reasons", []))
+                if low_latency:
+                    reasons = [f"{row}: {failure}" for row, policy in low_latency_rows.items()
+                               for failure in policy["reasons"]]
+                else:
+                    for side in ("base", "head"):
+                        reasons.extend(calibration[side]["rows"][name].get("reasons", []))
                 reason = "A/A calibration was not stable: " + ", ".join(dict.fromkeys(reasons))
             report["rows"].append(
                 _comparison_row(
@@ -3983,8 +4146,10 @@ def _execute_comparison(args: argparse.Namespace, report: dict[str, Any]) -> Non
                     pairs=pairs,
                     evidence_mode="confirmation",
                     required_pairs=required,
-                    relative_threshold=relative_threshold,
-                    absolute_threshold_ns=absolute_threshold_ns,
+                    relative_threshold=(low_latency_rows[name]["thresholds"]["log_ratio"]
+                                        if name in low_latency_rows else relative_threshold),
+                    absolute_threshold_ns=(low_latency_rows[name]["thresholds"]["absolute_ns"]
+                                           if name in low_latency_rows else absolute_threshold_ns),
                     confidence_level=args.confidence_level,
                     bootstrap_seed=_stable_seed(args.bootstrap_seed, "confirmation", name),
                     bootstrap_resamples=args.bootstrap_resamples,
@@ -4079,6 +4244,10 @@ def decision_grade_main(argv: list[str]) -> int:
     parser.add_argument("--pairs", type=int, default=2, help="Diagnostic AB/BA pair count (1-4).")
     parser.add_argument("--calibration-pairs", type=int, default=8)
     parser.add_argument("--max-pairs", type=int, default=32)
+    parser.add_argument(
+        "--low-latency-baseline-ns", action="append", default=[], metavar="FIXTURE=NS",
+        help="Preregister a frozen complete-public-operation baseline below 500 us for every selected row.",
+    )
     parser.add_argument("--start-side", choices=["base", "head"], default="base")
     parser.add_argument("--relative-threshold-percent", type=float, default=10.0)
     absolute = parser.add_mutually_exclusive_group()
