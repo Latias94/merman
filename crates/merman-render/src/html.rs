@@ -63,6 +63,14 @@ impl SanitizeOutputSink for HtmlSanitizeSink<'_> {
             .map_err(HtmlOutputError::Operation)
     }
 
+    fn charge_parse_work(&self, additional: usize) -> Result<(), Self::Error> {
+        match self.phase {
+            OperationPhase::Layout => self.work_meter.charge(additional),
+            _ => self.work_meter.charge_emit_work(additional),
+        }
+        .map_err(HtmlOutputError::Operation)
+    }
+
     fn check_parse_storage(
         &self,
         input_bytes: usize,
@@ -170,6 +178,159 @@ mod tests {
     }
 
     #[test]
+    fn html5_ancestor_scans_obey_the_operation_work_budget() {
+        for phase in [OperationPhase::Layout, OperationPhase::Emit] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 50_000)
+                .unwrap();
+            let span = format!("{}label{}", "<span>".repeat(512), "</span>".repeat(512));
+            let meter = OperationWorkMeter::new(policy);
+            let parse_work = Cell::new(0);
+            let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
+            assert_eq!(
+                merman_core::sanitize::sanitize_xhtml_with_sink(&span, &loose_config(), &sink)
+                    .unwrap(),
+                span,
+            );
+
+            let div = format!("{}label{}", "<div>".repeat(512), "</div>".repeat(512));
+            let meter = OperationWorkMeter::new(policy);
+            let parse_work = Cell::new(0);
+            let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
+            let result =
+                merman_core::sanitize::sanitize_xhtml_with_sink(&div, &loose_config(), &sink);
+            let error = resolve_svg_fragment(result, &meter)
+                .expect_err("ancestor scans must count against the existing work ceiling");
+            let crate::Error::ResourceLimitExceeded(limit) = error else {
+                panic!("expected work resource limit");
+            };
+            assert_eq!(limit.limit, "max_layout_work_units");
+            assert!(meter.used() <= 50_000);
+            assert_eq!(meter.projected_svg_bytes(), 0);
+            assert!(meter.checkpoint(phase).is_err());
+        }
+    }
+
+    #[test]
+    fn html5_ancestor_scan_work_preserves_cancellation() {
+        struct CancelDuringScan<'a> {
+            inner: HtmlSanitizeSink<'a>,
+            control: &'a merman_core::OperationControl,
+            scanned: Cell<usize>,
+        }
+        impl SanitizeOutputSink for CancelDuringScan<'_> {
+            type Error = HtmlOutputError;
+            fn checkpoint(&self) -> Result<(), Self::Error> {
+                self.inner.checkpoint()
+            }
+            fn charge_parse_work(&self, additional: usize) -> Result<(), Self::Error> {
+                self.scanned.set(self.scanned.get() + additional);
+                if self.scanned.get() >= 4096 {
+                    self.control.cancel();
+                }
+                self.inner.charge_parse_work(additional)
+            }
+            fn check_parse_storage(
+                &self,
+                input: usize,
+                nodes: usize,
+                retained: usize,
+            ) -> Result<(), Self::Error> {
+                self.inner.check_parse_storage(input, nodes, retained)
+            }
+            fn checked_output_len(
+                &self,
+                current: usize,
+                additional: usize,
+            ) -> Result<usize, Self::Error> {
+                self.inner.checked_output_len(current, additional)
+            }
+            fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error> {
+                self.inner.string_with_capacity(capacity)
+            }
+            fn output_buffer(&self, len: usize) -> Result<Vec<u8>, Self::Error> {
+                self.inner.output_buffer(len)
+            }
+            fn push_output_chunk(
+                &self,
+                output: &mut Vec<u8>,
+                chunk: &[u8],
+            ) -> Result<(), Self::Error> {
+                self.inner.push_output_chunk(output, chunk)
+            }
+        }
+        for phase in [OperationPhase::Layout, OperationPhase::Emit] {
+            let control = merman_core::OperationControl::new();
+            let meter = OperationWorkMeter::new_with_control(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+                control.clone(),
+            );
+            let parse_work = Cell::new(0);
+            let sink = CancelDuringScan {
+                inner: HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase),
+                control: &control,
+                scanned: Cell::new(0),
+            };
+            let source = format!("{}label{}", "<div>".repeat(512), "</div>".repeat(512));
+            let result =
+                merman_core::sanitize::sanitize_xhtml_with_sink(&source, &loose_config(), &sink);
+            let error = resolve_svg_fragment(result, &meter).expect_err("scan cancellation");
+            let crate::Error::Cancelled(cancelled) = error else {
+                panic!("expected parser cancellation");
+            };
+            assert_eq!(cancelled.phase, phase);
+            assert_eq!(
+                meter.checkpoint(phase),
+                Err(OperationWorkError::Cancelled(cancelled))
+            );
+            assert_eq!(meter.projected_svg_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn html5_internal_scans_keep_the_callers_resource_error() {
+        let formatting = (0..512)
+            .map(|index| format!("<b data-i=\"{index}\">"))
+            .collect::<String>();
+        let attributes = (0..512)
+            .map(|index| format!(" data-a{index}=\"x\""))
+            .collect::<String>();
+        let inputs = [
+            format!("{}label{}", "<div>".repeat(4096), "</div>".repeat(4096)),
+            format!("{formatting}label{}", "</b>".repeat(512)),
+            format!("<span{attributes}>label</span>"),
+        ];
+        for phase in [OperationPhase::Layout, OperationPhase::Emit] {
+            for input in &inputs {
+                let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 4096)
+                    .unwrap();
+                let meter = OperationWorkMeter::new(policy);
+                let parse_work = Cell::new(0);
+                let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
+                let result =
+                    merman_core::sanitize::sanitize_xhtml_with_sink(input, &loose_config(), &sink);
+                let error = resolve_svg_fragment(result, &meter)
+                    .expect_err("internal parser scans must not become successful empty labels");
+                let crate::Error::ResourceLimitExceeded(limit) = error else {
+                    panic!("expected caller-owned resource error");
+                };
+                assert_eq!(limit.limit, "max_layout_work_units");
+                assert_eq!(meter.projected_svg_bytes(), 0);
+
+                let meter =
+                    OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+                let parse_work = Cell::new(0);
+                let sink = HtmlSanitizeSink::new(usize::MAX, &meter, &parse_work, phase);
+                let output =
+                    merman_core::sanitize::sanitize_xhtml_with_sink(input, &loose_config(), &sink)
+                        .expect("trusted caller does not inherit the core string wrapper ceiling");
+                assert!(output.contains("label"));
+            }
+        }
+    }
+
+    #[test]
     fn svg_context_parser_preserves_emit_cancellation() {
         struct CancelOnSecondParse<'a> {
             inner: HtmlSanitizeSink<'a>,
@@ -180,6 +341,9 @@ mod tests {
             type Error = HtmlOutputError;
             fn checkpoint(&self) -> Result<(), Self::Error> {
                 self.inner.checkpoint()
+            }
+            fn charge_parse_work(&self, additional: usize) -> Result<(), Self::Error> {
+                self.inner.charge_parse_work(additional)
             }
             fn check_parse_storage(
                 &self,

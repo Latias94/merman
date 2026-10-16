@@ -36,6 +36,24 @@ pub trait SanitizeOutputSink {
         Ok(())
     }
 
+    /// Accounts for parser tree-builder work that does not allocate retained output.
+    ///
+    /// The HTML5 tree builder performs ancestor and formatting-list scans through
+    /// `TreeSink` callbacks. Renderers override this hook to charge those scans to
+    /// their operation budget; the core-only sink retains the cancellation checkpoint
+    /// semantics without imposing a renderer-specific quota.
+    fn charge_parse_work(&self, _additional: usize) -> Result<(), Self::Error> {
+        self.checkpoint()
+    }
+
+    /// Supplies an optional core-only parser fallback ceiling.
+    ///
+    /// Resource-aware sinks leave this unset and reject work through
+    /// `charge_parse_work`, preserving their typed operation errors.
+    fn parse_work_limit(&self, _input_bytes: usize) -> Option<usize> {
+        None
+    }
+
     /// Admits parser input and retained tree storage independently of output length.
     fn check_parse_storage(
         &self,
@@ -67,6 +85,12 @@ struct StringOutputError;
 
 impl SanitizeOutputSink for StringOutputSink {
     type Error = StringOutputError;
+
+    fn parse_work_limit(&self, input_bytes: usize) -> Option<usize> {
+        // Semantic-only APIs have no operation meter. Bound parser amplification
+        // linearly in source bytes and retain their existing fail-closed projection.
+        Some(input_bytes.saturating_add(1).saturating_mul(256))
+    }
 
     fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
         current.checked_add(additional).ok_or(StringOutputError)
@@ -590,6 +614,15 @@ fn dompurify_effective_config(
 
     if forbid_style_when_unconfigured && dompurify_cfg.is_none() {
         forbid_tags.insert("style".to_string());
+    }
+
+    // DOMPurify inserts the HTML5 parser's implicit `tbody` whenever tables are
+    // allowed and removes `tbody` from FORBID_TAGS at the same time. Keeping the
+    // implicit container is necessary for a table's rows to survive sanitization;
+    // this also applies when callers explicitly supplied FORBID_TAGS or set
+    // KEEP_CONTENT=false.
+    if allowed_tags.contains("table") {
+        forbid_tags.remove("tbody");
     }
 
     let forbid_attr: HashSet<String> = dompurify_extract_string_list(dompurify_cfg, "FORBID_ATTR")
@@ -1157,6 +1190,43 @@ mod tests {
                     sanitize_xhtml_with_sink(&source, &cfg_strict(), &Reject(512)),
                     Err(SanitizeFailure::Output(()))
                 ));
+                #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+                enum OutputError {
+                    Cancelled,
+                    Refused,
+                }
+                struct RejectOutput(OutputError);
+                impl SanitizeOutputSink for RejectOutput {
+                    type Error = OutputError;
+                    fn checked_output_len(
+                        &self,
+                        current: usize,
+                        additional: usize,
+                    ) -> Result<usize, Self::Error> {
+                        Ok(current + additional)
+                    }
+                    fn string_with_capacity(&self, _: usize) -> Result<String, Self::Error> {
+                        Ok(String::new())
+                    }
+                    fn output_buffer(&self, _: usize) -> Result<Vec<u8>, Self::Error> {
+                        Ok(Vec::new())
+                    }
+                    fn push_output_chunk(
+                        &self,
+                        _: &mut Vec<u8>,
+                        _: &[u8],
+                    ) -> Result<(), Self::Error> {
+                        Err(self.0)
+                    }
+                }
+                for error in [OutputError::Cancelled, OutputError::Refused] {
+                    // The full deep tree exists before the first serializer output
+                    // callback fails. Both errors must survive flat-tree cleanup.
+                    assert_eq!(
+                        sanitize_xhtml_with_sink(&source, &cfg_strict(), &RejectOutput(error),),
+                        Err(SanitizeFailure::Output(error))
+                    );
+                }
                 for input in [
                     "<b><p><i>one</b>two</i></p>",
                     "<table><b><tr><td><i>one</b>two</table>",
@@ -1904,5 +1974,41 @@ mod tests {
             "dompurifyConfig": { "KEEP_CONTENT": false }
         }));
         assert_eq!(sanitize_text("<custom-tag>x</custom-tag>", &cfg), "");
+    }
+
+    #[test]
+    fn html5_table_policy_keeps_explicit_and_implicit_tbody() {
+        let config = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "flowchart": { "htmlLabels": true },
+            "dompurifyConfig": {
+                "FORBID_TAGS": ["tbody"],
+                "KEEP_CONTENT": false
+            }
+        }));
+        let expected = "<table><tbody><tr><td>one</td></tr></tbody></table>";
+        for input in [
+            "<table><tr><td>one</td></tr></table>",
+            "<table><tbody><tr><td>one</td></tr></tbody></table>",
+        ] {
+            assert_eq!(sanitize_text(input, &config), expected);
+            assert_eq!(sanitize_xhtml(input, &config), expected);
+        }
+    }
+
+    #[test]
+    fn html5_core_sink_bounds_ancestor_scan_amplification() {
+        let config = MermaidConfig::from_value(json!({"securityLevel": "loose"}));
+        let span = format!("{}API{}", "<span>".repeat(4096), "</span>".repeat(4096));
+        assert_eq!(
+            sanitize_xhtml_with_sink(&span, &config, &StringOutputSink).unwrap(),
+            span
+        );
+        let div = format!("{}API{}", "<div>".repeat(4096), "</div>".repeat(4096));
+        assert!(matches!(
+            sanitize_xhtml_with_sink(&div, &config, &StringOutputSink),
+            Err(SanitizeFailure::RejectedInput)
+        ));
+        assert_eq!(sanitize_text(&div, &config), "");
     }
 }

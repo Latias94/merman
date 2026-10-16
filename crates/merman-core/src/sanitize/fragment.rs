@@ -1,21 +1,27 @@
 //! HTML5 recovery and target serialization share one flat, non-recursive tree.
 
 use super::{DompurifyEffectiveConfig, SanitizeFailure, SanitizeOutputSink};
-use html5ever::tendril::{StrTendril, TendrilSink};
-use html5ever::tree_builder::{ElementFlags, NodeOrText, QuirksMode, TreeSink};
-use html5ever::{Attribute, LocalName, Namespace, QualName, ns};
+use html5ever::tendril::StrTendril;
+use html5ever::tokenizer::{BufferQueue, TokenSink, TokenSinkResult, Tokenizer};
+use html5ever::tree_builder::{
+    ElementFlags, NodeOrText, QuirksMode, Tracer, TreeBuilder, TreeSink,
+};
+use html5ever::{Attribute, LocalName, Namespace, QualName, TokenizerResult, ns};
 use std::borrow::Cow;
 use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 
 const NONE: usize = usize::MAX;
 const CHUNK_BYTES: usize = 256;
+const PARSE_WORK_BATCH: usize = 64;
+const WORK_BYTES_PER_UNIT: usize = 256;
 
 #[derive(Clone, Debug)]
 struct Handle {
     index: usize,
     name: QualName,
     integration: bool,
+    attribute_bytes: usize,
 }
 
 impl html5ever::tree_builder::ElemName for &Handle {
@@ -66,6 +72,9 @@ struct State<E> {
     retained: usize,
     error: Option<SanitizeFailure<E>>,
     merged_attribute_names: HashMap<usize, HashSet<QualName>>,
+    parse_work: usize,
+    total_parse_work: usize,
+    parse_work_limit: Option<usize>,
 }
 
 struct Builder<'a, S: SanitizeOutputSink> {
@@ -74,9 +83,189 @@ struct Builder<'a, S: SanitizeOutputSink> {
     input_bytes: usize,
 }
 
+/// Stops forwarding tokens to the HTML5 tree builder after a sink rejects work.
+///
+/// `TreeSink` cannot return a `Result`, so a failed callback otherwise leaves the
+/// tokenizer running through every remaining token in the chunk. This adapter uses
+/// html5ever's public `TokenSink` boundary. Resource admission observes token kinds
+/// but does not implement HTML parsing, recovery, or scope rules of its own.
+struct StoppingTreeBuilder<'a, S: SanitizeOutputSink> {
+    inner: TreeBuilder<Handle, Builder<'a, S>>,
+    stopped: std::cell::Cell<bool>,
+    complete_token: std::cell::Cell<bool>,
+}
+
+struct FormattingWork<'a, 'b, S: SanitizeOutputSink> {
+    builder: &'a Builder<'b, S>,
+    tag: &'a html5ever::tokenizer::Tag,
+    attribute_bytes: usize,
+}
+
+impl<S: SanitizeOutputSink> Tracer for FormattingWork<'_, '_, S> {
+    type Handle = Handle;
+
+    fn trace_handle(&self, handle: &Handle) {
+        if !self.builder.charge_parse_work(1) {
+            return;
+        }
+        let attrs = {
+            let state = self.builder.state.borrow();
+            state
+                .nodes
+                .get(handle.index)
+                .and_then(|node| match &node.kind {
+                    Kind::Element { name, attrs }
+                        if name.ns == ns!(html) && name.local == self.tag.name =>
+                    {
+                        Some(attrs.len())
+                    }
+                    _ => None,
+                })
+        };
+        if let Some(attrs) = attrs {
+            // equiv_modulo_attr_order clones and sorts both attribute vectors.
+            // A squared count bounds that comparison work without duplicating its
+            // sorting or the parser's active-formatting state. Live handles can be
+            // traced twice (open elements and formatting list), which is conservative.
+            let existing = attrs.saturating_add(1);
+            let incoming = self.tag.attrs.len().saturating_add(1);
+            let comparison_bytes = handle
+                .attribute_bytes
+                .saturating_add(self.attribute_bytes)
+                .div_ceil(WORK_BYTES_PER_UNIT)
+                .max(1);
+            self.builder.charge_parse_work(
+                existing
+                    .saturating_mul(existing)
+                    .saturating_add(incoming.saturating_mul(incoming))
+                    .saturating_mul(comparison_bytes),
+            );
+        }
+    }
+}
+
+impl<S: SanitizeOutputSink> TokenSink for StoppingTreeBuilder<'_, S> {
+    type Handle = Handle;
+
+    fn process_token(
+        &self,
+        token: html5ever::tokenizer::Token,
+        line_number: u64,
+    ) -> TokenSinkResult<Self::Handle> {
+        if self.stopped.get() || self.inner.sink.failed() {
+            self.stopped.set(true);
+            return TokenSinkResult::Continue;
+        }
+        if !matches!(token, html5ever::tokenizer::Token::ParseError(_)) {
+            self.complete_token.set(true);
+        }
+        if let html5ever::tokenizer::Token::TagToken(tag) = &token
+            && tag.kind == html5ever::tokenizer::StartTag
+            // Pinned html5ever rules.rs: these are the only start tags that call
+            // create_formatting_element_for, whose candidate scan has no callbacks.
+            && matches!(tag.name.as_ref(), "a" | "b" | "big" | "code" | "em" | "font"
+                | "i" | "s" | "small" | "strike" | "strong" | "tt" | "u" | "nobr")
+        {
+            self.inner.trace_handles(&FormattingWork {
+                builder: &self.inner.sink,
+                tag,
+                attribute_bytes: tag.attrs.iter().fold(0usize, |bytes, attr| {
+                    bytes
+                        .saturating_add(attr.name.local.len())
+                        .saturating_add(attr.value.len())
+                }),
+            });
+            if !self.inner.sink.flush_parse_work() {
+                self.stopped.set(true);
+                return TokenSinkResult::Continue;
+            }
+        }
+        let result = self.inner.process_token(token, line_number);
+        if self.inner.sink.failed() {
+            self.stopped.set(true);
+        }
+        result
+    }
+
+    fn end(&self) {
+        if !self.stopped.get() && !self.inner.sink.failed() {
+            self.inner.end();
+            if self.inner.sink.failed() {
+                self.stopped.set(true);
+            }
+        }
+    }
+
+    fn adjusted_current_node_present_but_not_in_html_namespace(&self) -> bool {
+        !self.stopped.get()
+            && !self.inner.sink.failed()
+            && self
+                .inner
+                .adjusted_current_node_present_but_not_in_html_namespace()
+    }
+}
+
 impl<S: SanitizeOutputSink> Builder<'_, S> {
     fn failed(&self) -> bool {
         self.state.borrow().error.is_some()
+    }
+
+    /// Charge TreeSink callbacks in bounded batches. html5ever's tree builder
+    /// performs ancestor and active-formatting scans through these callbacks; the
+    /// callbacks are the parser's stable observation point, so this accounting does
+    /// not duplicate any HTML parsing logic here.
+    fn charge_parse_work(&self, additional: usize) -> bool {
+        if additional == 0 || self.failed() {
+            return !self.failed();
+        }
+
+        let charge = {
+            let mut state = self.state.borrow_mut();
+            let Some(total) = state.total_parse_work.checked_add(additional) else {
+                state.error = Some(SanitizeFailure::RejectedInput);
+                return false;
+            };
+            if state.parse_work_limit.is_some_and(|limit| total > limit) {
+                state.error = Some(SanitizeFailure::RejectedInput);
+                return false;
+            }
+            state.total_parse_work = total;
+            state.parse_work = state.parse_work.saturating_add(additional);
+            if state.parse_work >= PARSE_WORK_BATCH {
+                let charge = state.parse_work;
+                state.parse_work = 0;
+                charge
+            } else {
+                0
+            }
+        };
+
+        if charge != 0
+            && let Err(error) = self.sink.charge_parse_work(charge)
+        {
+            self.state.borrow_mut().error = Some(SanitizeFailure::Output(error));
+            return false;
+        }
+        true
+    }
+
+    fn flush_parse_work(&self) -> bool {
+        if self.failed() {
+            return false;
+        }
+        let charge = {
+            let mut state = self.state.borrow_mut();
+            let charge = state.parse_work;
+            state.parse_work = 0;
+            charge
+        };
+        if charge != 0
+            && let Err(error) = self.sink.charge_parse_work(charge)
+        {
+            self.state.borrow_mut().error = Some(SanitizeFailure::Output(error));
+            return false;
+        }
+        true
     }
 
     fn admit(&self, nodes: usize, bytes: usize) -> bool {
@@ -127,7 +316,7 @@ impl<S: SanitizeOutputSink> Builder<'_, S> {
     }
 
     fn insert(&self, parent: usize, before: usize, child: NodeOrText<Handle>) {
-        if parent == NONE || self.failed() {
+        if parent == NONE || !self.charge_parse_work(1) {
             return;
         }
         let child = match child {
@@ -213,6 +402,7 @@ fn handle(index: usize, name: QualName) -> Handle {
         index,
         name,
         integration: false,
+        attribute_bytes: 0,
     }
 }
 fn container_name() -> QualName {
@@ -235,9 +425,15 @@ impl<S: SanitizeOutputSink> TreeSink for Builder<'_, S> {
         handle(0, container_name())
     }
     fn elem_name<'a>(&'a self, node: &'a Handle) -> &'a Handle {
+        self.charge_parse_work(1);
         node
     }
     fn create_element(&self, name: QualName, attrs: Vec<Attribute>, flags: ElementFlags) -> Handle {
+        let attribute_bytes = attrs.iter().fold(0usize, |bytes, attr| {
+            bytes
+                .saturating_add(attr.name.local.len())
+                .saturating_add(attr.value.len())
+        });
         let bytes = attrs.iter().fold(name.local.len(), |total, attr| {
             total
                 .saturating_add(std::mem::size_of::<Attribute>())
@@ -259,6 +455,7 @@ impl<S: SanitizeOutputSink> TreeSink for Builder<'_, S> {
             index,
             name,
             integration: flags.mathml_annotation_xml_integration_point,
+            attribute_bytes,
         }
     }
     fn create_comment(&self, _: StrTendril) -> Handle {
@@ -296,6 +493,7 @@ impl<S: SanitizeOutputSink> TreeSink for Builder<'_, S> {
         handle(index, container_name())
     }
     fn same_node(&self, a: &Handle, b: &Handle) -> bool {
+        self.charge_parse_work(1);
         a.index == b.index
     }
     fn set_quirks_mode(&self, _: QuirksMode) {}
@@ -362,9 +560,13 @@ impl<S: SanitizeOutputSink> TreeSink for Builder<'_, S> {
                 NONE,
                 NodeOrText::AppendNode(handle(child, container_name())),
             );
+            if self.failed() {
+                break;
+            }
         }
     }
     fn is_mathml_annotation_xml_integration_point(&self, node: &Handle) -> bool {
+        self.charge_parse_work(1);
         node.integration
     }
 }
@@ -409,41 +611,87 @@ fn parse_and_serialize<S: SanitizeOutputSink>(
             retained: std::mem::size_of::<Node>(),
             error: None,
             merged_attribute_names: HashMap::new(),
+            parse_work: 0,
+            total_parse_work: 0,
+            parse_work_limit: sink.parse_work_limit(text.len()),
         }),
         sink,
         input_bytes: text.len(),
     };
-    let mut parser = if cfg.is_some() {
+    let mut options = html5ever::ParseOpts::default();
+    let tree_builder = if cfg.is_some() {
         // DOMPurify's default DOMParser uses an inert HTML document, then sanitizes
         // and returns its body. Head/template placement is not body-fragment parsing.
-        let mut options = html5ever::ParseOpts::default();
         options.tree_builder.scripting_enabled = false;
-        html5ever::parse_document(builder, options)
+        TreeBuilder::new(builder, options.tree_builder)
     } else {
-        html5ever::parse_fragment(
-            builder,
-            Default::default(),
-            QualName::new(None, context.clone(), LocalName::from("svg")),
-            Vec::new(),
-            false,
-        )
+        let context_name = QualName::new(None, context.clone(), LocalName::from("svg"));
+        let context_element =
+            html5ever::tree_builder::create_element(&builder, context_name, Vec::new());
+        let tree_builder =
+            TreeBuilder::new_for_fragment(builder, context_element, None, options.tree_builder);
+        options.tokenizer.initial_state =
+            Some(tree_builder.tokenizer_state_for_context_elem(false));
+        tree_builder
     };
+    let parser = Tokenizer::new(
+        StoppingTreeBuilder {
+            inner: tree_builder,
+            stopped: std::cell::Cell::new(false),
+            complete_token: std::cell::Cell::new(false),
+        },
+        options.tokenizer,
+    );
+    let input_queue = BufferQueue::default();
     let mut cursor = 0;
+    let mut pending_token_bytes: usize = 0;
     while cursor < text.len() {
         sink.checkpoint().map_err(SanitizeFailure::Output)?;
         let mut end = (cursor + CHUNK_BYTES).min(text.len());
         while !text.is_char_boundary(end) {
             end -= 1;
         }
-        parser.process(StrTendril::from_slice(&text[cursor..end]));
-        // TreeSink cannot return errors. Failed callbacks become inert until this bounded
-        // input chunk returns; then discard the parser without EOF processing or unwinding.
-        if let Some(error) = parser.tokenizer.sink.sink.state.borrow_mut().error.take() {
+        // The tokenizer checks each new attribute against the attributes already
+        // present on its unfinished tag, before it emits any token or TreeSink call.
+        // Prepay a conservative quadratic byte-work envelope for the current token;
+        // completed tokens reset it, so ordinary sequences of short tags stay linear.
+        let next_pending = pending_token_bytes.saturating_add(end - cursor);
+        let token_work = next_pending
+            .saturating_mul(next_pending)
+            .div_ceil(WORK_BYTES_PER_UNIT)
+            .saturating_sub(
+                pending_token_bytes
+                    .saturating_mul(pending_token_bytes)
+                    .div_ceil(WORK_BYTES_PER_UNIT),
+            );
+        parser.sink.inner.sink.charge_parse_work(token_work);
+        parser.sink.inner.sink.flush_parse_work();
+        if let Some(error) = parser.sink.inner.sink.state.borrow_mut().error.take() {
+            return Err(error);
+        }
+        parser.sink.complete_token.set(false);
+        input_queue.push_back(StrTendril::from_slice(&text[cursor..end]));
+        while !matches!(parser.feed(&input_queue), TokenizerResult::Done) {}
+        pending_token_bytes = if parser.sink.complete_token.get() {
+            // A complete token may be followed by an unfinished tag in this same
+            // chunk. Retaining one entire chunk bounds that unknown trailing prefix.
+            CHUNK_BYTES
+        } else {
+            next_pending
+        };
+        parser.sink.inner.sink.flush_parse_work();
+        // TreeSink cannot return errors. A rejected callback preserves real element
+        // names/identity until the current HTML5 token completes; subsequent tokens
+        // are not forwarded to the tree builder. The tokenizer only drains this
+        // bounded chunk before the parser is discarded without EOF or unwinding.
+        if let Some(error) = parser.sink.inner.sink.state.borrow_mut().error.take() {
             return Err(error);
         }
         cursor = end;
     }
-    let builder = parser.finish();
+    parser.end();
+    let builder = parser.sink.inner.sink.finish();
+    builder.flush_parse_work();
     let root = if cfg.is_some() {
         builder.state.borrow().nodes.iter().position(|node| {
             matches!(&node.kind, Kind::Element { name, .. } if name.ns == ns!(html) && &*name.local == "body")
@@ -888,4 +1136,58 @@ fn serialize<S: SanitizeOutputSink>(
         }
     }
     String::from_utf8(out.value).map_err(|_| SanitizeFailure::InvalidUtf8Output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rejected_tree_does_not_process_subsequent_tokens() {
+        let output_sink = super::super::StringOutputSink;
+        let builder = Builder {
+            state: RefCell::new(State {
+                nodes: vec![Node::new(Kind::Container)],
+                retained: std::mem::size_of::<Node>(),
+                error: None,
+                merged_attribute_names: HashMap::new(),
+                parse_work: 0,
+                total_parse_work: 0,
+                parse_work_limit: None,
+            }),
+            sink: &output_sink,
+            input_bytes: 64,
+        };
+        let stopping = StoppingTreeBuilder {
+            inner: TreeBuilder::new(builder, Default::default()),
+            stopped: std::cell::Cell::new(false),
+            complete_token: std::cell::Cell::new(false),
+        };
+        let token = || {
+            html5ever::tokenizer::Token::TagToken(html5ever::tokenizer::Tag {
+                kind: html5ever::tokenizer::StartTag,
+                name: LocalName::from("div"),
+                self_closing: false,
+                attrs: Vec::new(),
+                had_duplicate_attributes: false,
+            })
+        };
+        let _ = stopping.process_token(token(), 1);
+        let before = {
+            let state = stopping.inner.sink.state.borrow();
+            (state.nodes.len(), state.total_parse_work)
+        };
+        stopping.inner.sink.state.borrow_mut().error = Some(SanitizeFailure::RejectedInput);
+        for _ in 0..8 {
+            assert!(matches!(
+                stopping.process_token(token(), 1),
+                TokenSinkResult::Continue
+            ));
+        }
+        stopping.end();
+        let state = stopping.inner.sink.state.borrow();
+        assert!(stopping.stopped.get());
+        assert_eq!((state.nodes.len(), state.total_parse_work), before);
+        assert!(matches!(state.error, Some(SanitizeFailure::RejectedInput)));
+    }
 }

@@ -65,6 +65,12 @@ impl SanitizeOutputSink for BoundedSanitizeSink<'_> {
             .map_err(BoundedSanitizeError::Control)
     }
 
+    fn charge_parse_work(&self, additional: usize) -> Result<(), Self::Error> {
+        self.work_meter
+            .charge_emit_work(additional)
+            .map_err(BoundedSanitizeError::Control)
+    }
+
     fn check_parse_storage(
         &self,
         input_bytes: usize,
