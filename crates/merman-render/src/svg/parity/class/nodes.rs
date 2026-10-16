@@ -784,14 +784,15 @@ fn render_class_node_id<O: SvgOutput>(
         .class_label_plans_by_id
         .get(n.id.as_str())
         .map(|plan| plan.as_ref());
-    let node_fill = binding.fill.as_str();
-    let node_stroke = binding.stroke.as_str();
+    let defaults = ctx.typography_theme.css_binding();
+    let node_fill = binding.fill(defaults);
+    let node_stroke = binding.stroke(defaults);
     let html_node_label_style_attr = &binding.html_label_style;
     let svg_node_label_style_attr = &binding.svg_label_style;
     let node_fill_style_attr = &binding.fill_style;
     let node_stroke_style_attr = &binding.stroke_style;
-    let node_stroke_width = binding.stroke_width.as_str();
-    let node_stroke_dasharray = binding.stroke_dasharray.as_str();
+    let node_stroke_width = binding.stroke_width();
+    let node_stroke_dasharray = binding.stroke_dasharray();
 
     let node_link_open = render_class_node_shell_open(
         out,

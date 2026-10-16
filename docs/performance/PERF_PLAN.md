@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 Class default-binding repair](native_class_shared_defaults_windows_2026-10-16.md)
+removes node-dependent copies of shared defaults: padding a raw border token by K bytes now adds
+exactly 4K preparation bytes at both 16 and 64 nodes, versus 20K/68K previously. It removes four default
+allocations per node; all 152 SVG identities and 3,320 renderer tests pass. The retained result is a
+preparation ownership/resource-bound improvement. Both latency attempts fail before measuring
+(tasklist failure, then observed external compilation), so latency non-regression and recovery
+remain unconfirmed. Shared edge ordering and common token/evidence work are separate candidates.
+
 The [October 16 three-way frontier](native_theme_threeway_frontier_windows_2026-10-16.md)
 compares v0.9.0, merged themes and the latest frozen optimized candidate in one complete
 36-invocation diagnostic with identical Class/Journey/Kanban SVGs. Optimized means improve
