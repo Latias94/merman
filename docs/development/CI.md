@@ -83,6 +83,14 @@ those paths to the maintainer. A `main` ruleset must require pull requests, code
 release-environment protection remain external maintainer configuration and must not be described
 as enabled until a read-only GitHub query confirms them.
 
+Require branches to be up to date before merging, or use a merge queue with the required
+`pr-gate` check. A successful pull-request run validates its event's immutable test merge, not a
+later combination with a changed base branch. If another pull request merges while CI is running,
+update the remaining branch and wait for its new checks before merging. Rerunning the old run
+does not replace its event's base commit. Adding more owner jobs cannot close this gap: they would
+still test the same outdated combination. The workflow's `merge_group` trigger supports a merge
+queue but does not enable one; that enforcement belongs in GitHub branch protection or rulesets.
+
 Performance evidence produced from pull-request code remains read-only: it may upload diagnostic
 artifacts and append a job summary, but it does not receive repository write permissions or feed a
 separate comment-writing job.
