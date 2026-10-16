@@ -2019,7 +2019,7 @@ fn kanban_source_owned_font_size_is_a_property_local_portability_residual() {
 }
 
 #[test]
-fn repair_u7_kanban_source_owned_facet_keeps_sibling_receipts() {
+fn kanban_source_owned_facet_preserves_other_property_application() {
     for (patch, config, expected_applied, expected_style) in [
         (
             kanban_task_radius_style(Specified::Value(8.0))
