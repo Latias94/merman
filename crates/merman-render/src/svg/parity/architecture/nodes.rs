@@ -200,7 +200,10 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                         .max(1.0) as i64;
                     let parse_work = std::cell::Cell::new(0);
                     let sink = crate::html::HtmlSanitizeSink::new(
-                        work_meter.max_svg_bytes().unwrap_or(usize::MAX),
+                        work_meter
+                            .policy()
+                            .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+                            .unwrap_or(usize::MAX),
                         work_meter,
                         &parse_work,
                         merman_core::OperationPhase::Emit,

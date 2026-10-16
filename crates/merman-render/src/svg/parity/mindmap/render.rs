@@ -728,7 +728,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let parse_work = std::cell::Cell::new(0);
         let work_meter = options.work_meter();
         let sink = crate::html::HtmlSanitizeSink::new(
-            work_meter.max_svg_bytes().unwrap_or(usize::MAX),
+            work_meter
+                .policy()
+                .value(crate::resources::ResourceLimitId::MaxSvgBytes)
+                .unwrap_or(usize::MAX),
             work_meter,
             &parse_work,
             merman_core::OperationPhase::Emit,
