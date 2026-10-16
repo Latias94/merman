@@ -71,6 +71,12 @@ Fuzz CI separates deterministic merge evidence from randomized discovery:
   must continue even when the repository has no new commits, so this run supplements rather than
   replaces the deterministic gate.
 
+The shared Mermaid seeds include lexer-progress regressions for bare Sequence comments, malformed
+actor configs, unterminated Class bodies, unexpected Class braces, and missing State IDs. The EOF
+cases intentionally omit the final newline; the CRLF comment seed is marked binary in
+`.gitattributes` to preserve its authored line endings. Both parser and renderer targets replay
+these inputs under the existing 10-second libFuzzer timeout before randomized discovery.
+
 `workflow_dispatch` can select one target or the complete target set with `smoke`, `extended`, or
 `long` randomized budgets. Pull-request jobs receive only read access to repository contents and do
 not consume release credentials, including for contributions from forks.
