@@ -2,7 +2,7 @@
 title: Demand-Driven Theme Rendering - Refactoring Approach
 type: refactor
 date: 2026-10-16
-stage: approach
+stage: complete
 execution: code
 ---
 
@@ -14,7 +14,10 @@ Ordinary rendering pays for the selected Mermaid styles, layout and serializatio
 
 This continues the completed responsibility cleanup in `9a297b72f`; it does not reopen its retired protocols or contract migrations. The measured release-range reference is `docs/performance/native_v0_9_cross_family_macos_2026-10-16.md`. The starting implementation for fresh adjacent comparisons is `1ccdfc6b8`, including the Binaryen packaging workaround; freeze the exact final baseline before editing production code.
 
-This document proposes the next implementation sequence. It does not claim that the remaining source-level candidates have measured CPU shares or that all release-range differences are attributable to themes.
+The sequence below records the accepted approach. Implementation and verification completed on
+2026-10-17; see the [decision and measurement checkpoint](../performance/native_theme_demand_driven_macos_2026-10-17.md).
+Block source-index sharing remains deferred after auditing its real consumers. No release-range
+recovery percentage or confirmed latency benefit is claimed.
 
 ## Design rules
 
