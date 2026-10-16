@@ -17,6 +17,16 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 v0.9.0 cross-family comparison](native_v0_9_cross_family_macos_2026-10-16.md)
+covers 76 SVG inputs across 38 families: 19 identical-output diagnostic rows and 57 changed-output
+context rows. Kanban, Timeline and Packet retain substantial SVG-emission overhead after the first
+cleanup. The Kanban helper's confirmation classification does not satisfy the stricter documented
+low-latency calibration condition; the report preserves that discrepancy and the raw measurements.
+The [demand-driven rendering approach](../plans/2026-10-16-refactor-demand-driven-theme-rendering-plan.md)
+prioritizes remaining family proof removal, immutable environment defaults, shared writer accounting
+and ER/Mindmap representation work, with fresh adjacent-revision verification. Binaryen packaging
+now succeeds through all five Web package builds and runtime smoke checks with its narrow pass bypass.
+
 The [October 16 macOS runtime cleanup](native_theme_runtime_cleanup_macos_2026-10-16.md)
 implements the accepted responsibility plan: ordinary generation no longer performs terminal
 XML/reference certification, retired text scans or non-requested output hashes; data interfaces
