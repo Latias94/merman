@@ -17,6 +17,15 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 standalone attribution](native_standalone_attribution_windows_2026-10-16.md)
+measures only current public finalization: Class medium/tiny, Journey and Kanban mean 750/104/107/80 us
+in a fixed 16-batch probe, with exact identities and clear compiler boundaries. Class-medium batches
+range 589–876 us; this is attribution, not an E2E percentage, v0.9.0 ratio or admitted speedup. Split
+fingerprint, complete XML/fact collection and reference-analysis costs before the next production
+refactor. The [fixed-prefix search candidate](native_reserved_token_search_windows_2026-10-16.md)
+is not retained: one 128-byte allocation disappears and SVGs match, but 42 diagnostic measurements
+provide no stable admitted latency gain and mixed controls remain. Preserve its patch and evidence.
+
 The [October 16 borrowed compatibility queries](native_theme_evidence_queries_windows_2026-10-16.md)
 remove complete evidence snapshots from admission equality and residual counting. Same-binary
 controls fall from two default allocations (32 bytes), or 772 allocations (45,088 bytes) at 128 frozen
