@@ -43,22 +43,7 @@ impl SequenceSyntax {
         #[cfg(test)]
         SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.set(SEQUENCE_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
-        let mut events = Vec::new();
-        let mut lexer = Lexer::new(code);
-        let mut last_position = lexer.position();
-        while let Some(event) = lexer.next() {
-            if events.len() % 128 == 0 {
-                control.checkpoint()?;
-            }
-            let current_position = lexer.position();
-            let must_stop = event.is_err() && current_position == last_position;
-            events.push(event);
-            if must_stop {
-                break;
-            }
-            last_position = current_position;
-        }
-        control.checkpoint()?;
+        let events = crate::diagrams::scan::collect_lexical_events(&mut Lexer::new(code), control)?;
         Ok(Self { events })
     }
 

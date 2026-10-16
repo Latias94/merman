@@ -1,7 +1,8 @@
 #![cfg(feature = "all-diagrams")]
 
 use merman_core::{
-    DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, Engine, ParsedEditorFacts,
+    DiagramParseOutcome, EditorSemanticCompleteness, EditorSemanticFacts, Engine, ParseOptions,
+    ParsedEditorFacts, RenderSemanticModel,
 };
 use serde_json::{Value, json};
 
@@ -336,4 +337,60 @@ fn sequence_multiline_accessibility_preserves_an_ordinary_next_line() {
         available_facts(&snapshot).completeness,
         EditorSemanticCompleteness::Complete
     );
+}
+
+#[test]
+fn sequence_empty_comments_preserve_semantics_render_models_and_editor_facts() {
+    let engine = Engine::new();
+    for source in [
+        "sequenceDiagram\n%%",
+        "sequenceDiagram\n%%\nparticipant A\nA->>B: hello\n%%",
+        "sequenceDiagram\r\n%%\r\nparticipant A\r\nA->>B: hello\r\n%%\r\n",
+        "sequenceDiagram\naccDescr {desc}\n%%\nparticipant A\n",
+    ] {
+        let plain = source.replace("%%", "");
+        let expected = engine
+            .parse_diagram_sync(&plain, ParseOptions::strict())
+            .expect("comment-free input parses")
+            .expect("sequence diagram");
+        let parsed = engine
+            .parse_diagram_sync(source, ParseOptions::strict())
+            .expect("empty comments terminate")
+            .expect("sequence diagram");
+        assert_eq!(parsed.model, expected.model, "{source:?}");
+
+        let rendered = engine
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .expect("render-model parsing terminates")
+            .expect("sequence render model");
+        let expected_render = engine
+            .parse_diagram_for_render_model_sync(&plain, ParseOptions::strict())
+            .expect("comment-free render model")
+            .expect("sequence render model");
+        let RenderSemanticModel::Sequence(rendered) = rendered.model() else {
+            panic!("expected Sequence render model");
+        };
+        let RenderSemanticModel::Sequence(expected_render) = expected_render.model() else {
+            panic!("expected comment-free Sequence render model");
+        };
+        assert_eq!(
+            serde_json::to_value(rendered).unwrap(),
+            serde_json::to_value(expected_render).unwrap(),
+            "{source:?}"
+        );
+
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("sequence", source)
+            .expect("editor parsing terminates")
+            .expect("sequence snapshot");
+        let DiagramParseOutcome::Parsed { model, .. } = snapshot.outcome() else {
+            panic!("empty comments must preserve parsing: {source:?}");
+        };
+        assert_eq!(model, &expected.model);
+        assert_eq!(
+            available_facts(&snapshot).completeness,
+            EditorSemanticCompleteness::Complete,
+            "{source:?}"
+        );
+    }
 }
