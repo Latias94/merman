@@ -188,8 +188,8 @@ impl<'a> SvgPostprocessExecution<'a> {
         self.session.checkpoint(OperationPhase::Postprocess)
     }
 
-    pub(crate) const fn resource_policy(self) -> RenderResourcePolicy {
-        self.session.resource_policy()
+    pub(crate) const fn resource_policy(self) -> &'a RenderResourcePolicy {
+        self.session.resource_policy_ref()
     }
 
     pub(crate) fn preflight_svg_byte_count(self, actual: usize) -> crate::Result<()> {

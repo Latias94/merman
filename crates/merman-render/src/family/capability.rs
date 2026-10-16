@@ -305,9 +305,10 @@ fn validate_render_input(
             diagram_type: diagram_type.to_owned(),
         });
     }
-    if !merman_core::__private::theme_parse_evidence(meta)
-        .matches_recipe(session.theme_compatibility_recipe())
-    {
+    if !merman_core::__private::theme_parse_matches_recipe(
+        meta,
+        session.theme_compatibility_recipe(),
+    ) {
         return Err(Error::ThemeParseBindingMismatch);
     }
     session

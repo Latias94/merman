@@ -327,7 +327,8 @@ fn validate_browser_reference_expansion(
         }
     }
 
-    let graph = ReferenceDependencyGraph::new(dependencies, elements.len());
+    let graph =
+        ReferenceDependencyGraph::with_checkpoints(dependencies, elements.len(), &mut checkpoint)?;
     let summary =
         match summarize_svg_reference_dependencies_with_checkpoints(&graph, &mut checkpoint) {
             Ok(plan) => plan,
@@ -1177,7 +1178,7 @@ fn is_root_size_property(property: &str) -> bool {
     )
 }
 
-fn root_dimension_limit(limits: RenderResourcePolicy) -> f64 {
+fn root_dimension_limit(limits: &RenderResourcePolicy) -> f64 {
     limits
         .value(ResourceLimitId::MaxSvgBytes)
         .map(|bytes| bytes / SVG_BYTES_PER_ROOT_PIXEL)

@@ -57,10 +57,10 @@ fn set_string_if_missing(stage: &mut ThemeState, key: &str, value: &str) -> Resu
 pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
     let dark_mode = stage.variables.get("darkMode").is_some_and(is_js_truthy);
 
-    stage.assign_if_falsy("primaryTextColor", |_| {
-        Ok(ComputedValue::with_dependencies(
+    stage.assign_if_falsy("primaryTextColor", |stage| {
+        Ok(stage.computed(
             Value::String(if dark_mode { "#eee" } else { "#333" }.to_owned()),
-            ["darkMode".to_owned()],
+            &["darkMode"],
         ))
     })?;
     adjust(stage, "secondaryColor", "primaryColor", -120.0, 0.0, 0.0)?;
@@ -74,7 +74,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         stage.assign_if_falsy(key, |stage| {
             let mut value =
                 transform_color(copy(stage, source)?, |color| mk_border(color, dark_mode))?;
-            value.dependencies.push("darkMode".to_owned());
+            value.inherit(stage, "darkMode");
             Ok(value)
         })?;
     }
@@ -108,7 +108,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         } else {
             copy(stage, "secondaryColor")?
         };
-        value.dependencies.push("darkMode".to_owned());
+        value.inherit(stage, "darkMode");
         Ok(value)
     })?;
     inherit_many(
@@ -187,7 +187,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
     ] {
         stage.assign_if_falsy(key, |stage| {
             let mut value = adjusted(stage, "mainBkg", ColorAdjustment::hsl(0.0, 0.0, amount))?;
-            value.dependencies.push("darkMode".to_owned());
+            value.inherit(stage, "darkMode");
             Ok(value)
         })?;
     }
@@ -245,7 +245,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         let key = format!("cScale{index}");
         stage.assign(&key, |stage| {
             let mut value = darkened(stage, &key, if dark_mode { 75.0 } else { 25.0 })?;
-            value.dependencies.push("darkMode".to_owned());
+            value.inherit(stage, "darkMode");
             Ok(value)
         })
     })?;
@@ -260,7 +260,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
             } else {
                 darkened(stage, &source, 10.0)?
             };
-            value.dependencies.push("darkMode".to_owned());
+            value.inherit(stage, "darkMode");
             Ok(value)
         })
     })?;
@@ -280,7 +280,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
                     "mainBkg",
                     ColorAdjustment::hsl(180.0, -15.0, multiplier * amount as f64),
                 )?;
-                value.dependencies.push("darkMode".to_owned());
+                value.inherit(stage, "darkMode");
                 Ok(value)
             })?;
         }
@@ -404,7 +404,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         } else {
             copy(stage, "secondaryColor")?
         };
-        value.dependencies.push("darkMode".to_owned());
+        value.inherit(stage, "darkMode");
         Ok(value)
     })?;
     inherit(stage, "relationLabelColor", "actorTextColor")?;
@@ -427,7 +427,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
             } else {
                 darkened(stage, &key, 25.0)?
             };
-            value.dependencies.push("darkMode".to_owned());
+            value.inherit(stage, "darkMode");
             Ok(value)
         })?;
     }
@@ -445,7 +445,7 @@ pub(super) fn update(stage: &mut ThemeState) -> Result<(), ColorError> {
         } else {
             copy(stage, "labelTextColor")?
         };
-        value.dependencies.push("darkMode".to_owned());
+        value.inherit(stage, "darkMode");
         Ok(value)
     })?;
     for index in 0..8 {

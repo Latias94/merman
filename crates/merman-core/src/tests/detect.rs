@@ -1228,6 +1228,82 @@ fn theme_compatibility_freezes_binding_and_conceptual_field_count() {
 }
 
 #[test]
+fn theme_parse_borrowed_queries_match_owned_evidence_for_all_binding_states() {
+    use crate::__private::{
+        ThemeCompatibilityPlan, theme_parse_evidence, theme_parse_matches_recipe,
+        theme_parse_mermaid_residual_count,
+    };
+
+    let input = json!({
+        "theme": "base", "darkMode": true, "themeVariables": {"useGradient": true},
+    });
+    let plan = node_default_plan(input.clone());
+    let equivalent_plan = node_default_plan(input.clone());
+    let different_identity =
+        ThemeCompatibilityPlan::try_new([0x5b; 32], MermaidConfig::from_value(input.clone()))
+            .unwrap();
+    let different_config = node_default_plan(json!({
+        "theme": "base", "darkMode": true, "themeVariables": {"useGradient": false},
+    }));
+    let empty_plan = node_default_plan(json!({}));
+    assert_eq!(plan.recipe(), equivalent_plan.recipe());
+    assert_ne!(plan.recipe(), different_identity.recipe());
+    assert_ne!(plan.recipe(), different_config.recipe());
+
+    let tracking = MermaidConfig::from_theme_parse_binding(theme_binding_for(
+        MermaidConfig::from_value(input.clone()),
+    ));
+    let tracking_empty =
+        MermaidConfig::from_theme_parse_binding(theme_binding_for(MermaidConfig::empty_object()));
+    let mut frozen = tracking.clone();
+    frozen.freeze_theme_compatibility();
+    let mut frozen_empty = tracking_empty.clone();
+    frozen_empty.freeze_theme_compatibility();
+    let mut shadowed = tracking.clone();
+    shadowed.set_value("themeVariables.useGradient", json!(true));
+    shadowed.freeze_theme_compatibility();
+
+    for (state, config, expected_recipe, expected_count) in [
+        ("none-empty", MermaidConfig::empty_object(), None, 0),
+        ("none-authored", MermaidConfig::from_value(input), None, 0),
+        ("tracking-empty", tracking_empty, None, 0),
+        ("tracking-fields", tracking, None, 0),
+        ("frozen-empty", frozen_empty, Some(empty_plan.recipe()), 0),
+        ("frozen-fields", frozen, Some(plan.recipe()), 3),
+        ("frozen-shadowed", shadowed, Some(plan.recipe()), 2),
+    ] {
+        let metadata = ParseMetadata {
+            diagram_type: "flowchart-v2".into(),
+            config: MermaidConfig::empty_object(),
+            effective_config: config,
+            title: None,
+        };
+        let owned = theme_parse_evidence(&metadata);
+        assert!(owned.matches_recipe(expected_recipe), "{state}");
+        assert_eq!(owned.mermaid_residual_count(), expected_count, "{state}");
+        assert_eq!(
+            theme_parse_mermaid_residual_count(&metadata),
+            owned.mermaid_residual_count(),
+            "{state}",
+        );
+        for recipe in [
+            None,
+            Some(plan.recipe()),
+            Some(equivalent_plan.recipe()),
+            Some(different_identity.recipe()),
+            Some(different_config.recipe()),
+            Some(empty_plan.recipe()),
+        ] {
+            assert_eq!(
+                theme_parse_matches_recipe(&metadata, recipe),
+                owned.matches_recipe(recipe),
+                "{state}: {recipe:?}",
+            );
+        }
+    }
+}
+
+#[test]
 fn theme_parse_binding_rejects_paths_outside_the_restricted_compatibility_shape() {
     for config in [
         json!({"themeCSS": ".node { fill: red; }"}),

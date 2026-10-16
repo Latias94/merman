@@ -1,7 +1,7 @@
 use std::fmt;
 use std::ops::Range;
 
-use crate::resources::OperationWorkMeter;
+use crate::resources::{OperationWorkMeter, SvgByteBudget};
 
 /// Minimal SVG output surface shared by unbounded helpers and operation-bounded renderers.
 ///
@@ -14,6 +14,11 @@ pub(super) trait SvgOutput: fmt::Write {
     fn as_str(&self) -> &str;
     fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()>;
     fn checkpoint(&mut self) -> crate::Result<()>;
+
+    /// Observes operation cancellation without pretending to append an empty fragment.
+    fn observe_operation(&mut self) -> crate::Result<()> {
+        self.checkpoint()
+    }
 }
 
 impl SvgOutput for String {
@@ -66,39 +71,65 @@ impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
         const MAX_PLAIN_FRAGMENT_BYTES: usize = 2_048;
 
-        // Let the existing document sink observe cancellation before scanning a logical fragment.
-        self.out.write_str("")?;
-        let mut start = 0;
-        for (offset, byte) in value.bytes().enumerate() {
-            let replacement = match byte {
-                b'&' => Some("&amp;"),
-                b'<' => Some("&lt;"),
-                b'>' if self.trailing_brackets == 2 => Some("&gt;"),
-                _ => None,
-            };
-            self.trailing_brackets = if byte == b']' {
-                (self.trailing_brackets + 1).min(2)
-            } else {
-                0
-            };
-            if let Some(replacement) = replacement {
-                if start < offset {
-                    self.out.write_str(&value[start..offset])?;
-                }
-                self.out.write_str(replacement)?;
-                start = offset + 1;
-            } else if offset + 1 - start >= MAX_PLAIN_FRAGMENT_BYTES
-                && value.is_char_boundary(offset + 1)
+        self.out.observe_operation().map_err(|_| fmt::Error)?;
+        let mut search_start = 0;
+        let mut plain_start = 0usize;
+        while search_start < value.len() {
+            let mut end = plain_start
+                .saturating_add(MAX_PLAIN_FRAGMENT_BYTES)
+                .min(value.len());
+            while !value.is_char_boundary(end) {
+                end += 1;
+            }
+            // Bound scanning as well as copying. UTF-8 completion adds at most three bytes to
+            // the old observation interval; no whole-input pre-scan can postpone cancellation.
+            if let Some(relative) =
+                memchr::memchr3(b'&', b'<', b'>', &value.as_bytes()[search_start..end])
             {
-                // Flush the original slice without allocating or splitting a UTF-8 scalar.
-                self.out.write_str(&value[start..offset + 1])?;
-                start = offset + 1;
+                let offset = search_start + relative;
+                self.retain_trailing_brackets(&value[search_start..offset]);
+                let replacement = match value.as_bytes()[offset] {
+                    b'&' => Some("&amp;"),
+                    b'<' => Some("&lt;"),
+                    b'>' if self.trailing_brackets == 2 => Some("&gt;"),
+                    _ => None,
+                };
+                self.trailing_brackets = 0;
+                if let Some(replacement) = replacement {
+                    if plain_start < offset {
+                        self.out.write_str(&value[plain_start..offset])?;
+                    }
+                    self.out.write_str(replacement)?;
+                    plain_start = offset + 1;
+                }
+                search_start = offset + 1;
+            } else {
+                self.retain_trailing_brackets(&value[search_start..end]);
+                self.out.write_str(&value[plain_start..end])?;
+                search_start = end;
+                plain_start = end;
             }
         }
-        if start < value.len() {
-            self.out.write_str(&value[start..])?;
+        if plain_start < value.len() {
+            self.out.write_str(&value[plain_start..])?;
         }
         self.out.checkpoint().map_err(|_| fmt::Error)
+    }
+}
+
+impl<S> XmlTextOutput<'_, S> {
+    fn retain_trailing_brackets(&mut self, plain: &str) {
+        self.trailing_brackets = if plain.ends_with("]]") {
+            2
+        } else if plain == "]" {
+            (self.trailing_brackets + 1).min(2)
+        } else if plain.ends_with(']') {
+            1
+        } else if plain.is_empty() {
+            self.trailing_brackets
+        } else {
+            0
+        };
     }
 }
 
@@ -130,6 +161,10 @@ impl<S: SvgOutput> SvgOutput for XmlTextOutput<'_, S> {
     fn checkpoint(&mut self) -> crate::Result<()> {
         self.out.checkpoint()
     }
+
+    fn observe_operation(&mut self) -> crate::Result<()> {
+        self.out.observe_operation()
+    }
 }
 
 /// Operation-owned SVG buffer that checks every retained append before allocation.
@@ -139,8 +174,13 @@ impl<S: SvgOutput> SvgOutput for XmlTextOutput<'_, S> {
 /// second time.
 pub(super) struct BoundedSvgOutput<'a> {
     out: String,
-    work_meter: &'a OperationWorkMeter,
+    budget: SvgByteBudget<'a>,
+    admitted_end: usize,
     state: BoundedSvgOutputState,
+    #[cfg(test)]
+    capacity_admissions: usize,
+    #[cfg(test)]
+    write_attempts: usize,
 }
 
 enum BoundedSvgOutputState {
@@ -195,8 +235,13 @@ impl<'a> BoundedSvgOutput<'a> {
     pub(super) fn new(work_meter: &'a OperationWorkMeter) -> Self {
         Self {
             out: String::new(),
-            work_meter,
+            budget: work_meter.svg_byte_budget(),
+            admitted_end: 0,
             state: BoundedSvgOutputState::Active,
+            #[cfg(test)]
+            capacity_admissions: 0,
+            #[cfg(test)]
+            write_attempts: 0,
         }
     }
 
@@ -237,27 +282,23 @@ impl<'a> BoundedSvgOutput<'a> {
     }
 
     fn admit_growth(&mut self, additional: usize) -> Result<(), BoundedSvgOutputFailure> {
-        self.work_meter
-            .check_svg_append(self.out.len(), additional)
+        self.budget
+            .observe_operation()
             .map_err(BoundedSvgOutputFailure::Operation)?;
-
-        let required_len =
-            self.out
-                .len()
-                .checked_add(additional)
-                .ok_or(BoundedSvgOutputFailure::InvalidModel(
-                    "bounded SVG output length overflowed",
-                ))?;
-        let current_capacity = self.out.capacity();
-        if required_len <= current_capacity {
+        // Credit is explicit: an allocator may return more capacity than requested. Fitting the
+        // admitted end proves both non-overflow and the exact retained-byte ceiling; excess
+        // allocator capacity never grants permission to retain more serialized bytes.
+        if additional <= self.admitted_end - self.out.len() {
             return Ok(());
         }
-
-        let geometric_capacity = current_capacity.saturating_mul(2);
-        let mut target_capacity = required_len.max(geometric_capacity);
-        if let Some(max_svg_bytes) = self.work_meter.max_svg_bytes() {
-            target_capacity = target_capacity.min(max_svg_bytes);
+        #[cfg(test)]
+        {
+            self.capacity_admissions += 1;
         }
+        let target_capacity = self
+            .budget
+            .reservation_capacity(self.out.len(), self.admitted_end, additional)
+            .map_err(BoundedSvgOutputFailure::Operation)?;
         let reserve = target_capacity.checked_sub(self.out.len()).ok_or(
             BoundedSvgOutputFailure::InvalidModel(
                 "bounded SVG output capacity fell below its retained length",
@@ -265,10 +306,16 @@ impl<'a> BoundedSvgOutput<'a> {
         )?;
         self.out.try_reserve_exact(reserve).map_err(|_| {
             BoundedSvgOutputFailure::InvalidModel("failed to reserve bounded SVG output")
-        })
+        })?;
+        self.admitted_end = target_capacity;
+        Ok(())
     }
 
     fn record_write(&mut self, value: &str) -> fmt::Result {
+        #[cfg(test)]
+        {
+            self.write_attempts += 1;
+        }
         if matches!(&self.state, BoundedSvgOutputState::Failed(_)) {
             return Err(fmt::Error);
         }
@@ -326,6 +373,15 @@ impl SvgOutput for BoundedSvgOutput<'_> {
             Some(error) => Err(error),
             None => Ok(()),
         }
+    }
+
+    fn observe_operation(&mut self) -> crate::Result<()> {
+        if let Some(error) = self.state.error() {
+            return Err(error);
+        }
+        self.budget
+            .observe_operation()
+            .map_err(|error| self.fail(BoundedSvgOutputFailure::Operation(error)))
     }
 }
 
@@ -573,9 +629,188 @@ mod tests {
         }
 
         assert!(capacity_changes <= 8);
+        assert_eq!(out.write_attempts, MAX_SVG_BYTES);
+        assert!(out.capacity_admissions <= 8);
         assert_eq!(meter.projected_svg_bytes(), 0);
         assert_eq!(out.finish().unwrap(), "x".repeat(MAX_SVG_BYTES));
         assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn bounded_svg_output_allocator_capacity_never_grants_byte_credit() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 10)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+        // Model an allocator supplying more storage than requested by an exact reservation.
+        out.out = String::with_capacity(64);
+        out.push_str("0123456789");
+        assert_eq!(out.admitted_end, 10);
+        out.push('x');
+        assert_eq!(out.as_str(), "0123456789");
+        let error = resource_limit(out.finish().unwrap_err());
+        assert_eq!(error.actual, 11);
+        assert_eq!(error.max, 10);
+    }
+
+    #[test]
+    fn bounded_svg_output_empty_start_and_replacements_preserve_byte_credit() {
+        use merman_core::OperationControl;
+
+        for maximum in [1, 10] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+                .unwrap();
+            let control = OperationControl::new();
+            let meter = OperationWorkMeter::new_with_control(policy, control.clone());
+            let mut out = BoundedSvgOutput::new(&meter);
+            assert!(fmt::Write::write_str(&mut out, "").is_ok());
+            assert_eq!(out.admitted_end, 0);
+            assert_eq!(out.retained_capacity(), 0);
+            if maximum == 10 {
+                out.push_str("0123456789");
+                out.replace_range(0..5, "").unwrap();
+                out.replace_range(0..1, "012345").unwrap();
+                assert_eq!(out.as_str(), "0123456789");
+                assert_eq!(out.admitted_end, maximum);
+            } else {
+                out.push('x');
+                assert_eq!(out.as_str(), "x");
+                assert_eq!(out.admitted_end, 1);
+            }
+            out.push('x');
+            let first = resource_limit(out.checkpoint().unwrap_err());
+            assert_eq!(first.actual, maximum + 1);
+            assert_eq!(first.max, maximum);
+            control.cancel();
+            assert_eq!(resource_limit(out.observe_operation().unwrap_err()), first);
+            assert_eq!(resource_limit(out.finish().unwrap_err()), first);
+            assert_eq!(meter.projected_svg_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn xml_text_output_matches_reference_output_errors_and_cancellation_boundaries() {
+        use merman_core::OperationControl;
+
+        let fragments = [
+            String::new(),
+            "a]".to_owned(),
+            "]".to_owned(),
+            "> > & <".to_owned(),
+            format!("{}😀Ω]", "p".repeat(2_047)),
+            "]> literal &amp; \0".to_owned(),
+            format!("&{}]", ">\u{0301}字".repeat(1_025)),
+            "]".to_owned(),
+            String::new(),
+            ">".to_owned(),
+        ];
+        let mut expected = String::new();
+        let mut trailing_brackets = 0;
+        for fragment in &fragments {
+            reference_xml_write(&mut expected, &mut trailing_brackets, fragment).unwrap();
+        }
+        for maximum in [
+            1,
+            2,
+            7,
+            2_047,
+            2_048,
+            2_049,
+            expected.len() - 1,
+            expected.len(),
+        ] {
+            for checkpoints in [0, 1, 2, 3, 5, 9, usize::MAX] {
+                let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+                    .unwrap();
+                let new_control = OperationControl::new();
+                let reference_control = OperationControl::new();
+                if checkpoints != usize::MAX {
+                    new_control.cancel_after_checkpoints(checkpoints);
+                    reference_control.cancel_after_checkpoints(checkpoints);
+                }
+                let new_meter = OperationWorkMeter::new_with_control(policy, new_control);
+                let reference_meter =
+                    OperationWorkMeter::new_with_control(policy, reference_control);
+                let mut new = BoundedSvgOutput::new(&new_meter);
+                let mut reference = BoundedSvgOutput::new(&reference_meter);
+                let mut reference_brackets = 0;
+                {
+                    let mut xml = XmlTextOutput::new(&mut new);
+                    for fragment in &fragments {
+                        let actual = fmt::Write::write_str(&mut xml, fragment);
+                        let previous =
+                            reference_xml_write(&mut reference, &mut reference_brackets, fragment);
+                        assert_eq!(actual.is_ok(), previous.is_ok());
+                    }
+                }
+                assert_eq!(new.as_str(), reference.as_str());
+                assert_eq!(new_meter.projected_svg_bytes(), 0);
+                assert_eq!(reference_meter.projected_svg_bytes(), 0);
+                assert_eq!(
+                    new.finish().map_err(|error| format!("{error:?}")),
+                    reference.finish().map_err(|error| format!("{error:?}")),
+                    "maximum={maximum}, checkpoints={checkpoints}",
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn xml_text_output_observation_replaces_empty_sink_write() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let mut new = BoundedSvgOutput::new(&meter);
+        let mut reference = BoundedSvgOutput::new(&meter);
+        let mut reference_brackets = 0;
+        {
+            let mut xml = XmlTextOutput::new(&mut new);
+            for fragment in ["font-family:", "普通字體", "", ";"] {
+                fmt::Write::write_str(&mut xml, fragment).unwrap();
+                reference_xml_write(&mut reference, &mut reference_brackets, fragment).unwrap();
+            }
+        }
+        assert_eq!(new.as_str(), reference.as_str());
+        assert_eq!(new.write_attempts, 3);
+        assert_eq!(reference.write_attempts, 7);
+    }
+
+    // The former scalar serializer remains a test oracle for exact write/error boundaries.
+    fn reference_xml_write(
+        out: &mut impl SvgOutput,
+        trailing_brackets: &mut u8,
+        value: &str,
+    ) -> fmt::Result {
+        out.write_str("")?;
+        let mut start = 0;
+        for (offset, byte) in value.bytes().enumerate() {
+            let replacement = match byte {
+                b'&' => Some("&amp;"),
+                b'<' => Some("&lt;"),
+                b'>' if *trailing_brackets == 2 => Some("&gt;"),
+                _ => None,
+            };
+            *trailing_brackets = if byte == b']' {
+                (*trailing_brackets + 1).min(2)
+            } else {
+                0
+            };
+            if let Some(replacement) = replacement {
+                if start < offset {
+                    out.write_str(&value[start..offset])?;
+                }
+                out.write_str(replacement)?;
+                start = offset + 1;
+            } else if offset + 1 - start >= 2_048 && value.is_char_boundary(offset + 1) {
+                out.write_str(&value[start..offset + 1])?;
+                start = offset + 1;
+            }
+        }
+        if start < value.len() {
+            out.write_str(&value[start..])?;
+        }
+        out.checkpoint().map_err(|_| fmt::Error)
     }
 
     fn resource_limit(error: crate::Error) -> crate::ResourceLimitExceeded {

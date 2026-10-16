@@ -2189,6 +2189,11 @@ impl RenderSession {
         self.resource_policy
     }
 
+    /// Borrows the immutable operation policy for internal validation without copying it.
+    pub(crate) const fn resource_policy_ref(&self) -> &RenderResourcePolicy {
+        &self.resource_policy
+    }
+
     /// Returns the immutable host/theme resource intersection captured for this operation.
     pub(crate) fn effective_theme_resource_policy(&self) -> Arc<ThemeResourcePolicy> {
         Arc::clone(self.resolved_theme_resources.effective_policy())

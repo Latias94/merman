@@ -386,6 +386,21 @@ pub mod __private {
         }
     }
 
+    /// Compares the complete frozen parse recipe without constructing an evidence snapshot.
+    pub fn theme_parse_matches_recipe(
+        metadata: &ParseMetadata,
+        recipe: Option<&ThemeCompatibilityRecipe>,
+    ) -> bool {
+        metadata.effective_config.theme_parse_binding() == recipe.map(|recipe| &recipe.0)
+    }
+
+    /// Counts frozen conceptual Mermaid fields without copying their paths or identities.
+    pub fn theme_parse_mermaid_residual_count(metadata: &ParseMetadata) -> usize {
+        metadata
+            .effective_config
+            .mermaid_compatibility_residual_count()
+    }
+
     /// Freezes the compatibility identity and surviving residual evidence of a parsed artifact.
     pub fn theme_parse_evidence(metadata: &ParseMetadata) -> ThemeParseEvidence {
         let mermaid_fields = metadata

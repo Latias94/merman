@@ -822,6 +822,53 @@ pub(crate) struct OperationWorkMeter {
     prepared_text_retained_bytes_peak: std::sync::atomic::AtomicUsize,
 }
 
+/// Immutable operation-owned admission for retained SVG bytes, separate from producer charges.
+///
+/// A document writer may reuse an admitted backing capacity while observing cancellation on each
+/// write. The ceiling and its error provenance have the same lifetime as the originating meter.
+pub(crate) struct SvgByteBudget<'a> {
+    meter: &'a OperationWorkMeter,
+    maximum: Option<usize>,
+}
+
+impl SvgByteBudget<'_> {
+    pub(crate) fn observe_operation(&self) -> Result<(), OperationWorkError> {
+        self.meter.checkpoint(OperationPhase::Emit)
+    }
+
+    /// Checks exact serialized length without charging a producer contribution or observing twice.
+    fn appended_len(&self, current: usize, additional: usize) -> Result<usize, OperationWorkError> {
+        let required = current.checked_add(additional).ok_or_else(|| {
+            OperationWorkError::ResourceLimitExceeded(accumulation_overflow(
+                self.meter.policy,
+                ResourceLimitPhase::SvgOutput,
+                RenderResourceLimitId::MaxSvgBytes,
+            ))
+        })?;
+        if self.maximum.is_some_and(|maximum| required > maximum) {
+            self.meter
+                .policy
+                .check_svg_byte_count(required, ResourceLimitPhase::SvgOutput)?;
+        }
+        Ok(required)
+    }
+
+    /// Admits a geometrically grown capacity after the caller has observed operation control.
+    ///
+    /// Writes fitting the existing admitted capacity need neither a new reservation nor another
+    /// policy lookup. Checking the requested length first preserves exact ceiling/overflow errors.
+    pub(crate) fn reservation_capacity(
+        &self,
+        current_len: usize,
+        current_capacity: usize,
+        additional: usize,
+    ) -> Result<usize, OperationWorkError> {
+        let required = self.appended_len(current_len, additional)?;
+        let target = required.max(current_capacity.saturating_mul(2));
+        Ok(target.min(self.maximum.unwrap_or(usize::MAX)))
+    }
+}
+
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -1081,28 +1128,23 @@ impl OperationWorkMeter {
         current_svg_bytes: usize,
         additional_svg_bytes: usize,
     ) -> Result<(), OperationWorkError> {
-        self.checkpoint(OperationPhase::Emit)?;
-        let projected_svg_bytes = current_svg_bytes
-            .checked_add(additional_svg_bytes)
-            .ok_or_else(|| {
-                OperationWorkError::ResourceLimitExceeded(accumulation_overflow(
-                    self.policy,
-                    ResourceLimitPhase::SvgOutput,
-                    RenderResourceLimitId::MaxSvgBytes,
-                ))
-            })?;
-        self.policy
-            .check_svg_byte_count(projected_svg_bytes, ResourceLimitPhase::SvgOutput)
-            .map_err(OperationWorkError::ResourceLimitExceeded)
+        let budget = self.svg_byte_budget();
+        budget.observe_operation()?;
+        budget
+            .appended_len(current_svg_bytes, additional_svg_bytes)
+            .map(|_| ())
     }
 
-    /// Returns the whole-document SVG ceiling used to cap backing-buffer growth.
+    /// Prepares immutable whole-document admission used to cap backing-buffer growth.
     ///
     /// This is intentionally independent of the producer-owned projected-byte ledger: the
     /// bounded document sink validates its retained bytes directly and must not subtract or charge
     /// separately owned contributions.
-    pub(crate) fn max_svg_bytes(&self) -> Option<usize> {
-        self.policy.value(ResourceLimitId::MaxSvgBytes)
+    pub(crate) fn svg_byte_budget(&self) -> SvgByteBudget<'_> {
+        SvgByteBudget {
+            meter: self,
+            maximum: self.policy.value(ResourceLimitId::MaxSvgBytes),
+        }
     }
 
     pub(crate) fn arithmetic_overflow(&self) -> OperationWorkError {

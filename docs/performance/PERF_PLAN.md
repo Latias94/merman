@@ -17,6 +17,114 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 overlay-order correction](native_theme_overlay_order_2026-10-16.md) preserves
+actual Map insertion order for overlapping literal roots and their replay. Its sparse index
+contains both ancestor and descendant participants, K <= E; unrelated roots add no entries.
+All 2,006 core tests pass, including 42 eager-oracle order cases. This corrects interpreter
+equivalence without reintroducing full-table reads or making a new latency claim.
+
+The [October 16 reference dispatch checkpoint](native_xml_dispatch_windows_2026-10-16.md)
+retains exact-name routing as an internal refactor with 5,352 renderer tests and all 152 SVG
+identities passing. The native benchmark shrinks 87,040 bytes. External compilation invalidates
+the first diagnostic after three completed measurements; discard the entire attempt. No latency
+improvement or non-regression is admitted, and the release-range regression remains open.
+
+The [October 16 terminal phase attribution](native_svg_terminal_phases_windows_2026-10-16.md)
+isolates complete XML walk plus facts as the largest of three instrumented private segments on
+Class medium/tiny, Journey and Kanban: mean 487/78/84/61 us, versus fingerprint 43/9/7/12 us and
+reference analysis 21/6/4/0.2 us. All 512 timed outputs retain exact identities. Temporary timers
+and stderr perturb execution, so these are attribution only, without an E2E percentage or speedup.
+Investigate attribute processing while preserving complete validation, limits and checkpoints;
+do not merge diagnostic hooks or infer helper-level costs from this segment alone.
+
+The [October 16 standalone attribution](native_standalone_attribution_windows_2026-10-16.md)
+measures only current public finalization: Class medium/tiny, Journey and Kanban mean 750/104/107/80 us
+in a fixed 16-batch probe, with exact identities and clear compiler boundaries. Class-medium batches
+range 589–876 us; this is attribution, not an E2E percentage, v0.9.0 ratio or admitted speedup. Split
+fingerprint, complete XML/fact collection and reference-analysis costs before the next production
+refactor. The [fixed-prefix search candidate](native_reserved_token_search_windows_2026-10-16.md)
+is not retained: one 128-byte allocation disappears and SVGs match, but 42 diagnostic measurements
+provide no stable admitted latency gain and mixed controls remain. Preserve its patch and evidence.
+
+The [October 16 borrowed compatibility queries](native_theme_evidence_queries_windows_2026-10-16.md)
+remove complete evidence snapshots from admission equality and residual counting. Same-binary
+controls fall from two default allocations (32 bytes), or 772 allocations (45,088 bytes) at 128 frozen
+fields, to zero while preserving exact query results. All 152 SVG identities and 5,163 core/renderer
+tests pass. The native benchmark grows 171,008 bytes (0.42%). A complete 42-observation diagnostic has
+mixed small movements and establishes neither latency improvement nor non-regression; retain only
+the resource-work/ownership claim and continue attributing mandatory standalone finalization.
+
+The [October 16 Class edge ownership refactor](native_class_edge_ownership_windows_2026-10-16.md)
+shares one ordered borrowed edge sequence across path/label emission. Class medium removes 29
+allocations and 1,028 allocated bytes; the zero-edge tiny control is unchanged. All 152 SVG rows
+and 3,321 renderer tests pass. This removes duplicate work and transient ownership; observed
+external compilation rejects the diagnostic before measuring, so no latency claim is admitted.
+
+The [October 16 Class default-binding repair](native_class_shared_defaults_windows_2026-10-16.md)
+removes node-dependent copies of shared defaults: padding a raw border token by K bytes now adds
+exactly 4K preparation bytes at both 16 and 64 nodes, versus 20K/68K previously. It removes four default
+allocations per node; all 152 SVG identities and 3,320 renderer tests pass. The retained result is a
+preparation ownership/resource-bound improvement. Both latency attempts fail before measuring
+(tasklist failure, then observed external compilation), so latency non-regression and recovery
+remain unconfirmed. Shared edge ordering and common token/evidence work are separate candidates.
+
+The [October 16 three-way frontier](native_theme_threeway_frontier_windows_2026-10-16.md)
+compares v0.9.0, merged themes and the latest frozen optimized candidate in one complete
+36-invocation diagnostic with identical Class/Journey/Kanban SVGs. Optimized means improve
+3.20%-17.22% over merged but remain 46.99%-228.36% slower than v0.9.0; no calibrated latency
+or non-regression admission follows. Both separately attempted emission-stage runs detect
+compilation and are rejected. Extra source-review lanes exclude canonical JSON, rustls and large
+default report clones as new primary owners. A public preparation allocation probe establishes
+Class's retained-token slope: adding K bytes to a shared border token adds `(C+4)*K` current
+preparation bytes for C nodes, while old preparation remains unchanged and SVGs match exactly.
+Prioritize binding selections that borrow artifact-owned defaults, preserving typed/source
+authority and completion; investigate repeated edge ordering and borrow-until-append styles as
+separate changes. This is added pre-emission ownership, not a new overall complexity-order claim.
+
+The [October 15 scalar confirmation](native_svg_scalar_confirmation_windows_2026-10-15.md)
+uses clean committed base/head builds and complete eight-pair A/A schedules. Six of seven
+fixtures fail calibration; Kanban completes 32 A/B pairs and confirms non-regression, but its
+improvement interval does not clear the joint 10% and 50 us gate. Overall latency admission remains
+inconclusive. The committed character algorithm's [correctness and size evidence](native_svg_scalar_experiments_windows_2026-10-15.md)
+remains valid, without closing the SVG regression. Do not append samples to the frozen run.
+The [October 15 policy-borrow experiment](native_svg_policy_borrow_windows_2026-10-15.md)
+proves that borrowing the operation-owned policy removes the actual per-element 488-byte copy;
+all 152 SVG rows and 3,317 renderer tests pass. One complete three-pair diagnostic retry has mixed
+changes (Class medium -1.87%, Journey -0.63%, Class tiny -16.34%, Flowchart +4.38%); no latency or
+non-regression admission follows. The ownership refactor is committed as `0f368910e`; preserve the
+failed compiler-observed attempt and the independent State projection reproducibility caveat.
+The larger frontier is typed SVG emission with complete facts carried across root/family/final
+admission; a raw-byte sink alone cannot remove parsing. Preserve Usecase final-length resource
+admission and formatting projection charges in that separate refactor.
+Reference-name filtering and structured writer facts remain separate unadmitted candidates.
+
+The [October 15 terminal follow-up](native_svg_terminal_followup_windows_2026-10-15.md)
+rules out lost existing XML facts on default Journey and keeps explicit-pipeline stripping
+separate from ordinary finalization. A checkpoint-dispatch specialization passes semantic
+checks but adds 210,944 native executable bytes without dependable latency evidence; it is
+not retained. Do not reverse the deliberate WASM body-sharing decision from callback counts
+alone. Continue with actual event-derived facts only if terminal prefix errors, resource
+admission and mutation invalidation remain complete.
+
+The [October 15 Windows data-flow refactor](native_theme_refactor_windows_2026-10-15.md)
+removes the reachable quadratic staged-provenance scan and reduces terminal allocation.
+Class medium terminal allocation drops from 1,699 to 746 operations and peak growth from
+160,850 to 30,234 bytes. The public 4,096-variable Dark diagnostic falls from about 148 ms
+to 30 ms. Ordinary SVG latency recovery remains open: three-pair diagnostics do not clear
+the joint improvement gate, and terminal timing does not show a consistent win despite
+less allocation. Preserve complete validation and advance the generated-XML ownership
+boundary only with exact event-derived facts, mutation invalidation and fresh evidence.
+
+The [October 15 Windows attribution](native_theme_attribution_windows_2026-10-15.md) reproduces
+the `v0.9.0` to merged-theme `b9844db7b` regression on identical Class and Journey SVGs.
+Three-pair diagnostics observe Class medium +64.30% and Journey +274.31%; these are not a new
+calibrated confirmation. Independent probes isolate ordinary standalone finalization at about
+639 us for Class and 105 us for Journey, with resource hashing at about 39 us and 6 us.
+Prioritize the shared XML/reference data flow and bounded serialization rather than another
+local report-clone cleanup. A separate public Dark/frontmatter probe confirms quadratic staged
+provenance work: 4,096 extra variables take about 151 ms versus 15 ms at v0.9.0.
+Keep that structural repair separate from the default SVG lane. No production speedup is admitted.
+
 The [October 14 native repair closeout](native_theme_repair_2026-10-14.md) closes N01–N36
 as correctness or owner-local structural repairs. The fourteen-row frozen confirmation cohort
 passes non-regression against clean corrected control `d5ae01105`; no row clears the registered

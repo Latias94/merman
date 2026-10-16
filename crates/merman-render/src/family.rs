@@ -1147,10 +1147,11 @@ impl ResolvedFamilyStylePlan {
     }
 
     fn observe_compatibility(&mut self, metadata: &merman_core::ParseMetadata) {
-        let evidence = merman_core::__private::theme_parse_evidence(metadata);
-        self.mermaid_compatibility_residual_count = evidence.mermaid_residual_count();
+        self.mermaid_compatibility_residual_count =
+            merman_core::__private::theme_parse_mermaid_residual_count(metadata);
         #[cfg(feature = "diagram-packet")]
         if self.family_id == DiagramFamilyId::PACKET {
+            let evidence = merman_core::__private::theme_parse_evidence(metadata);
             let deferred = crate::packet::deferred_mermaid_compatibility_consumptions(
                 self.resolved_theme.as_deref(),
                 &metadata.effective_config,

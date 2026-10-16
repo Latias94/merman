@@ -167,13 +167,14 @@ impl ClassInterfaceVisualBinding {
     }
 }
 
-/// Concrete paint and declarations selected once before any Class node is emitted.
+/// Paint selections and declarations resolved once before any Class node is emitted.
 #[derive(Debug)]
 pub(crate) struct ClassNodeVisualBinding {
-    pub(crate) fill: String,
-    pub(crate) stroke: String,
-    pub(crate) stroke_width: String,
-    pub(crate) stroke_dasharray: String,
+    // None selects the artifact-owned default, regardless of CSS value equality.
+    fill_override: Option<String>,
+    stroke_override: Option<String>,
+    stroke_width_override: Option<String>,
+    stroke_dasharray_override: Option<String>,
     pub(crate) fill_style: String,
     pub(crate) stroke_style: String,
     pub(crate) html_label_style: String,
@@ -184,6 +185,26 @@ pub(crate) struct ClassNodeVisualBinding {
 }
 
 impl ClassNodeVisualBinding {
+    pub(crate) fn fill<'a>(&'a self, defaults: &'a super::ClassCssThemeBinding) -> &'a str {
+        self.fill_override
+            .as_deref()
+            .unwrap_or(&defaults.node_default_fill)
+    }
+
+    pub(crate) fn stroke<'a>(&'a self, defaults: &'a super::ClassCssThemeBinding) -> &'a str {
+        self.stroke_override
+            .as_deref()
+            .unwrap_or(&defaults.node_default_stroke)
+    }
+
+    pub(crate) fn stroke_width(&self) -> &str {
+        self.stroke_width_override.as_deref().unwrap_or("1.3")
+    }
+
+    pub(crate) fn stroke_dasharray(&self) -> &str {
+        self.stroke_dasharray_override.as_deref().unwrap_or("0 0")
+    }
+
     fn lower(
         node: &ClassNode,
         expectation: &crate::class::ClassNodeTerminalExpectation,
@@ -204,16 +225,10 @@ impl ClassNodeVisualBinding {
         let typed_stroke = expectation.typed_stroke(source.stroke.is_some());
         let typed_label = expectation.typed_label_fill(label_truth.source_owns_paint());
         let defaults = typography.css_binding();
-        let fill = typed_fill
-            .map(|(_, css)| css)
-            .or(source.fill)
-            .unwrap_or(&defaults.node_default_fill)
-            .to_owned();
-        let stroke = typed_stroke
-            .map(|(_, css)| css)
-            .or(source.stroke)
-            .unwrap_or(&defaults.node_default_stroke)
-            .to_owned();
+        let fill_override = typed_fill.map(|(_, css)| css).or(source.fill);
+        let stroke_override = typed_stroke.map(|(_, css)| css).or(source.stroke);
+        let fill = fill_override.unwrap_or(&defaults.node_default_fill);
+        let stroke = stroke_override.unwrap_or(&defaults.node_default_stroke);
         let html_label_style =
             class_node_label_style(&source.style_attr, typed_label.map(|(_, css)| css));
         let svg_label_style = class_node_label_style(
@@ -228,12 +243,12 @@ impl ClassNodeVisualBinding {
         };
         let emission = expectation.observe(
             slot,
-            crate::class::ClassNodePaintTerminal::new(source.fill.is_some(), typed_fill, &fill)
+            crate::class::ClassNodePaintTerminal::new(source.fill.is_some(), typed_fill, fill)
                 .with_source_value(source.fill),
             crate::class::ClassNodePaintTerminal::new(
                 source.stroke.is_some(),
                 typed_stroke,
-                &stroke,
+                stroke,
             )
             .with_source_value(source.stroke),
             crate::class::ClassNodePaintTerminal::new(
@@ -245,15 +260,12 @@ impl ClassNodeVisualBinding {
             .with_terminal_verified(label_truth.typed_fill_verified()),
         );
         Ok(Self {
-            fill,
-            stroke,
-            stroke_width: source
+            fill_override: fill_override.map(str::to_owned),
+            stroke_override: stroke_override.map(str::to_owned),
+            stroke_width_override: source
                 .stroke_width
-                .unwrap_or("1.3")
-                .trim_end_matches("px")
-                .trim()
-                .to_owned(),
-            stroke_dasharray: source.stroke_dasharray.unwrap_or("0 0").to_owned(),
+                .map(|value| value.trim_end_matches("px").trim().to_owned()),
+            stroke_dasharray_override: source.stroke_dasharray.map(str::to_owned),
             fill_style: class_node_paint_style(
                 &source.style_attr,
                 "fill",
@@ -425,15 +437,92 @@ mod tests {
             super::super::ClassRelationThemePlan::resolve(None, &config, 0, 3, &meter).unwrap();
         let visual = ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &meter)
             .expect("ordinary paint has no style-fact consumer");
+        let defaults = typography.css_binding();
+        assert_eq!(visual.node("A").fill(defaults), defaults.node_default_fill);
         assert_eq!(
-            visual.node("A").fill,
-            typography.css_binding().node_default_fill
+            visual.node("B").stroke(defaults),
+            defaults.node_default_stroke
         );
-        assert_eq!(
-            visual.node("B").stroke,
-            typography.css_binding().node_default_stroke
-        );
+        for binding in &visual.nodes {
+            assert!(binding.fill_override.is_none());
+            assert!(binding.stroke_override.is_none());
+            assert!(binding.stroke_width_override.is_none());
+            assert!(binding.stroke_dasharray_override.is_none());
+            assert_eq!(binding.stroke_width(), "1.3");
+            assert_eq!(binding.stroke_dasharray(), "0 0");
+        }
         assert!(visual.interface("interface0").source_owned);
+    }
+
+    #[test]
+    fn long_shared_defaults_are_borrowed_without_node_payload_growth() {
+        let model = fixture_model();
+        for padding in [0, 1024, 4096] {
+            let fill = format!("rgb({}1,2,3)", " ".repeat(padding));
+            let stroke = format!("rgb({}4,5,6)", " ".repeat(padding));
+            let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables": {"mainBkg": fill, "nodeBorder": stroke}
+            }));
+            let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
+            let defaults = typography.css_binding();
+            let meter = crate::resources::OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            );
+            let relation =
+                crate::class::ClassRelationThemePlan::resolve(None, &config, 0, 3, &meter).unwrap();
+            let visual =
+                ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &meter)
+                    .unwrap();
+            assert_eq!(defaults.node_default_fill, fill);
+            assert_eq!(defaults.node_default_stroke, stroke);
+            for binding in &visual.nodes {
+                assert!(binding.fill_override.is_none());
+                assert!(binding.stroke_override.is_none());
+                assert!(binding.stroke_width_override.is_none());
+                assert!(binding.stroke_dasharray_override.is_none());
+                assert!(std::ptr::eq(
+                    binding.fill(defaults),
+                    defaults.node_default_fill.as_str(),
+                ));
+                assert!(std::ptr::eq(
+                    binding.stroke(defaults),
+                    defaults.node_default_stroke.as_str(),
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn explicit_source_values_equal_to_defaults_remain_owned() {
+        let mut model = fixture_model();
+        let config = merman_core::MermaidConfig::default();
+        let typography = crate::class::ClassTextThemePlan::resolve(None, &config);
+        let defaults = typography.css_binding();
+        model.classes.get_mut("A").unwrap().styles = vec![
+            format!("fill:{}", defaults.node_default_fill),
+            format!("stroke:{}", defaults.node_default_stroke),
+        ];
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let relation =
+            crate::class::ClassRelationThemePlan::resolve(None, &config, 0, 3, &meter).unwrap();
+        let visual =
+            ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &meter).unwrap();
+        let source = visual.node("A");
+        let inherited = visual.node("B");
+        assert_eq!(source.fill(defaults), inherited.fill(defaults));
+        assert_eq!(source.stroke(defaults), inherited.stroke(defaults));
+        assert_eq!(
+            source.fill_override.as_deref(),
+            Some(defaults.node_default_fill.as_str()),
+        );
+        assert_eq!(
+            source.stroke_override.as_deref(),
+            Some(defaults.node_default_stroke.as_str()),
+        );
+        assert!(inherited.fill_override.is_none());
+        assert!(inherited.stroke_override.is_none());
     }
 
     #[test]
@@ -470,11 +559,11 @@ mod tests {
             ["A", "B", "interface0"]
         );
         assert_eq!(
-            visual.node("A").fill,
+            visual.node("A").fill(typography.css_binding()),
             typography.css_binding().node_default_fill
         );
         assert_eq!(
-            visual.node("B").stroke,
+            visual.node("B").stroke(typography.css_binding()),
             typography.css_binding().node_default_stroke
         );
         assert!(visual.interface("interface0").source_owned);
@@ -539,7 +628,10 @@ mod tests {
     fn unknown_source_css_shadows_typed_paint_without_reinterpreting_or_recharging() {
         let node: ClassNode = serde_json::from_value(serde_json::json!({
             "id": "A", "label": "A", "text": "A", "domId": "A",
-            "styles": ["fill:var(--external) !important", "stroke-width:7px"]
+            "styles": [
+                "fill:var(--external) !important", "stroke-width:7px",
+                "stroke-dasharray:4 2"
+            ]
         }))
         .unwrap();
         let theme = DiagramThemeCompiler::new()
@@ -577,9 +669,10 @@ mod tests {
         let visual =
             ClassNodeVisualPlan::resolve(&model, &plan, &typography, false, &meter).unwrap();
         let binding = visual.node("A");
-        assert_eq!(binding.fill, "var(--external)");
-        assert_eq!(binding.stroke, "#654321");
-        assert_eq!(binding.stroke_width, "7");
+        assert_eq!(binding.fill(typography.css_binding()), "var(--external)");
+        assert_eq!(binding.stroke(typography.css_binding()), "#654321");
+        assert_eq!(binding.stroke_width(), "7");
+        assert_eq!(binding.stroke_dasharray(), "4 2");
         assert!(
             binding
                 .fill_style
@@ -587,5 +680,73 @@ mod tests {
         );
         assert!(!binding.fill_style.contains("#123456"));
         assert_eq!(meter.used(), prepared_work);
+    }
+
+    #[test]
+    fn same_value_source_and_typed_paints_keep_distinct_authority() {
+        let mut model = fixture_model();
+        model.interfaces.clear();
+        model.classes.get_mut("A").unwrap().styles = vec![
+            "fill:#123456".into(),
+            "stroke:#654321".into(),
+            "stroke-width:px".into(),
+            "stroke-dasharray:0 0".into(),
+        ];
+        model.classes.get_mut("B").unwrap().styles = vec!["stroke-width:1.3px".into()];
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default().with_rule(ThemeRule::new(
+                        ThemeTarget::Node,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#123456").unwrap())
+                            .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                    )),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::CLASS);
+        let config = merman_core::MermaidConfig::default();
+        let typography = crate::class::ClassTextThemePlan::resolve(Some(&theme), &config);
+        let meter = crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        );
+        let relation =
+            crate::class::ClassRelationThemePlan::resolve(Some(&theme), &config, 0, 2, &meter)
+                .unwrap();
+        let visual =
+            ClassNodeVisualPlan::resolve(&model, &relation, &typography, false, &meter).unwrap();
+        let source = visual.node("A");
+        let typed = visual.node("B");
+        let defaults = typography.css_binding();
+        assert_eq!(source.fill(defaults), typed.fill(defaults));
+        assert_eq!(source.stroke(defaults), typed.stroke(defaults));
+        for binding in [source, typed] {
+            assert_eq!(binding.fill_override.as_deref(), Some("#123456"));
+            assert_eq!(binding.stroke_override.as_deref(), Some("#654321"));
+        }
+        assert!(!source.fill_style.contains("!important"));
+        assert!(!source.stroke_style.contains("!important"));
+        assert!(typed.fill_style.contains("fill:#123456 !important"));
+        assert!(typed.stroke_style.contains("stroke:#654321 !important"));
+        assert_eq!(source.stroke_width_override.as_deref(), Some(""));
+        assert_eq!(source.stroke_width(), "");
+        assert_eq!(source.stroke_dasharray_override.as_deref(), Some("0 0"));
+        assert_eq!(typed.stroke_width_override.as_deref(), Some("1.3"));
+        assert_eq!(typed.stroke_width(), "1.3");
+        assert!(typed.stroke_dasharray_override.is_none());
+        let mut receipt = relation.begin_terminal_receipt_with_nodes(
+            visual.expectations(),
+            visual.has_unique_domain(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+            false,
+        );
+        receipt.record_node_observation(source.emission);
+        receipt.record_node_observation(typed.emission);
+        let recorder =
+            crate::class::ClassThemeEvidenceRecorder::new(Some(&theme), 0, 0, 2, 0, Vec::new());
+        assert!(recorder.record_terminal(receipt));
     }
 }
