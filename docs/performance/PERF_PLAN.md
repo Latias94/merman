@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 terminal phase attribution](native_svg_terminal_phases_windows_2026-10-16.md)
+isolates complete XML walk plus facts as the largest of three instrumented private segments on
+Class medium/tiny, Journey and Kanban: mean 487/78/84/61 us, versus fingerprint 43/9/7/12 us and
+reference analysis 21/6/4/0.2 us. All 512 timed outputs retain exact identities. Temporary timers
+and stderr perturb execution, so these are attribution only, without an E2E percentage or speedup.
+Investigate attribute processing while preserving complete validation, limits and checkpoints;
+do not merge diagnostic hooks or infer helper-level costs from this segment alone.
+
 The [October 16 standalone attribution](native_standalone_attribution_windows_2026-10-16.md)
 measures only current public finalization: Class medium/tiny, Journey and Kanban mean 750/104/107/80 us
 in a fixed 16-batch probe, with exact identities and clear compiler boundaries. Class-medium batches
