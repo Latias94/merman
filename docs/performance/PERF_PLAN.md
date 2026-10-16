@@ -17,6 +17,12 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 reference dispatch checkpoint](native_xml_dispatch_windows_2026-10-16.md)
+retains exact-name routing as an internal refactor with 5,352 renderer tests and all 152 SVG
+identities passing. The native benchmark shrinks 87,040 bytes. External compilation invalidates
+the first diagnostic after three completed measurements; discard the entire attempt. No latency
+improvement or non-regression is admitted, and the release-range regression remains open.
+
 The [October 16 terminal phase attribution](native_svg_terminal_phases_windows_2026-10-16.md)
 isolates complete XML walk plus facts as the largest of three instrumented private segments on
 Class medium/tiny, Journey and Kanban: mean 487/78/84/61 us, versus fingerprint 43/9/7/12 us and

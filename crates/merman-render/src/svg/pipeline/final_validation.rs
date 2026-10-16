@@ -1421,7 +1421,7 @@ impl<'a> ReferenceAttributes<'a> {
         }
     }
 
-    #[inline(never)]
+    #[inline]
     fn observe(
         &mut self,
         semantic_name: &str,
@@ -1430,28 +1430,48 @@ impl<'a> ReferenceAttributes<'a> {
         value: &str,
         checkpoint: &mut dyn FnMut() -> Result<()>,
     ) -> Result<()> {
-        if self.is_svg_element
-            && ((self.element_name == "path" && semantic_name == "d")
-                || (matches!(self.element_name, "polyline" | "polygon")
-                    && semantic_name == "points"))
-        {
-            self.geometry_source_len.get_or_insert(value.len());
-        }
-        if self.is_svg_element && semantic_name == "id" {
-            self.ids.observe(value, is_unbound_attribute);
-        }
-        if self.is_svg_element && semantic_name == "href" {
-            if self.element_name.eq_ignore_ascii_case("use") {
-                if is_xlink_attribute {
-                    self.use_xlink_href.get_or_insert_with(|| value.to_owned());
-                } else if is_unbound_attribute {
-                    self.use_href.get_or_insert_with(|| value.to_owned());
-                }
+        match semantic_name {
+            "id" if self.is_svg_element => self.ids.observe(value, is_unbound_attribute),
+            "d" if self.is_svg_element && self.element_name == "path" => {
+                self.geometry_source_len.get_or_insert(value.len());
             }
-            if self.element_name.eq_ignore_ascii_case("feImage") {
-                self.fe_image_href.get_or_insert_with(|| value.to_owned());
+            "points"
+                if self.is_svg_element && matches!(self.element_name, "polyline" | "polygon") =>
+            {
+                self.geometry_source_len.get_or_insert(value.len());
+            }
+            "href" if self.is_svg_element => {
+                self.observe_href(is_unbound_attribute, is_xlink_attribute, value);
+            }
+            "marker-start" | "marker-mid" | "marker-end" => {
+                self.observe_marker(semantic_name, value, checkpoint)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    #[inline(never)]
+    fn observe_href(&mut self, is_unbound_attribute: bool, is_xlink_attribute: bool, value: &str) {
+        if self.element_name.eq_ignore_ascii_case("use") {
+            if is_xlink_attribute {
+                self.use_xlink_href.get_or_insert_with(|| value.to_owned());
+            } else if is_unbound_attribute {
+                self.use_href.get_or_insert_with(|| value.to_owned());
             }
         }
+        if self.element_name.eq_ignore_ascii_case("feImage") {
+            self.fe_image_href.get_or_insert_with(|| value.to_owned());
+        }
+    }
+
+    #[inline(never)]
+    fn observe_marker(
+        &mut self,
+        semantic_name: &str,
+        value: &str,
+        checkpoint: &mut dyn FnMut() -> Result<()>,
+    ) -> Result<()> {
         let marker_slot = if semantic_name == "marker-start" && !self.marker_start_seen {
             self.marker_start_seen = true;
             Some(&mut self.marker_start)
@@ -2280,6 +2300,152 @@ mod tests {
                 use_id: self.use_id,
                 parsed_id: self.parsed_id,
                 references,
+            }
+        }
+    }
+
+    #[test]
+    fn reference_name_dispatch_matches_legacy_facts_and_each_checkpoint_failure() {
+        for element in [
+            "path", "Path", "polyline", "polygon", "line", "rect", "g", "use", "UsE", "feImage",
+            "FeImAgE", "style", "marker", "filter", "mask", "clipPath",
+        ] {
+            for is_svg in [false, true] {
+                for (marker, xlink) in [
+                    ("url(#marker)", "#aliased"),
+                    ("none", "#aliased"),
+                    ("url(https://example.test/marker)", "external.svg#ignored"),
+                ] {
+                    let attributes = [
+                        ("class", true, false, "irrelevant"),
+                        ("style", true, false, "fill:red;marker-end:url(#ignored)"),
+                        ("transform", true, false, "translate(1,2)"),
+                        ("data-marker-start", true, false, "url(#ignored)"),
+                        ("ID", true, false, "ignored"),
+                        ("id", false, false, "a&中文"),
+                        ("id", true, false, "raw"),
+                        ("id", false, true, "ignored"),
+                        ("d", false, false, "M0 0L1 1L2 2"),
+                        ("d", true, false, "M0 0"),
+                        ("points", true, false, "0,0 1,1 2,2"),
+                        ("points", false, false, "0,0"),
+                        ("Href", true, false, "#ignored"),
+                        ("href", true, false, "#raw"),
+                        ("href", false, true, xlink),
+                        ("href", true, false, "#ignored"),
+                        ("href", false, false, "#ignored"),
+                        ("marker-Mid", true, false, "url(#ignored)"),
+                        ("marker-start", false, false, marker),
+                        ("marker-start", true, false, "url(#ignored)"),
+                        ("marker-mid", true, false, marker),
+                        ("marker-end", false, true, marker),
+                        ("marker-end", true, false, "url(#ignored)"),
+                        ("id", true, false, "a&中文"),
+                    ];
+                    for fail_at in [None, Some(1), Some(2), Some(3)] {
+                        let mut actual = ReferenceAttributes::new(element, is_svg);
+                        let mut expected = LegacyReferenceAttributes::new(element, is_svg);
+                        let (mut actual_count, mut expected_count) = (0, 0);
+                        let checkpoint = |count: &mut usize| {
+                            *count += 1;
+                            if fail_at == Some(*count) {
+                                Err(Error::Cancelled(merman_core::OperationCancelled {
+                                    phase: merman_core::OperationPhase::Postprocess,
+                                    reason: merman_core::CancelReason::Requested,
+                                }))
+                            } else {
+                                Ok(())
+                            }
+                        };
+                        for (name, unbound, xlink, value) in attributes {
+                            let result = actual.observe(name, unbound, xlink, value, &mut || {
+                                checkpoint(&mut actual_count)
+                            });
+                            let oracle = expected.observe(name, unbound, xlink, value, &mut || {
+                                checkpoint(&mut expected_count)
+                            });
+                            assert_eq!(format!("{result:?}"), format!("{oracle:?}"));
+                            assert_eq!(actual_count, expected_count);
+                            assert_eq!(
+                                (
+                                    &actual.ids.parsed,
+                                    actual.ids.raw_value(),
+                                    &actual.use_href,
+                                    &actual.use_xlink_href,
+                                    &actual.fe_image_href,
+                                    actual.geometry_source_len
+                                ),
+                                (
+                                    &expected.parsed_id,
+                                    expected.use_id.as_deref(),
+                                    &expected.use_href,
+                                    &expected.use_xlink_href,
+                                    &expected.fe_image_href,
+                                    expected.geometry_source_len
+                                ),
+                                "{element}/{is_svg}/{name}",
+                            );
+                            assert_eq!(
+                                (
+                                    &actual.marker_start,
+                                    actual.marker_start_seen,
+                                    &actual.marker_mid,
+                                    actual.marker_mid_seen,
+                                    &actual.marker_end,
+                                    actual.marker_end_seen
+                                ),
+                                (
+                                    &expected.marker_start,
+                                    expected.marker_start_seen,
+                                    &expected.marker_mid,
+                                    expected.marker_mid_seen,
+                                    &expected.marker_end,
+                                    expected.marker_end_seen
+                                ),
+                            );
+                            assert_eq!(
+                                format!("{:?}", actual.marker_error),
+                                format!("{:?}", expected.marker_error)
+                            );
+                            if result.is_err() {
+                                break;
+                            }
+                        }
+                        assert_eq!(actual_count, fail_at.unwrap_or(3));
+                        let actual = actual.finish();
+                        let expected = expected.finish();
+                        assert_eq!(
+                            (
+                                actual.is_marker,
+                                actual.may_repeat_per_element,
+                                actual.ids.parsed.as_deref(),
+                                actual.ids.raw_value()
+                            ),
+                            (
+                                expected.is_marker,
+                                expected.may_repeat_per_element,
+                                expected.parsed_id.as_deref(),
+                                expected.use_id.as_deref()
+                            ),
+                        );
+                        let key = |reference: ElementReference| {
+                            (
+                                reference.target,
+                                reference.multiplicity,
+                                std::mem::discriminant(&reference.target_kind),
+                            )
+                        };
+                        assert_eq!(
+                            actual
+                                .references
+                                .into_iter()
+                                .flatten()
+                                .map(key)
+                                .collect::<Vec<_>>(),
+                            expected.references.into_iter().map(key).collect::<Vec<_>>(),
+                        );
+                    }
+                }
             }
         }
     }
