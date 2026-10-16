@@ -2,663 +2,663 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 196.0
-      },
-      "width": 800.0,
-      "height": 196.0,
-      "left_padding": 75.0,
-      "right_padding": 75.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 4.0,
-      "display_mode": "compact",
-      "date_format": " HH:mm:ss",
       "axis_format": " %Hh%M",
-      "tick_interval": null,
-      "top_axis": false,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": " 12h00",
+          "time_ms": 1771156800000.0,
+          "x": 75.0
+        },
+        {
+          "label": " 12h15",
+          "time_ms": 1771157700000.0,
+          "x": 126.0
+        },
+        {
+          "label": " 12h30",
+          "time_ms": 1771158600000.0,
+          "x": 177.0
+        },
+        {
+          "label": " 12h45",
+          "time_ms": 1771159500000.0,
+          "x": 228.0
+        },
+        {
+          "label": " 13h00",
+          "time_ms": 1771160400000.0,
+          "x": 279.0
+        },
+        {
+          "label": " 13h15",
+          "time_ms": 1771161300000.0,
+          "x": 330.0
+        },
+        {
+          "label": " 13h30",
+          "time_ms": 1771162200000.0,
+          "x": 381.0
+        },
+        {
+          "label": " 13h45",
+          "time_ms": 1771163100000.0,
+          "x": 432.0
+        },
+        {
+          "label": " 14h00",
+          "time_ms": 1771164000000.0,
+          "x": 483.0
+        },
+        {
+          "label": " 14h15",
+          "time_ms": 1771164900000.0,
+          "x": 534.0
+        },
+        {
+          "label": " 14h30",
+          "time_ms": 1771165800000.0,
+          "x": 585.0
+        },
+        {
+          "label": " 14h45",
+          "time_ms": 1771166700000.0,
+          "x": 637.0
+        },
+        {
+          "label": " 15h00",
+          "time_ms": 1771167600000.0,
+          "x": 688.0
+        }
+      ],
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 196.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "DB Clean",
         "Sessions"
       ],
+      "date_format": " HH:mm:ss",
+      "display_mode": "compact",
+      "excludes": [],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": false,
+      "height": 196.0,
+      "left_padding": 75.0,
+      "number_section_styles": 4.0,
+      "right_padding": 75.0,
       "rows": [
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 48.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 72.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 2.0,
-          "x": 0.0,
-          "y": 96.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 96.0
         },
         {
-          "index": 3.0,
-          "x": 0.0,
-          "y": 120.0,
-          "width": 762.5,
+          "class": "section section1",
           "height": 24.0,
-          "class": "section section1"
+          "index": 3.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 120.0
         }
       ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "DB Clean",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 62.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "DB Clean"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "DB Clean",
+          "x": 10.0,
+          "y": 62.0
         },
         {
-          "section": "Sessions",
-          "index": 1.0,
-          "x": 10.0,
-          "y": 110.0,
+          "class": "sectionTitle sectionTitle1",
           "dy_em": -0.0,
+          "index": 1.0,
           "lines": [
             "Sessions"
           ],
-          "class": "sectionTitle sectionTitle1"
+          "section": "Sessions",
+          "x": 10.0,
+          "y": 110.0
         }
       ],
       "tasks": [
         {
-          "id": "task1",
-          "task": "Clean",
-          "section": "DB Clean",
-          "task_type": "DB Clean",
-          "order": 0.0,
-          "start_ms": 1771156800000.0,
-          "end_ms": 1771157400000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task1",
-            "x": 75.0,
-            "y": 50.0,
-            "width": 34.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 34.0,
+            "x": 75.0,
+            "y": 50.0
           },
+          "end_ms": 1771157400000.0,
+          "id": "task1",
           "label": {
+            "class": "taskText taskText0 width-23.869999999999997",
+            "font_size": 11.0,
             "id": "task1-text",
             "text": "Clean",
-            "font_size": 11.0,
             "width": 23.87,
             "x": 92.0,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.869999999999997"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "DB Clean",
+          "start_ms": 1771156800000.0,
+          "task": "Clean",
+          "task_type": "DB Clean",
+          "vert": false
         },
         {
-          "id": "task8",
-          "task": "A",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 1.0,
-          "start_ms": 1771156800000.0,
-          "end_ms": 1771160580000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task8",
-            "x": 75.0,
-            "y": 74.0,
-            "width": 214.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task8",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 214.0,
+            "x": 75.0,
+            "y": 74.0
           },
+          "end_ms": 1771160580000.0,
+          "id": "task8",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task8-text",
             "text": "A",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 182.0,
-            "y": 87.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771156800000.0,
+          "task": "A",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task2",
-          "task": "Clean",
-          "section": "DB Clean",
-          "task_type": "DB Clean",
-          "order": 0.0,
-          "start_ms": 1771158600000.0,
-          "end_ms": 1771159320000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task2",
-            "x": 177.0,
-            "y": 50.0,
-            "width": 41.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task2",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 41.0,
+            "x": 177.0,
+            "y": 50.0
           },
+          "end_ms": 1771159320000.0,
+          "id": "task2",
           "label": {
+            "class": "taskText taskText0 width-23.869999999999997",
+            "font_size": 11.0,
             "id": "task2-text",
             "text": "Clean",
-            "font_size": 11.0,
             "width": 23.87,
             "x": 197.5,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.869999999999997"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "DB Clean",
+          "start_ms": 1771158600000.0,
+          "task": "Clean",
+          "task_type": "DB Clean",
+          "vert": false
         },
         {
-          "id": "task9",
-          "task": "B",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 2.0,
-          "start_ms": 1771158600000.0,
-          "end_ms": 1771159320000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task9",
-            "x": 177.0,
-            "y": 98.0,
-            "width": 41.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task9",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 41.0,
+            "x": 177.0,
+            "y": 98.0
           },
+          "end_ms": 1771159320000.0,
+          "id": "task9",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task9-text",
             "text": "B",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 197.5,
-            "y": 111.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 111.5
+          },
+          "milestone": false,
+          "order": 2.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771158600000.0,
+          "task": "B",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task3",
-          "task": "Clean",
-          "section": "DB Clean",
-          "task_type": "DB Clean",
-          "order": 0.0,
-          "start_ms": 1771160400000.0,
-          "end_ms": 1771160880000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task3",
-            "x": 279.0,
-            "y": 50.0,
-            "width": 27.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task3",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 27.0,
+            "x": 279.0,
+            "y": 50.0
           },
+          "end_ms": 1771160880000.0,
+          "id": "task3",
           "label": {
+            "class": "taskText taskText0 width-23.869999999999997",
+            "font_size": 11.0,
             "id": "task3-text",
             "text": "Clean",
-            "font_size": 11.0,
             "width": 23.87,
             "x": 292.5,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.869999999999997"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "DB Clean",
+          "start_ms": 1771160400000.0,
+          "task": "Clean",
+          "task_type": "DB Clean",
+          "vert": false
         },
         {
-          "id": "task10",
-          "task": "C",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 1.0,
-          "start_ms": 1771160700000.0,
-          "end_ms": 1771161420000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task10",
-            "x": 296.0,
-            "y": 74.0,
-            "width": 41.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task10",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 41.0,
+            "x": 296.0,
+            "y": 74.0
           },
+          "end_ms": 1771161420000.0,
+          "id": "task10",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task10-text",
             "text": "C",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 316.5,
-            "y": 87.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771160700000.0,
+          "task": "C",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task11",
-          "task": "D",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 2.0,
-          "start_ms": 1771160760000.0,
-          "end_ms": 1771162740000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task11",
-            "x": 300.0,
-            "y": 98.0,
-            "width": 112.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task11",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 112.0,
+            "x": 300.0,
+            "y": 98.0
           },
+          "end_ms": 1771162740000.0,
+          "id": "task11",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task11-text",
             "text": "D",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 356.0,
-            "y": 111.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 111.5
+          },
+          "milestone": false,
+          "order": 2.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771160760000.0,
+          "task": "D",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task12",
-          "task": "E",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 3.0,
-          "start_ms": 1771161300000.0,
-          "end_ms": 1771164600000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task12",
-            "x": 330.0,
-            "y": 122.0,
-            "width": 187.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task12",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 187.0,
+            "x": 330.0,
+            "y": 122.0
           },
+          "end_ms": 1771164600000.0,
+          "id": "task12",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task12-text",
             "text": "E",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 423.5,
-            "y": 135.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 135.5
+          },
+          "milestone": false,
+          "order": 3.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771161300000.0,
+          "task": "E",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task13",
-          "task": "F",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 1.0,
-          "start_ms": 1771161600000.0,
-          "end_ms": 1771162320000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task13",
-            "x": 347.0,
-            "y": 74.0,
-            "width": 41.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task13",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 41.0,
+            "x": 347.0,
+            "y": 74.0
           },
+          "end_ms": 1771162320000.0,
+          "id": "task13",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task13-text",
             "text": "F",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 367.5,
-            "y": 87.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771161600000.0,
+          "task": "F",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task4",
-          "task": "Clean",
-          "section": "DB Clean",
-          "task_type": "DB Clean",
-          "order": 0.0,
-          "start_ms": 1771162200000.0,
-          "end_ms": 1771162740000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task4",
-            "x": 381.0,
-            "y": 50.0,
-            "width": 31.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task4",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 31.0,
+            "x": 381.0,
+            "y": 50.0
           },
+          "end_ms": 1771162740000.0,
+          "id": "task4",
           "label": {
+            "class": "taskText taskText0 width-23.869999999999997",
+            "font_size": 11.0,
             "id": "task4-text",
             "text": "Clean",
-            "font_size": 11.0,
             "width": 23.87,
             "x": 396.5,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.869999999999997"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "DB Clean",
+          "start_ms": 1771162200000.0,
+          "task": "Clean",
+          "task_type": "DB Clean",
+          "vert": false
         },
         {
-          "id": "task14",
-          "task": "G",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 1.0,
-          "start_ms": 1771162320000.0,
-          "end_ms": 1771163400000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task14",
-            "x": 388.0,
-            "y": 74.0,
-            "width": 61.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task14",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 61.0,
+            "x": 388.0,
+            "y": 74.0
           },
+          "end_ms": 1771163400000.0,
+          "id": "task14",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task14-text",
             "text": "G",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 418.5,
-            "y": 87.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771162320000.0,
+          "task": "G",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task15",
-          "task": "H",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 1.0,
-          "start_ms": 1771163400000.0,
-          "end_ms": 1771164600000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task15",
-            "x": 449.0,
-            "y": 74.0,
-            "width": 68.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task15",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 68.0,
+            "x": 449.0,
+            "y": 74.0
           },
+          "end_ms": 1771164600000.0,
+          "id": "task15",
           "label": {
+            "class": "taskText taskText1 width-6.6",
+            "font_size": 11.0,
             "id": "task15-text",
             "text": "H",
-            "font_size": 11.0,
             "width": 6.6,
             "x": 483.0,
-            "y": 87.5,
-            "class": "taskText taskText1 width-6.6"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771163400000.0,
+          "task": "H",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task5",
-          "task": "Clean",
-          "section": "DB Clean",
-          "task_type": "DB Clean",
-          "order": 0.0,
-          "start_ms": 1771164000000.0,
-          "end_ms": 1771164780000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task5",
-            "x": 483.0,
-            "y": 50.0,
-            "width": 45.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task5",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 45.0,
+            "x": 483.0,
+            "y": 50.0
           },
+          "end_ms": 1771164780000.0,
+          "id": "task5",
           "label": {
+            "class": "taskText taskText0 width-23.869999999999997",
+            "font_size": 11.0,
             "id": "task5-text",
             "text": "Clean",
-            "font_size": 11.0,
             "width": 23.87,
             "x": 505.5,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.869999999999997"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "DB Clean",
+          "start_ms": 1771164000000.0,
+          "task": "Clean",
+          "task_type": "DB Clean",
+          "vert": false
         },
         {
-          "id": "task16",
-          "task": "I",
-          "section": "Sessions",
-          "task_type": "Sessions",
-          "order": 1.0,
-          "start_ms": 1771164600000.0,
-          "end_ms": 1771165200000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task16",
-            "x": 517.0,
-            "y": 74.0,
-            "width": 34.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task16",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 34.0,
+            "x": 517.0,
+            "y": 74.0
           },
+          "end_ms": 1771165200000.0,
+          "id": "task16",
           "label": {
+            "class": "taskText taskText1 width-3.3",
+            "font_size": 11.0,
             "id": "task16-text",
             "text": "I",
-            "font_size": 11.0,
             "width": 3.3,
             "x": 534.0,
-            "y": 87.5,
-            "class": "taskText taskText1 width-3.3"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Sessions",
+          "start_ms": 1771164600000.0,
+          "task": "I",
+          "task_type": "Sessions",
+          "vert": false
         },
         {
-          "id": "task6",
-          "task": "Clean",
-          "section": "DB Clean",
-          "task_type": "DB Clean",
-          "order": 0.0,
-          "start_ms": 1771165800000.0,
-          "end_ms": 1771166400000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task6",
-            "x": 585.0,
-            "y": 50.0,
-            "width": 35.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task6",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 35.0,
+            "x": 585.0,
+            "y": 50.0
           },
+          "end_ms": 1771166400000.0,
+          "id": "task6",
           "label": {
+            "class": "taskText taskText0 width-23.869999999999997",
+            "font_size": 11.0,
             "id": "task6-text",
             "text": "Clean",
-            "font_size": 11.0,
             "width": 23.87,
             "x": 602.5,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.869999999999997"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "DB Clean",
+          "start_ms": 1771165800000.0,
+          "task": "Clean",
+          "task_type": "DB Clean",
+          "vert": false
         },
         {
-          "id": "task7",
-          "task": "Clean",
-          "section": "DB Clean",
-          "task_type": "DB Clean",
-          "order": 0.0,
-          "start_ms": 1771167600000.0,
-          "end_ms": 1771168260000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task7",
-            "x": 688.0,
-            "y": 50.0,
-            "width": 37.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task7",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 37.0,
+            "x": 688.0,
+            "y": 50.0
           },
+          "end_ms": 1771168260000.0,
+          "id": "task7",
           "label": {
+            "class": "taskText taskText0 width-23.869999999999997",
+            "font_size": 11.0,
             "id": "task7-text",
             "text": "Clean",
-            "font_size": 11.0,
             "width": 23.87,
             "x": 706.5,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.869999999999997"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "DB Clean",
+          "start_ms": 1771167600000.0,
+          "task": "Clean",
+          "task_type": "DB Clean",
+          "vert": false
         }
       ],
-      "excludes": [],
-      "has_excludes_layer": false,
-      "bottom_ticks": [
-        {
-          "time_ms": 1771156800000.0,
-          "x": 75.0,
-          "label": " 12h00"
-        },
-        {
-          "time_ms": 1771157700000.0,
-          "x": 126.0,
-          "label": " 12h15"
-        },
-        {
-          "time_ms": 1771158600000.0,
-          "x": 177.0,
-          "label": " 12h30"
-        },
-        {
-          "time_ms": 1771159500000.0,
-          "x": 228.0,
-          "label": " 12h45"
-        },
-        {
-          "time_ms": 1771160400000.0,
-          "x": 279.0,
-          "label": " 13h00"
-        },
-        {
-          "time_ms": 1771161300000.0,
-          "x": 330.0,
-          "label": " 13h15"
-        },
-        {
-          "time_ms": 1771162200000.0,
-          "x": 381.0,
-          "label": " 13h30"
-        },
-        {
-          "time_ms": 1771163100000.0,
-          "x": 432.0,
-          "label": " 13h45"
-        },
-        {
-          "time_ms": 1771164000000.0,
-          "x": 483.0,
-          "label": " 14h00"
-        },
-        {
-          "time_ms": 1771164900000.0,
-          "x": 534.0,
-          "label": " 14h15"
-        },
-        {
-          "time_ms": 1771165800000.0,
-          "x": 585.0,
-          "label": " 14h30"
-        },
-        {
-          "time_ms": 1771166700000.0,
-          "x": 637.0,
-          "label": " 14h45"
-        },
-        {
-          "time_ms": 1771167600000.0,
-          "x": 688.0,
-          "label": " 15h00"
-        }
-      ],
-      "top_ticks": [],
+      "tick_interval": null,
       "title": "GANTT compact",
+      "title_top_margin": 25.0,
       "title_x": 400.0,
-      "title_y": 25.0
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": false,
+      "top_padding": 50.0,
+      "top_ticks": [],
+      "width": 800.0
     }
   }
 }

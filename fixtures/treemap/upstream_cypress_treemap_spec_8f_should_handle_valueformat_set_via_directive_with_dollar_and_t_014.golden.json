@@ -1,36 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Sales by Region",
-          "children": [
-            {
-              "name": "North",
-              "value": 1234567
-            },
-            {
-              "name": "South",
-              "value": 7654321
-            },
-            {
-              "name": "East",
-              "value": 4567890
-            },
-            {
-              "name": "West",
-              "value": 9876543
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -57,6 +30,33 @@
         "value": 9876543
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "North",
+              "value": 1234567
+            },
+            {
+              "name": "South",
+              "value": 7654321
+            },
+            {
+              "name": "East",
+              "value": 4567890
+            },
+            {
+              "name": "West",
+              "value": 9876543
+            }
+          ],
+          "name": "Sales by Region"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

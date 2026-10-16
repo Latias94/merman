@@ -1,68 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Products",
-          "children": [
-            {
-              "name": "Electronics",
-              "children": [
-                {
-                  "name": "Phones",
-                  "value": 50
-                },
-                {
-                  "name": "Computers",
-                  "value": 30
-                },
-                {
-                  "name": "Accessories",
-                  "value": 20
-                }
-              ]
-            },
-            {
-              "name": "Clothing",
-              "children": [
-                {
-                  "name": "Men's",
-                  "children": [
-                    {
-                      "name": "Shirts",
-                      "value": 10
-                    },
-                    {
-                      "name": "Pants",
-                      "value": 15
-                    }
-                  ]
-                },
-                {
-                  "name": "Women's",
-                  "children": [
-                    {
-                      "name": "Dresses",
-                      "value": 20
-                    },
-                    {
-                      "name": "Skirts",
-                      "value": 10
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -120,6 +61,65 @@
         "value": 10
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Phones",
+                  "value": 50
+                },
+                {
+                  "name": "Computers",
+                  "value": 30
+                },
+                {
+                  "name": "Accessories",
+                  "value": 20
+                }
+              ],
+              "name": "Electronics"
+            },
+            {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "name": "Shirts",
+                      "value": 10
+                    },
+                    {
+                      "name": "Pants",
+                      "value": 15
+                    }
+                  ],
+                  "name": "Men's"
+                },
+                {
+                  "children": [
+                    {
+                      "name": "Dresses",
+                      "value": 20
+                    },
+                    {
+                      "name": "Skirts",
+                      "value": 10
+                    }
+                  ],
+                  "name": "Women's"
+                }
+              ],
+              "name": "Clothing"
+            }
+          ],
+          "name": "Products"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

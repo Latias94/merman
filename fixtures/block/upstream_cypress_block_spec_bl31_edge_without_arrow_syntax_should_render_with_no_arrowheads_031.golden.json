@@ -1,74 +1,74 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "a",
-        "type": "na",
-        "label": "a",
         "children": [],
+        "id": "a",
+        "label": "a",
+        "type": "na",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "b",
-        "type": "na",
         "label": "b",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
-      }
-    ],
-    "edges": [
-      {
-        "id": "1-a-b",
-        "type": "edge",
-        "label": "",
-        "children": [],
-        "start": "a",
-        "end": "b",
-        "arrowTypeEnd": "",
-        "arrowTypeStart": "arrow_open"
       }
     ],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "a",
-            "type": "na",
-            "label": "a",
             "children": [],
+            "id": "a",
+            "label": "a",
+            "type": "na",
             "widthInColumns": 1
           },
           {
-            "id": "b",
-            "type": "na",
-            "label": "b",
             "children": [],
+            "id": "b",
+            "label": "b",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "a",
-        "type": "na",
-        "label": "a",
         "children": [],
+        "id": "a",
+        "label": "a",
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "b",
-        "type": "na",
-        "label": "b",
         "children": [],
+        "id": "b",
+        "label": "b",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [
+      {
+        "arrowTypeEnd": "",
+        "arrowTypeStart": "arrow_open",
+        "children": [],
+        "end": "b",
+        "id": "1-a-b",
+        "label": "",
+        "start": "a",
+        "type": "edge"
+      }
+    ],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

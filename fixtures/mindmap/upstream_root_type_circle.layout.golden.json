@@ -2,23 +2,23 @@
   "diagramType": "mindmap",
   "layout": {
     "MindmapDiagram": {
+      "bounds": {
+        "max_x": 93.58,
+        "max_y": 93.58,
+        "min_x": 15.0,
+        "min_y": 15.0
+      },
+      "edges": [],
       "nodes": [
         {
-          "id": "0",
-          "x": 54.29,
-          "y": 54.29,
-          "width": 78.58,
           "height": 78.58,
-          "is_cluster": false
+          "id": "0",
+          "is_cluster": false,
+          "width": 78.58,
+          "x": 54.29,
+          "y": 54.29
         }
-      ],
-      "edges": [],
-      "bounds": {
-        "min_x": 15.0,
-        "min_y": 15.0,
-        "max_x": 93.58,
-        "max_y": 93.58
-      }
+      ]
     }
   }
 }

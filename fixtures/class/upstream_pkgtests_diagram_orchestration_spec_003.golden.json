@@ -1,90 +1,90 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Person": {
-        "id": "Person",
-        "type": "",
-        "label": "Person",
-        "text": "Person",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "String name",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+String name",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "Int id",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-Int id",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "#",
-            "id": "double age",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "#double age",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "Text demographicProfile",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+Text demographicProfile",
-            "cssStyle": ""
-          }
-        ],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Person-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Person",
+        "label": "Person",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String name",
+            "id": "String name",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-Int id",
+            "id": "Int id",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "#double age",
+            "id": "double age",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "#"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+Text demographicProfile",
+            "id": "Text demographicProfile",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Person",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

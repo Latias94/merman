@@ -1,81 +1,8 @@
 {
   "diagramType": "treeView",
   "model": {
-    "type": "treeView",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "id": 0,
-      "level": -1,
-      "name": "/",
-      "nodeType": "directory",
-      "children": [
-        {
-          "id": 1,
-          "level": 12,
-          "name": "my-project",
-          "nodeType": "directory",
-          "children": [
-            {
-              "id": 2,
-              "level": 16,
-              "name": "src",
-              "nodeType": "directory",
-              "children": [
-                {
-                  "id": 3,
-                  "level": 20,
-                  "name": "App.tsx",
-                  "nodeType": "file",
-                  "cssClass": "highlight",
-                  "icon": "fa:bell",
-                  "description": "main component",
-                  "children": []
-                },
-                {
-                  "id": 4,
-                  "level": 20,
-                  "name": "index.js",
-                  "nodeType": "file",
-                  "description": "entry point",
-                  "children": []
-                },
-                {
-                  "id": 5,
-                  "level": 20,
-                  "name": "styles.css",
-                  "nodeType": "file",
-                  "children": []
-                }
-              ]
-            },
-            {
-              "id": 6,
-              "level": 16,
-              "name": ".env",
-              "nodeType": "file",
-              "description": "environment variables",
-              "children": []
-            },
-            {
-              "id": 7,
-              "level": 16,
-              "name": "Dockerfile",
-              "nodeType": "file",
-              "children": []
-            },
-            {
-              "id": 8,
-              "level": 16,
-              "name": "package.json",
-              "nodeType": "file",
-              "children": []
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
         "id": 0,
@@ -96,20 +23,20 @@
         "nodeType": "directory"
       },
       {
+        "cssClass": "highlight",
+        "description": "main component",
+        "icon": "fa:bell",
         "id": 3,
         "level": 20,
         "name": "App.tsx",
-        "nodeType": "file",
-        "cssClass": "highlight",
-        "icon": "fa:bell",
-        "description": "main component"
+        "nodeType": "file"
       },
       {
+        "description": "entry point",
         "id": 4,
         "level": 20,
         "name": "index.js",
-        "nodeType": "file",
-        "description": "entry point"
+        "nodeType": "file"
       },
       {
         "id": 5,
@@ -118,11 +45,11 @@
         "nodeType": "file"
       },
       {
+        "description": "environment variables",
         "id": 6,
         "level": 16,
         "name": ".env",
-        "nodeType": "file",
-        "description": "environment variables"
+        "nodeType": "file"
       },
       {
         "id": 7,
@@ -136,6 +63,79 @@
         "name": "package.json",
         "nodeType": "file"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "cssClass": "highlight",
+                  "description": "main component",
+                  "icon": "fa:bell",
+                  "id": 3,
+                  "level": 20,
+                  "name": "App.tsx",
+                  "nodeType": "file"
+                },
+                {
+                  "children": [],
+                  "description": "entry point",
+                  "id": 4,
+                  "level": 20,
+                  "name": "index.js",
+                  "nodeType": "file"
+                },
+                {
+                  "children": [],
+                  "id": 5,
+                  "level": 20,
+                  "name": "styles.css",
+                  "nodeType": "file"
+                }
+              ],
+              "id": 2,
+              "level": 16,
+              "name": "src",
+              "nodeType": "directory"
+            },
+            {
+              "children": [],
+              "description": "environment variables",
+              "id": 6,
+              "level": 16,
+              "name": ".env",
+              "nodeType": "file"
+            },
+            {
+              "children": [],
+              "id": 7,
+              "level": 16,
+              "name": "Dockerfile",
+              "nodeType": "file"
+            },
+            {
+              "children": [],
+              "id": 8,
+              "level": 16,
+              "name": "package.json",
+              "nodeType": "file"
+            }
+          ],
+          "id": 1,
+          "level": 12,
+          "name": "my-project",
+          "nodeType": "directory"
+        }
+      ],
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory"
+    },
+    "title": null,
+    "type": "treeView"
   }
 }

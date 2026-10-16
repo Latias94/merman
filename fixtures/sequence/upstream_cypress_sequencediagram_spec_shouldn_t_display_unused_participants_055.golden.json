@@ -1,34 +1,34 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "a"
     ],
     "actors": {
       "a": {
-        "name": "a",
         "description": "a",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "a",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

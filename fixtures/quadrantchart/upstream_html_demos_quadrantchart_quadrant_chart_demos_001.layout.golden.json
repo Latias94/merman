@@ -2,172 +2,172 @@
   "diagramType": "quadrantChart",
   "layout": {
     "QuadrantChartDiagram": {
-      "width": 500.0,
-      "height": 500.0,
-      "title": null,
-      "quadrants": [
+      "axisLabels": [
         {
-          "x": 263.0,
-          "y": 36.0,
-          "width": 227.0,
-          "height": 227.0,
-          "fill": "#cde498",
-          "text": {
-            "text": "Plan",
-            "x": 376.5,
-            "y": 149.5,
-            "fill": "blue",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#321b67",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": 0.0,
+          "text": "Urgent",
+          "verticalPos": "center",
+          "x": 149.5,
+          "y": 5.0
         },
         {
-          "x": 36.0,
-          "y": 36.0,
-          "width": 227.0,
-          "height": 227.0,
-          "fill": "#d2e99d",
-          "text": {
-            "text": "Do",
-            "x": 149.5,
-            "y": 149.5,
-            "fill": "#2d1662",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#321b67",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": 0.0,
+          "text": "Not Urgent",
+          "verticalPos": "center",
+          "x": 376.5,
+          "y": 5.0
         },
         {
-          "x": 36.0,
-          "y": 263.0,
-          "width": 227.0,
-          "height": 227.0,
-          "fill": "#d7eea2",
-          "text": {
-            "text": "Delegate",
-            "x": 149.5,
-            "y": 376.5,
-            "fill": "#28115d",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#321b67",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": -90.0,
+          "text": "Not Important",
+          "verticalPos": "center",
+          "x": 5.0,
+          "y": 376.5
         },
         {
-          "x": 263.0,
-          "y": 263.0,
-          "width": 227.0,
-          "height": 227.0,
-          "fill": "#dcf3a7",
-          "text": {
-            "text": "Delete",
-            "x": 376.5,
-            "y": 376.5,
-            "fill": "#230c58",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#321b67",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": -90.0,
+          "text": "important",
+          "verticalPos": "center",
+          "x": 5.0,
+          "y": 149.5
         }
       ],
       "borderLines": [
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
+          "strokeWidth": 2.0,
           "x1": 35.0,
-          "y1": 36.0,
           "x2": 491.0,
+          "y1": 36.0,
           "y2": 36.0
         },
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
+          "strokeWidth": 2.0,
           "x1": 490.0,
-          "y1": 37.0,
           "x2": 490.0,
+          "y1": 37.0,
           "y2": 489.0
         },
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
+          "strokeWidth": 2.0,
           "x1": 35.0,
-          "y1": 490.0,
           "x2": 491.0,
+          "y1": 490.0,
           "y2": 490.0
         },
         {
+          "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
           "strokeWidth": 2.0,
-          "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
           "x1": 36.0,
-          "y1": 37.0,
           "x2": 36.0,
-          "y2": 489.0
-        },
-        {
-          "strokeWidth": 1.0,
-          "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
-          "x1": 263.0,
           "y1": 37.0,
-          "x2": 263.0,
           "y2": 489.0
         },
         {
-          "strokeWidth": 1.0,
           "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
+          "strokeWidth": 1.0,
+          "x1": 263.0,
+          "x2": 263.0,
+          "y1": 37.0,
+          "y2": 489.0
+        },
+        {
+          "strokeFill": "hsl(78.1578947368, 18.4615384615%, 64.5098039216%)",
+          "strokeWidth": 1.0,
           "x1": 37.0,
-          "y1": 263.0,
           "x2": 489.0,
+          "y1": 263.0,
           "y2": 263.0
         }
       ],
+      "height": 500.0,
       "points": [],
-      "axisLabels": [
+      "quadrants": [
         {
-          "text": "Urgent",
-          "x": 149.5,
-          "y": 5.0,
-          "fill": "#321b67",
-          "fontSize": 16.0,
-          "rotation": 0.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#cde498",
+          "height": 227.0,
+          "text": {
+            "fill": "blue",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "Plan",
+            "verticalPos": "center",
+            "x": 376.5,
+            "y": 149.5
+          },
+          "width": 227.0,
+          "x": 263.0,
+          "y": 36.0
         },
         {
-          "text": "Not Urgent",
-          "x": 376.5,
-          "y": 5.0,
-          "fill": "#321b67",
-          "fontSize": 16.0,
-          "rotation": 0.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#d2e99d",
+          "height": 227.0,
+          "text": {
+            "fill": "#2d1662",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "Do",
+            "verticalPos": "center",
+            "x": 149.5,
+            "y": 149.5
+          },
+          "width": 227.0,
+          "x": 36.0,
+          "y": 36.0
         },
         {
-          "text": "Not Important",
-          "x": 5.0,
-          "y": 376.5,
-          "fill": "#321b67",
-          "fontSize": 16.0,
-          "rotation": -90.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#d7eea2",
+          "height": 227.0,
+          "text": {
+            "fill": "#28115d",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "Delegate",
+            "verticalPos": "center",
+            "x": 149.5,
+            "y": 376.5
+          },
+          "width": 227.0,
+          "x": 36.0,
+          "y": 263.0
         },
         {
-          "text": "important",
-          "x": 5.0,
-          "y": 149.5,
-          "fill": "#321b67",
-          "fontSize": 16.0,
-          "rotation": -90.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#dcf3a7",
+          "height": 227.0,
+          "text": {
+            "fill": "#230c58",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "Delete",
+            "verticalPos": "center",
+            "x": 376.5,
+            "y": 376.5
+          },
+          "width": 227.0,
+          "x": 263.0,
+          "y": 263.0
         }
-      ]
+      ],
+      "title": null,
+      "width": 500.0
     }
   }
 }

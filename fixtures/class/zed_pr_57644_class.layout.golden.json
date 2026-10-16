@@ -2,93 +2,65 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Vehicle",
-          "x": 359.808,
-          "y": 494.5,
-          "width": 165.54,
-          "height": 261.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Car",
-          "x": 119.199,
-          "y": 847.0,
-          "width": 214.399,
-          "height": 177.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Truck",
-          "x": 359.808,
-          "y": 847.0,
-          "width": 186.818,
-          "height": 177.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Engine",
-          "x": 569.408,
-          "y": 868.0,
-          "width": 152.383,
-          "height": 219.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Fleet",
-          "x": 359.808,
-          "y": 111.0,
-          "width": 228.187,
-          "height": 198.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 645.6,
+        "max_y": 977.5,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Vehicle",
+          "from_cluster": null,
           "id": "0",
-          "from": "Vehicle",
-          "to": "Car",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 323.423,
-              "y": 625.0
-            },
-            {
-              "x": 323.423,
-              "y": 657.0
-            },
-            {
-              "x": 119.199,
-              "y": 657.0
-            },
-            {
-              "x": 119.199,
-              "y": 758.5
-            }
-          ],
           "label": {
+            "height": 21.0,
+            "width": 42.14,
             "x": 118.769,
-            "y": 687.5,
-            "width": 42.14,
-            "height": 21.0
+            "y": 687.5
           },
+          "points": [
+            {
+              "x": 323.423,
+              "y": 625.0
+            },
+            {
+              "x": 323.423,
+              "y": 657.0
+            },
+            {
+              "x": 119.199,
+              "y": 657.0
+            },
+            {
+              "x": 119.199,
+              "y": 758.5
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Car",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Vehicle",
+          "from_cluster": null,
           "id": "1",
-          "from": "Vehicle",
-          "to": "Truck",
-          "from_cluster": null,
-          "to_cluster": null,
+          "label": {
+            "height": 21.0,
+            "width": 42.14,
+            "x": 359.378,
+            "y": 687.5
+          },
           "points": [
             {
               "x": 359.808,
@@ -99,26 +71,31 @@
               "y": 758.5
             }
           ],
-          "label": {
-            "x": 359.378,
-            "y": 687.5,
-            "width": 42.14,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Truck",
+          "to_cluster": null
         },
         {
-          "id": "2",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 6.16,
+            "x": 577.488,
+            "y": 746.25
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Vehicle",
-          "to": "Engine",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "2",
+          "label": {
+            "height": 21.0,
+            "width": 18.06,
+            "x": 568.938,
+            "y": 687.5
+          },
           "points": [
             {
               "x": 396.193,
@@ -137,36 +114,36 @@
               "y": 758.5
             }
           ],
-          "label": {
-            "x": 568.938,
-            "y": 687.5,
-            "width": 18.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": {
+            "height": 16.5,
+            "width": 6.16,
             "x": 382.113,
-            "y": 643.25,
-            "width": 6.16,
-            "height": 16.5
+            "y": 643.25
           },
-          "end_label_left": {
-            "x": 577.488,
-            "y": 746.25,
-            "width": 6.16,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Engine",
+          "to_cluster": null
         },
         {
-          "id": "3",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 17.27,
+            "x": 373.443,
+            "y": 351.75
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Fleet",
-          "to": "Vehicle",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "3",
+          "label": {
+            "height": 21.0,
+            "width": 47.04,
+            "x": 359.328,
+            "y": 293.0
+          },
           "points": [
             {
               "x": 359.808,
@@ -177,38 +154,61 @@
               "y": 364.0
             }
           ],
-          "label": {
-            "x": 359.328,
-            "y": 293.0,
-            "width": 47.04,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": {
-            "x": 345.728,
-            "y": 228.25,
+            "height": 16.5,
             "width": 6.16,
-            "height": 16.5
+            "x": 345.728,
+            "y": 228.25
           },
-          "end_label_left": {
-            "x": 373.443,
-            "y": 351.75,
-            "width": 17.27,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Vehicle",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 645.6,
-        "max_y": 977.5
-      }
+      "nodes": [
+        {
+          "height": 261.0,
+          "id": "Vehicle",
+          "is_cluster": false,
+          "width": 165.54,
+          "x": 359.808,
+          "y": 494.5
+        },
+        {
+          "height": 177.0,
+          "id": "Car",
+          "is_cluster": false,
+          "width": 214.399,
+          "x": 119.199,
+          "y": 847.0
+        },
+        {
+          "height": 177.0,
+          "id": "Truck",
+          "is_cluster": false,
+          "width": 186.818,
+          "x": 359.808,
+          "y": 847.0
+        },
+        {
+          "height": 219.0,
+          "id": "Engine",
+          "is_cluster": false,
+          "width": 152.383,
+          "x": 569.408,
+          "y": 868.0
+        },
+        {
+          "height": 198.0,
+          "id": "Fleet",
+          "is_cluster": false,
+          "width": 228.187,
+          "x": 359.808,
+          "y": 111.0
+        }
+      ]
     }
   }
 }

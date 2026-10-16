@@ -1,57 +1,8 @@
 {
   "diagramType": "treeView",
   "model": {
-    "type": "treeView",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "id": 0,
-      "level": -1,
-      "name": "/",
-      "nodeType": "directory",
-      "children": [
-        {
-          "id": 1,
-          "level": 12,
-          "name": "data",
-          "nodeType": "directory",
-          "children": [
-            {
-              "id": 2,
-              "level": 16,
-              "name": "model.bin",
-              "nodeType": "file",
-              "icon": "fa:bell",
-              "children": []
-            },
-            {
-              "id": 3,
-              "level": 16,
-              "name": "weights.h5",
-              "nodeType": "file",
-              "icon": "folder",
-              "children": []
-            }
-          ]
-        },
-        {
-          "id": 4,
-          "level": 12,
-          "name": "src",
-          "nodeType": "directory",
-          "children": [
-            {
-              "id": 5,
-              "level": 16,
-              "name": "index.js",
-              "nodeType": "file",
-              "children": []
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
         "id": 0,
@@ -66,18 +17,18 @@
         "nodeType": "directory"
       },
       {
+        "icon": "fa:bell",
         "id": 2,
         "level": 16,
         "name": "model.bin",
-        "nodeType": "file",
-        "icon": "fa:bell"
+        "nodeType": "file"
       },
       {
+        "icon": "folder",
         "id": 3,
         "level": 16,
         "name": "weights.h5",
-        "nodeType": "file",
-        "icon": "folder"
+        "nodeType": "file"
       },
       {
         "id": 4,
@@ -91,6 +42,55 @@
         "name": "index.js",
         "nodeType": "file"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "icon": "fa:bell",
+              "id": 2,
+              "level": 16,
+              "name": "model.bin",
+              "nodeType": "file"
+            },
+            {
+              "children": [],
+              "icon": "folder",
+              "id": 3,
+              "level": 16,
+              "name": "weights.h5",
+              "nodeType": "file"
+            }
+          ],
+          "id": 1,
+          "level": 12,
+          "name": "data",
+          "nodeType": "directory"
+        },
+        {
+          "children": [
+            {
+              "children": [],
+              "id": 5,
+              "level": 16,
+              "name": "index.js",
+              "nodeType": "file"
+            }
+          ],
+          "id": 4,
+          "level": 12,
+          "name": "src",
+          "nodeType": "directory"
+        }
+      ],
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory"
+    },
+    "title": null,
+    "type": "treeView"
   }
 }

@@ -1,91 +1,91 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "John"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "John": {
-        "name": "John",
         "description": "John",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "John",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": {
-          "visible": true
-        },
-        "wrap": false,
-        "type": 26,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "John",
-        "message": "Hello John,<br>how are you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Alice",
-        "to": "John",
-        "message": "John,<br/>can you hear me?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "John",
-        "to": "Alice",
-        "message": "Hi Alice,<br />I can hear you!",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "John",
-        "to": "Alice",
-        "message": "I feel great!",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": {
+          "visible": true
+        },
+        "to": null,
+        "type": 26,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "Hello John,<br>how are you?",
+        "to": "John",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "2",
+        "message": "John,<br/>can you hear me?",
+        "to": "John",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "3",
+        "message": "Hi Alice,<br />I can hear you!",
+        "to": "Alice",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "4",
+        "message": "I feel great!",
+        "to": "Alice",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

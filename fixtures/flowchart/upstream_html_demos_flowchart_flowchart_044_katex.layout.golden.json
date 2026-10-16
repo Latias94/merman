@@ -2,31 +2,22 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
-        {
-          "id": "A",
-          "x": 217.735,
-          "y": 31.525,
-          "width": 411.471,
-          "height": 39.05,
-          "is_cluster": false
-        },
-        {
-          "id": "B",
-          "x": 609.294,
-          "y": 31.525,
-          "width": 291.647,
-          "height": 36.444,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 755.118,
+        "max_y": 51.05,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "L_A_B_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "A",
-          "to": "B",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_A_B_0",
+          "label": null,
           "points": [
             {
               "x": 423.471,
@@ -37,23 +28,32 @@
               "y": 31.525
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "B",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 755.118,
-        "max_y": 51.05
-      }
+      "nodes": [
+        {
+          "height": 39.05,
+          "id": "A",
+          "is_cluster": false,
+          "width": 411.471,
+          "x": 217.735,
+          "y": 31.525
+        },
+        {
+          "height": 36.444,
+          "id": "B",
+          "is_cluster": false,
+          "width": 291.647,
+          "x": 609.294,
+          "y": 31.525
+        }
+      ]
     }
   }
 }

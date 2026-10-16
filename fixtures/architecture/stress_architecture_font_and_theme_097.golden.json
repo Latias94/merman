@@ -1,113 +1,113 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "queue",
+        "rhsInto": null,
+        "title": "enqueue"
+      }
+    ],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": null,
             "title": "enqueue"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": null,
         "title": "API",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "queue",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": null,
             "title": "enqueue"
           }
         ],
         "icon": "queue",
         "iconText": null,
+        "id": "queue",
+        "in": null,
         "title": "Queue",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": null,
             "title": "enqueue"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": null,
         "title": "API",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "queue",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": null,
             "title": "enqueue"
           }
         ],
         "icon": "queue",
         "iconText": null,
+        "id": "queue",
+        "in": null,
         "title": "Queue",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "api",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "queue",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": "enqueue"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

@@ -1,92 +1,92 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "a",
       "j"
     ],
     "actors": {
       "a": {
-        "name": "a",
         "description": "Alice",
-        "wrap": true,
-        "type": "participant",
         "links": {
-          "Repo": "https://www.contoso.com/repo",
-          "Swagger": "https://www.contoso.com/swagger",
           "Dashboard": "https://www.contoso.com/dashboard",
-          "On-Call": "https://www.contoso.com/oncall"
+          "On-Call": "https://www.contoso.com/oncall",
+          "Repo": "https://www.contoso.com/repo",
+          "Swagger": "https://www.contoso.com/swagger"
         },
+        "name": "a",
         "properties": {
           "class": "internal-service-actor",
           "type": "@clock"
-        }
+        },
+        "type": "participant",
+        "wrap": true
       },
       "j": {
-        "name": "j",
         "description": "John",
-        "wrap": true,
-        "type": "participant",
         "links": {
           "Repo": "https://www.contoso.com/repo"
         },
+        "name": "j",
         "properties": {
           "class": "external-service-actor",
           "type": "@computer"
-        }
+        },
+        "type": "participant",
+        "wrap": true
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "a",
-        "to": "a",
-        "message": "Hello world!",
-        "wrap": true,
-        "type": 2,
         "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "1",
         "from": "a",
-        "to": "j",
-        "message": "Hello John, how are you?",
-        "wrap": true,
-        "type": 0,
-        "activate": false
+        "id": "0",
+        "message": "Hello world!",
+        "placement": 1,
+        "to": "a",
+        "type": 2,
+        "wrap": true
       },
       {
-        "id": "2",
+        "activate": false,
+        "from": "a",
+        "id": "1",
+        "message": "Hello John, how are you?",
+        "to": "j",
+        "type": 0,
+        "wrap": true
+      },
+      {
+        "activate": false,
         "from": "j",
-        "to": "a",
+        "id": "2",
         "message": "Great!",
-        "wrap": true,
+        "to": "a",
         "type": 1,
-        "activate": false
+        "wrap": true
       }
     ],
     "notes": [
       {
         "actor": "a",
-        "placement": 1,
         "message": "Hello world!",
+        "placement": 1,
         "wrap": true
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

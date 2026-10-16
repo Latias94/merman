@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "1",
       "2",
@@ -13,101 +11,103 @@
     ],
     "actors": {
       "1": {
-        "name": "1",
         "description": "1",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "1",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "2": {
-        "name": "2",
         "description": "2",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "2",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "3": {
-        "name": "3",
         "description": "3",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "3",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "4": {
-        "name": "4",
         "description": "4",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "4",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": "1",
-        "to": "2",
+        "id": "0",
         "message": "single-line text",
-        "wrap": true,
+        "to": "2",
         "type": 0,
-        "activate": false
+        "wrap": true
       },
       {
+        "activate": false,
+        "from": "2",
         "id": "1",
-        "from": "2",
-        "to": "2",
         "message": "single-line text",
-        "wrap": true,
+        "placement": 1,
+        "to": "2",
         "type": 2,
-        "activate": false,
-        "placement": 1
+        "wrap": true
       },
       {
-        "id": "2",
+        "activate": false,
         "from": "2",
-        "to": "3",
+        "id": "2",
         "message": "multiline<br/>text",
-        "wrap": true,
+        "to": "3",
         "type": 0,
-        "activate": false
+        "wrap": true
       },
       {
-        "id": "3",
-        "from": "3",
-        "to": "3",
-        "message": "multiline<br/>text",
-        "wrap": true,
-        "type": 2,
         "activate": false,
-        "placement": 1
+        "from": "3",
+        "id": "3",
+        "message": "multiline<br/>text",
+        "placement": 1,
+        "to": "3",
+        "type": 2,
+        "wrap": true
       }
     ],
     "notes": [
       {
         "actor": "2",
-        "placement": 1,
         "message": "single-line text",
+        "placement": 1,
         "wrap": true
       },
       {
         "actor": "3",
-        "placement": 1,
         "message": "multiline<br/>text",
+        "placement": 1,
         "wrap": true
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

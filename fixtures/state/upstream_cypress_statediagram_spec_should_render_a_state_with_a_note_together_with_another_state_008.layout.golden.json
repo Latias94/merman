@@ -2,63 +2,65 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 579.24,
+        "max_y": 454.92,
+        "min_x": 33.96,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "State1",
-          "x": 225.44,
-          "y": 41.0,
-          "width": 136.0,
-          "height": 58.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State1----note-0",
-          "x": 132.96,
-          "y": 246.0,
-          "width": 150.0,
-          "height": 114.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State1----parent",
-          "x": 132.96,
-          "y": 223.5,
-          "width": 198.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 207.0,
-          "is_cluster": true
-        },
-        {
-          "id": "State2",
-          "x": 399.08,
-          "y": 436.42,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State2----note-2",
-          "x": 480.24,
-          "y": 315.66,
-          "width": 150.0,
-          "height": 51.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State2----parent",
-          "x": 480.24,
-          "y": 303.66,
+          "id": "State1----parent",
+          "offset_y": 0.0,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "Important information! You can write +,-\nnotes.",
+          "title_label": {
+            "height": 42.0,
+            "width": 241.92,
+            "x": 132.96,
+            "y": 141.0
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
           "width": 198.0,
+          "x": 132.96,
+          "y": 223.5
+        },
+        {
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 123.0,
-          "is_cluster": true
+          "id": "State2----parent",
+          "offset_y": 0.0,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "This is the note +,-<br>",
+          "title_label": {
+            "height": 21.0,
+            "width": 109.76,
+            "x": 480.24,
+            "y": 252.66
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 198.0,
+          "x": 480.24,
+          "y": 303.66
         }
       ],
       "edges": [
         {
-          "id": "State1-State1----note-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "State1",
-          "to": "State1----note-0",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "State1-State1----note-0",
+          "label": null,
           "points": [
             {
               "x": 206.107,
@@ -81,21 +83,21 @@
               "y": 189.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "State1----note-0",
+          "to_cluster": null
         },
         {
-          "id": "State2----note-2-State2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "State2----note-2",
-          "to": "State2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "State2----note-2-State2",
+          "label": null,
           "points": [
             {
               "x": 480.24,
@@ -118,21 +120,26 @@
               "y": 417.92
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "State2",
+          "to_cluster": null
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "State1",
-          "to": "State2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 21.0,
+            "width": 47.32,
+            "x": 317.58,
+            "y": 243.96
+          },
           "points": [
             {
               "x": 244.773,
@@ -159,71 +166,64 @@
               "y": 417.92
             }
           ],
-          "label": {
-            "x": 317.58,
-            "y": 243.96,
-            "width": 47.32,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "State2",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "State1----parent",
-          "x": 132.96,
-          "y": 223.5,
-          "width": 198.0,
-          "height": 207.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Important information! You can write +,-\nnotes.",
-          "title_label": {
-            "x": 132.96,
-            "y": 141.0,
-            "width": 241.92,
-            "height": 42.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "height": 58.0,
+          "id": "State1",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 225.44,
+          "y": 41.0
         },
         {
-          "id": "State2----parent",
-          "x": 480.24,
-          "y": 303.66,
+          "height": 114.0,
+          "id": "State1----note-0",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 132.96,
+          "y": 246.0
+        },
+        {
+          "height": 207.0,
+          "id": "State1----parent",
+          "is_cluster": true,
           "width": 198.0,
+          "x": 132.96,
+          "y": 223.5
+        },
+        {
+          "height": 37.0,
+          "id": "State2",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 399.08,
+          "y": 436.42
+        },
+        {
+          "height": 51.0,
+          "id": "State2----note-2",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 480.24,
+          "y": 315.66
+        },
+        {
           "height": 123.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "This is the note +,-<br/>",
-          "title_label": {
-            "x": 480.24,
-            "y": 252.66,
-            "width": 109.76,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "State2----parent",
+          "is_cluster": true,
+          "width": 198.0,
+          "x": 480.24,
+          "y": 303.66
         }
-      ],
-      "bounds": {
-        "min_x": 33.96,
-        "min_y": 12.0,
-        "max_x": 579.24,
-        "max_y": 454.92
-      }
+      ]
     }
   }
 }

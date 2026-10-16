@@ -1,298 +1,298 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "left",
+        "lhsInto": true,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "center",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "center",
+        "lhsInto": true,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "right",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "left",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "right",
+        "rhsInto": true,
+        "title": "oneway"
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "right",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "left",
+        "rhsInto": true,
+        "title": "return"
+      }
+    ],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "left",
+            "lhsInto": true,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "center",
+            "rhsInto": true,
+            "title": null
+          },
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "left",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
+            "title": "oneway"
+          },
+          {
+            "lhsDir": "T",
+            "lhsGroup": null,
+            "lhsId": "right",
+            "lhsInto": null,
+            "rhsDir": "B",
+            "rhsGroup": null,
+            "rhsId": "left",
+            "rhsInto": true,
+            "title": "return"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "left",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "left",
-            "lhsDir": "R",
-            "lhsInto": true,
-            "lhsGroup": null,
-            "rhsId": "center",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "left",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "right",
-            "rhsDir": "T",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "oneway"
-          },
-          {
-            "lhsId": "right",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "left",
-            "rhsDir": "B",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "return"
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": null,
         "title": "Left",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "center",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "left",
             "lhsDir": "R",
-            "lhsInto": true,
             "lhsGroup": null,
-            "rhsId": "center",
+            "lhsId": "left",
+            "lhsInto": true,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "center",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "center",
             "lhsDir": "R",
-            "lhsInto": true,
             "lhsGroup": null,
-            "rhsId": "right",
+            "lhsId": "center",
+            "lhsInto": true,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "center",
+        "in": null,
         "title": "Center",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "right",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "center",
             "lhsDir": "R",
-            "lhsInto": true,
             "lhsGroup": null,
-            "rhsId": "right",
+            "lhsId": "center",
+            "lhsInto": true,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "left",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "right",
+            "lhsId": "left",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
             "title": "oneway"
           },
           {
-            "lhsId": "right",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "left",
+            "lhsId": "right",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "left",
+            "rhsInto": true,
             "title": "return"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "right",
+        "in": null,
         "title": "Right",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "left",
+            "lhsInto": true,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "center",
+            "rhsInto": true,
+            "title": null
+          },
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "left",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
+            "title": "oneway"
+          },
+          {
+            "lhsDir": "T",
+            "lhsGroup": null,
+            "lhsId": "right",
+            "lhsInto": null,
+            "rhsDir": "B",
+            "rhsGroup": null,
+            "rhsId": "left",
+            "rhsInto": true,
+            "title": "return"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "left",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "left",
-            "lhsDir": "R",
-            "lhsInto": true,
-            "lhsGroup": null,
-            "rhsId": "center",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "left",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "right",
-            "rhsDir": "T",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "oneway"
-          },
-          {
-            "lhsId": "right",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "left",
-            "rhsDir": "B",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "return"
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": null,
         "title": "Left",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "center",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "left",
             "lhsDir": "R",
-            "lhsInto": true,
             "lhsGroup": null,
-            "rhsId": "center",
+            "lhsId": "left",
+            "lhsInto": true,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "center",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "center",
             "lhsDir": "R",
-            "lhsInto": true,
             "lhsGroup": null,
-            "rhsId": "right",
+            "lhsId": "center",
+            "lhsInto": true,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "center",
+        "in": null,
         "title": "Center",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "right",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "center",
             "lhsDir": "R",
-            "lhsInto": true,
             "lhsGroup": null,
-            "rhsId": "right",
+            "lhsId": "center",
+            "lhsInto": true,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "left",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "right",
+            "lhsId": "left",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "right",
+            "rhsInto": true,
             "title": "oneway"
           },
           {
-            "lhsId": "right",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "left",
+            "lhsId": "right",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "left",
+            "rhsInto": true,
             "title": "return"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "right",
+        "in": null,
         "title": "Right",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "left",
-        "lhsDir": "R",
-        "lhsInto": true,
-        "lhsGroup": null,
-        "rhsId": "center",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "center",
-        "lhsDir": "R",
-        "lhsInto": true,
-        "lhsGroup": null,
-        "rhsId": "right",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "left",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "right",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "oneway"
-      },
-      {
-        "lhsId": "right",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "left",
-        "rhsDir": "B",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "return"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

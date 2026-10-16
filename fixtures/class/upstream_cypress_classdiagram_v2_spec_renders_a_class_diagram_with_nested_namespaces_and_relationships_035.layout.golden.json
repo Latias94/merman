@@ -2,101 +2,129 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 716.837,
+        "max_y": 642.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Company",
-          "x": 364.418,
-          "y": 327.0,
-          "width": 704.837,
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 630.0,
-          "is_cluster": true
+          "id": "Company",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "Company",
+          "title_label": {
+            "height": 21.0,
+            "width": 51.1,
+            "x": 364.418,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 704.837,
+          "x": 364.418,
+          "y": 327.0
         },
         {
-          "id": "Company.Project",
-          "x": 364.418,
-          "y": 340.0,
-          "width": 656.837,
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 556.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Company.Project.Module",
+          "id": "Company.Project",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "Project",
+          "title_label": {
+            "height": 21.0,
+            "width": 44.52,
+            "x": 364.418,
+            "y": 72.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 656.837,
           "x": 364.418,
-          "y": 353.0,
-          "width": 608.837,
+          "y": 340.0
+        },
+        {
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 482.0,
-          "is_cluster": true
-        },
-        {
-          "id": "User",
-          "x": 225.603,
-          "y": 499.5,
-          "width": 283.207,
-          "height": 141.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Admin",
-          "x": 378.312,
-          "y": 243.0,
-          "width": 183.741,
-          "height": 162.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Report",
-          "x": 531.022,
-          "y": 499.5,
-          "width": 227.63,
-          "height": 141.0,
-          "is_cluster": false
+          "id": "Company.Project.Module",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "Module",
+          "title_label": {
+            "height": 21.0,
+            "width": 36.4,
+            "x": 364.418,
+            "y": 122.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 608.837,
+          "x": 364.418,
+          "y": 353.0
         }
       ],
       "edges": [
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Admin",
+          "from_cluster": null,
           "id": "0",
-          "from": "Admin",
-          "to": "User",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 351.289,
-              "y": 324.0
-            },
-            {
-              "x": 351.289,
-              "y": 354.0
-            },
-            {
-              "x": 225.603,
-              "y": 354.0
-            },
-            {
-              "x": 225.603,
-              "y": 429.0
-            }
-          ],
           "label": {
-            "x": 225.123,
-            "y": 394.5,
+            "height": 21.0,
             "width": 47.04,
-            "height": 21.0
+            "x": 225.123,
+            "y": 394.5
           },
+          "points": [
+            {
+              "x": 351.289,
+              "y": 324.0
+            },
+            {
+              "x": 351.289,
+              "y": 354.0
+            },
+            {
+              "x": 225.603,
+              "y": 354.0
+            },
+            {
+              "x": 225.603,
+              "y": 429.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "User",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Admin",
-          "to": "Report",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 54.18,
+            "x": 530.612,
+            "y": 394.5
+          },
           "points": [
             {
               "x": 405.336,
@@ -115,92 +143,64 @@
               "y": 429.0
             }
           ],
-          "label": {
-            "x": 530.612,
-            "y": 394.5,
-            "width": 54.18,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Report",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Company",
-          "x": 364.418,
-          "y": 327.0,
-          "width": 704.837,
           "height": 630.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "Company",
-          "title_label": {
-            "x": 364.418,
-            "y": 22.5,
-            "width": 51.1,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Company",
+          "is_cluster": true,
+          "width": 704.837,
+          "x": 364.418,
+          "y": 327.0
         },
         {
-          "id": "Company.Project",
-          "x": 364.418,
-          "y": 340.0,
-          "width": 656.837,
           "height": 556.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "Project",
-          "title_label": {
-            "x": 364.418,
-            "y": 72.5,
-            "width": 44.52,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Company.Project",
+          "is_cluster": true,
+          "width": 656.837,
+          "x": 364.418,
+          "y": 340.0
         },
         {
-          "id": "Company.Project.Module",
-          "x": 364.418,
-          "y": 353.0,
-          "width": 608.837,
           "height": 482.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "Module",
-          "title_label": {
-            "x": 364.418,
-            "y": 122.5,
-            "width": 36.4,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Company.Project.Module",
+          "is_cluster": true,
+          "width": 608.837,
+          "x": 364.418,
+          "y": 353.0
+        },
+        {
+          "height": 141.0,
+          "id": "User",
+          "is_cluster": false,
+          "width": 283.207,
+          "x": 225.603,
+          "y": 499.5
+        },
+        {
+          "height": 162.0,
+          "id": "Admin",
+          "is_cluster": false,
+          "width": 183.741,
+          "x": 378.312,
+          "y": 243.0
+        },
+        {
+          "height": 141.0,
+          "id": "Report",
+          "is_cluster": false,
+          "width": 227.63,
+          "x": 531.022,
+          "y": 499.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 716.837,
-        "max_y": 642.0
-      }
+      ]
     }
   }
 }

@@ -1,10 +1,35 @@
 {
   "diagramType": "venn",
   "model": {
-    "type": "venn",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "styleEntries": [
+      {
+        "styles": {
+          "fill": "#ff6b6b"
+        },
+        "targets": [
+          "A"
+        ]
+      },
+      {
+        "styles": {
+          "fill": "#4ecdc4"
+        },
+        "targets": [
+          "B"
+        ]
+      },
+      {
+        "styles": {
+          "fill": "#ffe66d"
+        },
+        "targets": [
+          "A",
+          "B"
+        ]
+      }
+    ],
     "subsets": [
       {
         "sets": [
@@ -28,57 +53,32 @@
     ],
     "textNodes": [
       {
+        "id": "Item 1",
         "sets": [
           "A"
-        ],
-        "id": "Item 1"
+        ]
       },
       {
+        "id": "Item 2",
         "sets": [
           "A"
-        ],
-        "id": "Item 2"
+        ]
       },
       {
+        "id": "Item 3",
         "sets": [
           "B"
-        ],
-        "id": "Item 3"
+        ]
       },
       {
+        "id": "Shared",
         "sets": [
           "A",
           "B"
-        ],
-        "id": "Shared"
+        ]
       }
     ],
-    "styleEntries": [
-      {
-        "targets": [
-          "A"
-        ],
-        "styles": {
-          "fill": "#ff6b6b"
-        }
-      },
-      {
-        "targets": [
-          "B"
-        ],
-        "styles": {
-          "fill": "#4ecdc4"
-        }
-      },
-      {
-        "targets": [
-          "A",
-          "B"
-        ],
-        "styles": {
-          "fill": "#ffe66d"
-        }
-      }
-    ]
+    "title": null,
+    "type": "venn"
   }
 }

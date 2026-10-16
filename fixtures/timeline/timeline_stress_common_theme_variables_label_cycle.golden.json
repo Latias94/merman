@@ -1,11 +1,9 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "ThemeVariables label cycle + section color wrap",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "S01 Custom",
       "S02 Custom",
@@ -23,135 +21,137 @@
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "S01 Custom",
-        "type": "S01 Custom",
-        "task": "P01 ",
-        "score": 0,
         "events": [
           "Alpha"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "S01 Custom",
+        "task": "P01 ",
+        "type": "S01 Custom"
       },
       {
-        "id": 1,
-        "section": "S02 Custom",
-        "type": "S02 Custom",
-        "task": "P02 ",
-        "score": 0,
         "events": [
           "Beta"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "S02 Custom",
+        "task": "P02 ",
+        "type": "S02 Custom"
       },
       {
-        "id": 2,
-        "section": "S03 Custom",
-        "type": "S03 Custom",
-        "task": "P03 ",
-        "score": 0,
         "events": [
           "Gamma"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "S03 Custom",
+        "task": "P03 ",
+        "type": "S03 Custom"
       },
       {
-        "id": 3,
-        "section": "S04 Custom",
-        "type": "S04 Custom",
-        "task": "P04 ",
-        "score": 0,
         "events": [
           "Delta"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "S04 Custom",
+        "task": "P04 ",
+        "type": "S04 Custom"
       },
       {
-        "id": 4,
-        "section": "S05 Default",
-        "type": "S05 Default",
-        "task": "P05 ",
-        "score": 0,
         "events": [
           "Epsilon"
-        ]
+        ],
+        "id": 4,
+        "score": 0,
+        "section": "S05 Default",
+        "task": "P05 ",
+        "type": "S05 Default"
       },
       {
-        "id": 5,
-        "section": "S06 Default",
-        "type": "S06 Default",
-        "task": "P06 ",
-        "score": 0,
         "events": [
           "Zeta"
-        ]
+        ],
+        "id": 5,
+        "score": 0,
+        "section": "S06 Default",
+        "task": "P06 ",
+        "type": "S06 Default"
       },
       {
-        "id": 6,
-        "section": "S07 Default",
-        "type": "S07 Default",
-        "task": "P07 ",
-        "score": 0,
         "events": [
           "Eta"
-        ]
+        ],
+        "id": 6,
+        "score": 0,
+        "section": "S07 Default",
+        "task": "P07 ",
+        "type": "S07 Default"
       },
       {
-        "id": 7,
-        "section": "S08 Default",
-        "type": "S08 Default",
-        "task": "P08 ",
-        "score": 0,
         "events": [
           "Theta"
-        ]
+        ],
+        "id": 7,
+        "score": 0,
+        "section": "S08 Default",
+        "task": "P08 ",
+        "type": "S08 Default"
       },
       {
-        "id": 8,
-        "section": "S09 Default",
-        "type": "S09 Default",
-        "task": "P09 ",
-        "score": 0,
         "events": [
           "Iota"
-        ]
+        ],
+        "id": 8,
+        "score": 0,
+        "section": "S09 Default",
+        "task": "P09 ",
+        "type": "S09 Default"
       },
       {
-        "id": 9,
-        "section": "S10 Default",
-        "type": "S10 Default",
-        "task": "P10 ",
-        "score": 0,
         "events": [
           "Kappa"
-        ]
+        ],
+        "id": 9,
+        "score": 0,
+        "section": "S10 Default",
+        "task": "P10 ",
+        "type": "S10 Default"
       },
       {
-        "id": 10,
-        "section": "S11 Default",
-        "type": "S11 Default",
-        "task": "P11 ",
-        "score": 0,
         "events": [
           "Lambda"
-        ]
+        ],
+        "id": 10,
+        "score": 0,
+        "section": "S11 Default",
+        "task": "P11 ",
+        "type": "S11 Default"
       },
       {
-        "id": 11,
-        "section": "S12 Default",
-        "type": "S12 Default",
-        "task": "P12 ",
-        "score": 0,
         "events": [
           "Mu"
-        ]
+        ],
+        "id": 11,
+        "score": 0,
+        "section": "S12 Default",
+        "task": "P12 ",
+        "type": "S12 Default"
       },
       {
-        "id": 12,
-        "section": "S13 Wrap",
-        "type": "S13 Wrap",
-        "task": "P13 ",
-        "score": 0,
         "events": [
           "Nu (wraps to section 1 colors upstream)"
-        ]
+        ],
+        "id": 12,
+        "score": 0,
+        "section": "S13 Wrap",
+        "task": "P13 ",
+        "type": "S13 Wrap"
       }
-    ]
+    ],
+    "title": "ThemeVariables label cycle + section color wrap",
+    "type": "timeline"
   }
 }

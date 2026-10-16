@@ -1,36 +1,36 @@
 {
   "diagramType": "requirement",
   "model": {
-    "type": "requirement",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
     "direction": "TB",
-    "requirements": [
-      {
-        "name": "__my bolded name__",
-        "type": "Requirement",
-        "requirementId": "1",
-        "text": "**Bolded text** _italicized text_",
-        "risk": "High",
-        "verifyMethod": "Test",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      }
-    ],
     "elements": [
       {
-        "name": "*my italicized name*",
-        "type": "**Bolded type** _italicized type_",
-        "docRef": "*Italicized* __Bolded__",
-        "cssStyles": [],
         "classes": [
           "default"
-        ]
+        ],
+        "cssStyles": [],
+        "docRef": "*Italicized* __Bolded__",
+        "name": "*my italicized name*",
+        "type": "**Bolded type** _italicized type_"
       }
     ],
     "relationships": [],
-    "classes": {}
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "__my bolded name__",
+        "requirementId": "1",
+        "risk": "High",
+        "text": "**Bolded text** _italicized text_",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      }
+    ],
+    "type": "requirement"
   }
 }

@@ -2,49 +2,49 @@
   "diagramType": "radar",
   "layout": {
     "RadarDiagram": {
+      "axes": [],
+      "axis_label_factor": 1.05,
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
         "max_x": 700.0,
-        "max_y": 700.0
+        "max_y": 700.0,
+        "min_x": 0.0,
+        "min_y": 0.0
       },
-      "svg_width": 700.0,
-      "svg_height": 700.0,
       "center_x": 350.0,
       "center_y": 350.0,
-      "radius": 300.0,
-      "axis_label_factor": 1.05,
-      "title_y": -350.0,
-      "axes": [],
+      "curves": [],
       "graticules": [
         {
           "kind": "circle",
-          "r": 60.0,
-          "points": []
+          "points": [],
+          "r": 60.0
         },
         {
           "kind": "circle",
-          "r": 120.0,
-          "points": []
+          "points": [],
+          "r": 120.0
         },
         {
           "kind": "circle",
-          "r": 180.0,
-          "points": []
+          "points": [],
+          "r": 180.0
         },
         {
           "kind": "circle",
-          "r": 240.0,
-          "points": []
+          "points": [],
+          "r": 240.0
         },
         {
           "kind": "circle",
-          "r": 300.0,
-          "points": []
+          "points": [],
+          "r": 300.0
         }
       ],
-      "curves": [],
-      "legend_items": []
+      "legend_items": [],
+      "radius": 300.0,
+      "svg_height": 700.0,
+      "svg_width": 700.0,
+      "title_y": -350.0
     }
   }
 }

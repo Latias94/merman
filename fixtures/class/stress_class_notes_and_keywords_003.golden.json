@@ -1,93 +1,93 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "A": {
-        "id": "A",
-        "type": "",
-        "label": "A",
-        "text": "A",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-A-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "A",
+        "label": "A",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "A",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "B": {
-        "id": "B",
-        "type": "",
-        "label": "B",
-        "text": "B",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-B-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "B",
+        "label": "B",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "B",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [
+      {
+        "class": "A",
+        "id": "note0",
+        "text": "This note mentions: class and namespace."
+      },
+      {
+        "class": "B",
+        "id": "note1",
+        "text": "Multiline note<br/>with unicode αβγ."
+      }
+    ],
     "relations": [
       {
         "id": "0",
         "id1": "A",
         "id2": "B",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "uses",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "uses"
       }
     ],
-    "notes": [
-      {
-        "id": "note0",
-        "class": "A",
-        "text": "This note mentions: class and namespace."
-      },
-      {
-        "id": "note1",
-        "class": "B",
-        "text": "Multiline note<br/>with unicode αβγ."
-      }
-    ],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

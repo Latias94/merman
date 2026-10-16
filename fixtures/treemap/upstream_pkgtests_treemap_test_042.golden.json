@@ -1,24 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": "My Treemap Diagram",
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Root",
-          "children": [
-            {
-              "name": "Child",
-              "value": 100
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -30,6 +15,21 @@
         "value": 100
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "Child",
+              "value": 100
+            }
+          ],
+          "name": "Root"
+        }
+      ],
+      "name": ""
+    },
+    "title": "My Treemap Diagram",
+    "type": "treemap"
   }
 }

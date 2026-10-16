@@ -1,101 +1,101 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Animal": {
-        "id": "Animal",
-        "type": "",
-        "label": "Animal",
-        "text": "Animal",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Animal-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Animal",
+        "label": "Animal",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Vehicle": {
-        "id": "Vehicle",
-        "type": "",
-        "label": "Vehicle",
-        "text": "Vehicle",
-        "cssClasses": "default",
-        "methods": [],
         "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Vehicle-1",
+        "methods": [],
         "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "styles": [],
+        "text": "Animal",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Car": {
-        "id": "Car",
-        "type": "",
-        "label": "Car",
-        "text": "Car",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Car-2",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Car",
+        "label": "Car",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Car",
         "tooltip": null,
-        "haveCallback": false,
+        "type": ""
+      },
+      "Vehicle": {
+        "annotations": [],
         "callback": null,
-        "callbackEffective": false
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Vehicle-1",
+        "haveCallback": false,
+        "id": "Vehicle",
+        "label": "Vehicle",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Vehicle",
+        "tooltip": null,
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Vehicle",
         "id2": "Car",
+        "relation": {
+          "lineType": 0,
+          "type1": 1,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": 1,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": ""
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

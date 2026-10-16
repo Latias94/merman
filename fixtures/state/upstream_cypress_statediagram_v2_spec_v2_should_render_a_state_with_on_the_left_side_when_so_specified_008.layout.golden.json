@@ -2,39 +2,44 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 222.23,
+        "max_y": 379.46,
+        "min_x": 24.23,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "State1",
-          "x": 123.23,
-          "y": 339.96,
-          "width": 136.0,
-          "height": 79.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State1----note-0",
-          "x": 123.23,
-          "y": 148.5,
-          "width": 150.0,
-          "height": 135.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State1----parent",
-          "x": 123.23,
-          "y": 126.0,
-          "width": 198.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 228.0,
-          "is_cluster": true
+          "id": "State1----parent",
+          "offset_y": 0.0,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "Important information! You can write\nnotes with . and  in them.",
+          "title_label": {
+            "height": 42.0,
+            "width": 222.46,
+            "x": 123.23,
+            "y": 33.0
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 198.0,
+          "x": 123.23,
+          "y": 126.0
         }
       ],
       "edges": [
         {
-          "id": "State1----note-0-State1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "State1----note-0",
-          "to": "State1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "State1----note-0-State1",
+          "label": null,
           "points": [
             {
               "x": 123.23,
@@ -49,45 +54,40 @@
               "y": 300.46
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "State1",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "State1----parent",
+          "height": 79.0,
+          "id": "State1",
+          "is_cluster": false,
+          "width": 136.0,
           "x": 123.23,
-          "y": 126.0,
-          "width": 198.0,
+          "y": 339.96
+        },
+        {
+          "height": 135.0,
+          "id": "State1----note-0",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 123.23,
+          "y": 148.5
+        },
+        {
           "height": 228.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Important information! You can write\nnotes with . and  in them.",
-          "title_label": {
-            "x": 123.23,
-            "y": 33.0,
-            "width": 222.46,
-            "height": 42.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "State1----parent",
+          "is_cluster": true,
+          "width": 198.0,
+          "x": 123.23,
+          "y": 126.0
         }
-      ],
-      "bounds": {
-        "min_x": 24.23,
-        "min_y": 12.0,
-        "max_x": 222.23,
-        "max_y": 379.46
-      }
+      ]
     }
   }
 }

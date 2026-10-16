@@ -1,100 +1,100 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "GenericClass": {
-        "id": "GenericClass",
-        "type": "T",
-        "label": "GenericClass",
-        "text": "GenericClass&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "addItem",
-            "classifier": "",
-            "parameters": "item: T",
-            "returnType": "",
-            "displayText": "+addItem(item: T)",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "getItem",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "T",
-            "displayText": "+getItem() : T",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-GenericClass-0",
-        "parent": "Company.Project.Module",
+        "haveCallback": false,
+        "id": "GenericClass",
+        "label": "GenericClass",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      }
-    },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {
-      "Company": {
-        "id": "Company",
-        "label": "Company",
-        "domId": "classId-Company-0",
-        "classIds": [],
-        "noteIds": [],
-        "parent": null,
-        "explicit": false
-      },
-      "Company.Project": {
-        "id": "Company.Project",
-        "label": "Project",
-        "domId": "classId-Company.Project-1",
-        "classIds": [],
-        "noteIds": [],
-        "parent": "Company",
-        "explicit": false
-      },
-      "Company.Project.Module": {
-        "id": "Company.Project.Module",
-        "label": "Module",
-        "domId": "classId-Company.Project.Module-2",
-        "classIds": [
-          "GenericClass"
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+addItem(item: T)",
+            "id": "addItem",
+            "memberType": "method",
+            "parameters": "item: T",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+getItem() : T",
+            "id": "getItem",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "T",
+            "visibility": "+"
+          }
         ],
-        "noteIds": [],
-        "parent": "Company.Project",
-        "explicit": true
+        "parent": "Company.Project.Module",
+        "styles": [],
+        "text": "GenericClass&lt;T&gt;",
+        "tooltip": null,
+        "type": "T"
       }
     },
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "Company": {
+        "classIds": [],
+        "domId": "classId-Company-0",
+        "explicit": false,
+        "id": "Company",
+        "label": "Company",
+        "noteIds": [],
+        "parent": null
+      },
+      "Company.Project": {
+        "classIds": [],
+        "domId": "classId-Company.Project-1",
+        "explicit": false,
+        "id": "Company.Project",
+        "label": "Project",
+        "noteIds": [],
+        "parent": "Company"
+      },
+      "Company.Project.Module": {
+        "classIds": [
+          "GenericClass"
+        ],
+        "domId": "classId-Company.Project.Module-2",
+        "explicit": true,
+        "id": "Company.Project.Module",
+        "label": "Module",
+        "noteIds": [],
+        "parent": "Company.Project"
+      }
+    },
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

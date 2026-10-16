@@ -2,54 +2,54 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 188.017,
+        "max_y": 389.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "testingNamespace",
-          "x": 100.009,
-          "y": 200.5,
-          "width": 176.017,
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 377.0,
-          "is_cluster": true
-        },
-        {
-          "id": "This\nTitle\nHas\nMany\nNewlines",
+          "id": "testingNamespace",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "testingNamespace",
+          "title_label": {
+            "height": 21.0,
+            "width": 101.5,
+            "x": 100.009,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 176.017,
           "x": 100.009,
-          "y": 213.5,
-          "width": 128.017,
-          "height": 303.0,
-          "is_cluster": false
+          "y": 200.5
         }
       ],
       "edges": [],
-      "clusters": [
+      "nodes": [
         {
-          "id": "testingNamespace",
-          "x": 100.009,
-          "y": 200.5,
-          "width": 176.017,
           "height": 377.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "testingNamespace",
-          "title_label": {
-            "x": 100.009,
-            "y": 22.5,
-            "width": 101.5,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "testingNamespace",
+          "is_cluster": true,
+          "width": 176.017,
+          "x": 100.009,
+          "y": 200.5
+        },
+        {
+          "height": 303.0,
+          "id": "This\nTitle\nHas\nMany\nNewlines",
+          "is_cluster": false,
+          "width": 128.017,
+          "x": 100.009,
+          "y": 213.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 188.017,
-        "max_y": 389.0
-      }
+      ]
     }
   }
 }

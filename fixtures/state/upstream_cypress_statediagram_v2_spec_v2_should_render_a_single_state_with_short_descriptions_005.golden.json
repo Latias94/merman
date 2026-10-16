@@ -1,90 +1,90 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "A long long name",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "long1",
+        "description": [],
         "dir": null,
         "domId": "state-long1-0",
-        "type": null,
+        "id": "long1",
         "isGroup": false,
+        "label": "A long long name",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "A",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "longlonglongid",
+        "description": [],
         "dir": null,
         "domId": "state-longlonglongid-0",
-        "type": null,
+        "id": "longlonglongid",
         "isGroup": false,
+        "label": "A",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
-    "edges": [],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "relations": [],
     "states": {
       "long1": {
-        "id": "long1",
-        "type": "default",
+        "classes": [],
         "descriptions": [
           "A long long name"
         ],
         "doc": null,
+        "id": "long1",
         "note": null,
-        "classes": [],
+        "start": null,
         "styles": [],
         "textStyles": [],
-        "start": null
+        "type": "default"
       },
       "longlonglongid": {
-        "id": "longlonglongid",
-        "type": "default",
+        "classes": [],
         "descriptions": [
           "A"
         ],
         "doc": null,
+        "id": "longlonglongid",
         "note": null,
-        "classes": [],
+        "start": null,
         "styles": [],
         "textStyles": [],
-        "start": null
+        "type": "default"
       }
     },
-    "relations": [],
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

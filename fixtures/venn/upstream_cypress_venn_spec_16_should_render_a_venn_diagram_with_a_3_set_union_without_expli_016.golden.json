@@ -1,10 +1,9 @@
 {
   "diagramType": "venn",
   "model": {
-    "type": "venn",
-    "title": "Innovation",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "styleEntries": [],
     "subsets": [
       {
         "sets": [
@@ -25,16 +24,17 @@
         "size": 10.0
       },
       {
+        "label": "Innovation",
         "sets": [
           "Desirable",
           "Feasible",
           "Viable"
         ],
-        "size": 1.1111111111111112,
-        "label": "Innovation"
+        "size": 1.1111111111111112
       }
     ],
     "textNodes": [],
-    "styleEntries": []
+    "title": "Innovation",
+    "type": "venn"
   }
 }

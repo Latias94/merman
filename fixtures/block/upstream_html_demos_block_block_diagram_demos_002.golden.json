@@ -1,147 +1,147 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
+        "children": [],
         "id": "A1",
-        "type": "square",
         "label": "square",
-        "children": [],
+        "type": "square",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B1",
-        "type": "round",
         "label": "rounded",
-        "children": [],
+        "type": "round",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "C1",
-        "type": "circle",
         "label": "circle",
-        "children": [],
+        "type": "circle",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A2",
-        "type": "rect_left_inv_arrow",
         "label": "rect_left_inv_arrow",
-        "children": [],
+        "type": "rect_left_inv_arrow",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B2",
-        "type": "diamond",
         "label": "diamond",
-        "children": [],
+        "type": "diamond",
         "widthInColumns": 1
       },
       {
-        "id": "C2",
-        "type": "hexagon",
-        "label": "hexagon",
         "children": [],
+        "id": "C2",
+        "label": "hexagon",
+        "type": "hexagon",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "A1",
-            "type": "square",
             "label": "square",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "B1",
-            "type": "round",
             "label": "rounded",
-            "children": [],
+            "type": "round",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "C1",
-            "type": "circle",
             "label": "circle",
-            "children": [],
+            "type": "circle",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "A2",
-            "type": "rect_left_inv_arrow",
             "label": "rect_left_inv_arrow",
-            "children": [],
+            "type": "rect_left_inv_arrow",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "B2",
-            "type": "diamond",
             "label": "diamond",
-            "children": [],
+            "type": "diamond",
             "widthInColumns": 1
           },
           {
-            "id": "C2",
-            "type": "hexagon",
-            "label": "hexagon",
             "children": [],
+            "id": "C2",
+            "label": "hexagon",
+            "type": "hexagon",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "A1",
-        "type": "square",
         "label": "square",
-        "children": [],
+        "type": "square",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B1",
-        "type": "round",
         "label": "rounded",
-        "children": [],
+        "type": "round",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "C1",
-        "type": "circle",
         "label": "circle",
-        "children": [],
+        "type": "circle",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A2",
-        "type": "rect_left_inv_arrow",
         "label": "rect_left_inv_arrow",
-        "children": [],
+        "type": "rect_left_inv_arrow",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B2",
-        "type": "diamond",
         "label": "diamond",
-        "children": [],
+        "type": "diamond",
         "widthInColumns": 1
       },
       {
-        "id": "C2",
-        "type": "hexagon",
-        "label": "hexagon",
         "children": [],
+        "id": "C2",
+        "label": "hexagon",
+        "type": "hexagon",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

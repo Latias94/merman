@@ -1,42 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": "Basic xychart with many categories with category overlap",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "this is x axis",
-      "categories": [
-        "category1",
-        "Lorem ipsum dolor sit amet, qui minim labore adipisicing minim sint cillum sint consectetur cupidatat.",
-        "category3",
-        "category4",
-        "category5",
-        "category6",
-        "category7"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "yaxisText",
-      "min": 10.0,
-      "max": 150.0
-    },
+    "accTitle": null,
+    "orientation": "vertical",
     "plots": [
       {
-        "type": "bar",
-        "title": "sample bar",
-        "values": [
-          52.0,
-          96.0,
-          35.0,
-          10.0,
-          87.0,
-          34.0,
-          67.0
-        ],
         "data": [
           [
             "category1",
@@ -66,9 +35,40 @@
             "category7",
             67.0
           ]
+        ],
+        "title": "sample bar",
+        "type": "bar",
+        "values": [
+          52.0,
+          96.0,
+          35.0,
+          10.0,
+          87.0,
+          34.0,
+          67.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Basic xychart with many categories with category overlap",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "category1",
+        "Lorem ipsum dolor sit amet, qui minim labore adipisicing minim sint cillum sint consectetur cupidatat.",
+        "category3",
+        "category4",
+        "category5",
+        "category6",
+        "category7"
+      ],
+      "title": "this is x axis",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 150.0,
+      "min": 10.0,
+      "title": "yaxisText",
+      "type": "linear"
+    }
   }
 }

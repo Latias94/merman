@@ -2,31 +2,31 @@
   "diagramType": "requirement",
   "layout": {
     "RequirementDiagram": {
+      "bounds": {
+        "max_x": 277.922,
+        "max_y": 74.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "edges": [],
       "nodes": [
         {
-          "id": "test_req",
-          "x": 12.0,
-          "y": 12.0,
-          "width": 125.0,
           "height": 62.0,
-          "is_cluster": false
+          "id": "test_req",
+          "is_cluster": false,
+          "width": 125.0,
+          "x": 12.0,
+          "y": 12.0
         },
         {
-          "id": "test_entity",
-          "x": 177.0,
-          "y": 12.0,
-          "width": 100.922,
           "height": 62.0,
-          "is_cluster": false
+          "id": "test_entity",
+          "is_cluster": false,
+          "width": 100.922,
+          "x": 177.0,
+          "y": 12.0
         }
-      ],
-      "edges": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 277.922,
-        "max_y": 74.0
-      }
+      ]
     }
   }
 }

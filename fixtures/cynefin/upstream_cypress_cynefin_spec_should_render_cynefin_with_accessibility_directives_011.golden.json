@@ -1,44 +1,44 @@
 {
   "diagramType": "cynefin",
   "model": {
-    "type": "cynefin",
-    "title": null,
-    "accTitle": "Cynefin framework for software delivery",
     "accDescr": "A Cynefin map categorizing software tasks by complexity domain",
+    "accTitle": "Cynefin framework for software delivery",
     "domains": [
       {
-        "name": "complex",
         "items": [
           {
             "label": "Feature discovery"
           }
-        ]
+        ],
+        "name": "complex"
       },
       {
-        "name": "complicated",
         "items": [
           {
             "label": "Refactoring"
           }
-        ]
+        ],
+        "name": "complicated"
       },
       {
-        "name": "clear",
         "items": [
           {
             "label": "Hotfix"
           }
-        ]
+        ],
+        "name": "clear"
       },
       {
-        "name": "chaotic",
         "items": [
           {
             "label": "Incident"
           }
-        ]
+        ],
+        "name": "chaotic"
       }
     ],
-    "transitions": []
+    "title": null,
+    "transitions": [],
+    "type": "cynefin"
   }
 }

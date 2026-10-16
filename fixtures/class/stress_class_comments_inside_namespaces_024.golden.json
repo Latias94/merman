@@ -1,134 +1,134 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "Foo": {
-        "id": "Foo",
-        "type": "",
-        "label": "Foo",
-        "text": "Foo",
+      "Bar": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
         "cssClasses": "default",
+        "domId": "classId-Bar-1",
+        "haveCallback": false,
+        "id": "Bar",
+        "label": "Bar",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
         "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Bar",
+        "tooltip": null,
+        "type": ""
+      },
+      "Foo": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Foo-0",
+        "haveCallback": false,
+        "id": "Foo",
+        "label": "Foo",
+        "link": null,
+        "linkTarget": null,
         "members": [
           {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "String id",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String id",
+            "id": "String id",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "+String id",
-            "cssStyle": ""
+            "visibility": "+"
           },
           {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "String name",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String name",
+            "id": "String name",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "+String name",
-            "cssStyle": ""
+            "visibility": "+"
           }
         ],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Foo-0",
-        "parent": "Outer",
-        "link": null,
-        "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Bar": {
-        "id": "Bar",
-        "type": "",
-        "label": "Bar",
-        "text": "Bar",
-        "cssClasses": "default",
         "methods": [],
-        "members": [],
-        "annotations": [],
+        "parent": "Outer",
         "styles": [],
-        "domId": "classId-Bar-1",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "text": "Foo",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Outer.Foo": {
-        "id": "Outer.Foo",
-        "type": "",
-        "label": "Outer.Foo",
-        "text": "Outer.Foo",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Outer.Foo-2",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Outer.Foo",
+        "label": "Outer.Foo",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Outer.Foo",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "LR",
+    "interfaces": [],
+    "namespaces": {
+      "Outer": {
+        "classIds": [
+          "Foo"
+        ],
+        "domId": "classId-Outer-0",
+        "explicit": true,
+        "id": "Outer",
+        "label": "Outer",
+        "noteIds": [],
+        "parent": null
+      }
+    },
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Outer.Foo",
         "id2": "Bar",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "links",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "links"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {
-      "Outer": {
-        "id": "Outer",
-        "label": "Outer",
-        "domId": "classId-Outer-0",
-        "classIds": [
-          "Foo"
-        ],
-        "noteIds": [],
-        "parent": null,
-        "explicit": true
-      }
-    },
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

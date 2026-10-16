@@ -1,21 +1,14 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Many events for one period",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Busy Day"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Busy Day",
-        "type": "Busy Day",
-        "task": "09-00",
-        "score": 0,
         "events": [
           "Start work",
           "Standup",
@@ -32,8 +25,15 @@
           "Verify metrics",
           "Prepare release notes",
           "End of day"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Busy Day",
+        "task": "09-00",
+        "type": "Busy Day"
       }
-    ]
+    ],
+    "title": "Many events for one period",
+    "type": "timeline"
   }
 }

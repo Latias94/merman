@@ -1,36 +1,36 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Tabs + spaces indentation",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Tabbed Section"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Tabbed Section",
-        "type": "Tabbed Section",
-        "task": "2001 ",
-        "score": 0,
         "events": [
           "Uses a tab for indentation",
           "Continuation line starts with spaces"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Tabbed Section",
+        "task": "2001 ",
+        "type": "Tabbed Section"
       },
       {
-        "id": 1,
-        "section": "Tabbed Section",
-        "type": "Tabbed Section",
-        "task": "2002 ",
-        "score": 0,
         "events": [
           "Mixed\twhitespace\tin\tthe\tevent\ttext"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Tabbed Section",
+        "task": "2002 ",
+        "type": "Tabbed Section"
       }
-    ]
+    ],
+    "title": "Tabs + spaces indentation",
+    "type": "timeline"
   }
 }

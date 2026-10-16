@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": false,
-    "title": "Key elements in Product X",
-    "accTitle": "My Pie Chart Accessibility Title",
     "accDescr": "My Pie Chart Accessibility Description",
+    "accTitle": "My Pie Chart Accessibility Title",
     "sections": [
       {
         "label": "Calcium",
@@ -23,6 +20,9 @@
         "label": "Iron",
         "value": 5.0
       }
-    ]
+    ],
+    "showData": false,
+    "title": "Key elements in Product X",
+    "type": "pie"
   }
 }

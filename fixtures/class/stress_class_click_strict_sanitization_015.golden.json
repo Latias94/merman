@@ -1,82 +1,82 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "HomePage": {
-        "id": "HomePage",
-        "type": "",
-        "label": "HomePage",
-        "text": "HomePage",
-        "cssClasses": "default clickable",
-        "methods": [],
-        "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-HomePage-0",
-        "parent": null,
-        "link": "about:blank",
-        "linkTarget": "_blank",
-        "tooltip": "Unsafe",
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
       "Docs": {
-        "id": "Docs",
-        "type": "",
-        "label": "Docs",
-        "text": "Docs",
-        "cssClasses": "default clickable",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default clickable",
         "domId": "classId-Docs-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Docs",
+        "label": "Docs",
         "link": "https://example.com/docs",
         "linkTarget": "_blank",
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Docs",
         "tooltip": "Safe",
-        "haveCallback": false,
+        "type": ""
+      },
+      "HomePage": {
+        "annotations": [],
         "callback": null,
-        "callbackEffective": false
+        "callbackEffective": false,
+        "cssClasses": "default clickable",
+        "domId": "classId-HomePage-0",
+        "haveCallback": false,
+        "id": "HomePage",
+        "label": "HomePage",
+        "link": "about:blank",
+        "linkTarget": "_blank",
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "HomePage",
+        "tooltip": "Unsafe",
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "HomePage",
         "id2": "Docs",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "link",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "link"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

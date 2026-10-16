@@ -1,105 +1,105 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
+        "children": [],
         "id": "id1",
+        "label": "This is the text in the box",
         "type": "lean_right",
-        "label": "This is the text in the box",
-        "children": [],
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "id2",
-        "type": "lean_left",
         "label": "This is the text in the box",
-        "children": [],
+        "type": "lean_left",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A",
-        "type": "trapezoid",
         "label": "Christmas",
-        "children": [],
+        "type": "trapezoid",
         "widthInColumns": 1
       },
       {
-        "id": "B",
-        "type": "inv_trapezoid",
-        "label": "Go shopping",
         "children": [],
+        "id": "B",
+        "label": "Go shopping",
+        "type": "inv_trapezoid",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "id1",
+            "label": "This is the text in the box",
             "type": "lean_right",
-            "label": "This is the text in the box",
-            "children": [],
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "id2",
-            "type": "lean_left",
             "label": "This is the text in the box",
-            "children": [],
+            "type": "lean_left",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "A",
-            "type": "trapezoid",
             "label": "Christmas",
-            "children": [],
+            "type": "trapezoid",
             "widthInColumns": 1
           },
           {
-            "id": "B",
-            "type": "inv_trapezoid",
-            "label": "Go shopping",
             "children": [],
+            "id": "B",
+            "label": "Go shopping",
+            "type": "inv_trapezoid",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "id1",
+        "label": "This is the text in the box",
         "type": "lean_right",
-        "label": "This is the text in the box",
-        "children": [],
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "id2",
-        "type": "lean_left",
         "label": "This is the text in the box",
-        "children": [],
+        "type": "lean_left",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A",
-        "type": "trapezoid",
         "label": "Christmas",
-        "children": [],
+        "type": "trapezoid",
         "widthInColumns": 1
       },
       {
-        "id": "B",
-        "type": "inv_trapezoid",
-        "label": "Go shopping",
         "children": [],
+        "id": "B",
+        "label": "Go shopping",
+        "type": "inv_trapezoid",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

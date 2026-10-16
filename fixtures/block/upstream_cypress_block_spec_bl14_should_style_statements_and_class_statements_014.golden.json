@@ -1,84 +1,82 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "A",
-        "type": "na",
-        "label": "A",
         "children": [],
-        "widthInColumns": 1,
         "classes": [
           "blue"
-        ]
+        ],
+        "id": "A",
+        "label": "A",
+        "type": "na",
+        "widthInColumns": 1
       },
       {
-        "id": "B",
-        "type": "na",
-        "label": "B",
         "children": [],
-        "widthInColumns": 1,
+        "id": "B",
+        "label": "B",
         "styles": [
           "fill:#f9F",
           "stroke:#333",
           "stroke-width:4px"
-        ]
+        ],
+        "type": "na",
+        "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "A",
-            "type": "na",
-            "label": "A",
             "children": [],
-            "widthInColumns": 1,
             "classes": [
               "blue"
-            ]
+            ],
+            "id": "A",
+            "label": "A",
+            "type": "na",
+            "widthInColumns": 1
           },
           {
-            "id": "B",
-            "type": "na",
-            "label": "B",
             "children": [],
-            "widthInColumns": 1,
+            "id": "B",
+            "label": "B",
             "styles": [
               "fill:#f9F",
               "stroke:#333",
               "stroke-width:4px"
-            ]
+            ],
+            "type": "na",
+            "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "A",
-        "type": "na",
-        "label": "A",
         "children": [],
-        "widthInColumns": 1,
         "classes": [
           "blue"
-        ]
+        ],
+        "id": "A",
+        "label": "A",
+        "type": "na",
+        "widthInColumns": 1
       },
       {
-        "id": "B",
-        "type": "na",
-        "label": "B",
         "children": [],
-        "widthInColumns": 1,
+        "id": "B",
+        "label": "B",
         "styles": [
           "fill:#f9F",
           "stroke:#333",
           "stroke-width:4px"
-        ]
+        ],
+        "type": "na",
+        "widthInColumns": 1
       }
     ],
     "classes": {
@@ -92,6 +90,8 @@
         "textStyles": []
       }
     },
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

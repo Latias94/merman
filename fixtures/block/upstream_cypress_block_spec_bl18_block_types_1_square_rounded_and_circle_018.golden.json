@@ -1,84 +1,84 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
+        "children": [],
         "id": "A",
-        "type": "square",
         "label": "square",
-        "children": [],
+        "type": "square",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B",
-        "type": "round",
         "label": "rounded",
-        "children": [],
+        "type": "round",
         "widthInColumns": 1
       },
       {
-        "id": "C",
-        "type": "circle",
-        "label": "circle",
         "children": [],
+        "id": "C",
+        "label": "circle",
+        "type": "circle",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "A",
-            "type": "square",
             "label": "square",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "B",
-            "type": "round",
             "label": "rounded",
-            "children": [],
+            "type": "round",
             "widthInColumns": 1
           },
           {
-            "id": "C",
-            "type": "circle",
-            "label": "circle",
             "children": [],
+            "id": "C",
+            "label": "circle",
+            "type": "circle",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "A",
-        "type": "square",
         "label": "square",
-        "children": [],
+        "type": "square",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B",
-        "type": "round",
         "label": "rounded",
-        "children": [],
+        "type": "round",
         "widthInColumns": 1
       },
       {
-        "id": "C",
-        "type": "circle",
-        "label": "circle",
         "children": [],
+        "id": "C",
+        "label": "circle",
+        "type": "circle",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

@@ -1,78 +1,8 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
-    "entities": {
-      "CAR": {
-        "id": "entity-CAR-0",
-        "label": "CAR",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "registrationNumber",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "make",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "model",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default someclass",
-        "cssStyles": []
-      },
-      "PERSON": {
-        "id": "entity-PERSON-1",
-        "label": "PERSON",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "firstName",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "lastName",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "int",
-            "name": "age",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default someclass",
-        "cssStyles": []
-      },
-      "HOUSE": {
-        "id": "entity-HOUSE-2",
-        "label": "HOUSE",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default someclass",
-        "cssStyles": []
-      }
-    },
-    "relationships": [],
+    "accTitle": null,
     "classes": {
       "someclass": {
         "id": "someclass",
@@ -84,16 +14,86 @@
     },
     "constants": {
       "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
+        "mdParent": "MD_PARENT",
         "oneOrMore": "ONE_OR_MORE",
         "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
       },
       "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
       }
-    }
+    },
+    "direction": "TB",
+    "entities": {
+      "CAR": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [],
+            "name": "registrationNumber",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "make",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "model",
+            "type": "string"
+          }
+        ],
+        "cssClasses": "default someclass",
+        "cssStyles": [],
+        "id": "entity-CAR-0",
+        "label": "CAR",
+        "shape": "erBox"
+      },
+      "HOUSE": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default someclass",
+        "cssStyles": [],
+        "id": "entity-HOUSE-2",
+        "label": "HOUSE",
+        "shape": "erBox"
+      },
+      "PERSON": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [],
+            "name": "firstName",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "lastName",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "age",
+            "type": "int"
+          }
+        ],
+        "cssClasses": "default someclass",
+        "cssStyles": [],
+        "id": "entity-PERSON-1",
+        "label": "PERSON",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [],
+    "type": "er"
   }
 }

@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "J",
@@ -13,105 +11,107 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "A",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
-      },
-      "J": {
-        "name": "J",
-        "description": "J",
-        "wrap": false,
+        "name": "A",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "B",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "C",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "J": {
+        "description": "J",
+        "links": {},
+        "name": "J",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "J",
-        "message": "Hello John, how are you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "J",
-        "to": "A",
-        "message": "Great!",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "A",
-        "to": "B",
-        "message": "Hello Bob, how is Charley?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "B",
-        "to": "C",
-        "message": "Hello Charley, how are you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [
       {
-        "name": "Alice & John",
-        "wrap": false,
-        "fill": "Purple",
         "actorKeys": [
           "A",
           "J"
-        ]
+        ],
+        "fill": "Purple",
+        "name": "Alice & John",
+        "wrap": false
       },
       {
-        "name": "Another Group",
-        "wrap": false,
-        "fill": "transparent",
         "actorKeys": [
           "B",
           "C"
-        ]
+        ],
+        "fill": "transparent",
+        "name": "Another Group",
+        "wrap": false
       }
     ],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "Hello John, how are you?",
+        "to": "J",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "J",
+        "id": "1",
+        "message": "Great!",
+        "to": "A",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "2",
+        "message": "Hello Bob, how is Charley?",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "3",
+        "message": "Hello Charley, how are you?",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

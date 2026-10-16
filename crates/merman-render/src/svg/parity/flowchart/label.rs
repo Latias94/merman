@@ -1,113 +1,28 @@
 //! Flowchart label rendering helpers (HTML/SVG text).
 
-use super::*;
+#[cfg(test)]
+use crate::graph_label::{
+    is_single_img_label, normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
+};
 
-#[inline]
-fn starts_with_ascii_case_insensitive(input: &str, prefix: &[u8]) -> bool {
-    input
-        .as_bytes()
-        .get(..prefix.len())
-        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
-}
-
-#[inline]
-fn find_ascii_case_insensitive(input: &str, needle: &[u8]) -> Option<usize> {
-    debug_assert!(!needle.is_empty());
-    input
-        .as_bytes()
-        .windows(needle.len())
-        .position(|candidate| candidate.eq_ignore_ascii_case(needle))
-}
-
-fn extract_flowchart_img_src(tag: &str) -> Option<&str> {
-    let idx = find_ascii_case_insensitive(tag, b"src=")?;
-    let rest = tag.get(idx + 4..)?.trim_start();
-    let quote = *rest.as_bytes().first()?;
-    if quote != b'"' && quote != b'\'' {
-        return None;
-    }
-
-    let value = rest.get(1..)?;
-    let end = value
-        .as_bytes()
-        .iter()
-        .position(|candidate| *candidate == quote)
-        .unwrap_or(value.len());
-    let value = value.get(..end)?.trim();
-    (!value.is_empty()).then_some(value)
-}
-
-fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
-    // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
-    // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
-    if find_ascii_case_insensitive(input, b"<img").is_none() {
-        return input.to_string();
-    }
-
-    let style = if fixed_width {
-        "display: flex; flex-direction: column; min-width: 80px; max-width: 80px;"
-    } else {
-        "display: flex; flex-direction: column; width: 100%;"
-    };
-
-    let mut out = String::with_capacity(input.len());
-    let bytes = input.as_bytes();
-    let mut i = 0usize;
-    while i < bytes.len() {
-        if bytes[i] == b'<' && starts_with_ascii_case_insensitive(&input[i..], b"<img") {
-            let rest = &input[i..];
-            let Some(rel_end) = rest.find('>') else {
-                out.push_str(rest);
-                break;
-            };
-            let tag = &rest[..=rel_end];
-            let src = extract_flowchart_img_src(tag);
-            out.push_str("<img");
-            if let Some(src) = src {
-                let _ = write!(out, r#" src="{}""#, escape_attr(src));
-            }
-            out.push_str(r#" style=""#);
-            out.push_str(style);
-            out.push('"');
-            out.push('>');
-            i += rel_end + 1;
-            continue;
-        }
-        let Some(ch) = input[i..].chars().next() else {
-            break;
-        };
-        out.push(ch);
-        i += ch.len_utf8();
-    }
-    out
-}
-
-fn is_single_img_label(label: &str) -> bool {
-    let label = crate::flowchart::flowchart_trim_html_collapsible_whitespace(label);
-    if !starts_with_ascii_case_insensitive(label, b"<img") {
-        return false;
-    }
-    let Some(end) = label.find('>') else {
-        return false;
-    };
-    crate::flowchart::flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
-}
-
-pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_math<'a>(
+pub(in crate::svg::parity) fn flowchart_label_html_with_prepared_label<'a>(
     label: &'a str,
     label_type: &str,
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
-    prepared_math: crate::flowchart::FlowchartPreparedMathResolution<'a>,
+    prepared_label: crate::flowchart::FlowchartPreparedLabelResolution<'a>,
 ) -> std::borrow::Cow<'a, str> {
-    match prepared_math {
-        crate::flowchart::FlowchartPreparedMathResolution::Prepared(prepared) => {
+    match prepared_label {
+        crate::flowchart::FlowchartPreparedLabelResolution::PreparedMath(prepared) => {
             std::borrow::Cow::Borrowed(prepared.browser_xhtml())
         }
-        crate::flowchart::FlowchartPreparedMathResolution::Unavailable(_reason) => {
+        crate::flowchart::FlowchartPreparedLabelResolution::PreparedHtml(xhtml) => {
+            std::borrow::Cow::Borrowed(xhtml)
+        }
+        crate::flowchart::FlowchartPreparedLabelResolution::Unavailable(_reason) => {
             std::borrow::Cow::Owned(flowchart_label_html_impl(label, label_type, config, None))
         }
-        crate::flowchart::FlowchartPreparedMathResolution::NotPrepared => std::borrow::Cow::Owned(
+        crate::flowchart::FlowchartPreparedLabelResolution::NotPrepared => std::borrow::Cow::Owned(
             flowchart_label_html_impl(label, label_type, config, math_renderer),
         ),
     }
@@ -119,79 +34,11 @@ fn flowchart_label_html_impl(
     config: &merman_core::MermaidConfig,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) -> String {
-    if crate::flowchart::flowchart_label_text_is_empty_for_mode(label, true) {
-        return String::new();
-    }
-
-    fn trim_markdown_trailing_newlines(
-        input: std::borrow::Cow<'_, str>,
-    ) -> std::borrow::Cow<'_, str> {
-        if input.ends_with('\n') {
-            std::borrow::Cow::Owned(input.trim_end_matches('\n').to_string())
-        } else {
-            input
-        }
-    }
-
     if let Some(html) = crate::math::render_math_html_label(label, config, math_renderer) {
         return html;
     }
-
-    match label_type {
-        "markdown" => {
-            let decoded = decode_mermaid_entities_for_render_text(label);
-            let decoded = if decoded.contains("\\\\") {
-                std::borrow::Cow::Owned(decoded.replace("\\\\", "\\"))
-            } else {
-                decoded
-            };
-            let decoded = trim_markdown_trailing_newlines(decoded);
-            let markdown_auto_wrap = config
-                .as_value()
-                .get("markdownAutoWrap")
-                .and_then(serde_json::Value::as_bool)
-                .unwrap_or(true);
-            let html_out = crate::text::mermaid_markdown_to_html_label_fragment(
-                decoded.as_ref(),
-                markdown_auto_wrap,
-            );
-            let html_out =
-                crate::flowchart::flowchart_trim_html_collapsible_whitespace(&html_out).to_string();
-            let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
-                &html_out, config,
-            ))
-        }
-        _ => {
-            let can_skip_sanitizer = !label.contains('<')
-                && !label.contains('>')
-                && !label.contains('&')
-                && !label.contains(":fa-");
-            let label = crate::flowchart::flowchart_non_markdown_label_for_html(label, label_type);
-
-            // Fast path for the overwhelmingly common case: plain text labels (no HTML, no
-            // entities, no Mermaid icon syntax). In upstream Mermaid, these go through
-            // `sanitizeText(...)` but the output is unchanged; skipping the HTML sanitizer here is
-            // a large win in flowcharts with many nodes.
-            if can_skip_sanitizer {
-                return format!("<p>{label}</p>");
-            }
-
-            // Mermaid's nonMarkdownToHTML() wraps every non-empty label in one paragraph.
-            // Markdown block classification must not leak into this branch.
-            let fixed_img_width = is_single_img_label(&label);
-            let label = normalize_flowchart_img_tags(&label, fixed_img_width);
-            let wrapped = format!("<p>{}</p>", label);
-            let wrapped = if wrapped.contains(":fa-") {
-                crate::text::replace_fontawesome_icons(&wrapped)
-            } else {
-                wrapped
-            };
-            crate::xml::normalize_html_fragment_for_xhtml(&merman_core::sanitize::sanitize_text(
-                &wrapped, config,
-            ))
-        }
-    }
+    let html = crate::graph_label::flowchart_label_html_source(label, label_type, config);
+    merman_core::sanitize::sanitize_xhtml(&html, config)
 }
 
 pub(in crate::svg::parity) fn flowchart_label_plain_text(
@@ -377,7 +224,7 @@ pub(in crate::svg::parity) fn write_flowchart_svg_text_markdown_wrapped_with_sty
 #[cfg(test)]
 mod tests {
     use super::{
-        flowchart_label_html_impl, flowchart_label_html_with_prepared_math, is_single_img_label,
+        flowchart_label_html_impl, flowchart_label_html_with_prepared_label, is_single_img_label,
         normalize_flowchart_img_tags, starts_with_ascii_case_insensitive,
         wrap_flowchart_svg_source_word_lines, write_flowchart_svg_source_word_lines,
     };
@@ -401,12 +248,12 @@ mod tests {
     fn unavailable_prepared_math_reason_prevents_writer_backend_reentry() {
         let calls = AtomicUsize::new(0);
         let renderer = ReentryProbe(&calls);
-        let html = flowchart_label_html_with_prepared_math(
+        let html = flowchart_label_html_with_prepared_label(
             "value $$x$$",
             "text",
             &merman_core::MermaidConfig::default(),
             Some(&renderer),
-            crate::flowchart::FlowchartPreparedMathResolution::Unavailable(
+            crate::flowchart::FlowchartPreparedLabelResolution::Unavailable(
                 crate::math::MathPreparationUnavailable::BackendDeclined,
             ),
         );
@@ -576,14 +423,14 @@ mod tests {
     }
 
     #[test]
-    fn html_unclosed_image_preserves_original_prefix_case() {
+    fn html_unclosed_image_recovers_before_xhtml_serialization() {
         let config = merman_core::MermaidConfig::from_value(serde_json::json!({
             "htmlLabels": true,
             "securityLevel": "strict"
         }));
         assert_eq!(
             flowchart_label_html_impl("<IMG src='x'", "string", &config, None),
-            "<p><IMG src='x' />"
+            r#"<p><img src="x" /></p>"#
         );
     }
 

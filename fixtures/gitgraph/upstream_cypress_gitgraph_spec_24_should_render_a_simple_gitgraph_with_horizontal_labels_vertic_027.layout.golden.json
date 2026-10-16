@@ -2,116 +2,116 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [
+        {
+          "class_index": 0.0,
+          "d": "M 0 40 L 0 90",
+          "from": "Alpha",
+          "to": "Beta"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 0 90 L 0 140",
+          "from": "Beta",
+          "to": "Gamma"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 0 140 L 0 190",
+          "from": "Gamma",
+          "to": "Delta"
+        }
+      ],
       "bounds": {
-        "min_x": -18.0,
-        "min_y": 22.0,
         "max_x": 18.0,
-        "max_y": 238.0
+        "max_y": 238.0,
+        "min_x": -18.0,
+        "min_y": 22.0
       },
-      "direction": "TB",
-      "rotate_commit_label": false,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 230.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         }
       ],
       "commits": [
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Alpha",
           "message": "",
-          "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [],
-          "branch": "main",
           "pos": 30.0,
           "pos_with_offset": 40.0,
+          "seq": 0.0,
+          "tags": [],
           "x": 0.0,
           "y": 40.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Beta",
           "message": "",
-          "seq": 1.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Alpha"
           ],
-          "branch": "main",
           "pos": 80.0,
           "pos_with_offset": 90.0,
+          "seq": 1.0,
+          "tags": [],
           "x": 0.0,
           "y": 90.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Gamma",
           "message": "",
-          "seq": 2.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Beta"
           ],
-          "branch": "main",
           "pos": 130.0,
           "pos_with_offset": 140.0,
+          "seq": 2.0,
+          "tags": [],
           "x": 0.0,
           "y": 140.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Delta",
           "message": "",
-          "seq": 3.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Gamma"
           ],
-          "branch": "main",
           "pos": 180.0,
           "pos_with_offset": 190.0,
+          "seq": 3.0,
+          "tags": [],
           "x": 0.0,
           "y": 190.0
         }
       ],
-      "arrows": [
-        {
-          "from": "Alpha",
-          "to": "Beta",
-          "class_index": 0.0,
-          "d": "M 0 40 L 0 90"
-        },
-        {
-          "from": "Beta",
-          "to": "Gamma",
-          "class_index": 0.0,
-          "d": "M 0 90 L 0 140"
-        },
-        {
-          "from": "Gamma",
-          "to": "Delta",
-          "class_index": 0.0,
-          "d": "M 0 140 L 0 190"
-        }
-      ]
+      "diagram_padding": 8.0,
+      "direction": "TB",
+      "max_pos": 230.0,
+      "parallel_commits": false,
+      "rotate_commit_label": false,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

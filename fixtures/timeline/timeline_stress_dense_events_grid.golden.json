@@ -1,94 +1,94 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Dense grid (many periods × many events)",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Q1",
       "Q2"
     ],
     "tasks": [
       {
+        "events": [
+          "E1 ",
+          "E2 ",
+          "E3 ",
+          "E4"
+        ],
         "id": 0,
+        "score": 0,
         "section": "Q1",
-        "type": "Q1",
         "task": "P1 ",
-        "score": 0,
+        "type": "Q1"
+      },
+      {
         "events": [
           "E1 ",
           "E2 ",
           "E3 ",
           "E4"
-        ]
-      },
-      {
+        ],
         "id": 1,
+        "score": 0,
         "section": "Q1",
-        "type": "Q1",
         "task": "P2 ",
-        "score": 0,
+        "type": "Q1"
+      },
+      {
         "events": [
           "E1 ",
           "E2 ",
           "E3 ",
           "E4"
-        ]
-      },
-      {
+        ],
         "id": 2,
+        "score": 0,
         "section": "Q1",
-        "type": "Q1",
         "task": "P3 ",
-        "score": 0,
+        "type": "Q1"
+      },
+      {
         "events": [
           "E1 ",
           "E2 ",
           "E3 ",
           "E4"
-        ]
-      },
-      {
+        ],
         "id": 3,
+        "score": 0,
         "section": "Q2",
-        "type": "Q2",
         "task": "P4 ",
-        "score": 0,
+        "type": "Q2"
+      },
+      {
         "events": [
           "E1 ",
           "E2 ",
           "E3 ",
           "E4"
-        ]
-      },
-      {
+        ],
         "id": 4,
-        "section": "Q2",
-        "type": "Q2",
-        "task": "P5 ",
         "score": 0,
-        "events": [
-          "E1 ",
-          "E2 ",
-          "E3 ",
-          "E4"
-        ]
+        "section": "Q2",
+        "task": "P5 ",
+        "type": "Q2"
       },
       {
-        "id": 5,
-        "section": "Q2",
-        "type": "Q2",
-        "task": "P6 ",
-        "score": 0,
         "events": [
           "E1 ",
           "E2 ",
           "E3 ",
           "E4"
-        ]
+        ],
+        "id": 5,
+        "score": 0,
+        "section": "Q2",
+        "task": "P6 ",
+        "type": "Q2"
       }
-    ]
+    ],
+    "title": "Dense grid (many periods × many events)",
+    "type": "timeline"
   }
 }

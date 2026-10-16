@@ -2,47 +2,22 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
-        {
-          "id": "root_end",
-          "x": 131.15,
-          "y": 392.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 131.15,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "s1",
-          "x": 131.15,
-          "y": 84.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "s2",
-          "x": 131.15,
-          "y": 244.0,
-          "width": 238.3,
-          "height": 80.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 250.3,
+        "max_y": 399.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "s1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 131.15,
@@ -53,59 +28,64 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge1",
-          "from": "s1",
-          "to": "s2",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 111.817,
-              "y": 103.0
-            },
-            {
-              "x": 111.817,
-              "y": 123.0
-            },
-            {
-              "x": 94.767,
-              "y": 123.0
-            },
-            {
-              "x": 94.767,
-              "y": 204.0
-            }
-          ],
-          "label": {
-            "x": 94.317,
-            "y": 153.5,
-            "width": 30.1,
-            "height": 21.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge2",
-          "from": "s2",
+          "stroke_dasharray": null,
           "to": "s1",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "s1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 21.0,
+            "width": 30.1,
+            "x": 94.317,
+            "y": 153.5
+          },
+          "points": [
+            {
+              "x": 111.817,
+              "y": 103.0
+            },
+            {
+              "x": 111.817,
+              "y": 123.0
+            },
+            {
+              "x": 94.767,
+              "y": 123.0
+            },
+            {
+              "x": 94.767,
+              "y": 204.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "s2",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "s2",
+          "from_cluster": null,
+          "id": "edge2",
+          "label": {
+            "height": 21.0,
+            "width": 25.76,
+            "x": 167.413,
+            "y": 153.5
+          },
           "points": [
             {
               "x": 167.533,
@@ -124,26 +104,26 @@
               "y": 103.0
             }
           ],
-          "label": {
-            "x": 167.413,
-            "y": 153.5,
-            "width": 25.76,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "s1",
+          "to_cluster": null
         },
         {
-          "id": "edge3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "s2",
-          "to": "root_end",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge3",
+          "label": {
+            "height": 21.0,
+            "width": 31.92,
+            "x": 131.11,
+            "y": 334.5
+          },
           "points": [
             {
               "x": 131.15,
@@ -154,28 +134,48 @@
               "y": 385.0
             }
           ],
-          "label": {
-            "x": 131.11,
-            "y": 334.5,
-            "width": 31.92,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 250.3,
-        "max_y": 399.0
-      }
+      "nodes": [
+        {
+          "height": 14.0,
+          "id": "root_end",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 131.15,
+          "y": 392.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 131.15,
+          "y": 19.0
+        },
+        {
+          "height": 37.0,
+          "id": "s1",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 131.15,
+          "y": 84.5
+        },
+        {
+          "height": 80.0,
+          "id": "s2",
+          "is_cluster": false,
+          "width": 238.3,
+          "x": 131.15,
+          "y": 244.0
+        }
+      ]
     }
   }
 }

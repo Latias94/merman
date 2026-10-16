@@ -1,82 +1,27 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Context",
-    "title": "System Context diagram for Internet Banking System",
-    "accTitle": null,
     "accDescr": "Many large C4 diagrams",
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "customerA",
-        "parentBoundary": "b0",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": "Banking Customer A"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "A customer of the bank, with personal bank accounts."
-        },
-        "bgColor": "grey",
-        "borderColor": "red",
-        "fontColor": "red"
-      },
-      {
-        "alias": "SystemAA",
-        "parentBoundary": "b0",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "Allows customers to view information about their bank accounts, and make payments."
-        }
-      },
-      {
-        "alias": "SystemC",
-        "parentBoundary": "b1",
-        "typeC4Shape": {
-          "text": "external_system"
-        },
-        "label": {
-          "text": "E-mail system"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "The internal Microsoft Exchange e-mail system."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "b0",
-        "parentBoundary": "global",
         "label": {
           "text": "BankBoundary0"
         },
+        "parentBoundary": "global",
         "type": {
           "text": "ENTERPRISE"
         },
@@ -84,69 +29,124 @@
       },
       {
         "alias": "b1",
-        "parentBoundary": "b0",
         "label": {
           "text": "BankBoundary"
         },
+        "parentBoundary": "b0",
         "type": {
           "text": "ENTERPRISE"
         },
         "wrap": false
       }
     ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
-        "from": "customerA",
-        "to": "SystemAA",
-        "type": "birel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": ""
-        },
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetX": 5,
+        "from": "customerA",
+        "label": {
+          "text": "Uses"
+        },
         "lineColor": "blue",
-        "textColor": "blue"
+        "offsetX": 5,
+        "techn": {
+          "text": ""
+        },
+        "textColor": "blue",
+        "to": "SystemAA",
+        "type": "birel",
+        "wrap": false
       },
       {
+        "descr": {
+          "text": ""
+        },
         "from": "SystemAA",
-        "to": "SystemC",
-        "type": "rel",
         "label": {
           "text": "Sends e-mails"
         },
         "techn": {
           "text": "SMTP"
         },
+        "to": "SystemC",
+        "type": "rel",
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
+        },
+        "from": "SystemC",
+        "label": {
+          "text": "Sends e-mails to"
+        },
+        "lineColor": "red",
+        "offsetX": -50,
+        "offsetY": 20,
+        "techn": {
+          "text": ""
+        },
+        "textColor": "red",
+        "to": "customerA",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "customerA",
+        "bgColor": "grey",
+        "borderColor": "red",
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts."
+        },
+        "fontColor": "red",
+        "label": {
+          "text": "Banking Customer A"
+        },
+        "parentBoundary": "b0",
+        "typeC4Shape": {
+          "text": "person"
         },
         "wrap": false
       },
       {
-        "from": "SystemC",
-        "to": "customerA",
-        "type": "rel",
-        "label": {
-          "text": "Sends e-mails to"
-        },
-        "techn": {
-          "text": ""
-        },
+        "alias": "SystemAA",
         "descr": {
-          "text": ""
+          "text": "Allows customers to view information about their bank accounts, and make payments."
         },
-        "wrap": false,
-        "offsetX": -50,
-        "offsetY": 20,
-        "lineColor": "red",
-        "textColor": "red"
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "parentBoundary": "b0",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "SystemC",
+        "descr": {
+          "text": "The internal Microsoft Exchange e-mail system."
+        },
+        "label": {
+          "text": "E-mail system"
+        },
+        "parentBoundary": "b1",
+        "typeC4Shape": {
+          "text": "external_system"
+        },
+        "wrap": false
       }
-    ]
+    ],
+    "title": "System Context diagram for Internet Banking System",
+    "type": "c4",
+    "wrap": false
   }
 }

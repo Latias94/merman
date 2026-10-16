@@ -2,196 +2,196 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
-      "direction": "LR",
-      "bounds": {
-        "min_x": 95.0,
-        "min_y": -61.0,
-        "max_x": 1090.0,
-        "max_y": 591.2
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "x2": 1040.0,
+        "y1": 285.6,
+        "y2": 285.6
       },
-      "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
+      "bounds": {
+        "max_x": 1090.0,
+        "max_y": 591.2,
+        "min_x": 95.0,
+        "min_y": -61.0
+      },
+      "direction": "LR",
+      "left_margin": 150.0,
+      "orphan_tasks": [],
       "pre_title_box_width": 590.0,
       "sections": [
         {
           "node": {
-            "x": 200.0,
-            "y": 50.0,
-            "width": 590.0,
-            "height": 67.8,
             "content_width": 550.0,
-            "padding": 20.0,
-            "section_class": "section--1",
+            "height": 67.8,
+            "kind": "section",
             "label": "Versions",
             "label_lines": [
               "Versions"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section--1",
+            "width": 590.0,
+            "x": 200.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 200.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section--1",
-                "label": "v0-1 ",
-                "label_lines": [
-                  "v0-1"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 295.0,
-                  "y1": 235.6,
                   "x2": 295.0,
+                  "y1": 235.6,
                   "y2": 541.2
                 }
               ],
               "events": [
                 {
-                  "x": 200.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "alpha ",
                   "label_lines": [
                     "alpha"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 200.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "beta",
                   "label_lines": [
                     "beta"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 400.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "v0-1 ",
+                "label_lines": [
+                  "v0-1"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "v0-2 ",
-                "label_lines": [
-                  "v0-2"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 200.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 495.0,
-                  "y1": 235.6,
                   "x2": 495.0,
+                  "y1": 235.6,
                   "y2": 541.2
                 }
               ],
               "events": [
                 {
-                  "x": 400.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "rc_1",
                   "label_lines": [
                     "rc_1"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 400.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "rc_2",
                   "label_lines": [
                     "rc_2"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 600.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "v0-2 ",
+                "label_lines": [
+                  "v0-2"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "v1-0 ",
-                "label_lines": [
-                  "v1-0"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 400.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 695.0,
-                  "y1": 235.6,
                   "x2": 695.0,
+                  "y1": 235.6,
                   "y2": 541.2
                 }
               ],
               "events": [
                 {
-                  "x": 600.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "ga",
                   "label_lines": [
                     "ga"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 367.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "v1-0 ",
+                "label_lines": [
+                  "v1-0"
+                ],
+                "padding": 20.0,
+                "section_class": "section--1",
+                "width": 190.0,
+                "x": 600.0,
+                "y": 167.8
+              }
             }
           ]
         }
       ],
-      "orphan_tasks": [],
-      "activity_line": {
-        "kind": "activity",
-        "x1": 150.0,
-        "y1": 285.6,
-        "x2": 1040.0,
-        "y2": 285.6
-      },
       "title": "Textual periods with dashes/underscores",
       "title_x": 145.0,
       "title_y": 20.0,

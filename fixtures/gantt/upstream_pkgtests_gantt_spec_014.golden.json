@@ -1,24 +1,24 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "yyyy-mm-dd",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": true,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "yyyy-mm-dd",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": true,
+    "links": {},
     "sections": [],
     "tasks": [],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": null,
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

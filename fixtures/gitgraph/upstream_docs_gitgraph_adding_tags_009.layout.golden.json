@@ -2,191 +2,191 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [
+        {
+          "class_index": 0.0,
+          "d": "M 10 -2 L 60 -2",
+          "from": "0-<dynamic>",
+          "to": "Normal"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 60 -2 L 110 -2",
+          "from": "Normal",
+          "to": "2-<dynamic>"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 110 -2 L 160 -2",
+          "from": "2-<dynamic>",
+          "to": "Reverse"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 160 -2 L 210 -2",
+          "from": "Reverse",
+          "to": "4-<dynamic>"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 210 -2 L 260 -2",
+          "from": "4-<dynamic>",
+          "to": "Highlight"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 260 -2 L 310 -2",
+          "from": "Highlight",
+          "to": "6-<dynamic>"
+        }
+      ],
       "bounds": {
-        "min_x": -91.72,
-        "min_y": -20.0,
         "max_x": 358.0,
-        "max_y": 16.0
+        "max_y": 16.0,
+        "min_x": -91.72,
+        "min_y": -20.0
       },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 350.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         }
       ],
       "commits": [
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "0-<dynamic>",
           "message": "",
-          "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [],
-          "branch": "main",
           "pos": 0.0,
           "pos_with_offset": 10.0,
+          "seq": 0.0,
+          "tags": [],
           "x": 10.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Normal",
           "message": "",
-          "seq": 1.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [
-            "v1.0.0"
-          ],
           "parents": [
             "0-<dynamic>"
           ],
-          "branch": "main",
           "pos": 50.0,
           "pos_with_offset": 60.0,
+          "seq": 1.0,
+          "tags": [
+            "v1.0.0"
+          ],
           "x": 60.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "2-<dynamic>",
           "message": "",
-          "seq": 2.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Normal"
           ],
-          "branch": "main",
           "pos": 100.0,
           "pos_with_offset": 110.0,
+          "seq": 2.0,
+          "tags": [],
           "x": 110.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 1.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Reverse",
           "message": "",
-          "seq": 3.0,
-          "commit_type": 1.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [
-            "RC_1"
-          ],
           "parents": [
             "2-<dynamic>"
           ],
-          "branch": "main",
           "pos": 150.0,
           "pos_with_offset": 160.0,
+          "seq": 3.0,
+          "tags": [
+            "RC_1"
+          ],
           "x": 160.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "4-<dynamic>",
           "message": "",
-          "seq": 4.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Reverse"
           ],
-          "branch": "main",
           "pos": 200.0,
           "pos_with_offset": 210.0,
+          "seq": 4.0,
+          "tags": [],
           "x": 210.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 2.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Highlight",
           "message": "",
-          "seq": 5.0,
-          "commit_type": 2.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [
-            "8.8.4"
-          ],
           "parents": [
             "4-<dynamic>"
           ],
-          "branch": "main",
           "pos": 250.0,
           "pos_with_offset": 260.0,
+          "seq": 5.0,
+          "tags": [
+            "8.8.4"
+          ],
           "x": 260.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "6-<dynamic>",
           "message": "",
-          "seq": 6.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Highlight"
           ],
-          "branch": "main",
           "pos": 300.0,
           "pos_with_offset": 310.0,
+          "seq": 6.0,
+          "tags": [],
           "x": 310.0,
           "y": -2.0
         }
       ],
-      "arrows": [
-        {
-          "from": "0-<dynamic>",
-          "to": "Normal",
-          "class_index": 0.0,
-          "d": "M 10 -2 L 60 -2"
-        },
-        {
-          "from": "Normal",
-          "to": "2-<dynamic>",
-          "class_index": 0.0,
-          "d": "M 60 -2 L 110 -2"
-        },
-        {
-          "from": "2-<dynamic>",
-          "to": "Reverse",
-          "class_index": 0.0,
-          "d": "M 110 -2 L 160 -2"
-        },
-        {
-          "from": "Reverse",
-          "to": "4-<dynamic>",
-          "class_index": 0.0,
-          "d": "M 160 -2 L 210 -2"
-        },
-        {
-          "from": "4-<dynamic>",
-          "to": "Highlight",
-          "class_index": 0.0,
-          "d": "M 210 -2 L 260 -2"
-        },
-        {
-          "from": "Highlight",
-          "to": "6-<dynamic>",
-          "class_index": 0.0,
-          "d": "M 260 -2 L 310 -2"
-        }
-      ]
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 350.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "S",
@@ -13,110 +11,112 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
-      },
-      "S": {
-        "name": "S",
-        "description": "Service",
-        "wrap": false,
+        "name": "A",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "W": {
-        "name": "W",
-        "description": "Worker",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bot",
-        "wrap": false,
-        "type": "actor",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
+      },
+      "S": {
+        "description": "Service",
+        "links": {},
+        "name": "S",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "W": {
+        "description": "Worker",
+        "links": {},
+        "name": "W",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "S",
-        "message": "start",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "S",
-        "to": "W",
-        "message": "spawn",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "W",
-        "to": "S",
-        "message": "ready",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "S",
-        "to": "W",
-        "message": "terminate",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "A",
-        "to": "B",
-        "message": "hello",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "A",
-        "to": "B",
-        "message": "bye",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {
-      "W": 1,
-      "B": 4
-    },
-    "destroyedActors": {
-      "W": 3,
-      "B": 5
-    },
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {
+      "B": 4,
+      "W": 1
+    },
+    "destroyedActors": {
+      "B": 5,
+      "W": 3
+    },
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "start",
+        "to": "S",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "1",
+        "message": "spawn",
+        "to": "W",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "2",
+        "message": "ready",
+        "to": "S",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "3",
+        "message": "terminate",
+        "to": "W",
+        "type": 3,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "4",
+        "message": "hello",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "5",
+        "message": "bye",
+        "to": "B",
+        "type": 3,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

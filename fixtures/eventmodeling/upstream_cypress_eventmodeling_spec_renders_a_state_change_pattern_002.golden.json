@@ -1,57 +1,57 @@
 {
   "diagramType": "eventmodeling",
   "model": {
-    "type": "eventmodeling",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "dataEntities": [],
     "frames": [
       {
-        "name": "01",
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "CartScreen",
         "frameKind": "timeframe",
         "modelEntityType": "ui",
-        "entityIdentifier": "CartScreen",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
+        "name": "01",
+        "sourceFrames": []
       },
       {
-        "name": "02",
-        "frameKind": "timeframe",
-        "modelEntityType": "cmd",
+        "dataInlineValue": null,
+        "dataReference": null,
         "entityIdentifier": "AddItem",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
-      },
-      {
-        "name": "03",
-        "frameKind": "timeframe",
-        "modelEntityType": "evt",
-        "entityIdentifier": "ItemAdded",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
-      },
-      {
-        "name": "04",
         "frameKind": "timeframe",
         "modelEntityType": "cmd",
-        "entityIdentifier": "RemoveItem",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
+        "name": "02",
+        "sourceFrames": []
       },
       {
-        "name": "05",
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "ItemAdded",
         "frameKind": "timeframe",
         "modelEntityType": "evt",
-        "entityIdentifier": "ItemRemoved",
-        "sourceFrames": [],
+        "name": "03",
+        "sourceFrames": []
+      },
+      {
         "dataInlineValue": null,
-        "dataReference": null
+        "dataReference": null,
+        "entityIdentifier": "RemoveItem",
+        "frameKind": "timeframe",
+        "modelEntityType": "cmd",
+        "name": "04",
+        "sourceFrames": []
+      },
+      {
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "ItemRemoved",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "name": "05",
+        "sourceFrames": []
       }
     ],
-    "dataEntities": []
+    "title": null,
+    "type": "eventmodeling"
   }
 }

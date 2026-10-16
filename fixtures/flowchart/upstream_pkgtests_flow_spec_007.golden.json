@@ -1,22 +1,22 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
+    "direction": "LR",
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": []
+    },
+    "edges": [],
+    "keyword": "graph",
+    "nodes": [],
+    "subgraphs": [],
     "tooltips": {
       "X": "X"
     },
-    "edgeDefaults": {
-      "style": [],
-      "interpolate": null
-    },
-    "vertexCalls": [],
-    "nodes": [],
-    "edges": [],
-    "subgraphs": []
+    "type": "flowchart-v2",
+    "vertexCalls": []
   }
 }

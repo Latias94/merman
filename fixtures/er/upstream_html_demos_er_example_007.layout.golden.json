@@ -2,23 +2,23 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
+      "bounds": {
+        "max_x": 353.7,
+        "max_y": 369.75,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "edges": [],
       "nodes": [
         {
-          "id": "entity-_customer_order-0",
-          "x": 182.85,
-          "y": 190.875,
-          "width": 341.7,
           "height": 357.75,
-          "is_cluster": false
+          "id": "entity-_customer_order-0",
+          "is_cluster": false,
+          "width": 341.7,
+          "x": 182.85,
+          "y": 190.875
         }
-      ],
-      "edges": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 353.7,
-        "max_y": 369.75
-      }
+      ]
     }
   }
 }

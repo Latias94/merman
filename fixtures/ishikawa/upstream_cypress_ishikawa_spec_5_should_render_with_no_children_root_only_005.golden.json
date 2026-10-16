@@ -1,19 +1,19 @@
 {
   "diagramType": "ishikawa",
   "model": {
-    "type": "ishikawa",
-    "title": "Problem",
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "text": "Problem",
-      "children": []
-    },
+    "accTitle": null,
     "nodes": [
       {
-        "text": "Problem",
-        "depth": 0
+        "depth": 0,
+        "text": "Problem"
       }
-    ]
+    ],
+    "root": {
+      "children": [],
+      "text": "Problem"
+    },
+    "title": "Problem",
+    "type": "ishikawa"
   }
 }

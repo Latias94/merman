@@ -2,24 +2,24 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 175.437,
+        "max_y": 126.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
-          "id": "C1",
-          "x": 93.719,
-          "y": 69.0,
-          "width": 163.437,
           "height": 114.0,
-          "is_cluster": false
+          "id": "C1",
+          "is_cluster": false,
+          "width": 163.437,
+          "x": 93.719,
+          "y": 69.0
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 175.437,
-        "max_y": 126.0
-      }
+      ]
     }
   }
 }

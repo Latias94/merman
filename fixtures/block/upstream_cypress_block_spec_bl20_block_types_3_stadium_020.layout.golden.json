@@ -2,39 +2,39 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
+      "bounds": {
+        "max_x": 67.36,
+        "max_y": 16.0,
+        "min_x": 0.0,
+        "min_y": -16.0
+      },
+      "edges": [],
       "nodes": [
         {
-          "id": "A",
-          "x": 33.68,
-          "y": 0.0,
-          "width": 67.36,
           "height": 32.0,
-          "is_cluster": false
+          "id": "A",
+          "is_cluster": false,
+          "width": 67.36,
+          "x": 33.68,
+          "y": 0.0
         }
       ],
-      "edges": [],
       "shapeGeometries": [
         {
-          "id": "A",
           "allocated": {
-            "x": 33.68,
-            "y": 0.0,
+            "height": 32.0,
             "width": 67.36,
-            "height": 32.0
+            "x": 33.68,
+            "y": 0.0
           },
           "boundary": {
+            "height": 32.0,
             "shape": "stadium",
-            "width": 67.36,
-            "height": 32.0
-          }
+            "width": 67.36
+          },
+          "id": "A"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -16.0,
-        "max_x": 67.36,
-        "max_y": 16.0
-      }
+      ]
     }
   }
 }

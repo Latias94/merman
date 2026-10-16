@@ -1,163 +1,163 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "disableMulticolor + many periods (no sections)",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [],
     "tasks": [
       {
-        "id": 0,
-        "section": "",
-        "type": "",
-        "task": "P01 ",
-        "score": 0,
         "events": [
           "Event 01"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "",
+        "task": "P01 ",
+        "type": ""
       },
       {
-        "id": 1,
-        "section": "",
-        "type": "",
-        "task": "P02 ",
-        "score": 0,
         "events": [
           "Event 02"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "",
+        "task": "P02 ",
+        "type": ""
       },
       {
-        "id": 2,
-        "section": "",
-        "type": "",
-        "task": "P03 ",
-        "score": 0,
         "events": [
           "Event 03"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "",
+        "task": "P03 ",
+        "type": ""
       },
       {
-        "id": 3,
-        "section": "",
-        "type": "",
-        "task": "P04 ",
-        "score": 0,
         "events": [
           "Event 04"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "",
+        "task": "P04 ",
+        "type": ""
       },
       {
-        "id": 4,
-        "section": "",
-        "type": "",
-        "task": "P05 ",
-        "score": 0,
         "events": [
           "Event 05"
-        ]
+        ],
+        "id": 4,
+        "score": 0,
+        "section": "",
+        "task": "P05 ",
+        "type": ""
       },
       {
-        "id": 5,
-        "section": "",
-        "type": "",
-        "task": "P06 ",
-        "score": 0,
         "events": [
           "Event 06"
-        ]
+        ],
+        "id": 5,
+        "score": 0,
+        "section": "",
+        "task": "P06 ",
+        "type": ""
       },
       {
-        "id": 6,
-        "section": "",
-        "type": "",
-        "task": "P07 ",
-        "score": 0,
         "events": [
           "Event 07"
-        ]
+        ],
+        "id": 6,
+        "score": 0,
+        "section": "",
+        "task": "P07 ",
+        "type": ""
       },
       {
-        "id": 7,
-        "section": "",
-        "type": "",
-        "task": "P08 ",
-        "score": 0,
         "events": [
           "Event 08"
-        ]
+        ],
+        "id": 7,
+        "score": 0,
+        "section": "",
+        "task": "P08 ",
+        "type": ""
       },
       {
-        "id": 8,
-        "section": "",
-        "type": "",
-        "task": "P09 ",
-        "score": 0,
         "events": [
           "Event 09"
-        ]
+        ],
+        "id": 8,
+        "score": 0,
+        "section": "",
+        "task": "P09 ",
+        "type": ""
       },
       {
-        "id": 9,
-        "section": "",
-        "type": "",
-        "task": "P10 ",
-        "score": 0,
         "events": [
           "Event 10"
-        ]
+        ],
+        "id": 9,
+        "score": 0,
+        "section": "",
+        "task": "P10 ",
+        "type": ""
       },
       {
-        "id": 10,
-        "section": "",
-        "type": "",
-        "task": "P11 ",
-        "score": 0,
         "events": [
           "Event 11"
-        ]
+        ],
+        "id": 10,
+        "score": 0,
+        "section": "",
+        "task": "P11 ",
+        "type": ""
       },
       {
-        "id": 11,
-        "section": "",
-        "type": "",
-        "task": "P12 ",
-        "score": 0,
         "events": [
           "Event 12"
-        ]
+        ],
+        "id": 11,
+        "score": 0,
+        "section": "",
+        "task": "P12 ",
+        "type": ""
       },
       {
-        "id": 12,
-        "section": "",
-        "type": "",
-        "task": "P13 ",
-        "score": 0,
         "events": [
           "Event 13"
-        ]
+        ],
+        "id": 12,
+        "score": 0,
+        "section": "",
+        "task": "P13 ",
+        "type": ""
       },
       {
-        "id": 13,
-        "section": "",
-        "type": "",
-        "task": "P14 ",
-        "score": 0,
         "events": [
           "Event 14"
-        ]
+        ],
+        "id": 13,
+        "score": 0,
+        "section": "",
+        "task": "P14 ",
+        "type": ""
       },
       {
-        "id": 14,
-        "section": "",
-        "type": "",
-        "task": "P15 ",
-        "score": 0,
         "events": [
           "Event 15"
-        ]
+        ],
+        "id": 14,
+        "score": 0,
+        "section": "",
+        "task": "P15 ",
+        "type": ""
       }
-    ]
+    ],
+    "title": "disableMulticolor + many periods (no sections)",
+    "type": "timeline"
   }
 }

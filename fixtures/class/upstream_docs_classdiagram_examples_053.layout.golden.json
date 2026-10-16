@@ -2,32 +2,32 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 172.797,
+        "max_y": 93.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
-          "id": "Shape",
-          "x": 40.242,
-          "y": 52.5,
-          "width": 56.484,
           "height": 81.0,
-          "is_cluster": false
+          "id": "Shape",
+          "is_cluster": false,
+          "width": 56.484,
+          "x": 40.242,
+          "y": 52.5
         },
         {
-          "id": "Shape2",
-          "x": 140.641,
-          "y": 52.5,
-          "width": 64.313,
           "height": 81.0,
-          "is_cluster": false
+          "id": "Shape2",
+          "is_cluster": false,
+          "width": 64.313,
+          "x": 140.641,
+          "y": 52.5
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 172.797,
-        "max_y": 93.0
-      }
+      ]
     }
   }
 }

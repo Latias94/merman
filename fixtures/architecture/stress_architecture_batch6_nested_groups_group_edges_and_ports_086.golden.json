@@ -1,357 +1,357 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "vpc",
-        "icon": "cloud",
-        "title": "VPC",
-        "in": null
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "ingress",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "lb",
+        "rhsInto": true,
+        "title": null
       },
       {
-        "id": "public",
-        "icon": "cloud",
-        "title": "Public Subnet",
-        "in": "vpc"
+        "lhsDir": "B",
+        "lhsGroup": true,
+        "lhsId": "lb",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": true,
+        "rhsId": "api",
+        "rhsInto": true,
+        "title": null
       },
       {
-        "id": "private",
-        "icon": "cloud",
-        "title": "Private Subnet",
-        "in": "vpc"
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": "query"
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "db",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "disk",
+        "rhsInto": true,
+        "title": "backup nightly 0200"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "vpc",
+        "in": null,
+        "title": "VPC"
+      },
+      {
+        "icon": "cloud",
+        "id": "public",
+        "in": "vpc",
+        "title": "Public Subnet"
+      },
+      {
+        "icon": "cloud",
+        "id": "private",
+        "in": "vpc",
+        "title": "Private Subnet"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "ingress",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "ingress",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lb",
+            "lhsId": "ingress",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lb",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "internet",
         "iconText": null,
+        "id": "ingress",
+        "in": "public",
         "title": "Ingress",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "lb",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "ingress",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "lb",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "lb",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "api",
+            "lhsId": "lb",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "lb",
+        "in": "public",
         "title": "Load Balancer",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lb",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "api",
+            "lhsId": "lb",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "query"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "private",
         "title": "API",
-        "in": "private"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "query"
           },
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": "backup nightly 0200"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "private",
         "title": "DB",
-        "in": "private"
+        "type": "service"
       },
       {
-        "id": "disk",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": "backup nightly 0200"
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "disk",
+        "in": "private",
         "title": "Backup Disk",
-        "in": "private"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "ingress",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "ingress",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lb",
+            "lhsId": "ingress",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lb",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "internet",
         "iconText": null,
+        "id": "ingress",
+        "in": "public",
         "title": "Ingress",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "lb",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "ingress",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "lb",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "lb",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "api",
+            "lhsId": "lb",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "lb",
+        "in": "public",
         "title": "Load Balancer",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lb",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "api",
+            "lhsId": "lb",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "query"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "private",
         "title": "API",
-        "in": "private"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "query"
           },
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": "backup nightly 0200"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "private",
         "title": "DB",
-        "in": "private"
+        "type": "service"
       },
       {
-        "id": "disk",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": "backup nightly 0200"
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "disk",
+        "in": "private",
         "title": "Backup Disk",
-        "in": "private"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "ingress",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "lb",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "lb",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": true,
-        "rhsId": "api",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": true,
-        "title": null
-      },
-      {
-        "lhsId": "api",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "query"
-      },
-      {
-        "lhsId": "db",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "disk",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "backup nightly 0200"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

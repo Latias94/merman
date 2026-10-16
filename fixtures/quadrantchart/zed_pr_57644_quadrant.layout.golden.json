@@ -2,344 +2,344 @@
   "diagramType": "quadrantChart",
   "layout": {
     "QuadrantChartDiagram": {
-      "width": 500.0,
-      "height": 500.0,
-      "title": {
-        "text": "Feature Prioritization Matrix",
-        "x": 250.0,
-        "y": 10.0,
-        "fill": "#131300",
-        "fontSize": 20.0,
-        "rotation": 0.0,
-        "verticalPos": "center",
-        "horizontalPos": "top"
-      },
-      "quadrants": [
+      "axisLabels": [
         {
-          "x": 263.0,
-          "y": 45.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#ECECFF",
-          "text": {
-            "text": "Plan carefully",
-            "x": 379.0,
-            "y": 50.0,
-            "fill": "#131300",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": 0.0,
+          "text": "Low Effort",
+          "verticalPos": "center",
+          "x": 147.0,
+          "y": 479.0
         },
         {
-          "x": 31.0,
-          "y": 45.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#f1f1ff",
-          "text": {
-            "text": "Do first",
-            "x": 147.0,
-            "y": 50.0,
-            "fill": "#0e0e00",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": 0.0,
+          "text": "High Effort",
+          "verticalPos": "center",
+          "x": 379.0,
+          "y": 479.0
         },
         {
-          "x": 31.0,
-          "y": 257.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#f6f6ff",
-          "text": {
-            "text": "Delegate",
-            "x": 147.0,
-            "y": 262.0,
-            "fill": "#090900",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": -90.0,
+          "text": "Low Impact",
+          "verticalPos": "center",
+          "x": 5.0,
+          "y": 363.0
         },
         {
-          "x": 263.0,
-          "y": 257.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#fbfbff",
-          "text": {
-            "text": "Eliminate",
-            "x": 379.0,
-            "y": 262.0,
-            "fill": "#040400",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": -90.0,
+          "text": "High Impact",
+          "verticalPos": "center",
+          "x": 5.0,
+          "y": 151.0
         }
       ],
       "borderLines": [
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 2.0,
           "x1": 30.0,
-          "y1": 45.0,
           "x2": 496.0,
+          "y1": 45.0,
           "y2": 45.0
         },
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 2.0,
           "x1": 495.0,
-          "y1": 46.0,
           "x2": 495.0,
+          "y1": 46.0,
           "y2": 468.0
         },
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 2.0,
           "x1": 30.0,
-          "y1": 469.0,
           "x2": 496.0,
+          "y1": 469.0,
           "y2": 469.0
         },
         {
+          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
           "strokeWidth": 2.0,
-          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
           "x1": 31.0,
-          "y1": 46.0,
           "x2": 31.0,
-          "y2": 468.0
-        },
-        {
-          "strokeWidth": 1.0,
-          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
-          "x1": 263.0,
           "y1": 46.0,
-          "x2": 263.0,
           "y2": 468.0
         },
         {
-          "strokeWidth": 1.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 1.0,
+          "x1": 263.0,
+          "x2": 263.0,
+          "y1": 46.0,
+          "y2": 468.0
+        },
+        {
+          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 1.0,
           "x1": 32.0,
-          "y1": 257.0,
           "x2": 494.0,
+          "y1": 257.0,
           "y2": 257.0
         }
       ],
+      "height": 500.0,
       "points": [
         {
-          "x": 133.08,
-          "y": 405.4,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "Emoji reactions",
+            "verticalPos": "center",
             "x": 133.08,
-            "y": 410.4,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "y": 410.4
+          },
+          "x": 133.08,
+          "y": 405.4
         },
         {
-          "x": 332.6,
-          "y": 108.6,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "Audit logging",
+            "verticalPos": "center",
             "x": 332.6,
-            "y": 113.6,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "y": 113.6
+          },
+          "x": 332.6,
+          "y": 108.6
         },
         {
-          "x": 86.68,
-          "y": 180.68,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "Keyboard shortcuts",
+            "verticalPos": "center",
             "x": 86.68,
-            "y": 185.68,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "y": 185.68
+          },
+          "x": 86.68,
+          "y": 180.68
         },
         {
-          "x": 439.32,
-          "y": 151.0,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "Real-time collab",
+            "verticalPos": "center",
             "x": 439.32,
-            "y": 156.0,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "y": 156.0
+          },
+          "x": 439.32,
+          "y": 151.0
         },
         {
-          "x": 114.52,
-          "y": 278.2,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "Email notifications",
+            "verticalPos": "center",
             "x": 114.52,
-            "y": 283.2,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "y": 283.2
+          },
+          "x": 114.52,
+          "y": 278.2
         },
         {
-          "x": 272.28,
-          "y": 333.32,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "Custom themes",
+            "verticalPos": "center",
             "x": 272.28,
-            "y": 338.32,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "y": 338.32
+          },
+          "x": 272.28,
+          "y": 333.32
         },
         {
-          "x": 193.4,
-          "y": 223.08,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "Export to PDF",
+            "verticalPos": "center",
             "x": 193.4,
-            "y": 228.08,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "y": 228.08
+          },
+          "x": 193.4,
+          "y": 223.08
         },
         {
-          "x": 392.92,
-          "y": 83.16,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
+            "fill": "#131300",
+            "fontSize": 12.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
             "text": "SSO integration",
-            "x": 392.92,
-            "y": 88.16,
-            "fill": "#131300",
-            "fontSize": 12.0,
-            "rotation": 0.0,
             "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "x": 392.92,
+            "y": 88.16
+          },
+          "x": 392.92,
+          "y": 83.16
         },
         {
-          "x": 147.0,
-          "y": 121.32,
           "fill": "hsl(240, 100%, NaN%)",
           "radius": 5.0,
           "strokeColor": "hsl(240, 100%, NaN%)",
           "strokeWidth": "0px",
           "text": {
-            "text": "Dark mode support",
-            "x": 147.0,
-            "y": 126.32,
             "fill": "#131300",
             "fontSize": 12.0,
+            "horizontalPos": "top",
             "rotation": 0.0,
+            "text": "Dark mode support",
             "verticalPos": "center",
-            "horizontalPos": "top"
-          }
+            "x": 147.0,
+            "y": 126.32
+          },
+          "x": 147.0,
+          "y": 121.32
         }
       ],
-      "axisLabels": [
+      "quadrants": [
         {
-          "text": "Low Effort",
-          "x": 147.0,
-          "y": 479.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": 0.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#ECECFF",
+          "height": 212.0,
+          "text": {
+            "fill": "#131300",
+            "fontSize": 16.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
+            "text": "Plan carefully",
+            "verticalPos": "center",
+            "x": 379.0,
+            "y": 50.0
+          },
+          "width": 232.0,
+          "x": 263.0,
+          "y": 45.0
         },
         {
-          "text": "High Effort",
-          "x": 379.0,
-          "y": 479.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": 0.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#f1f1ff",
+          "height": 212.0,
+          "text": {
+            "fill": "#0e0e00",
+            "fontSize": 16.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
+            "text": "Do first",
+            "verticalPos": "center",
+            "x": 147.0,
+            "y": 50.0
+          },
+          "width": 232.0,
+          "x": 31.0,
+          "y": 45.0
         },
         {
-          "text": "Low Impact",
-          "x": 5.0,
-          "y": 363.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": -90.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#f6f6ff",
+          "height": 212.0,
+          "text": {
+            "fill": "#090900",
+            "fontSize": 16.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
+            "text": "Delegate",
+            "verticalPos": "center",
+            "x": 147.0,
+            "y": 262.0
+          },
+          "width": 232.0,
+          "x": 31.0,
+          "y": 257.0
         },
         {
-          "text": "High Impact",
-          "x": 5.0,
-          "y": 151.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": -90.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#fbfbff",
+          "height": 212.0,
+          "text": {
+            "fill": "#040400",
+            "fontSize": 16.0,
+            "horizontalPos": "top",
+            "rotation": 0.0,
+            "text": "Eliminate",
+            "verticalPos": "center",
+            "x": 379.0,
+            "y": 262.0
+          },
+          "width": 232.0,
+          "x": 263.0,
+          "y": 257.0
         }
-      ]
+      ],
+      "title": {
+        "fill": "#131300",
+        "fontSize": 20.0,
+        "horizontalPos": "top",
+        "rotation": 0.0,
+        "text": "Feature Prioritization Matrix",
+        "verticalPos": "center",
+        "x": 250.0,
+        "y": 10.0
+      },
+      "width": 500.0
     }
   }
 }

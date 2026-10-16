@@ -1,28 +1,28 @@
 {
   "diagramType": "cynefin",
   "model": {
-    "type": "cynefin",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "domains": [
       {
-        "name": "complex",
         "items": [
           {
             "label": "Adaptive work"
           }
-        ]
+        ],
+        "name": "complex"
       },
       {
-        "name": "clear",
         "items": [
           {
             "label": "Standard work"
           }
-        ]
+        ],
+        "name": "clear"
       }
     ],
-    "transitions": []
+    "title": null,
+    "transitions": [],
+    "type": "cynefin"
   }
 }

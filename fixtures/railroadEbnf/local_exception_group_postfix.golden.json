@@ -1,22 +1,17 @@
 {
   "diagramType": "railroadEbnf",
   "model": {
-    "type": "railroadEbnf",
-    "title": "Exception and grouped postfixes",
-    "accTitle": "EBNF exception branches",
     "accDescr": "Difference keeps both operands while postfixes wrap grouped choices.",
+    "accTitle": "EBNF exception branches",
     "rules": [
       {
-        "name": "token",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "sequence",
               "elements": [
                 {
-                  "type": "nonterminal",
-                  "name": "letter"
+                  "name": "letter",
+                  "type": "nonterminal"
                 },
                 {
                   "type": "terminal",
@@ -26,12 +21,11 @@
                   "type": "terminal",
                   "value": "x"
                 }
-              ]
+              ],
+              "type": "sequence"
             },
             {
-              "type": "optional",
               "element": {
-                "type": "choice",
                 "alternatives": [
                   {
                     "type": "terminal",
@@ -41,13 +35,13 @@
                     "type": "terminal",
                     "value": "b"
                   }
-                ]
-              }
+                ],
+                "type": "choice"
+              },
+              "type": "optional"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "choice",
                 "alternatives": [
                   {
                     "type": "terminal",
@@ -57,30 +51,36 @@
                     "type": "terminal",
                     "value": "d"
                   }
-                ]
+                ],
+                "type": "choice"
               },
+              "max": null,
               "min": 1,
-              "max": null
+              "type": "repetition"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "token"
       },
       {
-        "name": "letter",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
-              "type": "special",
-              "text": "alphabetic"
+              "text": "alphabetic",
+              "type": "special"
             },
             {
               "type": "terminal",
               "value": "z"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "letter"
       }
-    ]
+    ],
+    "title": "Exception and grouped postfixes",
+    "type": "railroadEbnf"
   }
 }

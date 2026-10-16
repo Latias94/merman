@@ -1,105 +1,105 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": "Annotators",
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "Alice",
+        "color": null,
+        "declarationSpan": {
+          "end": 44,
+          "start": 32
+        },
+        "emoji": null,
+        "explicit": true,
+        "groupId": null,
+        "isStarter": false,
         "label": null,
+        "name": "Alice",
+        "occurrences": [
+          {
+            "end": 44,
+            "start": 39
+          },
+          {
+            "end": 72,
+            "start": 67
+          },
+          {
+            "end": 100,
+            "start": 95
+          }
+        ],
         "participantType": "Actor",
         "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": true,
-        "isStarter": false,
-        "declarationSpan": {
-          "start": 32,
-          "end": 44
-        },
-        "occurrences": [
-          {
-            "start": 39,
-            "end": 44
-          },
-          {
-            "start": 67,
-            "end": 72
-          },
-          {
-            "start": 95,
-            "end": 100
-          }
-        ],
         "width": null
       },
       {
-        "name": "Bob",
+        "color": null,
+        "declarationSpan": {
+          "end": 62,
+          "start": 49
+        },
+        "emoji": null,
+        "explicit": true,
+        "groupId": null,
+        "isStarter": false,
         "label": null,
+        "name": "Bob",
+        "occurrences": [
+          {
+            "end": 62,
+            "start": 59
+          },
+          {
+            "end": 77,
+            "start": 74
+          },
+          {
+            "end": 93,
+            "start": 90
+          }
+        ],
         "participantType": "Database",
         "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": true,
-        "isStarter": false,
-        "declarationSpan": {
-          "start": 49,
-          "end": 62
-        },
-        "occurrences": [
-          {
-            "start": 59,
-            "end": 62
-          },
-          {
-            "start": 74,
-            "end": 77
-          },
-          {
-            "start": 90,
-            "end": 93
-          }
-        ],
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 67,
-          "end": 86
-        },
-        "kind": "message",
         "explicit_from": "Alice",
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "Hi Bob",
         "resolved_from": "Alice",
         "resolved_to": "Bob",
-        "label": "Hi Bob",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 86,
+          "start": 67
+        },
+        "style": "asynchronous"
       },
       {
-        "id": "zenuml-statement-1",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 90,
-          "end": 111
-        },
-        "kind": "message",
         "explicit_from": "Bob",
+        "id": "zenuml-statement-1",
+        "kind": "message",
+        "label": "Hi Alice",
         "resolved_from": "Bob",
         "resolved_to": "Alice",
-        "label": "Hi Alice",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 111,
+          "start": 90
+        },
+        "style": "asynchronous"
       }
     ],
+    "title": "Annotators",
     "type": "zenuml"
   }
 }

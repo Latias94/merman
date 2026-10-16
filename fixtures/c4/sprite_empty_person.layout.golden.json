@@ -2,159 +2,159 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 782.0,
-        "max_y": 437.524
-      },
-      "width": 832.0,
-      "height": 447.524,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Context",
-      "title": "C4Context empty sprite (default) should not render image",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 632.0,
+          "descr": null,
           "height": 321.524,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 632.0,
+          "x": 100.0,
+          "y": 66.0
         }
       ],
-      "shapes": [
-        {
-          "alias": "p1",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 171.524,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Customer",
-            "y": 27.7,
-            "width": 55.44,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "A customer of the bank.",
-            "y": 59.264,
-            "width": 114.57,
-            "height": 12.628,
-            "line_count": 1.0
-          }
-        },
-        {
-          "alias": "s1",
-          "parent_boundary": "global",
-          "type_c4_shape": "system",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 98.206,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Software System]",
-            "y": 44.175,
-            "width": 85.785,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Internet Banking System",
-            "y": 27.7,
-            "width": 144.76,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Allows customers to view account data.",
-            "y": 65.578,
-            "width": 162.212,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        }
-      ],
+      "bounds": {
+        "max_x": 782.0,
+        "max_y": 437.524,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Context",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 447.524,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 466.0,
+            "y": 227.632
+          },
           "from": "p1",
-          "to": "s1",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": null,
           "rel_type": "rel",
           "start_point": {
             "x": 295.671,
             "y": 247.392
           },
-          "end_point": {
-            "x": 466.0,
-            "y": 227.632
-          },
-          "offset_x": null,
-          "offset_y": null,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "HTTPS",
-            "y": 0.0,
-            "width": 36.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "HTTPS",
+            "width": 36.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "s1"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "p1",
+          "descr": {
+            "height": 12.628,
+            "line_count": 1.0,
+            "text": "A customer of the bank.",
+            "width": 114.57,
+            "y": 59.264
+          },
+          "height": 171.524,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Customer",
+            "width": 55.44,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "s1",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Allows customers to view account data.",
+            "width": 162.212,
+            "y": 65.578
+          },
+          "height": 98.206,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Internet Banking System",
+            "width": 144.76,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Software System]",
+            "width": 85.785,
+            "y": 44.175
+          },
+          "type_c4_shape": "system",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
+        }
+      ],
+      "title": "C4Context empty sprite (default) should not render image",
+      "use_max_width": true,
+      "width": 832.0
     }
   }
 }

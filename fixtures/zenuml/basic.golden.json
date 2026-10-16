@@ -1,89 +1,89 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "Alice",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "Alice",
         "occurrences": [
           {
-            "start": 9,
-            "end": 14
+            "end": 14,
+            "start": 9
           },
           {
-            "start": 35,
-            "end": 40
+            "end": 40,
+            "start": 35
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
-        "name": "Bob",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "Bob",
         "occurrences": [
           {
-            "start": 16,
-            "end": 19
+            "end": 19,
+            "start": 16
           },
           {
-            "start": 29,
-            "end": 32
+            "end": 32,
+            "start": 29
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 9,
-          "end": 27
-        },
-        "kind": "message",
         "explicit_from": "Alice",
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "Hello",
         "resolved_from": "Alice",
         "resolved_to": "Bob",
-        "label": "Hello",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 27,
+          "start": 9
+        },
+        "style": "asynchronous"
       },
       {
-        "id": "zenuml-statement-1",
         "comment": null,
-        "span": {
-          "start": 29,
-          "end": 48
-        },
-        "kind": "return",
         "explicit_from": "Bob",
-        "resolved_from": "Bob",
         "explicit_to": "Alice",
+        "id": "zenuml-statement-1",
+        "kind": "return",
+        "label": "Reply",
+        "resolved_from": "Bob",
         "resolved_to": "Alice",
-        "label": "Reply"
+        "span": {
+          "end": 48,
+          "start": 29
+        }
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

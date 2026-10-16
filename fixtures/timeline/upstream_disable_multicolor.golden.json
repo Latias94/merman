@@ -1,43 +1,43 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Disable multicolor",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [],
     "tasks": [
       {
-        "id": 0,
-        "section": "",
-        "type": "",
-        "task": "A ",
-        "score": 0,
         "events": [
           "first"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "",
+        "task": "A ",
+        "type": ""
       },
       {
-        "id": 1,
-        "section": "",
-        "type": "",
-        "task": "B ",
-        "score": 0,
         "events": [
           "second"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "",
+        "task": "B ",
+        "type": ""
       },
       {
-        "id": 2,
-        "section": "",
-        "type": "",
-        "task": "C ",
-        "score": 0,
         "events": [
           "third"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "",
+        "task": "C ",
+        "type": ""
       }
-    ]
+    ],
+    "title": "Disable multicolor",
+    "type": "timeline"
   }
 }

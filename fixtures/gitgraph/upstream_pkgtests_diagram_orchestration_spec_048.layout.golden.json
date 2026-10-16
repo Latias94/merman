@@ -2,30 +2,30 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [],
       "bounds": {
-        "min_x": -91.72,
-        "min_y": -10.0,
         "max_x": 8.0,
-        "max_y": 6.0
+        "max_y": 6.0,
+        "min_x": -91.72,
+        "min_y": -10.0
       },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 0.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         }
       ],
       "commits": [],
-      "arrows": []
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 0.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

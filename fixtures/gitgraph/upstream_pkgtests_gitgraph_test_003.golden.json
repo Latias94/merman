@@ -1,29 +1,29 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "1",
-        "message": "Fix bug",
-        "seq": 0,
-        "type": 0,
-        "tags": [
-          "v1.2"
-        ],
-        "parents": [],
-        "branch": "main"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "1",
+        "message": "Fix bug",
+        "parents": [],
+        "seq": 0,
+        "tags": [
+          "v1.2"
+        ],
+        "type": 0
+      }
+    ],
     "currentBranch": "main",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

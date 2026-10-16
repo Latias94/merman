@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": false,
-    "title": "NETFLIX",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "sections": [
       {
         "label": "Time spent looking for movie",
@@ -15,6 +12,9 @@
         "label": "Time spent watching it",
         "value": 10.0
       }
-    ]
+    ],
+    "showData": false,
+    "title": "NETFLIX",
+    "type": "pie"
   }
 }

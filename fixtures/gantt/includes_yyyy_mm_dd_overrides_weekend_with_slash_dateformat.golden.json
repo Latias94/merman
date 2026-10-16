@@ -1,60 +1,60 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Includes YYYY-MM-DD overrides weekend exclude under YYYY/MM/DD format",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY/MM/DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [
-      "2019-02-02"
-    ],
+    "clickEvents": {},
+    "dateFormat": "YYYY/MM/DD",
+    "displayMode": "",
     "excludes": [
       "weekends"
     ],
+    "includes": [
+      "2019-02-02"
+    ],
     "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
-    "displayMode": "",
+    "links": {},
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "section": "A",
-        "type": "A",
-        "task": "Task1",
-        "id": "a1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2019-02-02T00:00:00.000",
+        "id": "a1",
         "manualEndTime": false,
-        "renderEndTime": "2019-02-02T00:00:00.000",
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": a1, 2019/02/01, 1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2019/02/01"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "2019/02/01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2019-02-02T00:00:00.000",
+        "section": "A",
         "startTime": "2019-02-01T00:00:00.000",
-        "endTime": "2019-02-02T00:00:00.000"
+        "task": "Task1",
+        "type": "A",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Includes YYYY-MM-DD overrides weekend exclude under YYYY/MM/DD format",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

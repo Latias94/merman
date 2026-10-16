@@ -1,143 +1,143 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Relative start/end mix",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Documentation"
     ],
     "tasks": [
       {
-        "section": "Documentation",
-        "type": "Documentation",
-        "task": "task A",
-        "id": "a",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-28T00:00:00.000",
+        "id": "a",
         "manualEndTime": true,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": a, 2024-01-27, 2024-01-28",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-01-27"
-          },
           "endTime": {
             "data": "2024-01-28"
+          },
+          "startTime": {
+            "startData": "2024-01-27",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Documentation",
         "startTime": "2024-01-27T00:00:00.000",
-        "endTime": "2024-01-28T00:00:00.000"
+        "task": "task A",
+        "type": "Documentation",
+        "vert": false
       },
       {
-        "section": "Documentation",
-        "type": "Documentation",
-        "task": "task B",
-        "id": "b",
-        "prevTaskId": "a",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-30T00:00:00.000",
+        "id": "b",
         "manualEndTime": true,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "a",
+        "processed": true,
         "raw": {
           "data": ": b, after a, 2024-01-30",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after a"
-          },
           "endTime": {
             "data": "2024-01-30"
+          },
+          "startTime": {
+            "startData": "after a",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Documentation",
         "startTime": "2024-01-28T00:00:00.000",
-        "endTime": "2024-01-30T00:00:00.000"
+        "task": "task B",
+        "type": "Documentation",
+        "vert": false
       },
       {
-        "section": "Documentation",
-        "type": "Documentation",
-        "task": "task C",
-        "id": "c",
-        "prevTaskId": "b",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-27T00:00:00.000",
+        "id": "c",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "b",
+        "processed": true,
         "raw": {
           "data": ": c, 2024-01-20, until a",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-01-20"
-          },
           "endTime": {
             "data": "until a"
+          },
+          "startTime": {
+            "startData": "2024-01-20",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Documentation",
         "startTime": "2024-01-20T00:00:00.000",
-        "endTime": "2024-01-27T00:00:00.000"
+        "task": "task C",
+        "type": "Documentation",
+        "vert": false
       },
       {
-        "section": "Documentation",
-        "type": "Documentation",
-        "task": "task D",
-        "id": "d",
-        "prevTaskId": "c",
-        "order": 3,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-28T00:00:00.000",
+        "id": "d",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "c",
+        "processed": true,
         "raw": {
           "data": ": d, after c, until b",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after c"
-          },
           "endTime": {
             "data": "until b"
+          },
+          "startTime": {
+            "startData": "after c",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Documentation",
         "startTime": "2024-01-27T00:00:00.000",
-        "endTime": "2024-01-28T00:00:00.000"
+        "task": "task D",
+        "type": "Documentation",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Relative start/end mix",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

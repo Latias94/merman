@@ -2,41 +2,41 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
+      "bounds": {
+        "max_x": 203.52,
+        "max_y": 101.76,
+        "min_x": 0.0,
+        "min_y": -101.76
+      },
+      "edges": [],
       "nodes": [
         {
-          "id": "id1",
-          "x": 101.76,
-          "y": 0.0,
-          "width": 203.52,
           "height": 203.52,
-          "is_cluster": false
+          "id": "id1",
+          "is_cluster": false,
+          "width": 203.52,
+          "x": 101.76,
+          "y": 0.0
         }
       ],
-      "edges": [],
       "shapeGeometries": [
         {
-          "id": "id1",
           "allocated": {
-            "x": 101.76,
-            "y": 0.0,
+            "height": 203.52,
             "width": 203.52,
-            "height": 203.52
+            "x": 101.76,
+            "y": 0.0
           },
           "boundary": {
-            "shape": "doubleCircle",
-            "outer_radius": 109.76,
+            "inner_height_attribute": 209.52,
             "inner_radius": 104.76,
             "inner_width_attribute": 209.52,
-            "inner_height_attribute": 209.52
-          }
+            "outer_radius": 109.76,
+            "shape": "doubleCircle"
+          },
+          "id": "id1"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -101.76,
-        "max_x": 203.52,
-        "max_y": 101.76
-      }
+      ]
     }
   }
 }

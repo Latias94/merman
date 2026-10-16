@@ -1,53 +1,53 @@
 {
   "diagramType": "mindmap",
   "model": {
-    "type": "mindmap",
-    "nodes": [
-      {
-        "id": "0",
-        "domId": "node_0",
-        "label": "I am a cloud",
-        "labelType": "markdown",
-        "isGroup": false,
-        "shape": "cloud",
-        "width": 200,
-        "height": 0,
-        "padding": 10,
-        "cssClasses": "mindmap-node section-root section--1",
-        "cssStyles": [],
-        "centerLabel": true,
-        "look": "classic",
-        "level": 0,
-        "nodeId": "id",
-        "type": 4
-      }
-    ],
-    "edges": [],
     "diagramId": "<dynamic>",
-    "rootNode": {
-      "id": 0,
-      "nodeId": "id",
-      "level": 0,
-      "descr": "I am a cloud",
-      "type": 4,
-      "children": [],
-      "width": 200,
-      "padding": 10,
-      "isRoot": true
-    },
+    "direction": "TB",
+    "edges": [],
     "markers": [
       "point"
     ],
-    "direction": "TB",
     "nodeSpacing": 50,
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "domId": "node_0",
+        "height": 0,
+        "id": "0",
+        "isGroup": false,
+        "label": "I am a cloud",
+        "labelType": "markdown",
+        "level": 0,
+        "look": "classic",
+        "nodeId": "id",
+        "padding": 10,
+        "shape": "cloud",
+        "type": 4,
+        "width": 200
+      }
+    ],
     "rankSpacing": 50,
+    "rootNode": {
+      "children": [],
+      "descr": "I am a cloud",
+      "id": 0,
+      "isRoot": true,
+      "level": 0,
+      "nodeId": "id",
+      "padding": 10,
+      "type": 4,
+      "width": 200
+    },
     "shapes": {
       "0": {
-        "shape": "cloud",
-        "width": 200,
         "height": 0,
-        "padding": 10
+        "padding": 10,
+        "shape": "cloud",
+        "width": 200
       }
-    }
+    },
+    "type": "mindmap"
   }
 }

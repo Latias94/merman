@@ -1,135 +1,135 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "e",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "f",
-            "type": "na",
             "label": "f",
-            "children": [],
+            "type": "na",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "g",
-            "type": "na",
             "label": "g",
-            "children": [],
+            "type": "na",
             "widthInColumns": 1
           },
           {
-            "id": "h",
-            "type": "na",
-            "label": "h",
             "children": [],
+            "id": "h",
+            "label": "h",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
         "colorIndex": 0,
         "columns": 2,
+        "id": "e",
+        "label": "",
+        "type": "composite",
         "widthInColumns": 4
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "e",
-            "type": "composite",
-            "label": "",
             "children": [
               {
+                "children": [],
                 "id": "f",
-                "type": "na",
                 "label": "f",
-                "children": [],
+                "type": "na",
                 "widthInColumns": 1
               },
               {
+                "children": [],
                 "id": "g",
-                "type": "na",
                 "label": "g",
-                "children": [],
+                "type": "na",
                 "widthInColumns": 1
               },
               {
-                "id": "h",
-                "type": "na",
-                "label": "h",
                 "children": [],
+                "id": "h",
+                "label": "h",
+                "type": "na",
                 "widthInColumns": 1
               }
             ],
             "colorIndex": 0,
             "columns": 2,
+            "id": "e",
+            "label": "",
+            "type": "composite",
             "widthInColumns": 4
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "e",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "f",
-            "type": "na",
             "label": "f",
-            "children": [],
+            "type": "na",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "g",
-            "type": "na",
             "label": "g",
-            "children": [],
+            "type": "na",
             "widthInColumns": 1
           },
           {
-            "id": "h",
-            "type": "na",
-            "label": "h",
             "children": [],
+            "id": "h",
+            "label": "h",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
         "colorIndex": 0,
         "columns": 2,
+        "id": "e",
+        "label": "",
+        "type": "composite",
         "widthInColumns": 4
       },
       {
+        "children": [],
         "id": "f",
-        "type": "na",
         "label": "f",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "g",
-        "type": "na",
         "label": "g",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "h",
-        "type": "na",
-        "label": "h",
         "children": [],
+        "id": "h",
+        "label": "h",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

@@ -2,39 +2,22 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
-        {
-          "id": "Cloudwatch",
-          "x": 47.18,
-          "y": 52.5,
-          "width": 70.359,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Route53",
-          "x": 47.18,
-          "y": 173.5,
-          "width": 56.781,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "EKS",
-          "x": 47.18,
-          "y": 294.5,
-          "width": 64.203,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 82.359,
+        "max_y": 335.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "L_Cloudwatch_Route53_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Cloudwatch",
-          "to": "Route53",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Cloudwatch_Route53_0",
+          "label": null,
           "points": [
             {
               "x": 47.18,
@@ -45,21 +28,21 @@
               "y": 133.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Route53",
+          "to_cluster": null
         },
         {
-          "id": "L_Route53_EKS_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Route53",
-          "to": "EKS",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Route53_EKS_0",
+          "label": null,
           "points": [
             {
               "x": 47.18,
@@ -70,23 +53,40 @@
               "y": 254.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "EKS",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 82.359,
-        "max_y": 335.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "Cloudwatch",
+          "is_cluster": false,
+          "width": 70.359,
+          "x": 47.18,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "Route53",
+          "is_cluster": false,
+          "width": 56.781,
+          "x": 47.18,
+          "y": 173.5
+        },
+        {
+          "height": 81.0,
+          "id": "EKS",
+          "is_cluster": false,
+          "width": 64.203,
+          "x": 47.18,
+          "y": 294.5
+        }
+      ]
     }
   }
 }

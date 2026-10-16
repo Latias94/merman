@@ -1,129 +1,116 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "A",
-        "type": "na",
-        "label": "A",
         "children": [],
-        "widthInColumns": 1,
         "classes": [
           "blue"
-        ]
+        ],
+        "id": "A",
+        "label": "A",
+        "type": "na",
+        "widthInColumns": 1
       },
       {
-        "id": "id-<id>-1-0",
-        "type": "space",
-        "label": "",
         "children": [],
+        "id": "id-<id>-1-0",
+        "label": "",
+        "type": "space",
         "width": 1
       },
       {
-        "id": "B",
-        "type": "na",
-        "label": "B",
         "children": [],
-        "widthInColumns": 1,
+        "id": "B",
+        "label": "B",
         "styles": [
           "fill:#bbf",
           "stroke:#f66",
           "stroke-width:2px",
           "color:#fff",
           "stroke-dasharray: 5 5"
-        ]
-      }
-    ],
-    "edges": [
-      {
-        "id": "1-A-B",
-        "type": "edge",
-        "label": "",
-        "children": [],
-        "start": "A",
-        "end": "B",
-        "arrowTypeEnd": "arrow_point",
-        "arrowTypeStart": "arrow_open"
+        ],
+        "type": "na",
+        "widthInColumns": 1
       }
     ],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "A",
-            "type": "na",
-            "label": "A",
             "children": [],
-            "widthInColumns": 1,
             "classes": [
               "blue"
-            ]
+            ],
+            "id": "A",
+            "label": "A",
+            "type": "na",
+            "widthInColumns": 1
           },
           {
-            "id": "id-<id>-1-0",
-            "type": "space",
-            "label": "",
             "children": [],
+            "id": "id-<id>-1-0",
+            "label": "",
+            "type": "space",
             "width": 1
           },
           {
-            "id": "B",
-            "type": "na",
-            "label": "B",
             "children": [],
-            "widthInColumns": 1,
+            "id": "B",
+            "label": "B",
             "styles": [
               "fill:#bbf",
               "stroke:#f66",
               "stroke-width:2px",
               "color:#fff",
               "stroke-dasharray: 5 5"
-            ]
+            ],
+            "type": "na",
+            "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "A",
-        "type": "na",
-        "label": "A",
         "children": [],
-        "widthInColumns": 1,
         "classes": [
           "blue"
-        ]
-      },
-      {
-        "id": "id-<id>-1",
-        "type": "space",
-        "label": "",
-        "children": [],
-        "width": 1
-      },
-      {
-        "id": "id-<id>-1-0",
-        "type": "space",
-        "label": "",
-        "children": [],
-        "width": 1
-      },
-      {
-        "id": "B",
+        ],
+        "id": "A",
+        "label": "A",
         "type": "na",
-        "label": "B",
+        "widthInColumns": 1
+      },
+      {
         "children": [],
-        "widthInColumns": 1,
+        "id": "id-<id>-1",
+        "label": "",
+        "type": "space",
+        "width": 1
+      },
+      {
+        "children": [],
+        "id": "id-<id>-1-0",
+        "label": "",
+        "type": "space",
+        "width": 1
+      },
+      {
+        "children": [],
+        "id": "B",
+        "label": "B",
         "styles": [
           "fill:#bbf",
           "stroke:#f66",
           "stroke-width:2px",
           "color:#fff",
           "stroke-dasharray: 5 5"
-        ]
+        ],
+        "type": "na",
+        "widthInColumns": 1
       }
     ],
     "classes": {
@@ -137,6 +124,19 @@
         "textStyles": []
       }
     },
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_point",
+        "arrowTypeStart": "arrow_open",
+        "children": [],
+        "end": "B",
+        "id": "1-A-B",
+        "label": "",
+        "start": "A",
+        "type": "edge"
+      }
+    ],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

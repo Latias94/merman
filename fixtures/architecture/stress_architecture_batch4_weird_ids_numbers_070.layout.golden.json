@@ -2,39 +2,75 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
+      "bounds": {
+        "max_x": 280.687,
+        "max_y": 97.0,
+        "min_x": -200.687,
+        "min_y": 17.0
+      },
+      "cytoscape_service_bounds": [
         {
+          "body_bounds": {
+            "max_x": -120.687,
+            "max_y": 97.0,
+            "min_x": -200.687,
+            "min_y": 17.0
+          },
           "id": "s_01",
-          "x": -200.687,
-          "y": 17.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "g_1",
+          "label_bounds": {
+            "max_x": -142.187,
+            "max_y": 115.0,
+            "min_x": -179.187,
+            "min_y": 17.0
+          },
+          "label_metrics": {
+            "half_width": 16.5,
+            "text_width": 33.0
+          },
+          "union_bounds": {
+            "max_x": -119.687,
+            "max_y": 115.0,
+            "min_x": -201.687,
+            "min_y": 16.0
+          }
         },
         {
+          "body_bounds": {
+            "max_x": 280.687,
+            "max_y": 97.0,
+            "min_x": 200.687,
+            "min_y": 17.0
+          },
           "id": "s_02",
-          "x": 200.687,
-          "y": 17.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "j_0",
-          "x": 0.0,
-          "y": 17.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "g_1",
+          "label_bounds": {
+            "max_x": 259.187,
+            "max_y": 115.0,
+            "min_x": 222.187,
+            "min_y": 17.0
+          },
+          "label_metrics": {
+            "half_width": 16.5,
+            "text_width": 33.0
+          },
+          "union_bounds": {
+            "max_x": 281.687,
+            "max_y": 115.0,
+            "min_x": 199.687,
+            "min_y": 16.0
+          }
         }
       ],
       "edges": [
         {
-          "id": "edge-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "s_01",
-          "to": "j_0",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-0",
+          "label": null,
           "points": [
             {
               "x": -120.687,
@@ -49,21 +85,21 @@
               "y": 57.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "j_0",
+          "to_cluster": null
         },
         {
-          "id": "edge-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "j_0",
-          "to": "s_02",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-1",
+          "label": null,
           "points": [
             {
               "x": 80.0,
@@ -78,87 +114,51 @@
               "y": 57.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        }
-      ],
-      "cytoscape_service_bounds": [
-        {
-          "id": "s_01",
-          "in_group": "g_1",
-          "body_bounds": {
-            "min_x": -200.687,
-            "min_y": 17.0,
-            "max_x": -120.687,
-            "max_y": 97.0
-          },
-          "label_bounds": {
-            "min_x": -179.187,
-            "min_y": 17.0,
-            "max_x": -142.187,
-            "max_y": 115.0
-          },
-          "label_metrics": {
-            "text_width": 33.0,
-            "half_width": 16.5
-          },
-          "union_bounds": {
-            "min_x": -201.687,
-            "min_y": 16.0,
-            "max_x": -119.687,
-            "max_y": 115.0
-          }
-        },
-        {
-          "id": "s_02",
-          "in_group": "g_1",
-          "body_bounds": {
-            "min_x": 200.687,
-            "min_y": 17.0,
-            "max_x": 280.687,
-            "max_y": 97.0
-          },
-          "label_bounds": {
-            "min_x": 222.187,
-            "min_y": 17.0,
-            "max_x": 259.187,
-            "max_y": 115.0
-          },
-          "label_metrics": {
-            "text_width": 33.0,
-            "half_width": 16.5
-          },
-          "union_bounds": {
-            "min_x": 199.687,
-            "min_y": 16.0,
-            "max_x": 281.687,
-            "max_y": 115.0
-          }
+          "stroke_dasharray": null,
+          "to": "s_02",
+          "to_cluster": null
         }
       ],
       "fcose_compound_bounds": [
         {
-          "id": "g_1",
           "bounds": {
-            "min_x": -280.687,
-            "min_y": -63.0,
             "max_x": 280.687,
-            "max_y": 97.0
-          }
+            "max_y": 97.0,
+            "min_x": -280.687,
+            "min_y": -63.0
+          },
+          "id": "g_1"
         }
       ],
-      "bounds": {
-        "min_x": -200.687,
-        "min_y": 17.0,
-        "max_x": 280.687,
-        "max_y": 97.0
-      }
+      "nodes": [
+        {
+          "height": 80.0,
+          "id": "s_01",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": -200.687,
+          "y": 17.0
+        },
+        {
+          "height": 80.0,
+          "id": "s_02",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 200.687,
+          "y": 17.0
+        },
+        {
+          "height": 80.0,
+          "id": "j_0",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 0.0,
+          "y": 17.0
+        }
+      ]
     }
   }
 }

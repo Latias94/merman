@@ -2,71 +2,26 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-CUSTOMER-0",
-          "x": 235.92,
-          "y": 52.5,
-          "width": 107.2,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-DELIVERY-ADDRESS-1",
-          "x": 95.21,
-          "y": 234.5,
-          "width": 166.42,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-INVOICE-3",
-          "x": 342.44,
-          "y": 234.5,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-ORDER-2",
-          "x": 235.92,
-          "y": 416.5,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-ORDER-ITEM-4",
-          "x": 376.835,
-          "y": 598.5,
-          "width": 116.02,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-PRODUCT-6",
-          "x": 517.75,
-          "y": 416.5,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-PRODUCT-CATEGORY-5",
-          "x": 517.75,
-          "y": 234.5,
-          "width": 170.62,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 603.06,
+        "max_y": 639.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "er-rel-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-CUSTOMER-0",
-          "to": "entity-DELIVERY-ADDRESS-1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-0",
+          "label": {
+            "height": 21.0,
+            "width": 18.06,
+            "x": 94.74,
+            "y": 143.5
+          },
           "points": [
             {
               "x": 214.12,
@@ -85,26 +40,26 @@
               "y": 194.0
             }
           ],
-          "label": {
-            "x": 94.74,
-            "y": 143.5,
-            "width": 18.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONE_OR_MORE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": "8,8"
+          "stroke_dasharray": "8,8",
+          "to": "entity-DELIVERY-ADDRESS-1",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-CUSTOMER-0",
-          "to": "entity-ORDER-2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-1",
+          "label": {
+            "height": 21.0,
+            "width": 34.02,
+            "x": 235.43,
+            "y": 234.5
+          },
           "points": [
             {
               "x": 235.92,
@@ -123,26 +78,26 @@
               "y": 376.0
             }
           ],
-          "label": {
-            "x": 235.43,
-            "y": 234.5,
-            "width": 34.02,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ORDER-2",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-CUSTOMER-0",
-          "to": "entity-INVOICE-3",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-2",
+          "label": {
+            "height": 21.0,
+            "width": 52.5,
+            "x": 342.19,
+            "y": 143.5
+          },
           "points": [
             {
               "x": 257.72,
@@ -161,102 +116,102 @@
               "y": 194.0
             }
           ],
-          "label": {
-            "x": 342.19,
-            "y": 143.5,
-            "width": 52.5,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-INVOICE-3",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-DELIVERY-ADDRESS-1",
-          "to": "entity-ORDER-2",
           "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 95.21,
-              "y": 275.0
-            },
-            {
-              "x": 95.21,
-              "y": 356.0
-            },
-            {
-              "x": 215.92,
-              "y": 356.0
-            },
-            {
-              "x": 215.92,
-              "y": 376.0
-            }
-          ],
+          "id": "er-rel-3",
           "label": {
+            "height": 21.0,
+            "width": 46.06,
             "x": 94.74,
-            "y": 325.5,
-            "width": 46.06,
-            "height": 21.0
+            "y": 325.5
           },
+          "points": [
+            {
+              "x": 95.21,
+              "y": 275.0
+            },
+            {
+              "x": 95.21,
+              "y": 356.0
+            },
+            {
+              "x": 215.92,
+              "y": 356.0
+            },
+            {
+              "x": 215.92,
+              "y": 376.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
-        },
-        {
-          "id": "er-rel-4",
-          "from": "entity-INVOICE-3",
+          "stroke_dasharray": null,
           "to": "entity-ORDER-2",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
+          "from": "entity-INVOICE-3",
           "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 342.44,
-              "y": 275.0
-            },
-            {
-              "x": 342.44,
-              "y": 356.0
-            },
-            {
-              "x": 255.92,
-              "y": 356.0
-            },
-            {
-              "x": 255.92,
-              "y": 376.0
-            }
-          ],
+          "id": "er-rel-4",
           "label": {
-            "x": 342.0,
-            "y": 325.5,
+            "height": 21.0,
             "width": 36.12,
-            "height": 21.0
+            "x": 342.0,
+            "y": 325.5
           },
+          "points": [
+            {
+              "x": 342.44,
+              "y": 275.0
+            },
+            {
+              "x": 342.44,
+              "y": 356.0
+            },
+            {
+              "x": 255.92,
+              "y": 356.0
+            },
+            {
+              "x": 255.92,
+              "y": 376.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ORDER-2",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-5",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-ORDER-2",
-          "to": "entity-ORDER-ITEM-4",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-5",
+          "label": {
+            "height": 21.0,
+            "width": 43.96,
+            "x": 235.9,
+            "y": 507.5
+          },
           "points": [
             {
               "x": 235.92,
@@ -275,26 +230,26 @@
               "y": 558.0
             }
           ],
-          "label": {
-            "x": 235.9,
-            "y": 507.5,
-            "width": 43.96,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ORDER-ITEM-4",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-6",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-PRODUCT-CATEGORY-5",
-          "to": "entity-PRODUCT-6",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-6",
+          "label": {
+            "height": 21.0,
+            "width": 46.06,
+            "x": 517.28,
+            "y": 325.5
+          },
           "points": [
             {
               "x": 517.75,
@@ -305,26 +260,26 @@
               "y": 376.0
             }
           ],
-          "label": {
-            "x": 517.28,
-            "y": 325.5,
-            "width": 46.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-PRODUCT-6",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-7",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-PRODUCT-6",
-          "to": "entity-ORDER-ITEM-4",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-7",
+          "label": {
+            "height": 21.0,
+            "width": 56.7,
+            "x": 517.6,
+            "y": 507.5
+          },
           "points": [
             {
               "x": 517.75,
@@ -343,27 +298,72 @@
               "y": 558.0
             }
           ],
-          "label": {
-            "x": 517.6,
-            "y": 507.5,
-            "width": 56.7,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ORDER-ITEM-4",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 603.06,
-        "max_y": 639.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "entity-CUSTOMER-0",
+          "is_cluster": false,
+          "width": 107.2,
+          "x": 235.92,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-DELIVERY-ADDRESS-1",
+          "is_cluster": false,
+          "width": 166.42,
+          "x": 95.21,
+          "y": 234.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-INVOICE-3",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 342.44,
+          "y": 234.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-ORDER-2",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 235.92,
+          "y": 416.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-ORDER-ITEM-4",
+          "is_cluster": false,
+          "width": 116.02,
+          "x": 376.835,
+          "y": 598.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-PRODUCT-6",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 517.75,
+          "y": 416.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-PRODUCT-CATEGORY-5",
+          "is_cluster": false,
+          "width": 170.62,
+          "x": 517.75,
+          "y": 234.5
+        }
+      ]
     }
   }
 }

@@ -1,113 +1,113 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "Alice",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "Alice",
         "occurrences": [
           {
-            "start": 11,
-            "end": 16
+            "end": 16,
+            "start": 11
           },
           {
-            "start": 79,
-            "end": 84
+            "end": 84,
+            "start": 79
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
-        "name": "John",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "John",
         "occurrences": [
           {
-            "start": 18,
-            "end": 22
+            "end": 22,
+            "start": 18
           },
           {
-            "start": 73,
-            "end": 77
+            "end": 77,
+            "start": 73
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 11,
-          "end": 49
-        },
-        "kind": "message",
         "explicit_from": "Alice",
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "Hello John, how are you?",
         "resolved_from": "Alice",
         "resolved_to": "John",
-        "label": "Hello John, how are you?",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 49,
+          "start": 11
+        },
+        "style": "asynchronous"
       },
       {
-        "id": "zenuml-statement-1",
         "comment": null,
-        "span": {
-          "start": 53,
-          "end": 98
-        },
-        "kind": "fragment",
         "fragment_kind": "loop",
+        "id": "zenuml-statement-1",
+        "kind": "fragment",
         "label": "true",
         "sections": [
           {
             "label": "true",
+            "span": {
+              "end": 98,
+              "start": 53
+            },
             "statements": [
               {
-                "id": "zenuml-statement-2",
+                "assignment": null,
+                "body": [],
                 "comment": null,
-                "span": {
-                  "start": 73,
-                  "end": 93
-                },
-                "kind": "message",
                 "explicit_from": "John",
+                "id": "zenuml-statement-2",
+                "kind": "message",
+                "label": "Great!",
                 "resolved_from": "John",
                 "resolved_to": "Alice",
-                "label": "Great!",
-                "assignment": null,
-                "style": "asynchronous",
-                "body": []
+                "span": {
+                  "end": 93,
+                  "start": 73
+                },
+                "style": "asynchronous"
               }
-            ],
-            "span": {
-              "start": 53,
-              "end": 98
-            }
+            ]
           }
-        ]
+        ],
+        "span": {
+          "end": 98,
+          "start": 53
+        }
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

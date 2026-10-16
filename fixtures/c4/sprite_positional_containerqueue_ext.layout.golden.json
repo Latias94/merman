@@ -2,159 +2,159 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 789.694,
-        "max_y": 364.206
-      },
-      "width": 839.694,
-      "height": 374.206,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Container",
-      "title": "C4Container sprite (positional) on ContainerQueue_Ext",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 639.694,
+          "descr": null,
           "height": 248.206,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 639.694,
+          "x": 100.0,
+          "y": 66.0
         }
       ],
-      "shapes": [
-        {
-          "alias": "web",
-          "parent_boundary": "global",
-          "type_c4_shape": "container",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 98.206,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: React]",
-            "y": 44.175,
-            "width": 78.54,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Web App",
-            "y": 27.7,
-            "width": 49.0,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides Internet banking functionality.",
-            "y": 65.578,
-            "width": 119.507,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        },
-        {
-          "alias": "q",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_container_queue",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 223.694,
-          "height": 55.578,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: RabbitMQ]",
-            "y": 44.175,
-            "width": 94.08,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "External Container Queue",
-            "y": 27.7,
-            "width": 144.62,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "External queue container.",
-            "y": 59.264,
-            "width": 117.9,
-            "height": 12.628,
-            "line_count": 1.0
-          }
-        }
-      ],
+      "bounds": {
+        "max_x": 789.694,
+        "max_y": 364.206,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Container",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 374.206,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 466.282,
+            "y": 201.242
+          },
           "from": "web",
-          "to": "q",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Publishes",
+            "width": 45.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": null,
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
             "y": 207.906
           },
-          "end_point": {
-            "x": 466.282,
-            "y": 201.242
-          },
-          "offset_x": null,
-          "offset_y": null,
-          "label": {
-            "text": "Publishes",
-            "y": 0.0,
-            "width": 45.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "AMQP",
-            "y": 0.0,
-            "width": 29.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "AMQP",
+            "width": 29.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "q"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "web",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Provides Internet banking functionality.",
+            "width": 119.507,
+            "y": 65.578
+          },
+          "height": 98.206,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Web App",
+            "width": 49.0,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: React]",
+            "width": 78.54,
+            "y": 44.175
+          },
+          "type_c4_shape": "container",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "q",
+          "descr": {
+            "height": 12.628,
+            "line_count": 1.0,
+            "text": "External queue container.",
+            "width": 117.9,
+            "y": 59.264
+          },
+          "height": 55.578,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "External Container Queue",
+            "width": 144.62,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: RabbitMQ]",
+            "width": 94.08,
+            "y": 44.175
+          },
+          "type_c4_shape": "external_container_queue",
+          "width": 223.694,
+          "x": 466.0,
+          "y": 166.0
+        }
+      ],
+      "title": "C4Container sprite (positional) on ContainerQueue_Ext",
+      "use_max_width": true,
+      "width": 839.694
     }
   }
 }

@@ -2,109 +2,109 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 218.6,
-      "height": 182.0,
+      "bounds": {
+        "max_x": 218.6,
+        "max_y": 182.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
+      "creations": [],
+      "dividers": [],
+      "fragments": [],
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
-      "participants": [
-        {
-          "name": "_STARTER_",
-          "label": "",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": true,
-          "labelWidth": 0.0,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "A",
-          "label": "A",
-          "x": 168.6,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 9.6,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        }
-      ],
+      "groups": [],
+      "height": 182.0,
       "lifelines": [
         {
+          "bottomY": 194.0,
           "participantName": "_STARTER_",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 194.0
+          "x": 50.0
         },
         {
+          "bottomY": 194.0,
           "participantName": "A",
-          "x": 168.6,
           "topY": 68.0,
-          "bottomY": 194.0
+          "x": 168.6
         }
       ],
       "messages": [
         {
-          "statementId": "zenuml-statement-0",
-          "number": "1",
-          "from": "_STARTER_",
-          "to": "A",
-          "fromX": 50.0,
-          "toX": 161.6,
-          "y": 87.5,
-          "label": "SyncMessage()",
           "arrowStyle": "solid",
+          "from": "_STARTER_",
+          "fromX": 50.0,
           "isReverse": false,
-          "style": {}
-        }
-      ],
-      "selfCalls": [],
-      "creations": [],
-      "returns": [
-        {
-          "statementId": "zenuml-statement-1",
-          "number": "1.1",
-          "from": "A",
-          "to": "_STARTER_",
-          "fromX": 161.6,
-          "toX": 51.0,
-          "y": 120.5,
-          "label": "result",
-          "isReverse": true,
-          "isSelf": false
+          "label": "SyncMessage()",
+          "number": "1",
+          "statementId": "zenuml-statement-0",
+          "style": {},
+          "to": "A",
+          "toX": 161.6,
+          "y": 87.5
         }
       ],
       "occurrences": [
         {
-          "statementId": "zenuml-statement-0",
+          "height": 52.0,
           "participantName": "A",
-          "x": 161.6,
-          "y": 86.0,
+          "statementId": "zenuml-statement-0",
           "width": 15.0,
-          "height": 52.0
+          "x": 161.6,
+          "y": 86.0
         }
       ],
-      "fragments": [],
-      "dividers": [],
-      "comments": [],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 218.6,
-        "max_y": 182.0
-      }
+      "participants": [
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": true,
+          "label": "",
+          "labelWidth": 0.0,
+          "name": "_STARTER_",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "A",
+          "labelWidth": 9.6,
+          "name": "A",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 168.6,
+          "y": 28.0
+        }
+      ],
+      "returns": [
+        {
+          "from": "A",
+          "fromX": 161.6,
+          "isReverse": true,
+          "isSelf": false,
+          "label": "result",
+          "number": "1.1",
+          "statementId": "zenuml-statement-1",
+          "to": "_STARTER_",
+          "toX": 51.0,
+          "y": 120.5
+        }
+      ],
+      "selfCalls": [],
+      "width": 218.6
     }
   }
 }

@@ -1,144 +1,144 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "A Gantt Diagram",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "x",
+    "accTitle": null,
     "axisFormat": "%L",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "x",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Section",
       "Another"
     ],
     "tasks": [
       {
-        "section": "Section",
-        "type": "Section",
-        "task": "A task           ",
-        "id": "a1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 30,
+        "id": "a1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":a1, 0, 30ms",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "0"
-          },
           "endTime": {
             "data": "30ms"
+          },
+          "startTime": {
+            "startData": "0",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section",
         "startTime": 0,
-        "endTime": 30
+        "task": "A task           ",
+        "type": "Section",
+        "vert": false
       },
       {
-        "section": "Section",
-        "type": "Section",
-        "task": "Another task     ",
-        "id": "task1",
-        "prevTaskId": "a1",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 50,
+        "id": "task1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "a1",
+        "processed": true,
         "raw": {
           "data": ":after a1, 20ms",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after a1"
-          },
           "endTime": {
             "data": "20ms"
+          },
+          "startTime": {
+            "startData": "after a1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section",
         "startTime": 30,
-        "endTime": 50
+        "task": "Another task     ",
+        "type": "Section",
+        "vert": false
       },
       {
-        "section": "Another",
-        "type": "Another",
-        "task": "Another another task      ",
-        "id": "b1",
-        "prevTaskId": "task1",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 32,
+        "id": "b1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "task1",
+        "processed": true,
         "raw": {
           "data": ":b1, 20, 12ms",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "20"
-          },
           "endTime": {
             "data": "12ms"
+          },
+          "startTime": {
+            "startData": "20",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Another",
         "startTime": 20,
-        "endTime": 32
+        "task": "Another another task      ",
+        "type": "Another",
+        "vert": false
       },
       {
-        "section": "Another",
-        "type": "Another",
-        "task": "Another another another task     ",
-        "id": "task2",
-        "prevTaskId": "b1",
-        "order": 3,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 56,
+        "id": "task2",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "b1",
+        "processed": true,
         "raw": {
           "data": ":after b1, 0.024s",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after b1"
-          },
           "endTime": {
             "data": "0.024s"
+          },
+          "startTime": {
+            "startData": "after b1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Another",
         "startTime": 32,
-        "endTime": 56
+        "task": "Another another another task     ",
+        "type": "Another",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "A Gantt Diagram",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

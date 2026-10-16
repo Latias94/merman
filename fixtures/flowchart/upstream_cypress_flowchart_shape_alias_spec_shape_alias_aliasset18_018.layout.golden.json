@@ -2,32 +2,32 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
+      "bounds": {
+        "max_x": 355.6,
+        "max_y": 55.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
-          "id": "n0",
-          "x": 87.9,
-          "y": 33.5,
-          "width": 151.8,
           "height": 43.0,
-          "is_cluster": false
+          "id": "n0",
+          "is_cluster": false,
+          "width": 151.8,
+          "x": 87.9,
+          "y": 33.5
         },
         {
-          "id": "n1",
-          "x": 279.7,
-          "y": 33.5,
-          "width": 151.8,
           "height": 43.0,
-          "is_cluster": false
+          "id": "n1",
+          "is_cluster": false,
+          "width": 151.8,
+          "x": 279.7,
+          "y": 33.5
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 355.6,
-        "max_y": 55.0
-      }
+      ]
     }
   }
 }

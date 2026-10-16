@@ -1,60 +1,60 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {
+      "X": "https://mermaid.js.org/"
+    },
     "sections": [
       "Section"
     ],
     "tasks": [
       {
-        "section": "Section",
-        "type": "Section",
-        "task": "A task ",
-        "id": "X",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
+        "active": false,
         "classes": [
           "clickable"
         ],
-        "active": false,
-        "done": false,
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-10-04T00:00:00.000",
+        "id": "X",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":X, 2024-10-01, 3d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-10-01"
-          },
           "endTime": {
             "data": "3d"
+          },
+          "startTime": {
+            "startData": "2024-10-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section",
         "startTime": "2024-10-01T00:00:00.000",
-        "endTime": "2024-10-04T00:00:00.000"
+        "task": "A task ",
+        "type": "Section",
+        "vert": false
       }
     ],
-    "links": {
-      "X": "https://mermaid.js.org/"
-    },
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": null,
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

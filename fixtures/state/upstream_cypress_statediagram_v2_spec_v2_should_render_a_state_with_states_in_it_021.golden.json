@@ -1,113 +1,113 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "PilotCockpit",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "PilotCockpit",
         "dir": "TB",
         "domId": "state-PilotCockpit-0",
-        "type": "group",
+        "id": "PilotCockpit",
         "isGroup": true,
+        "label": "PilotCockpit",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Parent",
+        "centerLabel": true,
+        "colorIndex": 1,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Parent",
         "dir": "TB",
         "domId": "state-Parent-0",
-        "type": "group",
+        "id": "Parent",
         "isGroup": true,
+        "label": "Parent",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "PilotCockpit",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "PilotCockpit",
-        "colorIndex": 1,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "C",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "C",
         "dir": null,
         "domId": "state-C-0",
-        "type": null,
+        "id": "C",
         "isGroup": false,
+        "label": "C",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Parent",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Parent",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
-    "edges": [],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "relations": [],
     "states": {
       "PilotCockpit": {
-        "id": "PilotCockpit",
-        "type": "default",
+        "classes": [],
         "descriptions": [],
         "doc": [
           {
-            "stmt": "state",
-            "id": "Parent",
-            "type": "default",
+            "classes": [],
             "description": null,
             "doc": [
               {
-                "stmt": "state",
-                "id": "C",
-                "type": "default",
+                "classes": [],
                 "description": null,
                 "doc": null,
-                "classes": []
+                "id": "C",
+                "stmt": "state",
+                "type": "default"
               }
             ],
-            "classes": []
+            "id": "Parent",
+            "stmt": "state",
+            "type": "default"
           }
         ],
+        "id": "PilotCockpit",
         "note": null,
-        "classes": [],
+        "start": null,
         "styles": [],
         "textStyles": [],
-        "start": null
+        "type": "default"
       }
     },
-    "relations": [],
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

@@ -2,121 +2,19 @@
   "diagramType": "swimlane",
   "layout": {
     "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 2021.231,
+        "max_y": 148.7,
+        "min_x": -115.0,
+        "min_y": -148.7
+      },
       "direction": "LR",
-      "nodes": [
-        {
-          "id": "R",
-          "label": "X",
-          "label_type": "text",
-          "shape": "roundedRect",
-          "parent_id": "Shapes",
-          "top_lane_id": "Shapes",
-          "x": 36.0,
-          "y": 0.0,
-          "width": 210.0,
-          "height": 45.4,
-          "label_width": 180.0,
-          "label_height": 15.4,
-          "layer": 0.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "L",
-          "label": "This label remains wider than the configured minimum width",
-          "label_type": "text",
-          "shape": "roundedRect",
-          "parent_id": "Shapes",
-          "top_lane_id": "Shapes",
-          "x": 695.013,
-          "y": 0.0,
-          "width": 380.84,
-          "height": 45.4,
-          "label_width": 350.84,
-          "label_height": 15.4,
-          "layer": 1.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "D",
-          "label": "X",
-          "label_type": "text",
-          "shape": "diamond",
-          "parent_id": "Shapes",
-          "top_lane_id": "Shapes",
-          "x": 1371.202,
-          "y": 0.0,
-          "width": 225.4,
-          "height": 225.4,
-          "label_width": 180.0,
-          "label_height": 15.4,
-          "layer": 2.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "C",
-          "label": "X",
-          "label_type": "text",
-          "shape": "circle",
-          "parent_id": "Shapes",
-          "top_lane_id": "Shapes",
-          "x": 1770.444,
-          "y": 0.0,
-          "width": 32.542,
-          "height": 32.542,
-          "label_width": 8.4,
-          "label_height": 15.4,
-          "layer": 3.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "B",
-          "label": "X",
-          "label_type": "text",
-          "shape": "doublecircle",
-          "parent_id": "Shapes",
-          "top_lane_id": "Shapes",
-          "x": 1982.461,
-          "y": 0.0,
-          "width": 57.542,
-          "height": 57.542,
-          "label_width": 8.4,
-          "label_height": 15.4,
-          "layer": 4.0,
-          "order": 0.0,
-          "is_edge_label": false
-        }
-      ],
-      "lanes": [
-        {
-          "id": "Shapes",
-          "title": "Label-derived dimensions",
-          "parent_id": null,
-          "x": 953.116,
-          "y": 0.0,
-          "width": 2136.231,
-          "height": 297.4,
-          "padding": 8.0,
-          "title_label_width": 140.563,
-          "title_label_height": 15.4,
-          "content_top": -112.7,
-          "title_rect": {
-            "left": -115.0,
-            "right": -79.0,
-            "top": -148.7,
-            "bottom": 148.7
-          },
-          "requested_dir": "LR"
-        }
-      ],
       "edges": [
         {
-          "id": "L_R_L_0",
+          "curve": "rounded",
           "from": "R",
-          "to": "L",
+          "id": "L_R_L_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 141.0,
@@ -127,14 +25,14 @@
               "y": 0.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "L"
         },
         {
-          "id": "L_L_D_0",
+          "curve": "rounded",
           "from": "L",
-          "to": "D",
+          "id": "L_L_D_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 885.433,
@@ -145,14 +43,14 @@
               "y": 0.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "D"
         },
         {
-          "id": "L_D_C_0",
+          "curve": "rounded",
           "from": "D",
-          "to": "C",
+          "id": "L_D_C_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 1483.902,
@@ -163,14 +61,14 @@
               "y": 0.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "C"
         },
         {
-          "id": "L_C_B_0",
+          "curve": "rounded",
           "from": "C",
-          "to": "B",
+          "id": "L_C_B_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 1786.715,
@@ -181,17 +79,119 @@
               "y": 0.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "B"
         }
       ],
-      "bounds": {
-        "min_x": -115.0,
-        "min_y": -148.7,
-        "max_x": 2021.231,
-        "max_y": 148.7
-      }
+      "lanes": [
+        {
+          "content_top": -112.7,
+          "height": 297.4,
+          "id": "Shapes",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "Label-derived dimensions",
+          "title_label_height": 15.4,
+          "title_label_width": 140.563,
+          "title_rect": {
+            "bottom": 148.7,
+            "left": -115.0,
+            "right": -79.0,
+            "top": -148.7
+          },
+          "width": 2136.231,
+          "x": 953.116,
+          "y": 0.0
+        }
+      ],
+      "nodes": [
+        {
+          "height": 45.4,
+          "id": "R",
+          "is_edge_label": false,
+          "label": "X",
+          "label_height": 15.4,
+          "label_type": "text",
+          "label_width": 180.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "Shapes",
+          "shape": "roundedRect",
+          "top_lane_id": "Shapes",
+          "width": 210.0,
+          "x": 36.0,
+          "y": 0.0
+        },
+        {
+          "height": 45.4,
+          "id": "L",
+          "is_edge_label": false,
+          "label": "This label remains wider than the configured minimum width",
+          "label_height": 15.4,
+          "label_type": "text",
+          "label_width": 350.84,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "Shapes",
+          "shape": "roundedRect",
+          "top_lane_id": "Shapes",
+          "width": 380.84,
+          "x": 695.013,
+          "y": 0.0
+        },
+        {
+          "height": 225.4,
+          "id": "D",
+          "is_edge_label": false,
+          "label": "X",
+          "label_height": 15.4,
+          "label_type": "text",
+          "label_width": 180.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "parent_id": "Shapes",
+          "shape": "diamond",
+          "top_lane_id": "Shapes",
+          "width": 225.4,
+          "x": 1371.202,
+          "y": 0.0
+        },
+        {
+          "height": 32.542,
+          "id": "C",
+          "is_edge_label": false,
+          "label": "X",
+          "label_height": 15.4,
+          "label_type": "text",
+          "label_width": 8.4,
+          "layer": 3.0,
+          "order": 0.0,
+          "parent_id": "Shapes",
+          "shape": "circle",
+          "top_lane_id": "Shapes",
+          "width": 32.542,
+          "x": 1770.444,
+          "y": 0.0
+        },
+        {
+          "height": 57.542,
+          "id": "B",
+          "is_edge_label": false,
+          "label": "X",
+          "label_height": 15.4,
+          "label_type": "text",
+          "label_width": 8.4,
+          "layer": 4.0,
+          "order": 0.0,
+          "parent_id": "Shapes",
+          "shape": "doublecircle",
+          "top_lane_id": "Shapes",
+          "width": 57.542,
+          "x": 1982.461,
+          "y": 0.0
+        }
+      ]
     }
   }
 }

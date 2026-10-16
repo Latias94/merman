@@ -1,73 +1,73 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "a",
       "b"
     ],
     "actors": {
       "a": {
-        "name": "a",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {
-          "Repo": "https://repo.contoso.com/",
-          "Dashboard": "https://dashboard.contoso.com/"
+          "Dashboard": "https://dashboard.contoso.com/",
+          "Repo": "https://repo.contoso.com/"
         },
+        "name": "a",
         "properties": {
-          "role": "admin",
-          "level": 3
-        }
+          "level": 3,
+          "role": "admin"
+        },
+        "type": "participant",
+        "wrap": false
       },
       "b": {
-        "name": "b",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {
           "Profile": "https://bob.example.com/"
         },
+        "name": "b",
         "properties": {
-          "role": "user",
-          "level": 1
-        }
+          "level": 1,
+          "role": "user"
+        },
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "a",
-        "to": "b",
-        "message": "hello",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "b",
-        "to": "a",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "a",
+        "id": "0",
+        "message": "hello",
+        "to": "b",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "b",
+        "id": "1",
+        "message": "ok",
+        "to": "a",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

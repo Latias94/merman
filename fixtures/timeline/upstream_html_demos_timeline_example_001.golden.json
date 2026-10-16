@@ -1,38 +1,38 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "My day",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Go to work"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Go to work",
-        "type": "Go to work",
-        "task": "1930 ",
-        "score": 0,
         "events": [
           "first step ",
           "second step",
           "third step"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Go to work",
+        "task": "1930 ",
+        "type": "Go to work"
       },
       {
-        "id": 1,
-        "section": "Go to work",
-        "type": "Go to work",
-        "task": "1940 ",
-        "score": 0,
         "events": [
           "fourth step ",
           "fifth step"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Go to work",
+        "task": "1940 ",
+        "type": "Go to work"
       }
-    ]
+    ],
+    "title": "My day",
+    "type": "timeline"
   }
 }

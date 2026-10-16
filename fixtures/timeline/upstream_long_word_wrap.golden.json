@@ -1,25 +1,25 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "wrap"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "wrap",
-        "type": "wrap",
-        "task": "period1",
-        "score": 0,
         "events": [
           "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "wrap",
+        "task": "period1",
+        "type": "wrap"
       }
-    ]
+    ],
+    "title": null,
+    "type": "timeline"
   }
 }

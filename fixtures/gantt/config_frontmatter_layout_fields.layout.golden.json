@@ -2,179 +2,179 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 420.0,
-        "max_y": 148.0
-      },
-      "width": 420.0,
-      "height": 148.0,
-      "left_padding": 75.0,
-      "right_padding": 10.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 2.0,
-      "display_mode": "compact",
-      "date_format": "YYYY-MM-DD",
       "axis_format": "%Y-%m-%d",
-      "tick_interval": "1day",
-      "top_axis": true,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": "2024-01-01",
+          "time_ms": 1704067200000.0,
+          "x": 75.0
+        },
+        {
+          "label": "2024-01-02",
+          "time_ms": 1704153600000.0,
+          "x": 243.0
+        },
+        {
+          "label": "2024-01-03",
+          "time_ms": 1704240000000.0,
+          "x": 410.0
+        }
+      ],
+      "bounds": {
+        "max_x": 420.0,
+        "max_y": 148.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "Alpha",
         "Beta"
       ],
+      "date_format": "YYYY-MM-DD",
+      "display_mode": "compact",
+      "excludes": [],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": false,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "number_section_styles": 2.0,
+      "right_padding": 10.0,
       "rows": [
         {
-          "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
-          "width": 415.0,
+          "class": "section section0",
           "height": 24.0,
-          "class": "section section0"
+          "index": 0.0,
+          "width": 415.0,
+          "x": 0.0,
+          "y": 48.0
         },
         {
-          "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
-          "width": 415.0,
+          "class": "section section1",
           "height": 24.0,
-          "class": "section section1"
+          "index": 1.0,
+          "width": 415.0,
+          "x": 0.0,
+          "y": 72.0
         }
       ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "Alpha",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 62.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "Alpha"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "Alpha",
+          "x": 10.0,
+          "y": 62.0
         },
         {
-          "section": "Beta",
-          "index": 1.0,
-          "x": 10.0,
-          "y": 86.0,
+          "class": "sectionTitle sectionTitle1",
           "dy_em": -0.0,
+          "index": 1.0,
           "lines": [
             "Beta"
           ],
-          "class": "sectionTitle sectionTitle1"
+          "section": "Beta",
+          "x": 10.0,
+          "y": 86.0
         }
       ],
       "tasks": [
         {
-          "id": "a1",
-          "task": "Task A ",
-          "section": "Alpha",
-          "task_type": "Alpha",
-          "order": 0.0,
-          "start_ms": 1704067200000.0,
-          "end_ms": 1704153600000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "a1",
-            "x": 75.0,
-            "y": 50.0,
-            "width": 168.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "a1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 168.0,
+            "x": 75.0,
+            "y": 50.0
           },
+          "end_ms": 1704153600000.0,
+          "id": "a1",
           "label": {
+            "class": "taskText taskText0 width-32.339999999999996",
+            "font_size": 11.0,
             "id": "a1-text",
             "text": "Task A ",
-            "font_size": 11.0,
             "width": 32.34,
             "x": 159.0,
-            "y": 63.5,
-            "class": "taskText taskText0 width-32.339999999999996"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "Alpha",
+          "start_ms": 1704067200000.0,
+          "task": "Task A ",
+          "task_type": "Alpha",
+          "vert": false
         },
         {
-          "id": "b1",
-          "task": "Task B ",
-          "section": "Beta",
-          "task_type": "Beta",
-          "order": 1.0,
-          "start_ms": 1704153600000.0,
-          "end_ms": 1704240000000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "b1",
-            "x": 243.0,
-            "y": 74.0,
-            "width": 167.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "b1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 167.0,
+            "x": 243.0,
+            "y": 74.0
           },
+          "end_ms": 1704240000000.0,
+          "id": "b1",
           "label": {
+            "class": "taskText taskText1 width-32.339999999999996",
+            "font_size": 11.0,
             "id": "b1-text",
             "text": "Task B ",
-            "font_size": 11.0,
             "width": 32.34,
             "x": 326.5,
-            "y": 87.5,
-            "class": "taskText taskText1 width-32.339999999999996"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Beta",
+          "start_ms": 1704153600000.0,
+          "task": "Task B ",
+          "task_type": "Beta",
+          "vert": false
         }
       ],
-      "excludes": [],
-      "has_excludes_layer": false,
-      "bottom_ticks": [
-        {
-          "time_ms": 1704067200000.0,
-          "x": 75.0,
-          "label": "2024-01-01"
-        },
-        {
-          "time_ms": 1704153600000.0,
-          "x": 243.0,
-          "label": "2024-01-02"
-        },
-        {
-          "time_ms": 1704240000000.0,
-          "x": 410.0,
-          "label": "2024-01-03"
-        }
-      ],
+      "tick_interval": "1day",
+      "title": "Config Frontmatter Layout Fields",
+      "title_top_margin": 25.0,
+      "title_x": 210.0,
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": true,
+      "top_padding": 50.0,
       "top_ticks": [
         {
+          "label": "2024-01-01",
           "time_ms": 1704067200000.0,
-          "x": 75.0,
-          "label": "2024-01-01"
+          "x": 75.0
         },
         {
+          "label": "2024-01-02",
           "time_ms": 1704153600000.0,
-          "x": 243.0,
-          "label": "2024-01-02"
+          "x": 243.0
         },
         {
+          "label": "2024-01-03",
           "time_ms": 1704240000000.0,
-          "x": 410.0,
-          "label": "2024-01-03"
+          "x": 410.0
         }
       ],
-      "title": "Config Frontmatter Layout Fields",
-      "title_x": 210.0,
-      "title_y": 25.0
+      "width": 420.0
     }
   }
 }

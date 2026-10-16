@@ -1,55 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "0-<dynamic>",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "1234",
-        "message": "",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "0-<dynamic>"
-        ],
-        "branch": "longFeatureBranchName"
-      },
-      {
-        "id": "2-<dynamic>",
-        "message": "",
-        "seq": 2,
-        "type": 0,
-        "tags": [
-          "v1.0.0"
-        ],
-        "parents": [
-          "1234"
-        ],
-        "branch": "longFeatureBranchName"
-      },
-      {
-        "id": "3-<dynamic>",
-        "message": "merged branch longFeatureBranchName into main",
-        "seq": 3,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "0-<dynamic>",
-          "2-<dynamic>"
-        ],
-        "branch": "main",
-        "customId": false
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -58,10 +11,57 @@
         "name": "longFeatureBranchName"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "0-<dynamic>",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "longFeatureBranchName",
+        "id": "1234",
+        "message": "",
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "longFeatureBranchName",
+        "id": "2-<dynamic>",
+        "message": "",
+        "parents": [
+          "1234"
+        ],
+        "seq": 2,
+        "tags": [
+          "v1.0.0"
+        ],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "3-<dynamic>",
+        "message": "merged branch longFeatureBranchName into main",
+        "parents": [
+          "0-<dynamic>",
+          "2-<dynamic>"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 3
+      }
+    ],
     "currentBranch": "main",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

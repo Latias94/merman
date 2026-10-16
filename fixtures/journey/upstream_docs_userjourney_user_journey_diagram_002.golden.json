@@ -1,65 +1,65 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "My working day",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "Cat",
+      "Me"
+    ],
     "sections": [
       "Go to work",
       "Go home"
     ],
     "tasks": [
       {
+        "people": [
+          "Me"
+        ],
         "score": 5,
+        "section": "Go to work",
+        "task": "      Make tea",
+        "type": "Go to work"
+      },
+      {
         "people": [
           "Me"
         ],
-        "section": "Go to work",
-        "type": "Go to work",
-        "task": "      Make tea"
-      },
-      {
         "score": 3,
-        "people": [
-          "Me"
-        ],
         "section": "Go to work",
-        "type": "Go to work",
-        "task": "      Go upstairs"
+        "task": "      Go upstairs",
+        "type": "Go to work"
       },
       {
-        "score": 1,
         "people": [
           "Me",
           "Cat"
         ],
+        "score": 1,
         "section": "Go to work",
-        "type": "Go to work",
-        "task": "      Do work"
+        "task": "      Do work",
+        "type": "Go to work"
       },
       {
-        "score": 5,
         "people": [
           "Me"
         ],
+        "score": 5,
         "section": "Go home",
-        "type": "Go home",
-        "task": "      Go downstairs"
+        "task": "      Go downstairs",
+        "type": "Go home"
       },
       {
-        "score": 5,
         "people": [
           "Me"
         ],
+        "score": 5,
         "section": "Go home",
-        "type": "Go home",
-        "task": "      Sit down"
+        "task": "      Sit down",
+        "type": "Go home"
       }
     ],
-    "actors": [
-      "Cat",
-      "Me"
-    ]
+    "title": "My working day",
+    "type": "journey"
   }
 }

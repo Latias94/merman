@@ -1,148 +1,148 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "Todo",
-        "label": "Todo",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "inprog",
-        "label": "In progress",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "Done",
-        "label": "Done",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "Todo",
-        "label": "Todo",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Todo",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "t1",
-        "parentId": "Todo",
-        "label": "Write spec",
-        "isGroup": false,
-        "ticket": "PROJ-1",
-        "priority": "High",
         "assigned": "alice",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t1",
+        "isGroup": false,
+        "label": "Write spec",
+        "level": 4,
+        "parentId": "Todo",
+        "priority": "High",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "PROJ-1"
       },
       {
-        "id": "t2",
-        "parentId": "Todo",
-        "label": "Investigate parsing edge cases",
-        "isGroup": false,
-        "ticket": "PROJ-2",
-        "priority": "Very Low",
         "assigned": "bob",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t2",
+        "isGroup": false,
+        "label": "Investigate parsing edge cases",
+        "level": 4,
+        "parentId": "Todo",
+        "priority": "Very Low",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "PROJ-2"
       },
       {
         "id": "inprog",
-        "label": "In progress",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "In progress",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "t3",
-        "parentId": "inprog",
-        "label": "Implement renderer",
-        "isGroup": false,
-        "ticket": "PROJ-3",
-        "priority": "Very High",
         "assigned": "Alice B.",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t3",
+        "isGroup": false,
+        "label": "Implement renderer",
+        "level": 4,
+        "parentId": "inprog",
+        "priority": "Very High",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "PROJ-3"
       },
       {
-        "id": "t4",
-        "parentId": "inprog",
-        "label": "Fix subtle layout mismatch",
-        "isGroup": false,
-        "ticket": "PROJ-4",
-        "priority": "Low",
         "assigned": "carol",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t4",
+        "isGroup": false,
+        "label": "Fix subtle layout mismatch",
+        "level": 4,
+        "parentId": "inprog",
+        "priority": "Low",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "PROJ-4"
       },
       {
         "id": "Done",
-        "label": "Done",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Done",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "t5",
-        "parentId": "Done",
-        "label": "Ship",
-        "isGroup": false,
-        "ticket": "PROJ-5",
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t5",
+        "isGroup": false,
+        "label": "Ship",
+        "level": 4,
+        "parentId": "Done",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "PROJ-5"
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "Todo",
+        "isGroup": false,
+        "label": "Todo",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "inprog",
+        "isGroup": false,
+        "label": "In progress",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "Done",
+        "isGroup": false,
+        "label": "Done",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

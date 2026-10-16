@@ -5767,6 +5767,165 @@ A padded@-->|edge label padding| B
 }
 
 #[test]
+fn flowchart_markdown_raw_html_overflow_keeps_host_profile_style_widths() {
+    let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, style| {
+        let advance = if style.font_weight.as_deref() == Some("700") {
+            20.0
+        } else {
+            10.0
+        };
+        text.chars().count() as f64 * advance
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.markdown-raw-html-widths").expect("valid profile id"),
+        "test",
+    )
+    .expect("valid profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer)),
+    );
+    let word = "abcdefghijklmnopqrstuvwx";
+    for (label, expected_width) in [
+        (word.to_string(), 240.0),
+        (format!("**{word}**"), 240.0),
+        (format!("<strong>{word}</strong>"), 480.0),
+    ] {
+        for wrapping_width in [40, 120] {
+            let engine =
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "securityLevel": "strict",
+                    "flowchart": { "htmlLabels": true, "wrappingWidth": wrapping_width }
+                })));
+            let source = format!("flowchart TB\nA[\"`{label}`\"]\n");
+            let parsed =
+                block_on(engine.parse_diagram_for_render_model(&source, ParseOptions::default()))
+                    .expect("parse raw HTML Markdown")
+                    .expect("Flowchart diagram");
+            let svg = render_flowchart_artifact(
+                parsed,
+                &LayoutOptions::default(),
+                environment.begin_session().expect("measurement session"),
+                &SvgRenderOptions::default(),
+            )
+            .expect("render with host measurement profile");
+            let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+            let foreign_object = document
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .expect("HTML label");
+            let width = foreign_object
+                .attribute("width")
+                .expect("HTML label width")
+                .parse::<f64>()
+                .expect("numeric HTML label width");
+            assert_eq!(width, expected_width, "{label}, {wrapping_width}");
+            let div_style = foreign_object
+                .descendants()
+                .find(|node| node.has_tag_name("div"))
+                .and_then(|node| node.attribute("style"))
+                .expect("HTML label style");
+            assert!(
+                div_style.contains(&format!("max-width: {wrapping_width}px")),
+                "{label}: {div_style}"
+            );
+            if label != word {
+                assert!(
+                    foreign_object
+                        .descendants()
+                        .any(|node| { node.has_tag_name("strong") && node.text() == Some(word) })
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn flowchart_html_layout_and_wrapping_ignore_policy_removed_markdown_content() {
+    let config = MermaidConfig::from_value(serde_json::json!({
+        "flowchart": { "htmlLabels": true, "wrappingWidth": 120 },
+        "dompurifyConfig": { "FORBID_TAGS": ["strong"], "KEEP_CONTENT": false }
+    }));
+    let render = |label: &str| {
+        // The site owns sanitizer policy. Diagram directives filter unsupported config keys.
+        let engine = Engine::new().with_site_config(config.clone());
+        render_flowchart_svg_from_text_with_engine(
+            engine,
+            &format!("flowchart TB\nA[\"`{label}`\"]\n"),
+        )
+    };
+    // Mermaid converts strong Markdown after FlowDB sanitization; the final label preparation
+    // removes this generated element and its content before both measurement and emission.
+    let removed = "**this forbidden content is long enough to require several wrapped lines**";
+    let actual = render(&format!("short{removed}"));
+    let control = render("short");
+    let actual_contract = foreign_object_contract_for_text(&actual, "short");
+    let control_contract = foreign_object_contract_for_text(&control, "short");
+
+    assert_eq!(actual_contract, control_contract);
+    assert!(actual_contract.3.contains("white-space: nowrap"));
+    assert!(!actual.contains("this forbidden content"));
+}
+
+#[test]
+fn flowchart_html_unclosed_bold_label_matches_explicit_closure() {
+    let source = |label: &str| format!("flowchart TB\napi[\"{label}\"]\n");
+    let recovered = render_flowchart_svg_from_text(&source(
+        "<b>interfaces / http / api<br/><small>Ninja routers per domain</small>",
+    ));
+    let explicit = render_flowchart_svg_from_text(&source(
+        "<b>interfaces / http / api<br/><small>Ninja routers per domain</small></b>",
+    ));
+    let document = roxmltree::Document::parse(&recovered)
+        .expect("recovered Flowchart label must produce well-formed SVG XML");
+    let bold = document
+        .descendants()
+        .find(|node| node.has_tag_name("b"))
+        .expect("recovered label retains bold formatting");
+    assert_eq!(bold.text(), Some("interfaces / http / api"));
+    assert!(
+        bold.descendants().any(|node| {
+            node.has_tag_name("small") && node.text() == Some("Ninja routers per domain")
+        }),
+        "the unclosed bold element owns the remaining label content: {recovered}"
+    );
+    assert_eq!(
+        recovered, explicit,
+        "recovery must preserve explicit-closure measurement and SVG structure"
+    );
+}
+
+#[test]
+fn flowchart_html_misnested_formatting_matches_browser_recovery() {
+    let source = |label: &str| format!("flowchart TB\napi[\"{label}\"]\n");
+    let recovered = render_flowchart_svg_from_text(&source("<b><i>API</b> tail</i>"));
+    let explicit = render_flowchart_svg_from_text(&source("<b><i>API</i></b><i> tail</i>"));
+    let document = roxmltree::Document::parse(&recovered)
+        .expect("misnested Flowchart formatting must produce well-formed SVG XML");
+    let paragraph = document
+        .descendants()
+        .find(|node| node.has_tag_name("p"))
+        .expect("recovered label retains its paragraph wrapper");
+    let elements = paragraph
+        .children()
+        .filter(|node| node.is_element())
+        .map(|node| node.tag_name().name())
+        .collect::<Vec<_>>();
+    assert_eq!(elements, ["b", "i"]);
+    assert_eq!(
+        paragraph
+            .descendants()
+            .filter(|node| node.has_tag_name("i"))
+            .map(|node| node.text().unwrap_or_default())
+            .collect::<Vec<_>>(),
+        ["API", " tail"]
+    );
+    assert_eq!(
+        recovered, explicit,
+        "formatting recovery must preserve explicit-closure measurement and SVG structure"
+    );
+}
+
+#[test]
 fn flowchart_html_labels_treat_decoded_backslash_n_as_line_break() {
     let _session = merman_render::environment::RenderEnvironment::deterministic()
         .begin_session()
@@ -5906,7 +6065,7 @@ Angle["&lt;Less&lt;"]
 
     assert_eq!(
         words_for("Raw"),
-        ["<span class='foo bar'>", " X", " </span>"],
+        ["<span class=\"foo bar\">", " X", " </span>"],
         "raw tag must remain three source words: {svg}"
     );
     assert_eq!(

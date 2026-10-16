@@ -1,29 +1,29 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "1111",
-        "message": "",
-        "seq": 0,
-        "type": 1,
-        "tags": [
-          "test tag"
-        ],
-        "parents": [],
-        "branch": "main"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "1111",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [
+          "test tag"
+        ],
+        "type": 1
+      }
+    ],
     "currentBranch": "main",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

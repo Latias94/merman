@@ -1,144 +1,133 @@
 {
   "diagramType": "wardley",
   "model": {
-    "type": "wardley",
-    "title": "Tea Shop",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "accelerators": [],
+    "annotations": [],
+    "annotationsBox": null,
+    "axes": {},
+    "deaccelerators": [],
+    "links": [
+      {
+        "dashed": false,
+        "source": "Business",
+        "target": "Cup of Tea"
+      },
+      {
+        "dashed": false,
+        "source": "Public",
+        "target": "Cup of Tea"
+      },
+      {
+        "dashed": false,
+        "source": "Cup of Tea",
+        "target": "Cup"
+      },
+      {
+        "dashed": false,
+        "source": "Cup of Tea",
+        "target": "Tea"
+      },
+      {
+        "dashed": false,
+        "source": "Cup of Tea",
+        "target": "Hot Water"
+      },
+      {
+        "dashed": false,
+        "source": "Hot Water",
+        "target": "Water"
+      },
+      {
+        "dashed": false,
+        "source": "Hot Water",
+        "target": "Kettle"
+      },
+      {
+        "dashed": false,
+        "source": "Kettle",
+        "target": "Power"
+      }
+    ],
     "nodes": [
       {
+        "className": "anchor",
         "id": "Business",
         "label": "Business",
         "x": 63.0,
-        "y": 95.0,
-        "className": "anchor"
+        "y": 95.0
       },
       {
+        "className": "anchor",
         "id": "Public",
         "label": "Public",
         "x": 78.0,
-        "y": 95.0,
-        "className": "anchor"
+        "y": 95.0
       },
       {
-        "id": "Cup of Tea",
-        "label": "Cup of Tea",
-        "x": 61.0,
-        "y": 79.0,
         "className": "component",
+        "id": "Cup of Tea",
+        "inertia": false,
+        "label": "Cup of Tea",
         "labelOffsetX": 19,
         "labelOffsetY": -4,
-        "inertia": false
+        "x": 61.0,
+        "y": 79.0
       },
       {
+        "className": "component",
         "id": "Cup",
+        "inertia": false,
         "label": "Cup",
         "x": 78.0,
-        "y": 73.0,
-        "className": "component",
-        "inertia": false
+        "y": 73.0
       },
       {
+        "className": "component",
         "id": "Tea",
+        "inertia": false,
         "label": "Tea",
         "x": 81.0,
-        "y": 63.0,
-        "className": "component",
-        "inertia": false
+        "y": 63.0
       },
       {
+        "className": "component",
         "id": "Hot Water",
+        "inertia": false,
         "label": "Hot Water",
         "x": 80.0,
-        "y": 52.0,
-        "className": "component",
-        "inertia": false
+        "y": 52.0
       },
       {
+        "className": "component",
         "id": "Water",
+        "inertia": false,
         "label": "Water",
         "x": 82.0,
-        "y": 38.0,
-        "className": "component",
-        "inertia": false
+        "y": 38.0
       },
       {
-        "id": "Kettle",
-        "label": "Kettle",
-        "x": 35.0,
-        "y": 43.0,
         "className": "component",
+        "id": "Kettle",
+        "inertia": false,
+        "label": "Kettle",
         "labelOffsetX": -57,
         "labelOffsetY": 4,
-        "inertia": false
+        "x": 35.0,
+        "y": 43.0
       },
       {
-        "id": "Power",
-        "label": "Power",
-        "x": 70.0,
-        "y": 10.0,
         "className": "component",
+        "id": "Power",
+        "inertia": false,
+        "label": "Power",
         "labelOffsetX": -27,
         "labelOffsetY": 20,
-        "inertia": false
+        "x": 70.0,
+        "y": 10.0
       }
     ],
-    "links": [
-      {
-        "source": "Business",
-        "target": "Cup of Tea",
-        "dashed": false
-      },
-      {
-        "source": "Public",
-        "target": "Cup of Tea",
-        "dashed": false
-      },
-      {
-        "source": "Cup of Tea",
-        "target": "Cup",
-        "dashed": false
-      },
-      {
-        "source": "Cup of Tea",
-        "target": "Tea",
-        "dashed": false
-      },
-      {
-        "source": "Cup of Tea",
-        "target": "Hot Water",
-        "dashed": false
-      },
-      {
-        "source": "Hot Water",
-        "target": "Water",
-        "dashed": false
-      },
-      {
-        "source": "Hot Water",
-        "target": "Kettle",
-        "dashed": false
-      },
-      {
-        "source": "Kettle",
-        "target": "Power",
-        "dashed": false
-      }
-    ],
-    "trends": [
-      {
-        "nodeId": "Kettle",
-        "targetX": 62.0,
-        "targetY": 43.0
-      },
-      {
-        "nodeId": "Power",
-        "targetX": 89.0,
-        "targetY": 10.0
-      }
-    ],
-    "pipelines": [],
-    "annotations": [],
     "notes": [
       {
         "text": "Standardising power allows Kettles to evolve faster",
@@ -156,13 +145,24 @@
         "y": 23.0
       }
     ],
-    "accelerators": [],
-    "deaccelerators": [],
-    "annotationsBox": null,
-    "axes": {},
+    "pipelines": [],
     "size": {
-      "width": 1100.0,
-      "height": 800.0
-    }
+      "height": 800.0,
+      "width": 1100.0
+    },
+    "title": "Tea Shop",
+    "trends": [
+      {
+        "nodeId": "Kettle",
+        "targetX": 62.0,
+        "targetY": 43.0
+      },
+      {
+        "nodeId": "Power",
+        "targetX": 89.0,
+        "targetY": 10.0
+      }
+    ],
+    "type": "wardley"
   }
 }

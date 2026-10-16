@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": false,
-    "title": "a neat chart",
-    "accTitle": null,
     "accDescr": "a neat description",
+    "accTitle": null,
     "sections": [
       {
         "label": "ash",
@@ -15,6 +12,9 @@
         "label": "bat",
         "value": 40.0
       }
-    ]
+    ],
+    "showData": false,
+    "title": "a neat chart",
+    "type": "pie"
   }
 }

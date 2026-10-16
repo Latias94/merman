@@ -1,133 +1,133 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "Online Grocery Shopping Experience",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "Customer",
+      "Driver",
+      "System"
+    ],
     "sections": [
       "Browsing & Selection",
       "Checkout & Delivery"
     ],
     "tasks": [
       {
+        "people": [
+          "Customer"
+        ],
         "score": 5,
+        "section": "Browsing & Selection",
+        "task": "        Visit homepage",
+        "type": "Browsing & Selection"
+      },
+      {
         "people": [
           "Customer"
         ],
-        "section": "Browsing & Selection",
-        "type": "Browsing & Selection",
-        "task": "        Visit homepage"
-      },
-      {
         "score": 4,
+        "section": "Browsing & Selection",
+        "task": "        Search for items",
+        "type": "Browsing & Selection"
+      },
+      {
         "people": [
           "Customer"
         ],
-        "section": "Browsing & Selection",
-        "type": "Browsing & Selection",
-        "task": "        Search for items"
-      },
-      {
         "score": 3,
+        "section": "Browsing & Selection",
+        "task": "        Browse recommendations",
+        "type": "Browsing & Selection"
+      },
+      {
         "people": [
           "Customer"
         ],
-        "section": "Browsing & Selection",
-        "type": "Browsing & Selection",
-        "task": "        Browse recommendations"
-      },
-      {
         "score": 4,
+        "section": "Browsing & Selection",
+        "task": "        Add items to cart",
+        "type": "Browsing & Selection"
+      },
+      {
         "people": [
           "Customer"
         ],
-        "section": "Browsing & Selection",
-        "type": "Browsing & Selection",
-        "task": "        Add items to cart"
-      },
-      {
         "score": 2,
-        "people": [
-          "Customer"
-        ],
         "section": "Browsing & Selection",
-        "type": "Browsing & Selection",
-        "task": "        Check substitution options"
+        "task": "        Check substitution options",
+        "type": "Browsing & Selection"
       },
       {
-        "score": 4,
         "people": [
           "Customer"
         ],
+        "score": 4,
         "section": "Checkout & Delivery",
-        "type": "Checkout & Delivery",
-        "task": "        Review cart"
+        "task": "        Review cart",
+        "type": "Checkout & Delivery"
       },
       {
-        "score": 3,
         "people": [
           "Customer",
           "System"
         ],
+        "score": 3,
         "section": "Checkout & Delivery",
-        "type": "Checkout & Delivery",
-        "task": "        Apply coupon code"
+        "task": "        Apply coupon code",
+        "type": "Checkout & Delivery"
       },
       {
-        "score": 2,
         "people": [
           "Customer"
         ],
+        "score": 2,
         "section": "Checkout & Delivery",
-        "type": "Checkout & Delivery",
-        "task": "        Choose delivery slot"
+        "task": "        Choose delivery slot",
+        "type": "Checkout & Delivery"
       },
       {
-        "score": 3,
         "people": [
           "Customer",
           "System"
         ],
+        "score": 3,
         "section": "Checkout & Delivery",
-        "type": "Checkout & Delivery",
-        "task": "        Enter payment info"
+        "task": "        Enter payment info",
+        "type": "Checkout & Delivery"
       },
       {
+        "people": [
+          "Customer",
+          "System"
+        ],
         "score": 5,
-        "people": [
-          "Customer",
-          "System"
-        ],
         "section": "Checkout & Delivery",
-        "type": "Checkout & Delivery",
-        "task": "        Receive confirmation"
+        "task": "        Receive confirmation",
+        "type": "Checkout & Delivery"
       },
       {
-        "score": 4,
         "people": [
           "Customer",
           "Driver"
         ],
+        "score": 4,
         "section": "Checkout & Delivery",
-        "type": "Checkout & Delivery",
-        "task": "        Track delivery"
+        "task": "        Track delivery",
+        "type": "Checkout & Delivery"
       },
       {
-        "score": 5,
         "people": [
           "Customer",
           "Driver"
         ],
+        "score": 5,
         "section": "Checkout & Delivery",
-        "type": "Checkout & Delivery",
-        "task": "        Receive groceries"
+        "task": "        Receive groceries",
+        "type": "Checkout & Delivery"
       }
     ],
-    "actors": [
-      "Customer",
-      "Driver",
-      "System"
-    ]
+    "title": "Online Grocery Shopping Experience",
+    "type": "journey"
   }
 }

@@ -8,6 +8,7 @@ use crate::text::{TextMeasurer, TextStyle};
 use crate::{Error, Result};
 use merman_core::MermaidConfig;
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 mod css_binding;
@@ -115,6 +116,119 @@ type MindmapModel = merman_core::diagrams::mindmap::MindmapDiagramRenderModel;
 type MindmapNodeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderNode;
 type MindmapEdgeModel = merman_core::diagrams::mindmap::MindmapDiagramRenderEdge;
 
+/// HTML label fragments prepared once during Mindmap layout and reused by SVG emission.
+///
+/// Keeping this sidecar private to the family artifact prevents the public layout projection
+/// from carrying operation-owned XHTML while making layout and emission observe the same
+/// sanitized DOM structure.
+#[derive(Debug, Default)]
+pub(crate) struct MindmapPreparedLabels {
+    labels: BTreeMap<String, MindmapPreparedLabel>,
+}
+
+#[derive(Debug)]
+struct MindmapPreparedLabel {
+    xhtml: String,
+    _retained_reservation: crate::resources::PreparedTextRetainedReservation,
+}
+
+impl MindmapPreparedLabels {
+    pub(crate) fn xhtml_for(&self, node_id: &str) -> Option<&str> {
+        self.labels.get(node_id).map(|label| label.xhtml.as_str())
+    }
+
+    fn insert(&mut self, node_id: String, label: MindmapPreparedLabel) {
+        self.labels.insert(node_id, label);
+    }
+}
+
+impl MindmapPreparedLabel {
+    fn prepare(
+        node_id: &str,
+        text: &str,
+        config: &MermaidConfig,
+        work_meter: &Arc<crate::resources::OperationWorkMeter>,
+    ) -> Result<Self> {
+        // Match the conservative owner-slot allowance used by the Flowchart sidecar.
+        const OWNER_SLOT_BYTES: usize = 192;
+        let owner_bytes = std::mem::size_of::<Self>()
+            .saturating_add(OWNER_SLOT_BYTES)
+            .saturating_add(node_id.len());
+        work_meter.preflight_prepared_text_retained_bytes(owner_bytes)?;
+        let parse_work = std::cell::Cell::new(0);
+        let max = work_meter
+            .remaining_prepared_text_retained_bytes()
+            .map_or(usize::MAX, |remaining| {
+                remaining.saturating_sub(owner_bytes)
+            });
+        let sink = crate::html::HtmlSanitizeSink::new(
+            max,
+            work_meter,
+            &parse_work,
+            merman_core::OperationPhase::Layout,
+        );
+        let html = crate::text::replace_fontawesome_icons(
+            &crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true),
+        );
+        let xhtml = match merman_core::sanitize::sanitize_xhtml_with_sink(&html, config, &sink) {
+            Ok(xhtml) => xhtml,
+            Err(merman_core::sanitize::SanitizeFailure::Output(
+                crate::html::HtmlOutputError::Operation(error),
+            )) => return Err(error.into()),
+            Err(merman_core::sanitize::SanitizeFailure::Output(
+                crate::html::HtmlOutputError::Limit { attempted },
+            )) => {
+                work_meter.preflight_prepared_text_retained_bytes(
+                    owner_bytes.saturating_add(attempted),
+                )?;
+                String::new()
+            }
+            // Preserve the existing sanitizer's fail-closed behavior for malformed input.
+            Err(_) => String::new(),
+        };
+        // Preserve the terminal's normalization order and whitespace. Indented code may own a
+        // trailing line box once its container switches to `white-space: break-spaces`.
+        let xhtml = single_image_paragraph_inner(&xhtml)
+            .map(str::to_owned)
+            .unwrap_or(xhtml);
+        let decoded = crate::entities::decode_mermaid_entities_for_render_text(&xhtml);
+        let xhtml = crate::xml::normalize_html_entities_for_xml(decoded.as_ref()).into_owned();
+        let retained_bytes = owner_bytes.saturating_add(xhtml.capacity());
+        let reservation = work_meter.reserve_prepared_text_retained_bytes(retained_bytes)?;
+        Ok(Self {
+            xhtml,
+            _retained_reservation: reservation,
+        })
+    }
+}
+
+pub(crate) fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
+    let fragment = fragment.trim();
+    let inner = fragment.strip_prefix("<p>")?.strip_suffix("</p>")?.trim();
+    let prefix = inner.get(..4)?;
+    if !prefix.eq_ignore_ascii_case("<img") {
+        return None;
+    }
+    if inner
+        .as_bytes()
+        .get(4)
+        .is_some_and(|byte| !byte.is_ascii_whitespace() && !matches!(byte, b'/' | b'>'))
+    {
+        return None;
+    }
+
+    let mut quote = None;
+    for (index, ch) in inner.char_indices().skip(4) {
+        match (quote, ch) {
+            (Some(active), candidate) if active == candidate => quote = None,
+            (None, '\'' | '"') => quote = Some(ch),
+            (None, '>') => return inner[index + 1..].trim().is_empty().then_some(inner),
+            _ => {}
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 fn mindmap_text_style(effective_config: &Value) -> TextStyle {
     mindmap_text_style_with_font_family(
@@ -170,41 +284,38 @@ pub(crate) fn mindmap_svg_label_source(text: &str) -> std::borrow::Cow<'_, str> 
     merman_core::entities::restore_mermaid_entity_spelling(text)
 }
 
+#[cfg(test)]
 fn mindmap_label_bbox_px(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
     max_node_width_px: f64,
 ) -> (f64, f64) {
-    let decoded = merman_core::entities::decode_mermaid_entities_to_unicode(text);
-    let text = mindmap_label_text_for_layout(decoded.as_ref());
-
-    // Mermaid mindmap labels are rendered via HTML `<foreignObject>` and respect
-    // `mindmap.maxNodeWidth` (default 200px). When the raw label is wider than that, Mermaid
-    // switches the label container to a fixed 200px width and allows HTML-like wrapping (e.g.
-    // `white-space: break-spaces` in upstream SVG baselines).
-    //
-    // Mirror that by measuring with an explicit max width in HTML-like mode.
-    let max_node_width_px = max_node_width_px.max(1.0);
-
-    // Upstream `mindmapDb.flattenNodes()` assigns `labelType: 'markdown'` to every node. Measure
-    // the same post-Markdown HTML fragment that `createText()` inserts into the foreignObject,
-    // including raw inline HTML. SVG emission applies the configured sanitizer after rendering.
-    let html = crate::text::mermaid_markdown_to_html_label_fragment(text, true);
-    let wrapped = crate::text::measure_html_with_inline_styles(
+    let config = MermaidConfig::from_value(serde_json::json!({
+        "securityLevel": "strict",
+        "htmlLabels": true
+    }));
+    let work_meter = Arc::new(crate::resources::OperationWorkMeter::new(
+        crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+    ));
+    let prepared = MindmapPreparedLabel::prepare("test-label", text, &config, &work_meter)
+        .expect("prepare test label");
+    mindmap_label_bbox_px_with_math(
+        text,
         measurer,
-        &html,
         style,
-        Some(max_node_width_px),
-        WrapMode::HtmlLike,
-    );
-
-    // The HTML-like measurement path already includes min-content width for unbreakable tokens.
-    // Do not re-expand normal wrapping prose back to its unwrapped paragraph width, or Mindmap
-    // layout/root bounds drift far wider than Mermaid's fixed-width wrapping container.
-    (wrapped.width.max(0.0), wrapped.height.max(0.0))
+        max_node_width_px,
+        &config,
+        None,
+        Some(&prepared.xhtml),
+    )
+    .expect("measure prepared test label")
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The family measurement boundary keeps source, prepared XHTML, and capabilities explicit"
+)]
 fn mindmap_label_bbox_px_with_math(
     text: &str,
     measurer: &dyn TextMeasurer,
@@ -212,6 +323,7 @@ fn mindmap_label_bbox_px_with_math(
     max_node_width_px: f64,
     config: &MermaidConfig,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+    prepared_xhtml: Option<&str>,
 ) -> Result<(f64, f64)> {
     if !crate::config::config_effective_html_labels(config.as_value()) {
         let source = mindmap_svg_label_source(text);
@@ -227,12 +339,19 @@ fn mindmap_label_bbox_px_with_math(
     }
 
     if !crate::math::contains_delimited_math(text) {
-        return Ok(mindmap_label_bbox_px(
-            text,
+        let xhtml = prepared_xhtml.ok_or_else(|| Error::InvalidModel {
+            message: "Mindmap HTML label is missing its prepared fragment".to_string(),
+        })?;
+        // Preserve Mindmap's HTML min-content and wrapping rules while measuring the exact
+        // recovered structure retained for emission, including sanitizer removals.
+        let metrics = crate::text::measure_html_with_inline_styles(
             measurer,
+            xhtml,
             style,
-            max_node_width_px,
-        ));
+            Some(max_node_width_px.max(1.0)),
+            WrapMode::HtmlLike,
+        );
+        return Ok((metrics.width.max(0.0), metrics.height.max(0.0)));
     }
 
     let math_renderer = math_renderer.ok_or_else(|| Error::MissingCapability {
@@ -418,7 +537,7 @@ pub(crate) fn layout_mindmap_diagram_typed_with_work_meter(
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
-) -> Result<MindmapDiagramLayout> {
+) -> Result<(MindmapDiagramLayout, MindmapPreparedLabels)> {
     let mut work_control = OperationLayoutWorkControl::new(work_meter.clone());
     let use_tidy_tree = layout_backend(config.as_value()) == MindmapLayoutBackend::TidyTree;
     let adapter_work = mindmap_layout_adapter_work(model, use_tidy_tree, &work_control)?;
@@ -449,16 +568,29 @@ fn layout_mindmap_diagram_model(
     _work_control: &mut OperationLayoutWorkControl,
     work_meter: Arc<crate::resources::OperationWorkMeter>,
     #[cfg(feature = "layout-elk")] operation_seed: merman_layout_elk::ElkOperationSeed,
-) -> Result<MindmapDiagramLayout> {
+) -> Result<(MindmapDiagramLayout, MindmapPreparedLabels)> {
     let effective_config = config.as_value();
     let text_style = mindmap_text_style_with_font_family(effective_config, font_family_css);
     let max_node_width_px = mindmap_max_node_width_px(effective_config);
 
     let mut nodes: Vec<LayoutNode> = Vec::with_capacity(model.nodes.len());
+    let mut prepared_labels = MindmapPreparedLabels::default();
     // Mermaid's Mindmap DB emits nodes in parser preorder, and Cytoscape consumes that order
     // directly. The typed model already preserves it; re-sorting numeric-looking ids here added
     // O(N log N) work and changed the geometry of manually constructed source-order models.
     for n in &model.nodes {
+        let prepared = if crate::config::config_effective_html_labels(effective_config)
+            && !crate::math::contains_delimited_math(&n.label)
+        {
+            Some(MindmapPreparedLabel::prepare(
+                &n.id,
+                &n.label,
+                config,
+                &work_meter,
+            )?)
+        } else {
+            None
+        };
         let (label_width, label_height) = mindmap_label_bbox_px_with_math(
             &n.label,
             text_measurer,
@@ -466,7 +598,11 @@ fn layout_mindmap_diagram_model(
             max_node_width_px,
             config,
             math_renderer,
+            prepared.as_ref().map(|label| label.xhtml.as_str()),
         )?;
+        if let Some(prepared) = prepared {
+            prepared_labels.insert(n.id.clone(), prepared);
+        }
         let (width, height, label_width, label_height) = mindmap_node_dimensions_from_label_bbox(
             n,
             label_width,
@@ -511,20 +647,29 @@ fn layout_mindmap_diagram_model(
     let backend = layout_backend(effective_config);
     match backend {
         MindmapLayoutBackend::Swimlane => {
-            return registered::swimlane(model, nodes, config, work_meter);
+            return Ok((
+                registered::swimlane(model, nodes, config, work_meter)?,
+                prepared_labels,
+            ));
         }
         MindmapLayoutBackend::Dagre => {
-            return registered::dagre(model, nodes, effective_config, _work_control);
+            return Ok((
+                registered::dagre(model, nodes, effective_config, _work_control)?,
+                prepared_labels,
+            ));
         }
         #[cfg(feature = "layout-elk")]
         MindmapLayoutBackend::Elk => {
-            return registered::elk(
-                model,
-                nodes,
-                effective_config,
-                _work_control,
-                operation_seed,
-            );
+            return Ok((
+                registered::elk(
+                    model,
+                    nodes,
+                    effective_config,
+                    _work_control,
+                    operation_seed,
+                )?,
+                prepared_labels,
+            ));
         }
         _ => {}
     }
@@ -632,16 +777,99 @@ fn layout_mindmap_diagram_model(
             .collect()
     };
     let bounds = compute_bounds(&nodes, &edges);
-    Ok(MindmapDiagramLayout {
-        swimlane_lanes: Vec::new(),
-        nodes,
-        edges,
-        bounds,
-    })
+    Ok((
+        MindmapDiagramLayout {
+            swimlane_lanes: Vec::new(),
+            nodes,
+            edges,
+            bounds,
+        },
+        prepared_labels,
+    ))
 }
 
 #[cfg(all(test, feature = "diagram-mindmap"))]
 mod tests {
+    #[test]
+    fn mindmap_prepared_html_owns_the_sanitized_structure_and_releases_retained_bytes() {
+        let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+        ));
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose",
+            "dompurifyConfig": {"FORBID_TAGS": ["strong"], "KEEP_CONTENT": false}
+        }));
+        let prepared = super::MindmapPreparedLabel::prepare(
+            "root",
+            "Alpha</div><strong>removed</strong>Beta",
+            &config,
+            &meter,
+        )
+        .expect("prepare the final HTML label");
+        assert_eq!(prepared.xhtml, "<p>AlphaBeta</p>");
+        let retained = meter.prepared_text_retained_bytes();
+        assert!(retained >= prepared.xhtml.capacity());
+        assert!(meter.used() > 0, "HTML parsing belongs to layout work");
+        assert_eq!(meter.projected_svg_bytes(), 0);
+        drop(prepared);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn mindmap_prepared_html_preserves_retained_and_work_rejections() {
+        use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }));
+        for (limit, value, expected) in [
+            (
+                ResourceLimitId::MaxPreparedTextRetainedBytes,
+                1,
+                "max_prepared_text_retained_bytes",
+            ),
+            (
+                ResourceLimitId::MaxLayoutWorkUnits,
+                1,
+                "max_layout_work_units",
+            ),
+        ] {
+            let meter = std::sync::Arc::new(OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(limit, value)
+                    .unwrap(),
+            ));
+            let error =
+                super::MindmapPreparedLabel::prepare("root", "<b>label</b>", &config, &meter)
+                    .expect_err("prepared HTML must respect its operation budget");
+            let crate::Error::ResourceLimitExceeded(error) = error else {
+                panic!("expected the original resource terminal");
+            };
+            assert_eq!(error.limit, expected);
+            assert_eq!(meter.prepared_text_retained_bytes(), 0);
+            assert_eq!(meter.projected_svg_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn mindmap_prepared_html_preserves_layout_cancellation() {
+        let control = merman_core::OperationControl::new();
+        control.cancel();
+        let meter = std::sync::Arc::new(crate::resources::OperationWorkMeter::new_with_control(
+            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        ));
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "loose"
+        }));
+        let error = super::MindmapPreparedLabel::prepare("root", "<b>label</b>", &config, &meter)
+            .expect_err("HTML preparation must preserve cancellation");
+        let crate::Error::Cancelled(error) = error else {
+            panic!("expected cancellation");
+        };
+        assert_eq!(error.phase, merman_core::OperationPhase::Layout);
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
     #[test]
     fn mindmap_declined_math_measurement_keeps_markdown_fallback() {
         let parsed = merman_core::Engine::new().parse_diagram_for_render_model_sync(

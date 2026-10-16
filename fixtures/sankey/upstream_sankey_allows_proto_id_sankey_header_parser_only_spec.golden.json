@@ -1,16 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "__proto__"
-        },
-        {
-          "id": "A"
-        }
-      ],
       "links": [
         {
           "source": "__proto__",
@@ -22,7 +13,16 @@
           "target": "__proto__",
           "value": 0.403
         }
+      ],
+      "nodes": [
+        {
+          "id": "__proto__"
+        },
+        {
+          "id": "A"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

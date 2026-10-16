@@ -1,115 +1,115 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "VeryLongClassName_With_Dashes-And_Underscores": {
-        "id": "VeryLongClassName_With_Dashes-And_Underscores",
-        "type": "",
-        "label": "VeryLongClassName_With_Dashes-And_Underscores",
-        "text": "VeryLongClassName_With_Dashes-And_Underscores",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "doSomethingWithManyParameters",
-            "classifier": "",
-            "parameters": "String a, String b, String c, String d",
-            "returnType": "void",
-            "displayText": "+doSomethingWithManyParameters(String a, String b, String c, String d) : void",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip",
-            "cssStyle": ""
-          }
-        ],
+      "AnotherExtremelyLongNamedClass": {
         "annotations": [],
-        "styles": [],
-        "domId": "classId-VeryLongClassName_With_Dashes-And_Underscores-0",
-        "parent": null,
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-AnotherExtremelyLongNamedClass-1",
+        "haveCallback": false,
+        "id": "AnotherExtremelyLongNamedClass",
+        "label": "AnotherExtremelyLongNamedClass",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "AnotherExtremelyLongNamedClass": {
-        "id": "AnotherExtremelyLongNamedClass",
-        "type": "",
-        "label": "AnotherExtremelyLongNamedClass",
-        "text": "AnotherExtremelyLongNamedClass",
-        "cssClasses": "default",
+        "members": [],
         "methods": [
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "calculateSuperLongResult",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+calculateSuperLongResult() : String",
+            "id": "calculateSuperLongResult",
+            "memberType": "method",
             "parameters": "",
             "returnType": "String",
-            "displayText": "+calculateSuperLongResult() : String",
-            "cssStyle": ""
+            "visibility": "+"
           }
         ],
-        "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-AnotherExtremelyLongNamedClass-1",
         "parent": null,
+        "styles": [],
+        "text": "AnotherExtremelyLongNamedClass",
+        "tooltip": null,
+        "type": ""
+      },
+      "VeryLongClassName_With_Dashes-And_Underscores": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-VeryLongClassName_With_Dashes-And_Underscores-0",
+        "haveCallback": false,
+        "id": "VeryLongClassName_With_Dashes-And_Underscores",
+        "label": "VeryLongClassName_With_Dashes-And_Underscores",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip",
+            "id": "String thisIsAnExcessivelyLongAttributeNameThatShouldWrapOrClip",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+doSomethingWithManyParameters(String a, String b, String c, String d) : void",
+            "id": "doSomethingWithManyParameters",
+            "memberType": "method",
+            "parameters": "String a, String b, String c, String d",
+            "returnType": "void",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "VeryLongClassName_With_Dashes-And_Underscores",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "VeryLongClassName_With_Dashes-And_Underscores",
         "id2": "AnotherExtremelyLongNamedClass",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "edge label with spaces, punctuation, and unicode → αβγ",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "edge label with spaces, punctuation, and unicode → αβγ"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

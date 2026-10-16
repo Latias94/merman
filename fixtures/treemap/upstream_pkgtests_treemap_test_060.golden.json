@@ -1,15 +1,8 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": []
-    },
-    "nodes": [],
+    "accTitle": null,
     "classes": {
       "complexClass": {
         "id": "complexClass",
@@ -18,6 +11,13 @@
         ],
         "textStyles": []
       }
-    }
+    },
+    "nodes": [],
+    "root": {
+      "children": [],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

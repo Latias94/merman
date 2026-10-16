@@ -1,24 +1,24 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Weekday sunday",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [],
     "tasks": [],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Weekday sunday",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

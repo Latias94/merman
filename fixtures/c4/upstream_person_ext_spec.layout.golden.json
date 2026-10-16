@@ -2,186 +2,186 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 782.0,
-        "max_y": 687.649
-      },
-      "width": 832.0,
-      "height": 697.649,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Context",
-      "title": null,
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 632.0,
+          "descr": null,
           "height": 571.649,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 632.0,
+          "x": 100.0,
+          "y": 66.0
         }
       ],
+      "bounds": {
+        "max_x": 782.0,
+        "max_y": 687.649,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Context",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 697.649,
+      "rels": [],
       "shapes": [
         {
           "alias": "customerA",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_person",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "A customer of the bank, with personal bank accounts.",
+            "width": 140.4,
+            "y": 65.578
+          },
           "height": 184.152,
-          "margin": 50.0,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
           "label": {
-            "text": "Banking Customer A",
-            "y": 27.7,
-            "width": 117.18,
             "height": 15.4,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "Banking Customer A",
+            "width": 117.18,
+            "y": 27.7
           },
-          "ty": null,
+          "margin": 50.0,
+          "parent_boundary": "global",
           "techn": null,
-          "descr": {
-            "text": "A customer of the bank, with personal bank accounts.",
-            "y": 65.578,
-            "width": 140.4,
-            "height": 25.256,
-            "line_count": 2.0
-          }
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "external_person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
         },
         {
           "alias": "customerSprite",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_person",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
+          "descr": null,
           "height": 137.496,
-          "margin": 50.0,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
-          "type_block": {
-            "text": "[Person]",
-            "y": 30.0,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
           "label": {
-            "text": "",
-            "y": 0.0,
-            "width": 0.0,
             "height": 0.0,
-            "line_count": 0.0
+            "line_count": 0.0,
+            "text": "",
+            "width": 0.0,
+            "y": 0.0
           },
-          "ty": null,
+          "margin": 50.0,
+          "parent_boundary": "global",
           "techn": null,
-          "descr": null
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 30.0
+          },
+          "type_c4_shape": "external_person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
         },
         {
           "alias": "customerLink",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_person",
-          "x": 150.0,
-          "y": 450.152,
-          "width": 216.0,
+          "descr": null,
           "height": 137.496,
-          "margin": 50.0,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
-          "type_block": {
-            "text": "[Person]",
-            "y": 30.0,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
           "label": {
-            "text": "",
-            "y": 0.0,
-            "width": 0.0,
             "height": 0.0,
-            "line_count": 0.0
+            "line_count": 0.0,
+            "text": "",
+            "width": 0.0,
+            "y": 0.0
           },
-          "ty": null,
+          "margin": 50.0,
+          "parent_boundary": "global",
           "techn": null,
-          "descr": null
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 30.0
+          },
+          "type_c4_shape": "external_person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 450.152
         },
         {
           "alias": "customerTags",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_person",
-          "x": 466.0,
-          "y": 450.152,
-          "width": 216.0,
+          "descr": null,
           "height": 137.496,
-          "margin": 50.0,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
-          "type_block": {
-            "text": "[Person]",
-            "y": 30.0,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
           "label": {
-            "text": "",
-            "y": 0.0,
-            "width": 0.0,
             "height": 0.0,
-            "line_count": 0.0
+            "line_count": 0.0,
+            "text": "",
+            "width": 0.0,
+            "y": 0.0
           },
-          "ty": null,
+          "margin": 50.0,
+          "parent_boundary": "global",
           "techn": null,
-          "descr": null
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 30.0
+          },
+          "type_c4_shape": "external_person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 450.152
         }
       ],
-      "rels": []
+      "title": null,
+      "use_max_width": true,
+      "width": 832.0
     }
   }
 }

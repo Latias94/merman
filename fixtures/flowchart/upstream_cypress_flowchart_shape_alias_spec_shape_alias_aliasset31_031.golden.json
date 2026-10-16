@@ -1,17 +1,78 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "flowchart",
-    "direction": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": null,
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [],
+    "keyword": "flowchart",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n0",
+        "img": null,
+        "label": "flip-tri",
+        "labelType": "markdown",
+        "layoutShape": "flip-tri",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "flip-tri",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n1",
+        "img": null,
+        "label": "manual-file",
+        "labelType": "markdown",
+        "layoutShape": "manual-file",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "manual-file",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n2",
+        "img": null,
+        "label": "flipped-triangle",
+        "labelType": "markdown",
+        "layoutShape": "flipped-triangle",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "flipped-triangle",
+        "styles": []
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
     "vertexCalls": [
       "n0",
       "n0",
@@ -20,78 +81,17 @@
       "n2",
       "n2"
     ],
-    "nodes": [
-      {
-        "id": "n0",
-        "label": "flip-tri",
-        "labelType": "markdown",
-        "shape": "flip-tri",
-        "layoutShape": "flip-tri",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "n1",
-        "label": "manual-file",
-        "labelType": "markdown",
-        "shape": "manual-file",
-        "layoutShape": "manual-file",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "n2",
-        "label": "flipped-triangle",
-        "labelType": "markdown",
-        "shape": "flipped-triangle",
-        "layoutShape": "flipped-triangle",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [],
-    "subgraphs": [],
     "warningFacts": [
       {
-        "ruleId": "merman.authoring.flowchart.explicit_direction",
-        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
-        "span": {
-          "start": 0,
-          "end": 9
-        },
         "fixSpan": {
-          "start": 9,
-          "end": 9
+          "end": 9,
+          "start": 9
+        },
+        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+        "ruleId": "merman.authoring.flowchart.explicit_direction",
+        "span": {
+          "end": 9,
+          "start": 0
         }
       }
     ],

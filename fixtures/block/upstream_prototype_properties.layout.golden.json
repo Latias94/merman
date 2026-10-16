@@ -2,113 +2,113 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
+      "bounds": {
+        "max_x": 454.72,
+        "max_y": 20.0,
+        "min_x": 0.0,
+        "min_y": -20.0
+      },
+      "edges": [],
       "nodes": [
         {
+          "height": 40.0,
           "id": "__proto__",
+          "is_cluster": false,
+          "width": 107.68,
           "x": 53.84,
-          "y": 0.0,
-          "width": 107.68,
-          "height": 40.0,
-          "is_cluster": false
+          "y": 0.0
         },
         {
+          "height": 40.0,
           "id": "constructor",
+          "is_cluster": false,
+          "width": 107.68,
           "x": 169.52,
-          "y": 0.0,
-          "width": 107.68,
-          "height": 40.0,
-          "is_cluster": false
+          "y": 0.0
         },
         {
+          "height": 40.0,
           "id": "A;",
-          "x": 285.2,
-          "y": 0.0,
+          "is_cluster": false,
           "width": 107.68,
-          "height": 40.0,
-          "is_cluster": false
+          "x": 285.2,
+          "y": 0.0
         },
         {
-          "id": "B;",
-          "x": 400.88,
-          "y": 0.0,
-          "width": 107.68,
           "height": 40.0,
-          "is_cluster": false
+          "id": "B;",
+          "is_cluster": false,
+          "width": 107.68,
+          "x": 400.88,
+          "y": 0.0
         }
       ],
-      "edges": [],
       "shapeGeometries": [
         {
-          "id": "__proto__",
           "allocated": {
+            "height": 40.0,
+            "width": 107.68,
             "x": 53.84,
-            "y": 0.0,
-            "width": 107.68,
-            "height": 40.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 107.68,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 107.68
+          },
+          "id": "__proto__"
         },
         {
-          "id": "constructor",
           "allocated": {
+            "height": 40.0,
+            "width": 107.68,
             "x": 169.52,
-            "y": 0.0,
-            "width": 107.68,
-            "height": 40.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 107.68,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 107.68
+          },
+          "id": "constructor"
         },
         {
-          "id": "A;",
           "allocated": {
+            "height": 40.0,
+            "width": 107.68,
             "x": 285.2,
-            "y": 0.0,
-            "width": 107.68,
-            "height": 40.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 107.68,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 107.68
+          },
+          "id": "A;"
         },
         {
-          "id": "B;",
           "allocated": {
-            "x": 400.88,
-            "y": 0.0,
+            "height": 40.0,
             "width": 107.68,
-            "height": 40.0
+            "x": 400.88,
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 107.68,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 107.68
+          },
+          "id": "B;"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -20.0,
-        "max_x": 454.72,
-        "max_y": 20.0
-      }
+      ]
     }
   }
 }

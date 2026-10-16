@@ -1,201 +1,201 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "cloud",
-        "icon": "cloud",
-        "title": "Cloud",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "lambda",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "ec2",
+        "rhsInto": true,
+        "title": null
       },
       {
-        "id": "compute",
-        "icon": "cloud",
-        "title": "Compute",
-        "in": "cloud"
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "unknown",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "lambda",
+        "rhsInto": true,
+        "title": "fallback"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "cloud",
+        "in": null,
+        "title": "Cloud"
+      },
+      {
+        "icon": "cloud",
+        "id": "compute",
+        "in": "cloud",
+        "title": "Compute"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "lambda",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "lambda",
+        "in": "compute",
         "title": "Lambda",
-        "in": "compute"
+        "type": "service"
       },
       {
-        "id": "ec2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "ec2",
+        "in": "compute",
         "title": "EC2",
-        "in": "compute"
+        "type": "service"
       },
       {
-        "id": "unknown",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "iconnamedoesntexist",
         "iconText": null,
+        "id": "unknown",
+        "in": "cloud",
         "title": "Unknown",
-        "in": "cloud"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "lambda",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "lambda",
+        "in": "compute",
         "title": "Lambda",
-        "in": "compute"
+        "type": "service"
       },
       {
-        "id": "ec2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "ec2",
+        "in": "compute",
         "title": "EC2",
-        "in": "compute"
+        "type": "service"
       },
       {
-        "id": "unknown",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "iconnamedoesntexist",
         "iconText": null,
+        "id": "unknown",
+        "in": "cloud",
         "title": "Unknown",
-        "in": "cloud"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "lambda",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "ec2",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "unknown",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "lambda",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "fallback"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

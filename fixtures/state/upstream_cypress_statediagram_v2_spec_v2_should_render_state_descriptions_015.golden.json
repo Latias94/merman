@@ -1,109 +1,79 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
-    "nodes": [
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Long state description",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "XState1",
-        "dir": null,
-        "domId": "state-XState1-0",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
-      },
-      {
-        "labelStyle": "",
-        "shape": "rectWithTitle",
-        "label": "Another Long state description",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "XState2",
-        "dir": null,
-        "domId": "state-XState2-0",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": [
-          "New line"
-        ]
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
     "edges": [
       {
-        "id": "edge0",
-        "start": "XState1",
-        "end": "XState2",
-        "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
+        "arrowhead": "normal",
         "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "classes": "transition",
+        "end": "XState2",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "XState1",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "description": [],
+        "dir": null,
+        "domId": "state-XState1-0",
+        "id": "XState1",
+        "isGroup": false,
+        "label": "Long state description",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "description": [
+          "New line"
+        ],
+        "dir": null,
+        "domId": "state-XState2-0",
+        "id": "XState2",
+        "isGroup": false,
+        "label": "Another Long state description",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rectWithTitle",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "XState1": {
-        "id": "XState1",
-        "type": "default",
-        "descriptions": [
-          "Long state description"
-        ],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "XState2": {
-        "id": "XState2",
-        "type": "default",
-        "descriptions": [
-          "Another Long state description",
-          "New line"
-        ],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      }
-    },
     "relations": [
       {
         "id1": "XState1",
@@ -111,6 +81,36 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "XState1": {
+        "classes": [],
+        "descriptions": [
+          "Long state description"
+        ],
+        "doc": null,
+        "id": "XState1",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "XState2": {
+        "classes": [],
+        "descriptions": [
+          "Another Long state description",
+          "New line"
+        ],
+        "doc": null,
+        "id": "XState2",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

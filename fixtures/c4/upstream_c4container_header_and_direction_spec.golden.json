@@ -1,7 +1,7 @@
 {
   "diagramType": "error",
   "model": {
-    "type": "error",
-    "errorMessage": "Diagram parse error (c4): unsupported C4 statement: direction LR"
+    "errorMessage": "Diagram parse error (c4): unsupported C4 statement: direction LR",
+    "type": "error"
   }
 }

@@ -2,24 +2,24 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 223.808,
+        "max_y": 189.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
-          "id": "BankAccount",
-          "x": 117.904,
-          "y": 100.5,
-          "width": 211.808,
           "height": 177.0,
-          "is_cluster": false
+          "id": "BankAccount",
+          "is_cluster": false,
+          "width": 211.808,
+          "x": 117.904,
+          "y": 100.5
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 223.808,
-        "max_y": 189.0
-      }
+      ]
     }
   }
 }

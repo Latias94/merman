@@ -1,239 +1,239 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValueSelection",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Configuring_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValuePreview",
+        "id": "edge1",
+        "label": "EvNewValue",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "NewValueSelection",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValueSelection",
+        "id": "edge2",
+        "label": "EvNewValueRejected",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "NewValuePreview",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NewValueSelection",
+        "id": "edge3",
+        "label": "EvNewValueSaved1",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "NewValuePreview",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Configuring",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Configuring",
         "dir": "TB",
         "domId": "state-Configuring-0",
-        "type": "group",
+        "id": "Configuring",
         "isGroup": true,
+        "label": "Configuring",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Configuring_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Configuring_start",
         "dir": null,
         "domId": "state-Configuring_start-0",
-        "type": null,
+        "id": "Configuring_start",
         "isGroup": false,
+        "label": "Configuring_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Configuring",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Configuring",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "NewValueSelection",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "NewValueSelection",
         "dir": null,
         "domId": "state-NewValueSelection-3",
-        "type": null,
+        "id": "NewValueSelection",
         "isGroup": false,
+        "label": "NewValueSelection",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Configuring",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Configuring",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "NewValuePreview",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "NewValuePreview",
         "dir": null,
         "domId": "state-NewValuePreview-3",
-        "type": null,
+        "id": "NewValuePreview",
         "isGroup": false,
+        "label": "NewValuePreview",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Configuring",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Configuring",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "Configuring_start",
-        "end": "NewValueSelection",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "NewValueSelection",
-        "end": "NewValuePreview",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvNewValue",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "NewValuePreview",
-        "end": "NewValueSelection",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvNewValueRejected",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge3",
-        "start": "NewValuePreview",
-        "end": "NewValueSelection",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvNewValueSaved1",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "relations": [],
     "states": {
       "Configuring": {
-        "id": "Configuring",
-        "type": "default",
+        "classes": [],
         "descriptions": [],
         "doc": [
           {
-            "stmt": "relation",
+            "description": null,
             "state1": {
+              "classes": [],
               "id": "Configuring_start",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "NewValueSelection",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": null
+            "stmt": "relation"
           },
           {
-            "stmt": "relation",
+            "description": "EvNewValue",
             "state1": {
+              "classes": [],
               "id": "NewValueSelection",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "NewValuePreview",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": "EvNewValue"
+            "stmt": "relation"
           },
           {
-            "stmt": "relation",
+            "description": "EvNewValueRejected",
             "state1": {
+              "classes": [],
               "id": "NewValuePreview",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "NewValueSelection",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": "EvNewValueRejected"
+            "stmt": "relation"
           },
           {
-            "stmt": "relation",
+            "description": "EvNewValueSaved1",
             "state1": {
+              "classes": [],
               "id": "NewValuePreview",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "NewValueSelection",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": "EvNewValueSaved1"
+            "stmt": "relation"
           }
         ],
+        "id": "Configuring",
         "note": null,
-        "classes": [],
+        "start": null,
         "styles": [],
         "textStyles": [],
-        "start": null
+        "type": "default"
       }
     },
-    "relations": [],
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

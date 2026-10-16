@@ -1,28 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "ACME, Inc."
-        },
-        {
-          "id": "R&D \"Lab\""
-        },
-        {
-          "id": "Phase 1 - alpha"
-        },
-        {
-          "id": "Phase 2 - beta"
-        },
-        {
-          "id": "Ship"
-        },
-        {
-          "id": "Loss"
-        }
-      ],
       "links": [
         {
           "source": "ACME, Inc.",
@@ -59,7 +38,28 @@
           "target": "Loss",
           "value": 0.75
         }
+      ],
+      "nodes": [
+        {
+          "id": "ACME, Inc."
+        },
+        {
+          "id": "R&D \"Lab\""
+        },
+        {
+          "id": "Phase 1 - alpha"
+        },
+        {
+          "id": "Phase 2 - beta"
+        },
+        {
+          "id": "Ship"
+        },
+        {
+          "id": "Loss"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

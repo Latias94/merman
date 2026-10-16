@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Negative epoch ms (dateFormat x)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "x",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "x",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "T"
     ],
     "tasks": [
       {
-        "section": "T",
-        "type": "T",
-        "task": "t1",
-        "id": "id1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": -500,
+        "id": "id1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": id1,-1000,500ms",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "-1000"
-          },
           "endTime": {
             "data": "500ms"
+          },
+          "startTime": {
+            "startData": "-1000",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "T",
         "startTime": -1000,
-        "endTime": -500
+        "task": "t1",
+        "type": "T",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Negative epoch ms (dateFormat x)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

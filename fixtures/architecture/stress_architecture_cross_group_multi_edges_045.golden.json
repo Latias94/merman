@@ -1,392 +1,392 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "g1",
-        "icon": "cloud",
-        "title": "G1",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": true,
+        "lhsId": "b",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": true,
+        "rhsId": "a",
+        "rhsInto": true,
+        "title": "sync"
       },
       {
-        "id": "g2",
-        "icon": "cloud",
-        "title": "G2",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "a",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "c",
+        "rhsInto": true,
+        "title": "status"
       },
       {
-        "id": "g3",
-        "icon": "cloud",
-        "title": "G3",
-        "in": null
+        "lhsDir": "B",
+        "lhsGroup": true,
+        "lhsId": "b",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": true,
+        "rhsId": "c",
+        "rhsInto": true,
+        "title": "fanout"
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "b",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "d",
+        "rhsInto": true,
+        "title": "direct"
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "d",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "c",
+        "rhsInto": true,
+        "title": "egress"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "g1",
+        "in": null,
+        "title": "G1"
+      },
+      {
+        "icon": "cloud",
+        "id": "g2",
+        "in": null,
+        "title": "G2"
+      },
+      {
+        "icon": "cloud",
+        "id": "g3",
+        "in": null,
+        "title": "G3"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": true,
+            "lhsId": "b",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
+            "title": "sync"
+          },
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "a",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
+            "title": "status"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "a",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "b",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": true,
-            "rhsId": "a",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": true,
-            "title": "sync"
-          },
-          {
-            "lhsId": "a",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "c",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "status"
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": "g1",
         "title": "A",
-        "in": "g1"
+        "type": "service"
       },
       {
-        "id": "b",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "b",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "a",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
             "title": "sync"
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "fanout"
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "d",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "d",
+            "rhsInto": true,
             "title": "direct"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "b",
+        "in": "g2",
         "title": "B",
-        "in": "g2"
+        "type": "service"
       },
       {
-        "id": "c",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "a",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "a",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "status"
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "fanout"
           },
           {
-            "lhsId": "d",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "d",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "egress"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "c",
+        "in": "g3",
         "title": "C",
-        "in": "g3"
+        "type": "service"
       },
       {
-        "id": "d",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "d",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "d",
+            "rhsInto": true,
             "title": "direct"
           },
           {
-            "lhsId": "d",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "d",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "egress"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "d",
+        "in": "g2",
         "title": "D",
-        "in": "g2"
+        "type": "service"
       }
     ],
     "services": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": true,
+            "lhsId": "b",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
+            "title": "sync"
+          },
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "a",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
+            "title": "status"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "a",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "b",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": true,
-            "rhsId": "a",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": true,
-            "title": "sync"
-          },
-          {
-            "lhsId": "a",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "c",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "status"
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": "g1",
         "title": "A",
-        "in": "g1"
+        "type": "service"
       },
       {
-        "id": "b",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "b",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "a",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
             "title": "sync"
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "fanout"
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "d",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "d",
+            "rhsInto": true,
             "title": "direct"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "b",
+        "in": "g2",
         "title": "B",
-        "in": "g2"
+        "type": "service"
       },
       {
-        "id": "c",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "a",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "a",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "status"
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "fanout"
           },
           {
-            "lhsId": "d",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "d",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "egress"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "c",
+        "in": "g3",
         "title": "C",
-        "in": "g3"
+        "type": "service"
       },
       {
-        "id": "d",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "d",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "d",
+            "rhsInto": true,
             "title": "direct"
           },
           {
-            "lhsId": "d",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "d",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": "egress"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "d",
+        "in": "g2",
         "title": "D",
-        "in": "g2"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "b",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": true,
-        "rhsId": "a",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": true,
-        "title": "sync"
-      },
-      {
-        "lhsId": "a",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "c",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "status"
-      },
-      {
-        "lhsId": "b",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": true,
-        "rhsId": "c",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": true,
-        "title": "fanout"
-      },
-      {
-        "lhsId": "b",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "d",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "direct"
-      },
-      {
-        "lhsId": "d",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "c",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "egress"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

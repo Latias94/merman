@@ -1,76 +1,76 @@
 {
   "diagramType": "radar",
   "model": {
-    "type": "radar",
-    "title": "Restaurant Comparison",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "axes": [
       {
-        "name": "food",
-        "label": "Food Quality"
+        "label": "Food Quality",
+        "name": "food"
       },
       {
-        "name": "service",
-        "label": "Service"
+        "label": "Service",
+        "name": "service"
       },
       {
-        "name": "price",
-        "label": "Price"
+        "label": "Price",
+        "name": "price"
       },
       {
-        "name": "ambiance",
-        "label": "Ambiance"
+        "label": "Ambiance",
+        "name": "ambiance"
       }
     ],
     "curves": [
       {
-        "name": "a",
-        "label": "Restaurant A",
         "entries": [
           4,
           3,
           2,
           4
-        ]
+        ],
+        "label": "Restaurant A",
+        "name": "a"
       },
       {
-        "name": "b",
-        "label": "Restaurant B",
         "entries": [
           3,
           4,
           3,
           3
-        ]
+        ],
+        "label": "Restaurant B",
+        "name": "b"
       },
       {
-        "name": "c",
-        "label": "Restaurant C",
         "entries": [
           2,
           3,
           4,
           2
-        ]
+        ],
+        "label": "Restaurant C",
+        "name": "c"
       },
       {
-        "name": "d",
-        "label": "Restaurant D",
         "entries": [
           2,
           2,
           4,
           3
-        ]
+        ],
+        "label": "Restaurant D",
+        "name": "d"
       }
     ],
     "options": {
-      "showLegend": true,
-      "ticks": 5,
+      "graticule": "polygon",
       "max": 5,
       "min": 0,
-      "graticule": "polygon"
-    }
+      "showLegend": true,
+      "ticks": 5
+    },
+    "title": "Restaurant Comparison",
+    "type": "radar"
   }
 }

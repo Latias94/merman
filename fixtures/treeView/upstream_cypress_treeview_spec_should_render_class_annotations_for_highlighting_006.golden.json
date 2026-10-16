@@ -1,71 +1,8 @@
 {
   "diagramType": "treeView",
   "model": {
-    "type": "treeView",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "id": 0,
-      "level": -1,
-      "name": "/",
-      "nodeType": "directory",
-      "children": [
-        {
-          "id": 1,
-          "level": 12,
-          "name": "src",
-          "nodeType": "directory",
-          "children": [
-            {
-              "id": 2,
-              "level": 16,
-              "name": "components",
-              "nodeType": "directory",
-              "children": [
-                {
-                  "id": 3,
-                  "level": 20,
-                  "name": "Button.tsx",
-                  "nodeType": "file",
-                  "cssClass": "highlight",
-                  "children": []
-                },
-                {
-                  "id": 4,
-                  "level": 20,
-                  "name": "Header.tsx",
-                  "nodeType": "file",
-                  "children": []
-                }
-              ]
-            },
-            {
-              "id": 5,
-              "level": 16,
-              "name": "App.tsx",
-              "nodeType": "file",
-              "cssClass": "highlight",
-              "children": []
-            },
-            {
-              "id": 6,
-              "level": 16,
-              "name": "index.js",
-              "nodeType": "file",
-              "children": []
-            }
-          ]
-        },
-        {
-          "id": 7,
-          "level": 12,
-          "name": "package.json",
-          "nodeType": "file",
-          "children": []
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
         "id": 0,
@@ -86,11 +23,11 @@
         "nodeType": "directory"
       },
       {
+        "cssClass": "highlight",
         "id": 3,
         "level": 20,
         "name": "Button.tsx",
-        "nodeType": "file",
-        "cssClass": "highlight"
+        "nodeType": "file"
       },
       {
         "id": 4,
@@ -99,11 +36,11 @@
         "nodeType": "file"
       },
       {
+        "cssClass": "highlight",
         "id": 5,
         "level": 16,
         "name": "App.tsx",
-        "nodeType": "file",
-        "cssClass": "highlight"
+        "nodeType": "file"
       },
       {
         "id": 6,
@@ -117,6 +54,69 @@
         "name": "package.json",
         "nodeType": "file"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "cssClass": "highlight",
+                  "id": 3,
+                  "level": 20,
+                  "name": "Button.tsx",
+                  "nodeType": "file"
+                },
+                {
+                  "children": [],
+                  "id": 4,
+                  "level": 20,
+                  "name": "Header.tsx",
+                  "nodeType": "file"
+                }
+              ],
+              "id": 2,
+              "level": 16,
+              "name": "components",
+              "nodeType": "directory"
+            },
+            {
+              "children": [],
+              "cssClass": "highlight",
+              "id": 5,
+              "level": 16,
+              "name": "App.tsx",
+              "nodeType": "file"
+            },
+            {
+              "children": [],
+              "id": 6,
+              "level": 16,
+              "name": "index.js",
+              "nodeType": "file"
+            }
+          ],
+          "id": 1,
+          "level": 12,
+          "name": "src",
+          "nodeType": "directory"
+        },
+        {
+          "children": [],
+          "id": 7,
+          "level": 12,
+          "name": "package.json",
+          "nodeType": "file"
+        }
+      ],
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory"
+    },
+    "title": null,
+    "type": "treeView"
   }
 }

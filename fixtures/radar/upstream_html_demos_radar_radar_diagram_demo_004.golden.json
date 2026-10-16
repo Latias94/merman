@@ -1,73 +1,73 @@
 {
   "diagramType": "radar",
   "model": {
-    "type": "radar",
-    "title": "Dark theme",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "axes": [
       {
-        "name": "Agility",
-        "label": "Agility"
+        "label": "Agility",
+        "name": "Agility"
       },
       {
-        "name": "Speed",
-        "label": "Speed"
+        "label": "Speed",
+        "name": "Speed"
       },
       {
-        "name": "Strength",
-        "label": "Strength"
+        "label": "Strength",
+        "name": "Strength"
       },
       {
-        "name": "Stam",
-        "label": "Stamina"
+        "label": "Stamina",
+        "name": "Stam"
       },
       {
-        "name": "Intel",
-        "label": "Intelligence"
+        "label": "Intelligence",
+        "name": "Intel"
       }
     ],
     "curves": [
       {
-        "name": "Ninja1",
-        "label": "Naruto",
         "entries": [
           2,
           2,
           3,
           5,
           0
-        ]
+        ],
+        "label": "Naruto",
+        "name": "Ninja1"
       },
       {
-        "name": "Ninja2",
-        "label": "Sasuke",
         "entries": [
           2,
           3,
           4,
           1,
           5
-        ]
+        ],
+        "label": "Sasuke",
+        "name": "Ninja2"
       },
       {
-        "name": "Ninja3",
-        "label": "Ninja",
         "entries": [
           3,
           2,
           1,
           5,
           4
-        ]
+        ],
+        "label": "Ninja",
+        "name": "Ninja3"
       }
     ],
     "options": {
-      "showLegend": true,
-      "ticks": 5,
+      "graticule": "circle",
       "max": null,
       "min": 0,
-      "graticule": "circle"
-    }
+      "showLegend": true,
+      "ticks": 5
+    },
+    "title": "Dark theme",
+    "type": "radar"
   }
 }

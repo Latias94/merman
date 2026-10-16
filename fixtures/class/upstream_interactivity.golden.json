@@ -1,51 +1,51 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Class1": {
-        "id": "Class1",
-        "type": "",
-        "label": "Class1",
-        "text": "Class1",
-        "cssClasses": "default clickable clickable clickable clickable",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
-        "domId": "classId-Class1-0",
-        "parent": null,
-        "link": "https://example.com/",
-        "linkTarget": "_blank",
-        "tooltip": "Link tooltip",
-        "haveCallback": true,
         "callback": {
           "function": "otherCall"
         },
-        "callbackEffective": false
+        "callbackEffective": false,
+        "cssClasses": "default clickable clickable clickable clickable",
+        "domId": "classId-Class1-0",
+        "haveCallback": true,
+        "id": "Class1",
+        "label": "Class1",
+        "link": "https://example.com/",
+        "linkTarget": "_blank",
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Class1",
+        "tooltip": "Link tooltip",
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

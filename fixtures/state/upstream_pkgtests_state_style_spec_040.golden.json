@@ -1,16 +1,15 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
-    "nodes": [],
-    "edges": [],
-    "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
-    "states": {},
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [],
+    "links": {},
+    "nodes": [],
+    "other": {},
     "relations": [],
+    "states": {},
     "styleClasses": {
       "__proto__": {
         "id": "__proto__",
@@ -28,6 +27,7 @@
         ],
         "textStyles": []
       }
-    }
+    },
+    "type": "stateDiagram"
   }
 }

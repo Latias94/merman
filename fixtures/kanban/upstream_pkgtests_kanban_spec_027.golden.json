@@ -1,30 +1,30 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "root",
-        "label": "fix things",
-        "level": 8,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "icon": "star"
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "root",
-        "label": "fix things",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "fix things",
         "level": 8,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "icon": "star",
+        "id": "root",
+        "isGroup": false,
+        "label": "fix things",
+        "level": 8,
+        "padding": 10,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

@@ -1,131 +1,131 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Alpha": {
-        "id": "Alpha",
-        "type": "",
-        "label": "Alpha",
-        "text": "Alpha",
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
         "cssClasses": "default",
+        "domId": "classId-Alpha-0",
+        "haveCallback": false,
+        "id": "Alpha",
+        "label": "Alpha",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+名前 String",
+            "id": "名前 String",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
         "methods": [
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "مرحبا",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+مرحبا() : void",
+            "id": "مرحبا",
+            "memberType": "method",
             "parameters": "",
             "returnType": "void",
-            "displayText": "+مرحبا() : void",
-            "cssStyle": ""
+            "visibility": "+"
           },
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "emoji😀",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+emoji😀() : bool",
+            "id": "emoji😀",
+            "memberType": "method",
             "parameters": "",
             "returnType": "bool",
-            "displayText": "+emoji😀() : bool",
-            "cssStyle": ""
+            "visibility": "+"
           }
         ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "名前 String",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+名前 String",
-            "cssStyle": ""
-          }
-        ],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Alpha-0",
         "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "styles": [],
+        "text": "Alpha",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Beta": {
-        "id": "Beta",
-        "type": "",
-        "label": "Beta",
-        "text": "Beta",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "値 int",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+値 int",
-            "cssStyle": ""
-          }
-        ],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Beta-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Beta",
+        "label": "Beta",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+値 int",
+            "id": "値 int",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Beta",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "LR",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [
+      {
+        "class": "Alpha",
+        "id": "note0",
+        "text": "RTL: مرحبا<br/>CJK: 你好<br/>Emoji: 😀"
+      }
+    ],
     "relations": [
       {
         "id": "0",
         "id1": "Alpha",
         "id2": "Beta",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "uses and tests (alpha beta gamma)",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "uses and tests (alpha beta gamma)"
       }
     ],
-    "notes": [
-      {
-        "id": "note0",
-        "class": "Alpha",
-        "text": "RTL: مرحبا<br/>CJK: 你好<br/>Emoji: 😀"
-      }
-    ],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

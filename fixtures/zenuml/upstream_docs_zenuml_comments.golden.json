@@ -1,70 +1,70 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "_STARTER_",
+        "color": null,
+        "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": true,
         "label": null,
+        "name": "_STARTER_",
+        "occurrences": [],
         "participantType": null,
         "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": true,
-        "declarationSpan": null,
-        "occurrences": [],
         "width": null
       },
       {
-        "name": "BookService",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
         "comment": " a comment on a participant will not be rendered",
-        "groupId": null,
-        "explicit": true,
-        "isStarter": false,
         "declarationSpan": {
-          "start": 66,
-          "end": 77
+          "end": 77,
+          "start": 66
         },
+        "emoji": null,
+        "explicit": true,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "BookService",
         "occurrences": [
           {
-            "start": 66,
-            "end": 77
+            "end": 77,
+            "start": 66
           },
           {
-            "start": 147,
-            "end": 158
+            "end": 158,
+            "start": 147
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": null,
+        "body": [],
         "comment": " a comment on a message.\n **Markdown** is supported.",
-        "span": {
-          "start": 147,
-          "end": 168
-        },
-        "kind": "message",
         "explicit_from": null,
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "getBook()",
         "resolved_from": null,
         "resolved_to": "BookService",
-        "label": "getBook()",
-        "assignment": null,
-        "style": "synchronous",
-        "body": []
+        "span": {
+          "end": 168,
+          "start": 147
+        },
+        "style": "synchronous"
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

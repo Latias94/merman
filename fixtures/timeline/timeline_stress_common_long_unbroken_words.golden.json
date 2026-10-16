@@ -1,45 +1,45 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Long unbroken words (wrap / measure stress)",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Words"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Words",
-        "type": "Words",
-        "task": "2024 ",
-        "score": 0,
         "events": [
           "SupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Words",
+        "task": "2024 ",
+        "type": "Words"
       },
       {
-        "id": 1,
-        "section": "Words",
-        "type": "Words",
-        "task": "2025 ",
-        "score": 0,
         "events": [
           "Looooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooong"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Words",
+        "task": "2025 ",
+        "type": "Words"
       },
       {
-        "id": 2,
-        "section": "Words",
-        "type": "Words",
-        "task": "2026 ",
-        "score": 0,
         "events": [
           "PneumonoultramicroscopicsilicovolcanoconiosisPneumonoultramicroscopicsilicovolcanoconiosis"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "Words",
+        "task": "2026 ",
+        "type": "Words"
       }
-    ]
+    ],
+    "title": "Long unbroken words (wrap / measure stress)",
+    "type": "timeline"
   }
 }

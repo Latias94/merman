@@ -1,35 +1,35 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "VeryLongUnbrokenWords",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Wrapping"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Wrapping",
-        "type": "Wrapping",
-        "task": "2024 ",
-        "score": 0,
         "events": [
           "SupercalifragilisticexpialidociousSupercalifragilisticexpialidociousSupercalifragilisticexpialidocious"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Wrapping",
+        "task": "2024 ",
+        "type": "Wrapping"
       },
       {
-        "id": 1,
-        "section": "Wrapping",
-        "type": "Wrapping",
-        "task": "2025 ",
-        "score": 0,
         "events": [
           "AnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpacesAnotherLongTokenWithoutSpaces"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Wrapping",
+        "task": "2025 ",
+        "type": "Wrapping"
       }
-    ]
+    ],
+    "title": "VeryLongUnbrokenWords",
+    "type": "timeline"
   }
 }

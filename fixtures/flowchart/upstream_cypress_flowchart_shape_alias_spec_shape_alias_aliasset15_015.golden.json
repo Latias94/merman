@@ -1,17 +1,78 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "flowchart",
-    "direction": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": null,
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [],
+    "keyword": "flowchart",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n0",
+        "img": null,
+        "label": "sm-circ",
+        "labelType": "markdown",
+        "layoutShape": "sm-circ",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "sm-circ",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n1",
+        "img": null,
+        "label": "small-circle",
+        "labelType": "markdown",
+        "layoutShape": "small-circle",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "small-circle",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n2",
+        "img": null,
+        "label": "start",
+        "labelType": "markdown",
+        "layoutShape": "start",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "start",
+        "styles": []
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
     "vertexCalls": [
       "n0",
       "n0",
@@ -20,78 +81,17 @@
       "n2",
       "n2"
     ],
-    "nodes": [
-      {
-        "id": "n0",
-        "label": "sm-circ",
-        "labelType": "markdown",
-        "shape": "sm-circ",
-        "layoutShape": "sm-circ",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "n1",
-        "label": "small-circle",
-        "labelType": "markdown",
-        "shape": "small-circle",
-        "layoutShape": "small-circle",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "n2",
-        "label": "start",
-        "labelType": "markdown",
-        "shape": "start",
-        "layoutShape": "start",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [],
-    "subgraphs": [],
     "warningFacts": [
       {
-        "ruleId": "merman.authoring.flowchart.explicit_direction",
-        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
-        "span": {
-          "start": 0,
-          "end": 9
-        },
         "fixSpan": {
-          "start": 9,
-          "end": 9
+          "end": 9,
+          "start": 9
+        },
+        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+        "ruleId": "merman.authoring.flowchart.explicit_direction",
+        "span": {
+          "end": 9,
+          "start": 0
         }
       }
     ],

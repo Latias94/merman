@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": "test the accTitle",
     "accDescr": "Test a description",
+    "accTitle": "test the accTitle",
     "actorOrder": [
       "Alice",
       "Bob",
@@ -13,367 +11,383 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "John": {
-        "name": "John",
         "description": "John<br />Second Line",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "John",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Lola": {
-        "name": "Lola",
         "description": "Lola",
-        "wrap": false,
-        "type": "actor",
         "links": {},
-        "properties": {}
+        "name": "Lola",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       }
+    },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {
+      "John": 4,
+      "Lola": 18
+    },
+    "destroyedActors": {
+      "Bob": 30,
+      "John": 13
     },
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "0",
         "message": {
           "start": 10,
           "step": 10,
           "visible": true
         },
-        "wrap": false,
+        "to": null,
         "type": 26,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "1",
-        "from": null,
-        "to": null,
         "message": "rgb(200, 220, 100)",
-        "wrap": false,
+        "to": null,
         "type": 22,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "2",
-        "from": null,
-        "to": null,
         "message": "rgb(200, 255, 200)",
-        "wrap": false,
+        "to": null,
         "type": 22,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "3",
+        "activate": false,
         "from": "Alice",
-        "to": "Bob",
+        "id": "3",
         "message": "Hello Bob, how are you?",
-        "wrap": false,
+        "to": "Bob",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "4",
-        "from": "Bob",
-        "to": "John",
         "message": "How about you John?",
-        "wrap": false,
+        "to": "John",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "5",
-        "from": null,
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 23,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "6",
-        "from": "Bob",
-        "to": "Alice",
         "message": "I am good thanks!",
-        "wrap": false,
+        "to": "Alice",
         "type": 4,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "7",
-        "from": "Bob",
-        "to": "John",
         "message": "I am good thanks!",
-        "wrap": false,
+        "to": "John",
         "type": 3,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "John",
         "id": "8",
-        "from": "John",
-        "to": "John",
         "message": "John thinks a long<br />long time, so long<br />that the text does<br />not fit on a row.",
-        "wrap": false,
+        "placement": 1,
+        "to": "John",
         "type": 2,
-        "activate": false,
-        "placement": 1
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "9",
-        "from": "Bob",
-        "to": "Alice",
         "message": "Checking with John...",
-        "wrap": false,
+        "to": "Alice",
         "type": 6,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "John",
         "id": "10",
-        "from": "John",
-        "to": "John",
         "message": "John looks like he's still thinking, so Bob prods him a bit.",
-        "wrap": true,
+        "placement": 2,
+        "to": "John",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": true
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "11",
-        "from": "Bob",
-        "to": "John",
         "message": "Hey John - we're still waiting to know<br />how you're doing",
-        "wrap": false,
+        "to": "John",
         "type": 3,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "John",
         "id": "12",
-        "from": "John",
-        "to": "John",
         "message": "John's trying hard not to break his train of thought.",
-        "wrap": false,
+        "placement": 2,
+        "to": "John",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": false
       },
       {
-        "id": "13",
+        "activate": false,
         "from": "Bob",
-        "to": "John",
+        "id": "13",
         "message": "John! Cmon!",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      },
-      {
-        "id": "14",
-        "from": "John",
         "to": "John",
-        "message": "After a few more moments, John<br />finally snaps out of it.",
-        "wrap": false,
-        "type": 2,
+        "type": 3,
+        "wrap": false
+      },
+      {
         "activate": false,
-        "placement": 2
+        "from": "John",
+        "id": "14",
+        "message": "After a few more moments, John<br />finally snaps out of it.",
+        "placement": 2,
+        "to": "John",
+        "type": 2,
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "15",
-        "from": null,
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 23,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "16",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "16",
         "message": {
           "visible": false
         },
-        "wrap": false,
+        "to": null,
         "type": 26,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "17",
-        "from": null,
-        "to": null,
         "message": "either this",
-        "wrap": false,
+        "to": null,
         "type": 12,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "18",
+        "activate": true,
         "from": "Alice",
-        "to": "Lola",
+        "id": "18",
         "message": "Yes",
-        "wrap": false,
+        "to": "Lola",
         "type": 0,
-        "activate": true
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Lola",
         "id": "19",
-        "from": "Lola",
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 17,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Lola",
         "id": "20",
-        "from": "Lola",
-        "to": "Alice",
         "message": "OK",
-        "wrap": false,
+        "to": "Alice",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "21",
+        "activate": false,
         "from": "Lola",
-        "to": null,
+        "id": "21",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 18,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "22",
-        "from": null,
-        "to": null,
         "message": "or this",
-        "wrap": false,
+        "to": null,
         "type": 13,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "23",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "23",
         "message": {
           "visible": true
         },
-        "wrap": false,
+        "to": null,
         "type": 26,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Alice",
         "id": "24",
-        "from": "Alice",
-        "to": "Lola",
         "message": "No",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "25",
-        "from": null,
-        "to": null,
-        "message": "or this will happen",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "26",
-        "from": "Alice",
         "to": "Lola",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "25",
+        "message": "or this will happen",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "26",
         "message": "Maybe",
-        "wrap": false,
+        "to": "Lola",
         "type": 5,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "27",
-        "from": null,
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 14,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "28",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "28",
         "message": {
           "start": 200,
           "step": 1,
           "visible": true
         },
-        "wrap": false,
+        "to": null,
         "type": 26,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "29",
-        "from": null,
-        "to": null,
         "message": "this happens in parallel",
-        "wrap": false,
+        "to": null,
         "type": 19,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Alice",
         "id": "30",
-        "from": "Alice",
-        "to": "Bob",
         "message": "Parallel message 1",
-        "wrap": false,
+        "to": "Bob",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "31",
-        "from": null,
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 20,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "32",
+        "activate": false,
         "from": "Alice",
-        "to": "Lola",
+        "id": "32",
         "message": "Parallel message 2",
-        "wrap": false,
+        "to": "Lola",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "33",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "33",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 21,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "John",
-        "placement": 1,
         "message": "John thinks a long<br />long time, so long<br />that the text does<br />not fit on a row.",
+        "placement": 1,
         "wrap": false
       },
       {
@@ -381,8 +395,8 @@
           "John",
           "John"
         ],
-        "placement": 2,
         "message": "John looks like he's still thinking, so Bob prods him a bit.",
+        "placement": 2,
         "wrap": true
       },
       {
@@ -390,8 +404,8 @@
           "John",
           "John"
         ],
-        "placement": 2,
         "message": "John's trying hard not to break his train of thought.",
+        "placement": 2,
         "wrap": false
       },
       {
@@ -399,26 +413,12 @@
           "John",
           "John"
         ],
-        "placement": 2,
         "message": "After a few more moments, John<br />finally snaps out of it.",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {
-      "Lola": 18,
-      "John": 4
-    },
-    "destroyedActors": {
-      "John": 13,
-      "Bob": 30
-    },
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

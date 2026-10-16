@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "J",
@@ -13,102 +11,131 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
-      },
-      "J": {
-        "name": "J",
-        "description": "John",
-        "wrap": false,
+        "name": "A",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "J": {
+        "description": "John",
+        "links": {},
+        "name": "J",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [
+      {
+        "actorKeys": [
+          "A",
+          "J"
+        ],
+        "fill": "transparent",
+        "name": "Aqua",
+        "wrap": false
+      },
+      {
+        "actorKeys": [
+          "B",
+          "C"
+        ],
+        "fill": "rgba(33,66,99,0.35)",
+        "name": "Another Group",
+        "wrap": false
+      }
+    ],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "A",
-        "to": "J",
-        "message": "inside box",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "B",
-        "message": "cross boxes",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "B",
-        "to": "A",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "J",
-        "to": "C",
-        "message": "spanning note across boxes<br/>second line",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": "A",
+        "id": "0",
+        "message": "inside box",
+        "to": "J",
+        "type": 0,
+        "wrap": false
       },
       {
-        "id": "6",
-        "from": "C",
-        "to": "J",
-        "message": "done",
-        "wrap": false,
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "cross boxes",
+        "to": "B",
         "type": 0,
-        "activate": false
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "2",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "3",
+        "message": "ok",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "J",
+        "id": "5",
+        "message": "spanning note across boxes<br/>second line",
+        "placement": 2,
+        "to": "C",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "6",
+        "message": "done",
+        "to": "J",
+        "type": 0,
+        "wrap": false
       }
     ],
     "notes": [
@@ -117,39 +144,12 @@
           "J",
           "C"
         ],
-        "placement": 2,
         "message": "spanning note across boxes<br/>second line",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [
-      {
-        "name": "Aqua",
-        "wrap": false,
-        "fill": "transparent",
-        "actorKeys": [
-          "A",
-          "J"
-        ]
-      },
-      {
-        "name": "Another Group",
-        "wrap": false,
-        "fill": "rgba(33,66,99,0.35)",
-        "actorKeys": [
-          "B",
-          "C"
-        ]
-      }
-    ],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

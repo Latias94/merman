@@ -1,140 +1,140 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "rootPriority",
-        "label": "rootPriority",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "priority": "high"
-      },
-      {
-        "id": "rootAssigned",
-        "label": "rootAssigned",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "assigned": "knsv"
-      },
-      {
-        "id": "rootIcon",
-        "label": "rootIcon",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "icon": "star"
-      },
-      {
-        "id": "rootMulti",
-        "label": "rootMulti",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "assigned": "knsv",
-        "icon": "star"
-      },
-      {
-        "id": "rootOneLine",
-        "label": "rootOneLine",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "assigned": "knsv",
-        "icon": "star"
-      },
-      {
-        "id": "rootLabel",
-        "label": "fix things",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "icon": "star"
-      },
-      {
-        "id": "rootTicket",
-        "label": "rootTicket",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false,
-        "ticket": "MC-1234"
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "rootPriority",
-        "label": "rootPriority",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "rootPriority",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "rootAssigned",
-        "label": "rootAssigned",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "rootAssigned",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "rootIcon",
-        "label": "rootIcon",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "rootIcon",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "rootMulti",
-        "label": "rootMulti",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "rootMulti",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "rootOneLine",
-        "label": "rootOneLine",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "rootOneLine",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "rootLabel",
-        "label": "fix things",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "fix things",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "rootTicket",
-        "label": "rootTicket",
         "isGroup": true,
-        "ticket": "MC-1234",
-        "shape": "kanbanSection",
+        "label": "rootTicket",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": "MC-1234"
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "rootPriority",
+        "isGroup": false,
+        "label": "rootPriority",
+        "level": 2,
+        "padding": 10,
+        "priority": "high",
+        "width": 200
+      },
+      {
+        "assigned": "knsv",
+        "id": "rootAssigned",
+        "isGroup": false,
+        "label": "rootAssigned",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "icon": "star",
+        "id": "rootIcon",
+        "isGroup": false,
+        "label": "rootIcon",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "assigned": "knsv",
+        "icon": "star",
+        "id": "rootMulti",
+        "isGroup": false,
+        "label": "rootMulti",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "assigned": "knsv",
+        "icon": "star",
+        "id": "rootOneLine",
+        "isGroup": false,
+        "label": "rootOneLine",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "icon": "star",
+        "id": "rootLabel",
+        "isGroup": false,
+        "label": "fix things",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "id": "rootTicket",
+        "isGroup": false,
+        "label": "rootTicket",
+        "level": 2,
+        "padding": 10,
+        "ticket": "MC-1234",
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

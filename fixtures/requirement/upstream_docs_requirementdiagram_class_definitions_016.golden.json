@@ -1,36 +1,8 @@
 {
   "diagramType": "requirement",
   "model": {
-    "type": "requirement",
-    "accTitle": null,
     "accDescr": null,
-    "direction": "TB",
-    "requirements": [
-      {
-        "name": "test_req",
-        "type": "Requirement",
-        "requirementId": "1",
-        "text": "class styling example",
-        "risk": "Low",
-        "verifyMethod": "Test",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      }
-    ],
-    "elements": [
-      {
-        "name": "test_entity",
-        "type": "simulation",
-        "docRef": "",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      }
-    ],
-    "relationships": [],
+    "accTitle": null,
     "classes": {
       "important": {
         "id": "important",
@@ -49,6 +21,34 @@
         ],
         "textStyles": []
       }
-    }
+    },
+    "direction": "TB",
+    "elements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "docRef": "",
+        "name": "test_entity",
+        "type": "simulation"
+      }
+    ],
+    "relationships": [],
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req",
+        "requirementId": "1",
+        "risk": "Low",
+        "text": "class styling example",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      }
+    ],
+    "type": "requirement"
   }
 }

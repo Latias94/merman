@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -13,110 +11,112 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "boundary",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Carl": {
-        "name": "Carl",
         "description": "Carl",
-        "wrap": false,
-        "type": "control",
         "links": {},
-        "properties": {}
+        "name": "Carl",
+        "properties": {},
+        "type": "control",
+        "wrap": false
       },
       "D": {
-        "name": "D",
         "description": "Donald",
-        "wrap": false,
-        "type": "actor",
         "links": {},
-        "properties": {}
+        "name": "D",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hello Bob, how are you ?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Fine, thank you. And you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Alice",
-        "to": "Carl",
-        "message": "Hi Carl!",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Carl",
-        "to": "D",
-        "message": "Hi!",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "Alice",
-        "to": "Carl",
-        "message": "We are too many",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "I agree",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
     "createdActors": {
       "Carl": 2,
       "D": 3
     },
     "destroyedActors": {
-      "Carl": 4,
-      "Bob": 5
+      "Bob": 5,
+      "Carl": 4
     },
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you ?",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "1",
+        "message": "Fine, thank you. And you?",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "2",
+        "message": "Hi Carl!",
+        "to": "Carl",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Carl",
+        "id": "3",
+        "message": "Hi!",
+        "to": "D",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "4",
+        "message": "We are too many",
+        "to": "Carl",
+        "type": 3,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "5",
+        "message": "I agree",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
       }
-    }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

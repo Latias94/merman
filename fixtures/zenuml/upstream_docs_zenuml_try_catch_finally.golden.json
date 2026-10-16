@@ -1,194 +1,194 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
+        "color": null,
+        "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
         "name": "Consumer",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
-        "declarationSpan": null,
         "occurrences": [
           {
-            "start": 23,
-            "end": 31
+            "end": 31,
+            "start": 23
           },
           {
-            "start": 127,
-            "end": 135
+            "end": 135,
+            "start": 127
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
+        "color": null,
+        "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
         "name": "API",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
-        "declarationSpan": null,
         "occurrences": [
           {
-            "start": 33,
-            "end": 36
+            "end": 36,
+            "start": 33
           },
           {
-            "start": 59,
-            "end": 62
+            "end": 62,
+            "start": 59
           },
           {
-            "start": 122,
-            "end": 125
+            "end": 125,
+            "start": 122
           },
           {
-            "start": 172,
-            "end": 175
+            "end": 175,
+            "start": 172
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
-        "name": "BookingService",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "BookingService",
         "occurrences": [
           {
-            "start": 64,
-            "end": 78
+            "end": 78,
+            "start": 64
           },
           {
-            "start": 177,
-            "end": 191
+            "end": 191,
+            "start": 177
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
         "comment": null,
-        "span": {
-          "start": 11,
-          "end": 214
-        },
-        "kind": "fragment",
         "fragment_kind": "tryCatchFinally",
+        "id": "zenuml-statement-0",
+        "kind": "fragment",
         "label": null,
         "sections": [
           {
             "label": "try",
+            "span": {
+              "end": 107,
+              "start": 11
+            },
             "statements": [
               {
-                "id": "zenuml-statement-1",
+                "assignment": null,
+                "body": [],
                 "comment": null,
-                "span": {
-                  "start": 23,
-                  "end": 53
-                },
-                "kind": "message",
                 "explicit_from": "Consumer",
+                "id": "zenuml-statement-1",
+                "kind": "message",
+                "label": "Book something",
                 "resolved_from": "Consumer",
                 "resolved_to": "API",
-                "label": "Book something",
-                "assignment": null,
-                "style": "asynchronous",
-                "body": []
+                "span": {
+                  "end": 53,
+                  "start": 23
+                },
+                "style": "asynchronous"
               },
               {
-                "id": "zenuml-statement-2",
+                "assignment": null,
+                "body": [],
                 "comment": null,
-                "span": {
-                  "start": 59,
-                  "end": 102
-                },
-                "kind": "message",
                 "explicit_from": "API",
+                "id": "zenuml-statement-2",
+                "kind": "message",
+                "label": "Start booking process",
                 "resolved_from": "API",
                 "resolved_to": "BookingService",
-                "label": "Start booking process",
-                "assignment": null,
-                "style": "asynchronous",
-                "body": []
+                "span": {
+                  "end": 102,
+                  "start": 59
+                },
+                "style": "asynchronous"
               }
-            ],
-            "span": {
-              "start": 11,
-              "end": 107
-            }
+            ]
           },
           {
             "label": "catch",
+            "span": {
+              "end": 155,
+              "start": 108
+            },
             "statements": [
               {
-                "id": "zenuml-statement-3",
+                "assignment": null,
+                "body": [],
                 "comment": null,
-                "span": {
-                  "start": 122,
-                  "end": 150
-                },
-                "kind": "message",
                 "explicit_from": "API",
+                "id": "zenuml-statement-3",
+                "kind": "message",
+                "label": "show failure",
                 "resolved_from": "API",
                 "resolved_to": "Consumer",
-                "label": "show failure",
-                "assignment": null,
-                "style": "asynchronous",
-                "body": []
+                "span": {
+                  "end": 150,
+                  "start": 122
+                },
+                "style": "asynchronous"
               }
-            ],
-            "span": {
-              "start": 108,
-              "end": 155
-            }
+            ]
           },
           {
             "label": "finally",
+            "span": {
+              "end": 214,
+              "start": 156
+            },
             "statements": [
               {
-                "id": "zenuml-statement-4",
+                "assignment": null,
+                "body": [],
                 "comment": null,
-                "span": {
-                  "start": 172,
-                  "end": 209
-                },
-                "kind": "message",
                 "explicit_from": "API",
+                "id": "zenuml-statement-4",
+                "kind": "message",
+                "label": "rollback status",
                 "resolved_from": "API",
                 "resolved_to": "BookingService",
-                "label": "rollback status",
-                "assignment": null,
-                "style": "asynchronous",
-                "body": []
+                "span": {
+                  "end": 209,
+                  "start": 172
+                },
+                "style": "asynchronous"
               }
-            ],
-            "span": {
-              "start": 156,
-              "end": 214
-            }
+            ]
           }
-        ]
+        ],
+        "span": {
+          "end": 214,
+          "start": 11
+        }
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

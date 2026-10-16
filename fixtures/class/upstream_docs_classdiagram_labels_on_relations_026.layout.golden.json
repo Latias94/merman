@@ -2,93 +2,57 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "classA",
-          "x": 45.0,
-          "y": 52.5,
-          "width": 60.406,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "classB",
-          "x": 45.0,
-          "y": 234.5,
-          "width": 60.406,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "classC",
-          "x": 145.406,
-          "y": 52.5,
-          "width": 60.406,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "classD",
-          "x": 145.406,
-          "y": 234.5,
-          "width": 60.406,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "classE",
-          "x": 245.813,
-          "y": 52.5,
-          "width": 60.406,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "classF",
-          "x": 245.813,
-          "y": 234.5,
-          "width": 60.406,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 277.433,
+        "max_y": 275.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "classA",
-          "to": "classB",
           "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 45.0,
-              "y": 93.0
-            },
-            {
-              "x": 45.0,
-              "y": 194.0
-            }
-          ],
+          "id": "0",
           "label": {
-            "x": 44.9,
-            "y": 143.5,
+            "height": 21.0,
             "width": 65.8,
-            "height": 21.0
+            "x": 44.9,
+            "y": 143.5
           },
+          "points": [
+            {
+              "x": 45.0,
+              "y": 93.0
+            },
+            {
+              "x": 45.0,
+              "y": 194.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "classB",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "classC",
-          "to": "classD",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 66.92,
+            "x": 145.366,
+            "y": 143.5
+          },
           "points": [
             {
               "x": 145.406,
@@ -99,26 +63,26 @@
               "y": 194.0
             }
           ],
-          "label": {
-            "x": 145.366,
-            "y": 143.5,
-            "width": 66.92,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "classD",
+          "to_cluster": null
         },
         {
-          "id": "2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "classE",
-          "to": "classF",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "2",
+          "label": {
+            "height": 21.0,
+            "width": 64.12,
+            "x": 245.373,
+            "y": 143.5
+          },
           "points": [
             {
               "x": 245.813,
@@ -129,28 +93,64 @@
               "y": 194.0
             }
           ],
-          "label": {
-            "x": 245.373,
-            "y": 143.5,
-            "width": 64.12,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "classF",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 277.433,
-        "max_y": 275.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "classA",
+          "is_cluster": false,
+          "width": 60.406,
+          "x": 45.0,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "classB",
+          "is_cluster": false,
+          "width": 60.406,
+          "x": 45.0,
+          "y": 234.5
+        },
+        {
+          "height": 81.0,
+          "id": "classC",
+          "is_cluster": false,
+          "width": 60.406,
+          "x": 145.406,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "classD",
+          "is_cluster": false,
+          "width": 60.406,
+          "x": 145.406,
+          "y": 234.5
+        },
+        {
+          "height": 81.0,
+          "id": "classE",
+          "is_cluster": false,
+          "width": 60.406,
+          "x": 245.813,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "classF",
+          "is_cluster": false,
+          "width": 60.406,
+          "x": 245.813,
+          "y": 234.5
+        }
+      ]
     }
   }
 }

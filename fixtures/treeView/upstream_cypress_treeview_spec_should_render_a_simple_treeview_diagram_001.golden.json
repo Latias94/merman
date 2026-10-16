@@ -1,25 +1,8 @@
 {
   "diagramType": "treeView",
   "model": {
-    "type": "treeView",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "id": 0,
-      "level": -1,
-      "name": "/",
-      "nodeType": "directory",
-      "children": [
-        {
-          "id": 1,
-          "level": 12,
-          "name": "file1.ts",
-          "nodeType": "file",
-          "children": []
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
         "id": 0,
@@ -33,6 +16,23 @@
         "name": "file1.ts",
         "nodeType": "file"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [],
+          "id": 1,
+          "level": 12,
+          "name": "file1.ts",
+          "nodeType": "file"
+        }
+      ],
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory"
+    },
+    "title": null,
+    "type": "treeView"
   }
 }

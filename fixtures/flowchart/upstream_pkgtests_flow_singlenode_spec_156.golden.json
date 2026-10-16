@@ -1,42 +1,42 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
-    "vertexCalls": [
-      "i-d"
-    ],
+    "edges": [],
+    "keyword": "graph",
     "nodes": [
       {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
         "id": "i-d",
+        "img": null,
         "label": "i-d",
         "labelType": "text",
-        "shape": null,
         "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
         "link": null,
         "linkTarget": null,
-        "haveCallback": false
+        "pos": null,
+        "shape": null,
+        "styles": []
       }
     ],
-    "edges": [],
-    "subgraphs": []
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "i-d"
+    ]
   }
 }

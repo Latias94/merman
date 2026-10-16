@@ -2,31 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Animal",
-          "x": 87.525,
-          "y": 100.5,
-          "width": 127.042,
-          "height": 177.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Du\nck",
-          "x": 87.525,
-          "y": 328.0,
-          "width": 151.051,
-          "height": 198.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 163.051,
+        "max_y": 427.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Animal",
-          "to": "Du\nck",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 87.525,
@@ -37,23 +28,32 @@
               "y": 229.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Du\nck",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 163.051,
-        "max_y": 427.0
-      }
+      "nodes": [
+        {
+          "height": 177.0,
+          "id": "Animal",
+          "is_cluster": false,
+          "width": 127.042,
+          "x": 87.525,
+          "y": 100.5
+        },
+        {
+          "height": 198.0,
+          "id": "Du\nck",
+          "is_cluster": false,
+          "width": 151.051,
+          "x": 87.525,
+          "y": 328.0
+        }
+      ]
     }
   }
 }

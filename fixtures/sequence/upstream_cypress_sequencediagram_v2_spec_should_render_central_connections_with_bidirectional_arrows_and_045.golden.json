@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,203 +10,205 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Charlie": {
-        "name": "Charlie",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Charlie",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": {
-          "visible": true
-        },
-        "wrap": false,
-        "type": 26,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Dual central with bidirectional solid LTR",
-        "wrap": false,
-        "type": 33,
-        "activate": true,
-        "centralConnection": 61
-      },
-      {
-        "id": "2",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Dual central with bidirectional solid RTL",
-        "wrap": false,
-        "type": 33,
-        "activate": true,
-        "centralConnection": 61
-      },
-      {
-        "id": "5",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Dual central with bidirectional dotted LTR",
-        "wrap": false,
-        "type": 34,
-        "activate": true,
-        "centralConnection": 61
-      },
-      {
-        "id": "8",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Dual central with bidirectional dotted RTL",
-        "wrap": false,
-        "type": 34,
-        "activate": true,
-        "centralConnection": 61
-      },
-      {
-        "id": "11",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "13",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Central at end with bidirectional LTR",
-        "wrap": false,
-        "type": 33,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "14",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "15",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Central at start with bidirectional RTL",
-        "wrap": false,
-        "type": 33,
-        "activate": false,
-        "centralConnection": 60
-      },
-      {
-        "id": "16",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": {
+          "visible": true
+        },
+        "to": null,
+        "type": 26,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 61,
+        "from": "Alice",
+        "id": "1",
+        "message": "Dual central with bidirectional solid LTR",
+        "to": "Bob",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 61,
+        "from": "Bob",
+        "id": "4",
+        "message": "Dual central with bidirectional solid RTL",
+        "to": "Alice",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "5",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 61,
+        "from": "Alice",
+        "id": "7",
+        "message": "Dual central with bidirectional dotted LTR",
+        "to": "Bob",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "8",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "9",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 61,
+        "from": "Bob",
+        "id": "10",
+        "message": "Dual central with bidirectional dotted RTL",
+        "to": "Alice",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "11",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "12",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Alice",
+        "id": "13",
+        "message": "Central at end with bidirectional LTR",
+        "to": "Bob",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "14",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "centralConnection": 60,
+        "from": "Bob",
+        "id": "15",
+        "message": "Central at start with bidirectional RTL",
+        "to": "Alice",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "16",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

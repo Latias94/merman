@@ -1,65 +1,34 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "Client": {
-        "id": "Client",
-        "type": "",
-        "label": "Client",
-        "text": "Client",
-        "cssClasses": "default client",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "request",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "Response",
-            "displayText": "+request() : Response",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
+      "API": {
         "annotations": [],
-        "styles": [
-          "fill:#ddffdd",
-          "stroke:#00aa00",
-          "stroke-width:2px"
-        ],
-        "domId": "classId-Client-0",
-        "parent": null,
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default svc",
+        "domId": "classId-API-1",
+        "haveCallback": false,
+        "id": "API",
+        "label": "API",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "API": {
-        "id": "API",
-        "type": "",
-        "label": "API",
-        "text": "API",
-        "cssClasses": "default svc",
+        "members": [],
         "methods": [
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "handle",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+handle(req: Request) : Response",
+            "id": "handle",
+            "memberType": "method",
             "parameters": "req: Request",
             "returnType": "Response",
-            "displayText": "+handle(req: Request) : Response",
-            "cssStyle": ""
+            "visibility": "+"
           }
         ],
-        "members": [],
-        "annotations": [],
+        "parent": null,
         "styles": [
           "fill:#ddddff",
           "stroke:#0000aa",
@@ -68,123 +37,144 @@
           "stroke:#00f",
           "stroke-width:2px"
         ],
-        "domId": "classId-API-1",
-        "parent": null,
+        "text": "API",
+        "tooltip": null,
+        "type": ""
+      },
+      "Client": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default client",
+        "domId": "classId-Client-0",
+        "haveCallback": false,
+        "id": "Client",
+        "label": "Client",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "DB": {
-        "id": "DB",
-        "type": "",
-        "label": "DB",
-        "text": "DB",
-        "cssClasses": "default db",
+        "members": [],
         "methods": [
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "query",
             "classifier": "",
-            "parameters": "sql: String",
-            "returnType": "Rows",
-            "displayText": "+query(sql: String) : Rows",
-            "cssStyle": ""
+            "cssStyle": "",
+            "displayText": "+request() : Response",
+            "id": "request",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "Response",
+            "visibility": "+"
           }
         ],
-        "members": [],
+        "parent": null,
+        "styles": [
+          "fill:#ddffdd",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
+        "text": "Client",
+        "tooltip": null,
+        "type": ""
+      },
+      "DB": {
         "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default db",
+        "domId": "classId-DB-2",
+        "haveCallback": false,
+        "id": "DB",
+        "label": "DB",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+query(sql: String) : Rows",
+            "id": "query",
+            "memberType": "method",
+            "parameters": "sql: String",
+            "returnType": "Rows",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
         "styles": [
           "fill:#ffdddd",
           "stroke:#aa0000",
           "stroke-width:2px"
         ],
-        "domId": "classId-DB-2",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "text": "DB",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "LR",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Client",
         "id2": "API",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "uses",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "uses"
       },
       {
         "id": "1",
         "id1": "API",
         "id2": "DB",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "reads",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "reads"
       },
       {
         "id": "2",
         "id1": "API",
         "id2": "DB",
+        "relation": {
+          "lineType": 1,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "caches",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 1
-        }
+        "title": "caches"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
     "styleClasses": {
       "client": {
         "id": "client",
         "styles": [
           "fill:#ddffdd",
           "stroke:#00aa00",
-          "stroke-width:2px"
-        ],
-        "textStyles": []
-      },
-      "svc": {
-        "id": "svc",
-        "styles": [
-          "fill:#ddddff",
-          "stroke:#0000aa",
           "stroke-width:2px"
         ],
         "textStyles": []
@@ -197,7 +187,17 @@
           "stroke-width:2px"
         ],
         "textStyles": []
+      },
+      "svc": {
+        "id": "svc",
+        "styles": [
+          "fill:#ddddff",
+          "stroke:#0000aa",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
       }
-    }
+    },
+    "type": "classDiagram"
   }
 }

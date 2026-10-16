@@ -14,6 +14,7 @@ use crate::text::{
     is_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use merman_core::MermaidConfig;
+use std::fmt::Write as _;
 use unicode_segmentation::UnicodeSegmentation;
 
 pub(crate) struct FlowchartLabelMetricsRequest<'a> {
@@ -609,7 +610,79 @@ pub(crate) fn flowchart_label_is_empty_for_render(label: &str) -> bool {
 }
 
 pub(crate) fn flowchart_label_metrics_for_layout(
-    req: FlowchartLabelMetricsRequest<'_>,
+    request: FlowchartLabelMetricsRequest<'_>,
+) -> crate::text::TextMetrics {
+    let resolved_config;
+    let request = if request.config.get_str("securityLevel").is_none() {
+        // Internal standalone measurement also accepts an empty config. Match the renderer's
+        // effective default instead of escaping its generated paragraph as literal text.
+        resolved_config = flowchart_label_sanitize_config(request.config);
+        FlowchartLabelMetricsRequest {
+            config: resolved_config.as_ref(),
+            ..request
+        }
+    } else {
+        request
+    };
+    if request.raw_label.is_empty() {
+        return crate::text::TextMetrics {
+            width: 0.0,
+            height: 0.0,
+            line_count: 0,
+        };
+    }
+    if let Some(metrics) =
+        crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+            measurer: request.measurer,
+            raw_label: request.raw_label,
+            style: request.style,
+            max_width_px: request.max_width_px,
+            wrap_mode: request.wrap_mode,
+            config: request.config,
+            math_renderer: request.math_renderer,
+        })
+    {
+        return metrics;
+    }
+    if request.wrap_mode == WrapMode::HtmlLike {
+        let source =
+            flowchart_label_html_source(request.raw_label, request.label_type, request.config);
+        let xhtml = merman_core::sanitize::sanitize_xhtml(&source, request.config);
+        return flowchart_html_label_metrics_for_layout(request, &xhtml);
+    }
+    if request.label_type == "markdown" {
+        crate::text::measure_wrapped_markdown_with_inline_styles(
+            request.measurer,
+            request.raw_label,
+            request.style,
+            request.max_width_px,
+            request.wrap_mode,
+        )
+    } else {
+        FlowchartSvgLabelSource::new(request.raw_label).metrics(
+            request.measurer,
+            request.style,
+            request.max_width_px,
+            FlowchartSvgWidthMode::Bbox,
+        )
+    }
+}
+
+pub(crate) fn flowchart_label_sanitize_config(
+    config: &MermaidConfig,
+) -> std::borrow::Cow<'_, MermaidConfig> {
+    if config.get_str("securityLevel").is_some() {
+        return std::borrow::Cow::Borrowed(config);
+    }
+    let mut config = config.clone();
+    config.set_value("securityLevel", serde_json::Value::String("strict".into()));
+    std::borrow::Cow::Owned(config)
+}
+
+/// Measures the exact sanitized XHTML retained for the corresponding HTML-label terminal.
+pub(crate) fn flowchart_html_label_metrics_for_layout(
+    request: FlowchartLabelMetricsRequest<'_>,
+    xhtml: &str,
 ) -> crate::text::TextMetrics {
     let FlowchartLabelMetricsRequest {
         measurer,
@@ -617,354 +690,356 @@ pub(crate) fn flowchart_label_metrics_for_layout(
         label_type,
         style,
         max_width_px,
-        wrap_mode,
-        config,
-        math_renderer,
-    } = req;
-
-    // Mermaid's DOM measurement of an actually empty label is 0x0. Text measurers commonly
-    // model an empty string as one blank line, which would incorrectly add a full line-height to
-    // nodes, edges, and subgraph titles after FlowDB trims their payload to empty.
-    if raw_label.is_empty() {
+        ..
+    } = request;
+    if xhtml.is_empty() {
         return crate::text::TextMetrics {
             width: 0.0,
             height: 0.0,
             line_count: 0,
         };
     }
-
-    let math_metrics =
-        crate::math::math_label_metrics_for_layout(crate::math::MathLabelMetricsRequest {
+    if let Some(plain) = crate::text::mermaid_xhtml_label_plain_text(xhtml)
+        && !plain.contains('<')
+    {
+        // A host profile may provide the complete paragraph's browser measurement. Keep that
+        // request intact after collapsing rendered whitespace, instead of probing each word.
+        let plain = flowchart_label_plain_text_for_layout(xhtml, "html", true);
+        let mut metrics = measurer.measure_wrapped(&plain, style, max_width_px, WrapMode::HtmlLike);
+        if label_type == "markdown" {
+            let max_width = max_width_px.filter(|width| width.is_finite() && *width > 0.0);
+            if let Some(max_width) = max_width
+                && measurer
+                    .measure_wrapped(&plain, style, None, WrapMode::HtmlLike)
+                    .width
+                    > max_width
+            {
+                metrics.width = metrics.width.max(max_width);
+            } else {
+                metrics.width = crate::text::round_to_1_64_px(metrics.width);
+                if let Some(max_width) = max_width {
+                    metrics.width = metrics.width.min(max_width);
+                }
+            }
+        }
+        return metrics;
+    }
+    let lower = xhtml.to_ascii_lowercase();
+    // Marked leaves unsupported blocks as root text alongside any generated paragraphs. Keep
+    // that plain-text measurement path; ordinary Markdown paragraphs use the browser's width
+    // lattice. Read the final sanitized structure so removed markup cannot affect this choice.
+    let mut markdown_has_unwrapped_text = false;
+    let mut extra_lines = 0;
+    if label_type == "markdown" {
+        // Markdown's paragraph gap and image-only line boxes are properties of its final DOM.
+        // Read only that XHTML; reparsing authored Markdown here would bypass sanitizer policy.
+        let mut reader = quick_xml::Reader::from_str(xhtml);
+        let mut paragraphs = 0usize;
+        let mut image_only_paragraphs = 0usize;
+        let mut paragraph_images = 0usize;
+        let mut paragraph_has_text = false;
+        let mut paragraph_depth = 0usize;
+        let mut element_depth = 0usize;
+        loop {
+            if measurer.cancellation_requested() {
+                return crate::text::TextMetrics {
+                    width: 0.0,
+                    height: 0.0,
+                    line_count: 0,
+                };
+            }
+            match reader.read_event() {
+                Ok(quick_xml::events::Event::Start(tag)) => {
+                    element_depth += 1;
+                    if tag.name().as_ref() == "p" {
+                        if paragraph_depth == 0 {
+                            paragraphs += 1;
+                            paragraph_images = 0;
+                            paragraph_has_text = false;
+                        }
+                        paragraph_depth += 1;
+                    } else if paragraph_depth > 0 && tag.name().as_ref() == "img" {
+                        paragraph_images += 1;
+                    }
+                }
+                Ok(quick_xml::events::Event::Empty(tag))
+                    if paragraph_depth > 0 && tag.name().as_ref() == "img" =>
+                {
+                    paragraph_images += 1;
+                }
+                Ok(quick_xml::events::Event::Text(text)) => {
+                    let decoded =
+                        merman_core::entities::decode_html_entities_to_unicode(text.as_ref());
+                    let has_text = !trim_html_collapsible_ascii_whitespace(&decoded).is_empty();
+                    if paragraph_depth > 0 {
+                        paragraph_has_text |= has_text;
+                    }
+                    if element_depth == 0 {
+                        markdown_has_unwrapped_text |= has_text;
+                    }
+                }
+                Ok(quick_xml::events::Event::GeneralRef(reference)) => {
+                    let encoded = format!("&{};", reference.as_ref());
+                    let decoded = merman_core::entities::decode_html_entities_to_unicode(&encoded);
+                    let has_text = !trim_html_collapsible_ascii_whitespace(&decoded).is_empty();
+                    paragraph_has_text |= paragraph_depth > 0 && has_text;
+                    markdown_has_unwrapped_text |= element_depth == 0 && has_text;
+                }
+                Ok(quick_xml::events::Event::End(tag)) => {
+                    element_depth = element_depth.saturating_sub(1);
+                    if tag.name().as_ref() == "p" {
+                        paragraph_depth = paragraph_depth.saturating_sub(1);
+                        if paragraph_depth == 0 && paragraph_images > 0 && !paragraph_has_text {
+                            image_only_paragraphs += 1;
+                        }
+                    }
+                }
+                Ok(quick_xml::events::Event::Eof) | Err(_) => break,
+                _ => {}
+            }
+        }
+        extra_lines = if lower.contains("<img") {
+            image_only_paragraphs
+        } else {
+            paragraphs.saturating_sub(1)
+        };
+    }
+    let mut metrics = if lower.contains("<img") {
+        // The generated image-only paragraph can own the fixed 80px width. A style
+        // on surrounding text must never turn a mixed label into an image-only box.
+        let inner = xhtml
+            .strip_prefix("<p>")
+            .and_then(|html| html.strip_suffix("</p>"))
+            .unwrap_or(xhtml);
+        let fixed_img_width = is_single_img_label(inner)
+            && (lower.contains("min-width: 80px;") || label_type == "markdown");
+        measure_flowchart_html_images(measurer, xhtml, style, max_width_px, fixed_img_width)
+    } else if crate::text::flowchart_html_has_inline_style_tags(&lower)
+        || lower.contains("<i ")
+        || lower.contains("<br")
+        || (label_type == "markdown" && !markdown_has_unwrapped_text)
+    {
+        crate::text::measure_html_with_inline_styles(
             measurer,
-            raw_label,
+            xhtml,
             style,
             max_width_px,
-            wrap_mode,
-            config,
-            math_renderer,
-        });
-
-    if let Some(m) = math_metrics {
-        m
-    } else if label_type == "markdown" {
-        if wrap_mode != WrapMode::HtmlLike {
-            // Mermaid 11.15 wraps SVG markdown node labels before reading the browser bbox.
-            // Use the same wrapped word rows that the Flowchart SVG writer emits.
-            crate::text::measure_wrapped_markdown_with_inline_styles(
-                measurer,
-                raw_label,
-                style,
-                max_width_px,
-                wrap_mode,
-            )
-        } else {
-            let has_raw_blocks = crate::text::mermaid_markdown_contains_raw_blocks(raw_label);
-            let has_inline_html = crate::text::mermaid_markdown_contains_html_tags(raw_label);
-            if (has_raw_blocks || has_inline_html) && !raw_label.contains("![") {
-                let markdown_auto_wrap = config
-                    .as_value()
-                    .get("markdownAutoWrap")
-                    .and_then(serde_json::Value::as_bool)
-                    .unwrap_or(true);
-                let html = crate::text::mermaid_markdown_to_html_label_fragment(
-                    raw_label,
-                    markdown_auto_wrap,
-                );
-                let html = crate::text::replace_fontawesome_icons(&html);
-                let plain = flowchart_label_plain_text_for_layout(raw_label, label_type, true);
-                let has_inline_markup = html.contains("<strong>")
-                    || html.contains("<em>")
-                    || html.contains("<img")
-                    || html.contains("<i ");
-                if has_inline_html || has_inline_markup {
-                    crate::text::measure_html_with_inline_styles(
-                        measurer,
-                        &html,
-                        style,
-                        max_width_px,
-                        wrap_mode,
-                    )
-                } else {
-                    measurer.measure_wrapped(&plain, style, max_width_px, wrap_mode)
-                }
-            } else {
-                crate::text::measure_markdown_with_inline_styles(
-                    measurer,
-                    raw_label,
-                    style,
-                    max_width_px,
-                    wrap_mode,
-                )
-            }
-        }
+            WrapMode::HtmlLike,
+        )
     } else {
-        let html_labels = wrap_mode == WrapMode::HtmlLike;
-        if html_labels {
-            fn measure_flowchart_html_images(
-                measurer: &dyn TextMeasurer,
-                html: &str,
-                style: &TextStyle,
-                max_width_px: Option<f64>,
-                fixed_img_width: bool,
-            ) -> crate::text::TextMetrics {
-                let max_width = max_width_px.unwrap_or(200.0).max(1.0);
-                let lower = html.to_ascii_lowercase();
-                if !lower.contains("<img") {
-                    return measurer.measure_wrapped(html, style, max_width_px, WrapMode::HtmlLike);
-                }
-
-                fn has_img_src(tag: &str) -> bool {
-                    let lower = tag.to_ascii_lowercase();
-                    let Some(idx) = lower.find("src=") else {
-                        return false;
-                    };
-                    let rest = tag[idx + 4..].trim_start();
-                    let Some(quote) = rest.chars().next() else {
-                        return false;
-                    };
-                    if quote != '"' && quote != '\'' {
-                        return false;
-                    }
-                    let mut it = rest.chars();
-                    let _ = it.next();
-                    let mut val = String::new();
-                    for ch in it {
-                        if ch == quote {
-                            break;
-                        }
-                        val.push(ch);
-                    }
-                    !val.trim().is_empty()
-                }
-
-                let img_w = if fixed_img_width { 80.0 } else { max_width };
-
-                if fixed_img_width {
-                    let img_h = if has_img_src(html) { img_w } else { 0.0 };
-                    return crate::text::TextMetrics {
-                        width: crate::text::ceil_to_1_64_px(img_w),
-                        height: crate::text::ceil_to_1_64_px(img_h),
-                        line_count: if img_h > 0.0 { 1 } else { 0 },
-                    };
-                }
-
-                #[derive(Debug, Clone)]
-                enum Block {
-                    Text(String),
-                    Img { has_src: bool },
-                }
-
-                let mut blocks: Vec<Block> = Vec::new();
-                let mut text_buf = String::new();
-
-                let bytes = html.as_bytes();
-                let mut i = 0usize;
-                while i < bytes.len() {
-                    if bytes[i] == b'<' {
-                        let rest = &html[i..];
-                        let Some(rel_end) = rest.find('>') else {
-                            // No later tag can close either; preserve the remaining text once.
-                            text_buf.push_str(rest);
-                            break;
-                        };
-                        if rest
-                            .get(..4)
-                            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<img"))
-                        {
-                            if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
-                                blocks.push(Block::Text(std::mem::take(&mut text_buf)));
-                            } else {
-                                text_buf.clear();
-                            }
-                            let tag = &rest[..=rel_end];
-                            blocks.push(Block::Img {
-                                has_src: has_img_src(tag),
-                            });
-                            i += rel_end + 1;
-                            continue;
-                        }
-                        if rest
-                            .get(..3)
-                            .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<br"))
-                        {
-                            text_buf.push('\n');
-                            i += rel_end + 1;
-                            continue;
-                        }
-                        i += rel_end + 1;
-                        continue;
-                    }
-                    let Some(ch) = html[i..].chars().next() else {
-                        break;
-                    };
-                    text_buf.push(ch);
-                    i += ch.len_utf8();
-                }
-                if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
-                    blocks.push(Block::Text(text_buf));
-                }
-
-                fn normalize_text_block(input: &str) -> String {
-                    let mut out = String::with_capacity(input.len());
-                    let mut last_space = false;
-                    for ch in input.chars() {
-                        if ch == '\n' {
-                            while out.ends_with(' ') {
-                                out.pop();
-                            }
-                            out.push('\n');
-                            last_space = false;
-                            continue;
-                        }
-                        if is_html_collapsible_ascii_whitespace(ch) {
-                            if !last_space {
-                                out.push(' ');
-                            }
-                            last_space = true;
-                            continue;
-                        }
-                        out.push(ch);
-                        last_space = false;
-                    }
-                    out.lines()
-                        .map(flowchart_trim_html_collapsible_whitespace)
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                        .trim_matches(is_html_collapsible_ascii_whitespace)
-                        .to_string()
-                }
-
-                let mut width: f64 = 0.0;
-                let mut height: f64 = 0.0;
-                let mut lines = 0usize;
-
-                for b in blocks {
-                    match b {
-                        Block::Img { has_src } => {
-                            width = width.max(img_w);
-                            let img_h = if has_src { img_w } else { 0.0 };
-                            height += img_h;
-                            if img_h > 0.0 {
-                                lines += 1;
-                            }
-                        }
-                        Block::Text(t) => {
-                            let t = normalize_text_block(&t);
-                            if t.is_empty() {
-                                continue;
-                            }
-                            let m = measurer.measure_wrapped(
-                                &t,
-                                style,
-                                Some(max_width),
-                                WrapMode::HtmlLike,
-                            );
-                            width = width.max(m.width);
-                            height += m.height;
-                            lines += m.line_count;
-                        }
-                    }
-                }
-
-                crate::text::TextMetrics {
-                    width: crate::text::ceil_to_1_64_px(width),
-                    height: crate::text::ceil_to_1_64_px(height),
-                    line_count: lines,
-                }
+        let plain = flowchart_label_plain_text_for_layout(xhtml, "html", true);
+        if plain.is_empty() {
+            crate::text::TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
             }
-
-            let label = flowchart_non_markdown_label_for_html(raw_label, label_type);
-            let fixed_img_width = {
-                let label = flowchart_trim_html_collapsible_whitespace(&label);
-                let lower = label.to_ascii_lowercase();
-                lower.starts_with("<img")
-                    && label.find('>').is_some_and(|end| {
-                        flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
-                    })
-            };
-            // Mermaid's `nonMarkdownToHTML()` wraps every non-empty non-Markdown label in a
-            // paragraph and translates both literal `\\n` and physical newlines to `<br />`.
-            // Measurement must consume the same fragment as SVG emission; Markdown block
-            // classification is not involved in this branch.
-            let html = format!("<p>{label}</p>");
-            let html = crate::text::replace_fontawesome_icons(&html);
-
-            let lower = html.to_ascii_lowercase();
-            let has_inline_style = crate::text::flowchart_html_has_inline_style_tags(&lower);
-            let has_explicit_break = lower.contains("<br");
-            let has_preserved_line_boundary_whitespace = {
-                let mut lines = label.split("<br />").peekable();
-                let mut line_index = 0usize;
-                let mut found = false;
-                while let Some(line) = lines.next() {
-                    let has_leading = line_index > 0
-                        && line
-                            .chars()
-                            .next()
-                            .is_some_and(is_html_collapsible_ascii_whitespace);
-                    let has_trailing = lines.peek().is_some()
-                        && line
-                            .chars()
-                            .next_back()
-                            .is_some_and(is_html_collapsible_ascii_whitespace);
-                    if has_leading || has_trailing {
-                        found = true;
-                        break;
-                    }
-                    line_index += 1;
-                }
-                found
-            };
-
-            if lower.contains("<img") {
-                measure_flowchart_html_images(measurer, &html, style, max_width_px, fixed_img_width)
-            } else if has_inline_style
-                || html.contains("<i ")
-                || has_explicit_break
-                || has_preserved_line_boundary_whitespace
-            {
-                crate::text::measure_html_with_inline_styles(
-                    measurer,
-                    &html,
-                    style,
-                    max_width_px,
-                    wrap_mode,
-                )
-            } else {
-                // Keep ordinary non-Markdown labels on the cheap plain-text measurement path,
-                // but extract that text from the exact `nonMarkdownToHTML()` fragment used by the
-                // emitter. Raw physical newlines otherwise collapse before they become `<br />`,
-                // while switching every `<br>` label to the rich-HTML planner changes unrelated
-                // measurement primitives and layout floats.
-                let label_for_metrics = flowchart_label_plain_text_for_layout(&html, "html", true);
-                if flowchart_label_text_is_empty_for_mode(&label_for_metrics, html_labels) {
-                    crate::text::TextMetrics {
-                        width: 0.0,
-                        height: 0.0,
-                        line_count: 0,
-                    }
-                } else if label_for_metrics.contains('<') {
-                    // Decoded text can contain literal markup. Keep its original HTML fragment
-                    // so the wrapped-text normalizer cannot reinterpret it as a second tag.
-                    crate::text::measure_html_with_inline_styles(
-                        measurer,
-                        &html,
-                        style,
-                        max_width_px,
-                        wrap_mode,
-                    )
-                } else {
-                    measurer.measure_wrapped(&label_for_metrics, style, max_width_px, wrap_mode)
-                }
-            }
-        } else {
-            FlowchartSvgLabelSource::new(raw_label).metrics(
+        } else if plain.contains('<') {
+            crate::text::measure_html_with_inline_styles(
                 measurer,
+                xhtml,
                 style,
                 max_width_px,
-                FlowchartSvgWidthMode::Bbox,
+                WrapMode::HtmlLike,
             )
+        } else {
+            measurer.measure_wrapped(&plain, style, max_width_px, WrapMode::HtmlLike)
         }
+    };
+    if label_type == "markdown"
+        && !markdown_has_unwrapped_text
+        && !lower.contains("<img")
+        && !lower.contains("<i ")
+        && let Some(max_width) = max_width_px.filter(|width| width.is_finite() && *width > 0.0)
+        && metrics.width > max_width
+        && !crate::text::mermaid_markdown_contains_html_tags(raw_label)
+        && !crate::text::mermaid_markdown_contains_raw_blocks(raw_label)
+    {
+        // Markdown's min-content overflow keeps the host measurer's base width, rather than
+        // snapping it to the ordinary browser lattice. Authored HTML and raw blocks retain
+        // their rich-text widths. Source classification only selects this compatibility rule;
+        // the measured text still comes exclusively from the sanitized final fragment.
+        let plain = flowchart_label_plain_text_for_layout(xhtml, "html", true);
+        if !plain.contains('<') {
+            metrics.width = measurer
+                .measure_wrapped(&plain, style, Some(max_width), WrapMode::HtmlLike)
+                .width
+                .max(max_width);
+        }
+    }
+    metrics.height += extra_lines as f64 * style.font_size.max(1.0) * 1.5;
+    metrics.line_count += extra_lines;
+    metrics
+}
+
+fn measure_flowchart_html_images(
+    measurer: &dyn TextMeasurer,
+    html: &str,
+    style: &TextStyle,
+    max_width_px: Option<f64>,
+    fixed_img_width: bool,
+) -> crate::text::TextMetrics {
+    let max_width = max_width_px.unwrap_or(200.0).max(1.0);
+    let lower = html.to_ascii_lowercase();
+    if !lower.contains("<img") {
+        return measurer.measure_wrapped(html, style, max_width_px, WrapMode::HtmlLike);
+    }
+
+    fn has_img_src(tag: &str) -> bool {
+        let lower = tag.to_ascii_lowercase();
+        let Some(idx) = lower.find("src=") else {
+            return false;
+        };
+        let rest = tag[idx + 4..].trim_start();
+        let Some(quote) = rest.chars().next() else {
+            return false;
+        };
+        if quote != '"' && quote != '\'' {
+            return false;
+        }
+        let mut it = rest.chars();
+        let _ = it.next();
+        let mut val = String::new();
+        for ch in it {
+            if ch == quote {
+                break;
+            }
+            val.push(ch);
+        }
+        !val.trim().is_empty()
+    }
+
+    let img_w = if fixed_img_width { 80.0 } else { max_width };
+
+    if fixed_img_width {
+        let img_h = if has_img_src(html) { img_w } else { 0.0 };
+        return crate::text::TextMetrics {
+            width: crate::text::ceil_to_1_64_px(img_w),
+            height: crate::text::ceil_to_1_64_px(img_h),
+            line_count: if img_h > 0.0 { 1 } else { 0 },
+        };
+    }
+
+    #[derive(Debug, Clone)]
+    enum Block {
+        Text(String),
+        Img { has_src: bool },
+    }
+
+    let mut blocks: Vec<Block> = Vec::new();
+    let mut text_buf = String::new();
+
+    let bytes = html.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            let rest = &html[i..];
+            let Some(rel_end) = rest.find('>') else {
+                // No later tag can close either; preserve the remaining text once.
+                text_buf.push_str(rest);
+                break;
+            };
+            if rest
+                .get(..4)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<img"))
+            {
+                if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
+                    blocks.push(Block::Text(std::mem::take(&mut text_buf)));
+                } else {
+                    text_buf.clear();
+                }
+                let tag = &rest[..=rel_end];
+                blocks.push(Block::Img {
+                    has_src: has_img_src(tag),
+                });
+                i += rel_end + 1;
+                continue;
+            }
+            if rest
+                .get(..3)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<br"))
+            {
+                text_buf.push('\n');
+                i += rel_end + 1;
+                continue;
+            }
+            i += rel_end + 1;
+            continue;
+        }
+        let Some(ch) = html[i..].chars().next() else {
+            break;
+        };
+        text_buf.push(ch);
+        i += ch.len_utf8();
+    }
+    if !flowchart_trim_html_collapsible_whitespace(&text_buf).is_empty() {
+        blocks.push(Block::Text(text_buf));
+    }
+
+    fn normalize_text_block(input: &str) -> String {
+        // The scanner separates already-sanitized markup before measuring its DOM text. Decode
+        // the XHTML representation once so entities do not become visible glyph spellings.
+        let input = merman_core::entities::decode_html_entities_to_unicode(input);
+        let mut out = String::with_capacity(input.len());
+        let mut last_space = false;
+        for ch in input.chars() {
+            if ch == '\n' {
+                while out.ends_with(' ') {
+                    out.pop();
+                }
+                out.push('\n');
+                last_space = false;
+                continue;
+            }
+            if is_html_collapsible_ascii_whitespace(ch) {
+                if !last_space {
+                    out.push(' ');
+                }
+                last_space = true;
+                continue;
+            }
+            out.push(ch);
+            last_space = false;
+        }
+        out.lines()
+            .map(flowchart_trim_html_collapsible_whitespace)
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim_matches(is_html_collapsible_ascii_whitespace)
+            .to_string()
+    }
+
+    let mut width: f64 = 0.0;
+    let mut height: f64 = 0.0;
+    let mut lines = 0usize;
+
+    for b in blocks {
+        match b {
+            Block::Img { has_src } => {
+                width = width.max(img_w);
+                let img_h = if has_src { img_w } else { 0.0 };
+                height += img_h;
+                if img_h > 0.0 {
+                    lines += 1;
+                }
+            }
+            Block::Text(t) => {
+                let t = normalize_text_block(&t);
+                if t.is_empty() {
+                    continue;
+                }
+                let m = measurer.measure_wrapped(&t, style, Some(max_width), WrapMode::HtmlLike);
+                width = width.max(m.width);
+                height += m.height;
+                lines += m.line_count;
+            }
+        }
+    }
+
+    crate::text::TextMetrics {
+        width: crate::text::ceil_to_1_64_px(width),
+        height: crate::text::ceil_to_1_64_px(height),
+        line_count: lines,
     }
 }
 
@@ -1330,6 +1405,154 @@ pub(crate) fn compute_bounds_controlled(
     compute_bounds_impl(nodes, edges, charge)
 }
 
+#[inline]
+pub(crate) fn starts_with_ascii_case_insensitive(input: &str, prefix: &[u8]) -> bool {
+    input
+        .as_bytes()
+        .get(..prefix.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(prefix))
+}
+
+#[inline]
+fn find_ascii_case_insensitive(input: &str, needle: &[u8]) -> Option<usize> {
+    debug_assert!(!needle.is_empty());
+    input
+        .as_bytes()
+        .windows(needle.len())
+        .position(|candidate| candidate.eq_ignore_ascii_case(needle))
+}
+
+fn extract_flowchart_img_src(tag: &str) -> Option<&str> {
+    let idx = find_ascii_case_insensitive(tag, b"src=")?;
+    let rest = tag.get(idx + 4..)?.trim_start();
+    let quote = *rest.as_bytes().first()?;
+    if quote != b'"' && quote != b'\'' {
+        return None;
+    }
+
+    let value = rest.get(1..)?;
+    let end = value
+        .as_bytes()
+        .iter()
+        .position(|candidate| *candidate == quote)
+        .unwrap_or(value.len());
+    let value = value.get(..end)?.trim();
+    (!value.is_empty()).then_some(value)
+}
+
+pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
+    // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
+    // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
+    if find_ascii_case_insensitive(input, b"<img").is_none() {
+        return input.to_string();
+    }
+
+    let style = if fixed_width {
+        "display: flex; flex-direction: column; min-width: 80px; max-width: 80px;"
+    } else {
+        "display: flex; flex-direction: column; width: 100%;"
+    };
+
+    let mut out = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if bytes[i] == b'<' && starts_with_ascii_case_insensitive(&input[i..], b"<img") {
+            let rest = &input[i..];
+            let Some(rel_end) = rest.find('>') else {
+                out.push_str(rest);
+                break;
+            };
+            let tag = &rest[..=rel_end];
+            let src = extract_flowchart_img_src(tag);
+            out.push_str("<img");
+            if let Some(src) = src {
+                let _ = write!(out, r#" src="{}""#, crate::svg::escape_attr(src));
+            }
+            out.push_str(r#" style=""#);
+            out.push_str(style);
+            out.push('"');
+            out.push('>');
+            i += rel_end + 1;
+            continue;
+        }
+        let Some(ch) = input[i..].chars().next() else {
+            break;
+        };
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+    out
+}
+
+pub(crate) fn is_single_img_label(label: &str) -> bool {
+    let label = flowchart_trim_html_collapsible_whitespace(label);
+    if !starts_with_ascii_case_insensitive(label, b"<img") {
+        return false;
+    }
+    let Some(end) = label.find('>') else {
+        return false;
+    };
+    flowchart_trim_html_collapsible_whitespace(&label[end + 1..]).is_empty()
+}
+
+pub(crate) fn flowchart_label_html_source(
+    label: &str,
+    label_type: &str,
+    config: &merman_core::MermaidConfig,
+) -> String {
+    if flowchart_label_text_is_empty_for_mode(label, true) {
+        return String::new();
+    }
+
+    fn trim_markdown_trailing_newlines(
+        input: std::borrow::Cow<'_, str>,
+    ) -> std::borrow::Cow<'_, str> {
+        if input.ends_with('\n') {
+            std::borrow::Cow::Owned(input.trim_end_matches('\n').to_string())
+        } else {
+            input
+        }
+    }
+
+    match label_type {
+        "markdown" => {
+            let decoded = crate::entities::decode_mermaid_entities_for_render_text(label);
+            let decoded = if decoded.contains("\\\\") {
+                std::borrow::Cow::Owned(decoded.replace("\\\\", "\\"))
+            } else {
+                decoded
+            };
+            let decoded = trim_markdown_trailing_newlines(decoded);
+            let markdown_auto_wrap = config
+                .as_value()
+                .get("markdownAutoWrap")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(true);
+            let html_out = crate::text::mermaid_markdown_to_html_label_fragment(
+                decoded.as_ref(),
+                markdown_auto_wrap,
+            );
+            let html_out = flowchart_trim_html_collapsible_whitespace(&html_out).to_string();
+            crate::text::replace_fontawesome_icons(&html_out)
+        }
+        _ => {
+            let label = flowchart_non_markdown_label_for_html(label, label_type);
+
+            // Mermaid's nonMarkdownToHTML() wraps every non-empty label in one paragraph.
+            // Markdown block classification must not leak into this branch.
+            let fixed_img_width = is_single_img_label(&label);
+            let label = normalize_flowchart_img_tags(&label, fixed_img_width);
+            let wrapped = format!("<p>{}</p>", label);
+            if wrapped.contains(":fa-") {
+                crate::text::replace_fontawesome_icons(&wrapped)
+            } else {
+                wrapped
+            }
+        }
+    }
+}
+
 #[cfg(all(
     test,
     any(
@@ -1517,6 +1740,12 @@ mod tests {
             ("a<img src='  '>", &["a"], 0, 120.0),
             ("a<img src=x>", &["a"], 0, 120.0),
             ("a<img src = 'x'>", &["a"], 0, 120.0),
+            (
+                "<span style='min-width: 80px;'>long text</span><img src='x'>",
+                &["long text"],
+                1,
+                120.0,
+            ),
             ("a<img data-src='x'>", &["a"], 1, 120.0),
             ("a<img src='a>b'>尾", &["a", "b'>尾"], 1, 120.0),
             (
@@ -1531,9 +1760,8 @@ mod tests {
                 2,
                 120.0,
             ),
-            // The existing paragraph wrapper closes the otherwise unclosed tag.
-            ("head<img src='x'>tail<<中", &["head", "tail"], 1, 120.0),
-            ("head<img", &["head"], 0, 120.0),
+            // HTML5 recovery preserves these visible stray angle brackets as text.
+            ("head<img src='x'>tail<<中", &["head", "tail<<中"], 1, 120.0),
         ];
         for &(label, expected_requests, images_with_src, width) in cases {
             let measurer = ImageTextMeasurer::default();
@@ -1552,6 +1780,24 @@ mod tests {
                 "{label}"
             );
         }
+    }
+
+    #[test]
+    fn incomplete_image_tag_uses_final_plain_text_measurement() {
+        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "strict" }));
+        let html = flowchart_label_html_source("head<img", "html", &config);
+        let xhtml = merman_core::sanitize::sanitize_xhtml(&html, &config);
+        let document = roxmltree::Document::parse(&xhtml)
+            .expect("HTML5 recovery closes the paragraph after discarding the incomplete image");
+        assert!(!document.descendants().any(|node| node.has_tag_name("img")));
+        assert_eq!(document.root_element().text(), Some("head"));
+
+        let measurer = ImageTextMeasurer::default();
+        let metrics = image_label_metrics("head<img", &measurer);
+        assert_eq!(*measurer.0.borrow(), ["head"]);
+        assert_eq!(metrics.width, 1.001);
+        assert_eq!(metrics.height, 2.002);
+        assert_eq!(metrics.line_count, 1);
     }
 
     #[test]
@@ -1645,6 +1891,197 @@ mod tests {
                 "{raw_label:?}: {metrics:?}"
             );
         }
+    }
+
+    #[test]
+    fn html_label_metrics_collapse_plain_paragraph_spaces_but_preserve_nbsp() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = TextStyle::default();
+        let config = MermaidConfig::default();
+        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "A&nbsp;&nbsp;B  C   D",
+            label_type: "text",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: None,
+        });
+        let expected = measurer.measure_wrapped(
+            "A\u{00a0}\u{00a0}B C D",
+            &style,
+            Some(200.0),
+            WrapMode::HtmlLike,
+        );
+        assert_eq!(metrics.width, expected.width);
+        assert_eq!(metrics.height, expected.height);
+        assert_eq!(metrics.line_count, expected.line_count);
+    }
+
+    #[test]
+    fn markdown_html_label_metrics_keep_the_browser_width_lattice() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = TextStyle::default();
+        let config = MermaidConfig::default();
+        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "Label",
+            label_type: "markdown",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: None,
+        });
+        let expected =
+            crate::text::round_to_1_64_px(measurer.measure_html_line_width_px("Label", &style));
+        assert_eq!(metrics.width, expected);
+    }
+
+    #[test]
+    fn markdown_html_raw_block_text_keeps_plain_measurement_precision() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = TextStyle::default();
+        let config = MermaidConfig::default();
+        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "Hello\n  - l1\n  - l2",
+            label_type: "markdown",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: None,
+        });
+        let expected =
+            measurer.measure_wrapped("Hello\n- l1 - l2", &style, Some(200.0), WrapMode::HtmlLike);
+        assert_eq!(metrics.width, expected.width);
+        assert_eq!(metrics.height, expected.height);
+        assert_eq!(metrics.line_count, expected.line_count);
+    }
+
+    #[test]
+    fn markdown_html_min_content_overflow_preserves_host_precision() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = TextStyle {
+            font_family: Some("\"Recursive Variable\",arial,sans-serif".to_string()),
+            font_size: 14.0,
+            ..TextStyle::default()
+        };
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "markdownAutoWrap": true,
+            "securityLevel": "strict"
+        }));
+        let raw_label = "**angular_velocity**\n      *angular_displacement / duration*\n      [rad/s, 1/s]\n      {vector}";
+        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label,
+            label_type: "markdown",
+            style: &style,
+            max_width_px: Some(120.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: None,
+        });
+        let expected = measurer.measure_wrapped(
+            "angular_velocity\nangular_displacement / duration\n[rad/s, 1/s]\n{vector}",
+            &style,
+            Some(120.0),
+            WrapMode::HtmlLike,
+        );
+        assert!(expected.width > 120.0);
+        assert_eq!(metrics.width, expected.width);
+        assert_eq!(metrics.height, expected.height);
+        assert_eq!(metrics.line_count, expected.line_count);
+    }
+
+    #[test]
+    fn markdown_html_min_content_overflow_preserves_authored_html_styles() {
+        let measurer =
+            crate::text::DeterministicTextMeasurer::default().with_width_callback(|text, style| {
+                let advance = if style.font_weight.as_deref() == Some("700") {
+                    20.0
+                } else {
+                    10.0
+                };
+                text.chars().count() as f64 * advance
+            });
+        let style = TextStyle::default();
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict"
+        }));
+        let word = "abcdefghijklmnopqrstuvwx";
+        for (raw_label, expected_width) in [
+            (word.to_string(), 240.0),
+            (format!("**{word}**"), 240.0),
+            (format!("<strong>{word}</strong>"), 480.0),
+            (format!("<div><strong>{word}</strong></div>"), 480.0),
+        ] {
+            for max_width in [40.0, 120.0] {
+                let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+                    measurer: measurer.as_ref(),
+                    raw_label: &raw_label,
+                    label_type: "markdown",
+                    style: &style,
+                    max_width_px: Some(max_width),
+                    wrap_mode: WrapMode::HtmlLike,
+                    config: &config,
+                    math_renderer: None,
+                });
+                assert_eq!(metrics.width, expected_width, "{raw_label}, {max_width}");
+                assert_eq!(metrics.line_count, 1, "{raw_label}, {max_width}");
+            }
+        }
+    }
+
+    #[test]
+    fn markdown_html_entity_only_root_text_keeps_plain_measurement_precision() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = TextStyle::default();
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict",
+            "dompurifyConfig": { "FORBID_TAGS": ["p"] }
+        }));
+        let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+            measurer: &measurer,
+            raw_label: "&amp;",
+            label_type: "markdown",
+            style: &style,
+            max_width_px: Some(200.0),
+            wrap_mode: WrapMode::HtmlLike,
+            config: &config,
+            math_renderer: None,
+        });
+        let expected = measurer.measure_wrapped("&", &style, Some(200.0), WrapMode::HtmlLike);
+        assert_eq!(metrics.width, expected.width);
+        assert_eq!(metrics.line_count, expected.line_count);
+    }
+
+    #[test]
+    fn markdown_html_entity_text_prevents_an_image_only_extra_line() {
+        let measurer = crate::text::DeterministicTextMeasurer::default();
+        let style = TextStyle::default();
+        let config = MermaidConfig::default();
+        let measure = |xhtml| {
+            flowchart_html_label_metrics_for_layout(
+                FlowchartLabelMetricsRequest {
+                    measurer: &measurer,
+                    raw_label: "",
+                    label_type: "markdown",
+                    style: &style,
+                    max_width_px: Some(200.0),
+                    wrap_mode: WrapMode::HtmlLike,
+                    config: &config,
+                    math_renderer: None,
+                },
+                xhtml,
+            )
+        };
+        let entity = measure("<p>&amp;<img src=\"x\" /></p>");
+        let plain = measure("<p>X<img src=\"x\" /></p>");
+        assert_eq!(entity.line_count, plain.line_count);
+        assert_eq!(entity.height, plain.height);
     }
 
     #[test]

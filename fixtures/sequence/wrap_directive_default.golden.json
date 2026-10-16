@@ -1,95 +1,95 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": true,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": true
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": true,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": true
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": "Alice",
         "id": "0",
-        "from": "Alice",
-        "to": "Bob",
         "message": "Hello",
-        "wrap": true,
+        "to": "Bob",
         "type": 5,
-        "activate": false
+        "wrap": true
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "1",
-        "from": "Bob",
-        "to": "Bob",
         "message": "Hello",
-        "wrap": true,
+        "placement": 1,
+        "to": "Bob",
         "type": 2,
-        "activate": false,
-        "placement": 1
+        "wrap": true
       },
       {
-        "id": "2",
+        "activate": false,
         "from": "Alice",
-        "to": "Bob",
+        "id": "2",
         "message": "Hello again",
-        "wrap": false,
+        "to": "Bob",
         "type": 5,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "3",
-        "from": "Bob",
-        "to": "Bob",
-        "message": "Hello again",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
+        "from": "Bob",
+        "id": "3",
+        "message": "Hello again",
+        "placement": 1,
+        "to": "Bob",
+        "type": 2,
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "Bob",
-        "placement": 1,
         "message": "Hello",
+        "placement": 1,
         "wrap": true
       },
       {
         "actor": "Bob",
-        "placement": 1,
         "message": "Hello again",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

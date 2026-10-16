@@ -1,110 +1,110 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "John"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "John": {
-        "name": "John",
         "description": "John",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "John",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Alice",
-        "to": "John",
-        "message": "Hello John",
-        "wrap": false,
-        "type": 0,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "1",
-        "from": "John",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Alice",
-        "to": "John",
-        "message": "How are you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false,
-        "centralConnection": 60
-      },
-      {
-        "id": "3",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "John",
-        "to": "Alice",
-        "message": "Great!",
-        "wrap": false,
-        "type": 0,
-        "activate": true,
-        "centralConnection": 61
-      },
-      {
-        "id": "5",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "John",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello John",
+        "to": "John",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "centralConnection": 60,
+        "from": "Alice",
+        "id": "2",
+        "message": "How are you?",
+        "to": "John",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 61,
+        "from": "John",
+        "id": "4",
+        "message": "Great!",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "5",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

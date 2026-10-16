@@ -1,62 +1,62 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "API",
       "Auth"
     ],
     "actors": {
       "API": {
-        "name": "API",
         "description": "Public API",
-        "wrap": false,
-        "type": "boundary",
         "links": {},
-        "properties": {}
+        "name": "API",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
       },
       "Auth": {
-        "name": "Auth",
         "description": "Auth Controller",
-        "wrap": false,
-        "type": "control",
         "links": {},
-        "properties": {}
+        "name": "Auth",
+        "properties": {},
+        "type": "control",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "API",
-        "to": "Auth",
-        "message": "Request",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Auth",
-        "to": "API",
-        "message": "Response",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "API",
+        "id": "0",
+        "message": "Request",
+        "to": "Auth",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Auth",
+        "id": "1",
+        "message": "Response",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

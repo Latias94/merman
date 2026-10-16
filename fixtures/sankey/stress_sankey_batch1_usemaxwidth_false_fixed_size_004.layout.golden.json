@@ -3,53 +3,12 @@
   "layout": {
     "SankeyDiagram": {
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
         "max_x": 640.0,
-        "max_y": 280.0
+        "max_y": 280.0,
+        "min_x": 0.0,
+        "min_y": 0.0
       },
-      "width": 640.0,
       "height": 280.0,
-      "node_width": 10.0,
-      "node_padding": 27.0,
-      "nodes": [
-        {
-          "id": "Left",
-          "index": 0.0,
-          "depth": 0.0,
-          "height": 2.0,
-          "layer": 0.0,
-          "value": 9.0,
-          "x0": 0.0,
-          "x1": 10.0,
-          "y0": 0.0,
-          "y1": 280.0
-        },
-        {
-          "id": "Center",
-          "index": 1.0,
-          "depth": 1.0,
-          "height": 1.0,
-          "layer": 1.0,
-          "value": 9.0,
-          "x0": 315.0,
-          "x1": 325.0,
-          "y0": 0.0,
-          "y1": 280.0
-        },
-        {
-          "id": "Right",
-          "index": 2.0,
-          "depth": 2.0,
-          "height": 0.0,
-          "layer": 2.0,
-          "value": 9.0,
-          "x0": 630.0,
-          "x1": 640.0,
-          "y0": 0.0,
-          "y1": 280.0
-        }
-      ],
       "links": [
         {
           "index": 0.0,
@@ -69,7 +28,48 @@
           "y0": 140.0,
           "y1": 140.0
         }
-      ]
+      ],
+      "node_padding": 27.0,
+      "node_width": 10.0,
+      "nodes": [
+        {
+          "depth": 0.0,
+          "height": 2.0,
+          "id": "Left",
+          "index": 0.0,
+          "layer": 0.0,
+          "value": 9.0,
+          "x0": 0.0,
+          "x1": 10.0,
+          "y0": 0.0,
+          "y1": 280.0
+        },
+        {
+          "depth": 1.0,
+          "height": 1.0,
+          "id": "Center",
+          "index": 1.0,
+          "layer": 1.0,
+          "value": 9.0,
+          "x0": 315.0,
+          "x1": 325.0,
+          "y0": 0.0,
+          "y1": 280.0
+        },
+        {
+          "depth": 2.0,
+          "height": 0.0,
+          "id": "Right",
+          "index": 2.0,
+          "layer": 2.0,
+          "value": 9.0,
+          "x0": 630.0,
+          "x1": 640.0,
+          "y0": 0.0,
+          "y1": 280.0
+        }
+      ],
+      "width": 640.0
     }
   }
 }

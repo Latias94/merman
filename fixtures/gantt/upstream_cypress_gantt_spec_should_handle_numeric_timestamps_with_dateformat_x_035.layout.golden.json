@@ -2,102 +2,102 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 124.0
-      },
-      "width": 800.0,
-      "height": 124.0,
-      "left_padding": 75.0,
-      "right_padding": 75.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 4.0,
-      "display_mode": "",
-      "date_format": "x",
       "axis_format": "%L",
-      "tick_interval": "250millisecond",
-      "top_axis": false,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": "000",
+          "time_ms": 0.0,
+          "x": 75.0
+        }
+      ],
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 124.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "Pipeline"
       ],
+      "date_format": "x",
+      "display_mode": "",
+      "excludes": [],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": false,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "number_section_styles": 4.0,
+      "right_padding": 75.0,
       "rows": [
         {
-          "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
-          "width": 762.5,
+          "class": "section section0",
           "height": 24.0,
-          "class": "section section0"
+          "index": 0.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 48.0
         }
       ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "Pipeline",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 62.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "Pipeline"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "Pipeline",
+          "x": 10.0,
+          "y": 62.0
         }
       ],
       "tasks": [
         {
-          "id": "task1",
-          "task": "Parse JSON p1",
-          "section": "Pipeline",
-          "task_type": "Pipeline",
-          "order": 0.0,
-          "start_ms": 0.0,
-          "end_ms": 120.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task1",
-            "x": 75.0,
-            "y": 50.0,
-            "width": 650.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 650.0,
+            "x": 75.0,
+            "y": 50.0
           },
+          "end_ms": 120.0,
+          "id": "task1",
           "label": {
+            "class": "taskText taskText0 width-70.07",
+            "font_size": 11.0,
             "id": "task1-text",
             "text": "Parse JSON p1",
-            "font_size": 11.0,
             "width": 70.07,
             "x": 400.0,
-            "y": 63.5,
-            "class": "taskText taskText0 width-70.07"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "Pipeline",
+          "start_ms": 0.0,
+          "task": "Parse JSON p1",
+          "task_type": "Pipeline",
+          "vert": false
         }
       ],
-      "excludes": [],
-      "has_excludes_layer": false,
-      "bottom_ticks": [
-        {
-          "time_ms": 0.0,
-          "x": 75.0,
-          "label": "000"
-        }
-      ],
-      "top_ticks": [],
+      "tick_interval": "250millisecond",
       "title": "Process time profile (ms)",
+      "title_top_margin": 25.0,
       "title_x": 400.0,
-      "title_y": 25.0
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": false,
+      "top_padding": 50.0,
+      "top_ticks": [],
+      "width": 800.0
     }
   }
 }

@@ -1,122 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "1",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "2",
-        "message": "",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "1"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "3",
-        "message": "",
-        "seq": 2,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "2"
-        ],
-        "branch": "nice_feature"
-      },
-      {
-        "id": "4",
-        "message": "",
-        "seq": 3,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "2"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "5",
-        "message": "",
-        "seq": 4,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "3"
-        ],
-        "branch": "very_nice_feature"
-      },
-      {
-        "id": "6",
-        "message": "",
-        "seq": 5,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "4"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "7",
-        "message": "",
-        "seq": 6,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "3"
-        ],
-        "branch": "nice_feature"
-      },
-      {
-        "id": "customID",
-        "message": "merged branch nice_feature into main",
-        "seq": 7,
-        "type": 3,
-        "tags": [
-          "customTag"
-        ],
-        "parents": [
-          "6",
-          "7"
-        ],
-        "branch": "main",
-        "customType": 1,
-        "customId": true
-      },
-      {
-        "id": "8",
-        "message": "",
-        "seq": 8,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "5"
-        ],
-        "branch": "very_nice_feature"
-      },
-      {
-        "id": "9",
-        "message": "",
-        "seq": 9,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "customID"
-        ],
-        "branch": "main"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -128,10 +14,124 @@
         "name": "very_nice_feature"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "1",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "2",
+        "message": "",
+        "parents": [
+          "1"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "nice_feature",
+        "id": "3",
+        "message": "",
+        "parents": [
+          "2"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "4",
+        "message": "",
+        "parents": [
+          "2"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "very_nice_feature",
+        "id": "5",
+        "message": "",
+        "parents": [
+          "3"
+        ],
+        "seq": 4,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "6",
+        "message": "",
+        "parents": [
+          "4"
+        ],
+        "seq": 5,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "nice_feature",
+        "id": "7",
+        "message": "",
+        "parents": [
+          "3"
+        ],
+        "seq": 6,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": true,
+        "customType": 1,
+        "id": "customID",
+        "message": "merged branch nice_feature into main",
+        "parents": [
+          "6",
+          "7"
+        ],
+        "seq": 7,
+        "tags": [
+          "customTag"
+        ],
+        "type": 3
+      },
+      {
+        "branch": "very_nice_feature",
+        "id": "8",
+        "message": "",
+        "parents": [
+          "5"
+        ],
+        "seq": 8,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "9",
+        "message": "",
+        "parents": [
+          "customID"
+        ],
+        "seq": 9,
+        "tags": [],
+        "type": 0
+      }
+    ],
     "currentBranch": "main",
     "direction": "BT",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

@@ -2,32 +2,32 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
+      "bounds": {
+        "max_x": 179.516,
+        "max_y": 93.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
-          "id": "Animal",
-          "x": 43.602,
-          "y": 52.5,
-          "width": 63.203,
           "height": 81.0,
-          "is_cluster": false
+          "id": "Animal",
+          "is_cluster": false,
+          "width": 63.203,
+          "x": 43.602,
+          "y": 52.5
         },
         {
-          "id": "Mineral",
-          "x": 147.359,
-          "y": 52.5,
-          "width": 64.313,
           "height": 81.0,
-          "is_cluster": false
+          "id": "Mineral",
+          "is_cluster": false,
+          "width": 64.313,
+          "x": 147.359,
+          "y": 52.5
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 179.516,
-        "max_y": 93.0
-      }
+      ]
     }
   }
 }

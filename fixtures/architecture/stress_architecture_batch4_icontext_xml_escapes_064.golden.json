@@ -1,120 +1,120 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "api",
-        "icon": "cloud",
-        "title": "API",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "app",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "api",
+        "in": null,
+        "title": "API"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "app",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": null,
         "iconText": "<b>DB</b> & <i>Cache</i>",
+        "id": "db",
+        "in": "api",
         "title": "Database",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "app",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "app",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "app",
+        "in": "api",
         "title": "App",
-        "in": "api"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "app",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": null,
         "iconText": "<b>DB</b> & <i>Cache</i>",
+        "id": "db",
+        "in": "api",
         "title": "Database",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "app",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "app",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "app",
+        "in": "api",
         "title": "App",
-        "in": "api"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "app",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

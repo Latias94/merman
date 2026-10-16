@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": false,
-    "title": "Offset labels close to border: Product X",
-    "accTitle": "Key elements in Product X",
     "accDescr": "This is a pie chart showing the key elements in Product X.",
+    "accTitle": "Key elements in Product X",
     "sections": [
       {
         "label": "Calcium",
@@ -23,6 +20,9 @@
         "label": "Iron",
         "value": 5.0
       }
-    ]
+    ],
+    "showData": false,
+    "title": "Offset labels close to border: Product X",
+    "type": "pie"
   }
 }

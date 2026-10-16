@@ -1,76 +1,76 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Context",
-    "title": "System Context diagram",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "customerA",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": "Customer"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "A customer"
-        }
-      },
-      {
-        "alias": "sys",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "label": {
-          "text": "Banking System"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "Does banking"
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       }
     ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "customerA",
-        "to": "sys",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
         "techn": {
           "text": ""
         },
+        "to": "sys",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "customerA",
         "descr": {
-          "text": ""
+          "text": "A customer"
+        },
+        "label": {
+          "text": "Customer"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "sys",
+        "descr": {
+          "text": "Does banking"
+        },
+        "label": {
+          "text": "Banking System"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
         },
         "wrap": false
       }
-    ]
+    ],
+    "title": "System Context diagram",
+    "type": "c4",
+    "wrap": false
   }
 }

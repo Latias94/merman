@@ -1,80 +1,80 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hello Bob, how are you?",
-        "wrap": false,
-        "type": 5,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": null,
-        "to": null,
-        "message": "Cheers",
-        "wrap": false,
-        "type": 10,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Fine!",
-        "wrap": false,
-        "type": 5,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 11,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you?",
+        "to": "Bob",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "1",
+        "message": "Cheers",
+        "to": null,
+        "type": 10,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "Fine!",
+        "to": "Alice",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 11,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

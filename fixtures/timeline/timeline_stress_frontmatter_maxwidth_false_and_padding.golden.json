@@ -1,35 +1,35 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Frontmatter maxWidth:false + dense labels",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Padding"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Padding",
-        "type": "Padding",
-        "task": "Period 1 ",
-        "score": 0,
         "events": [
           "A long event label that should wrap to multiple lines automatically"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Padding",
+        "task": "Period 1 ",
+        "type": "Padding"
       },
       {
-        "id": 1,
-        "section": "Padding",
-        "type": "Padding",
-        "task": "Period 2 ",
-        "score": 0,
         "events": [
           "Another long event label that should wrap to multiple lines automatically"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Padding",
+        "task": "Period 2 ",
+        "type": "Padding"
       }
-    ]
+    ],
+    "title": "Frontmatter maxWidth:false + dense labels",
+    "type": "timeline"
   }
 }

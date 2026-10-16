@@ -2,83 +2,83 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 244.0,
+        "max_y": 193.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "C",
-          "x": 128.0,
-          "y": 126.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Parent",
-          "x": 128.0,
-          "y": 114.5,
-          "width": 184.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 109.0,
-          "is_cluster": true
+          "id": "Parent",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "Parent",
+          "title_label": {
+            "height": 21.0,
+            "width": 38.5,
+            "x": 128.0,
+            "y": 70.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 184.0,
+          "x": 128.0,
+          "y": 114.5
         },
         {
-          "id": "PilotCockpit",
-          "x": 128.0,
-          "y": 102.5,
-          "width": 232.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 181.0,
-          "is_cluster": true
+          "id": "PilotCockpit",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "PilotCockpit",
+          "title_label": {
+            "height": 21.0,
+            "width": 72.38,
+            "x": 128.0,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 232.0,
+          "x": 128.0,
+          "y": 102.5
         }
       ],
       "edges": [],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Parent",
+          "height": 37.0,
+          "id": "C",
+          "is_cluster": false,
+          "width": 136.0,
           "x": 128.0,
-          "y": 114.5,
-          "width": 184.0,
-          "height": 109.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Parent",
-          "title_label": {
-            "x": 128.0,
-            "y": 70.5,
-            "width": 38.5,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "y": 126.5
         },
         {
-          "id": "PilotCockpit",
+          "height": 109.0,
+          "id": "Parent",
+          "is_cluster": true,
+          "width": 184.0,
           "x": 128.0,
-          "y": 102.5,
-          "width": 232.0,
+          "y": 114.5
+        },
+        {
           "height": 181.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "PilotCockpit",
-          "title_label": {
-            "x": 128.0,
-            "y": 22.5,
-            "width": 72.38,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "PilotCockpit",
+          "is_cluster": true,
+          "width": 232.0,
+          "x": 128.0,
+          "y": 102.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 244.0,
-        "max_y": 193.0
-      }
+      ]
     }
   }
 }

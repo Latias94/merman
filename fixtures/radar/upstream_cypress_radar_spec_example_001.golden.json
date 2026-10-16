@@ -1,41 +1,41 @@
 {
   "diagramType": "radar",
   "model": {
-    "type": "radar",
-    "title": "Best Radar Ever",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "axes": [
       {
-        "name": "A",
-        "label": "A"
+        "label": "A",
+        "name": "A"
       },
       {
-        "name": "B",
-        "label": "B"
+        "label": "B",
+        "name": "B"
       },
       {
-        "name": "C",
-        "label": "C"
+        "label": "C",
+        "name": "C"
       }
     ],
     "curves": [
       {
-        "name": "c1",
-        "label": "c1",
         "entries": [
           1,
           2,
           3
-        ]
+        ],
+        "label": "c1",
+        "name": "c1"
       }
     ],
     "options": {
-      "showLegend": true,
-      "ticks": 5,
+      "graticule": "circle",
       "max": null,
       "min": 0,
-      "graticule": "circle"
-    }
+      "showLegend": true,
+      "ticks": 5
+    },
+    "title": "Best Radar Ever",
+    "type": "radar"
   }
 }

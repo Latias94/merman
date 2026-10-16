@@ -1,309 +1,309 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Component",
-    "title": "Component diagram for Internet Banking System - API Application",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "spa",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Single Page Application"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "javascript and angular"
-        },
-        "descr": {
-          "text": "Provides all the internet banking functionality to customers via their web browser."
-        }
-      },
-      {
-        "alias": "ma",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Mobile App"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Xamarin"
-        },
-        "descr": {
-          "text": "Provides a limited subset ot the internet banking functionality to customers via their mobile device."
-        }
-      },
-      {
-        "alias": "db",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container_db"
-        },
-        "label": {
-          "text": "Database"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Relational Database Schema"
-        },
-        "descr": {
-          "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
-        }
-      },
-      {
-        "alias": "mbs",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_system"
-        },
-        "label": {
-          "text": "Mainframe Banking System"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "Stores all of the core banking information about customers, accounts, transactions, etc."
-        }
-      },
-      {
-        "alias": "sign",
-        "parentBoundary": "api",
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "label": {
-          "text": "Sign In Controller"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "MVC Rest Controller"
-        },
-        "descr": {
-          "text": "Allows users to sign in to the internet banking system"
-        }
-      },
-      {
-        "alias": "accounts",
-        "parentBoundary": "api",
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "label": {
-          "text": "Accounts Summary Controller"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "MVC Rest Controller"
-        },
-        "descr": {
-          "text": "Provides customers with a summary of their bank accounts"
-        }
-      },
-      {
-        "alias": "security",
-        "parentBoundary": "api",
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "label": {
-          "text": "Security Component"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Spring Bean"
-        },
-        "descr": {
-          "text": "Provides functionality related to singing in, changing passwords, etc."
-        }
-      },
-      {
-        "alias": "mbsfacade",
-        "parentBoundary": "api",
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "label": {
-          "text": "Mainframe Banking System Facade"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Spring Bean"
-        },
-        "descr": {
-          "text": "A facade onto the mainframe banking system."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "api",
-        "parentBoundary": "global",
         "label": {
           "text": "API Application"
         },
+        "parentBoundary": "global",
         "type": {
           "text": "CONTAINER"
         },
         "wrap": false
       }
     ],
+    "c4Type": "C4Component",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "sign",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetX": -160,
+        "offsetY": 10,
+        "techn": {
+          "text": ""
+        },
         "to": "security",
         "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": ""
-        },
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetX": -160,
-        "offsetY": 10
-      },
-      {
         "from": "accounts",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetX": 140,
+        "offsetY": 10,
+        "techn": {
+          "text": ""
+        },
         "to": "mbsfacade",
         "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": ""
-        },
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetX": 140,
-        "offsetY": 10
-      },
-      {
         "from": "security",
-        "to": "db",
-        "type": "rel",
         "label": {
           "text": "Read & write to"
         },
+        "offsetY": -40,
         "techn": {
           "text": "JDBC"
         },
+        "to": "db",
+        "type": "rel",
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -40
-      },
-      {
         "from": "mbsfacade",
-        "to": "mbs",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
+        "offsetY": -40,
         "techn": {
           "text": "XML/HTTPS"
         },
+        "to": "mbs",
+        "type": "rel",
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -40
-      },
-      {
         "from": "spa",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetY": -40,
+        "techn": {
+          "text": "JSON/HTTPS"
+        },
         "to": "sign",
         "type": "rel_b",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "JSON/HTTPS"
-        },
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -40
-      },
-      {
         "from": "spa",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetX": 40,
+        "offsetY": 40,
+        "techn": {
+          "text": "JSON/HTTPS"
+        },
         "to": "accounts",
         "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "JSON/HTTPS"
-        },
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetX": 40,
-        "offsetY": 40
-      },
-      {
         "from": "ma",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetX": -90,
+        "offsetY": 40,
+        "techn": {
+          "text": "JSON/HTTPS"
+        },
         "to": "sign",
         "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "JSON/HTTPS"
-        },
-        "descr": {
-          "text": ""
-        },
-        "wrap": false,
-        "offsetX": -90,
-        "offsetY": 40
+        "wrap": false
       },
       {
-        "from": "ma",
-        "to": "accounts",
-        "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "JSON/HTTPS"
-        },
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -40
+        "from": "ma",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetY": -40,
+        "techn": {
+          "text": "JSON/HTTPS"
+        },
+        "to": "accounts",
+        "type": "rel",
+        "wrap": false
       }
-    ]
+    ],
+    "shapes": [
+      {
+        "alias": "spa",
+        "descr": {
+          "text": "Provides all the internet banking functionality to customers via their web browser."
+        },
+        "label": {
+          "text": "Single Page Application"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "javascript and angular"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "ma",
+        "descr": {
+          "text": "Provides a limited subset ot the internet banking functionality to customers via their mobile device."
+        },
+        "label": {
+          "text": "Mobile App"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "Xamarin"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "db",
+        "descr": {
+          "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
+        },
+        "label": {
+          "text": "Database"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "Relational Database Schema"
+        },
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "mbs",
+        "descr": {
+          "text": "Stores all of the core banking information about customers, accounts, transactions, etc."
+        },
+        "label": {
+          "text": "Mainframe Banking System"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "sign",
+        "descr": {
+          "text": "Allows users to sign in to the internet banking system"
+        },
+        "label": {
+          "text": "Sign In Controller"
+        },
+        "parentBoundary": "api",
+        "techn": {
+          "text": "MVC Rest Controller"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "accounts",
+        "descr": {
+          "text": "Provides customers with a summary of their bank accounts"
+        },
+        "label": {
+          "text": "Accounts Summary Controller"
+        },
+        "parentBoundary": "api",
+        "techn": {
+          "text": "MVC Rest Controller"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "security",
+        "descr": {
+          "text": "Provides functionality related to singing in, changing passwords, etc."
+        },
+        "label": {
+          "text": "Security Component"
+        },
+        "parentBoundary": "api",
+        "techn": {
+          "text": "Spring Bean"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "mbsfacade",
+        "descr": {
+          "text": "A facade onto the mainframe banking system."
+        },
+        "label": {
+          "text": "Mainframe Banking System Facade"
+        },
+        "parentBoundary": "api",
+        "techn": {
+          "text": "Spring Bean"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Component diagram for Internet Banking System - API Application",
+    "type": "c4",
+    "wrap": false
   }
 }

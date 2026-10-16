@@ -1,23 +1,23 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "type": "quadrantChart",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "quadrants": {
-      "quadrant1Text": "Plan",
-      "quadrant2Text": "",
-      "quadrant3Text": "",
-      "quadrant4Text": ""
-    },
+    "accTitle": null,
     "axes": {
       "xAxisLeftText": "",
       "xAxisRightText": "",
       "yAxisBottomText": "",
       "yAxisTopText": ""
     },
+    "classes": {},
     "points": [],
-    "classes": {}
+    "quadrants": {
+      "quadrant1Text": "Plan",
+      "quadrant2Text": "",
+      "quadrant3Text": "",
+      "quadrant4Text": ""
+    },
+    "title": null,
+    "type": "quadrantChart"
   }
 }

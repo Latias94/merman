@@ -1,52 +1,60 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Charlie"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "actor",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       },
       "Charlie": {
-        "name": "Charlie",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Charlie",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "Alice",
-        "to": "Alice",
-        "message": "some note",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": "Alice",
+        "id": "0",
+        "message": "some note",
+        "placement": 2,
+        "to": "Alice",
+        "type": 2,
+        "wrap": false
       },
       {
-        "id": "1",
-        "from": "Charlie",
-        "to": "Charlie",
-        "message": "other note",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": "Charlie",
+        "id": "1",
+        "message": "other note",
+        "placement": 2,
+        "to": "Charlie",
+        "type": 2,
+        "wrap": false
       }
     ],
     "notes": [
@@ -55,8 +63,8 @@
           "Alice",
           "Alice"
         ],
-        "placement": 2,
         "message": "some note",
+        "placement": 2,
         "wrap": false
       },
       {
@@ -64,20 +72,12 @@
           "Charlie",
           "Charlie"
         ],
-        "placement": 2,
         "message": "other note",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

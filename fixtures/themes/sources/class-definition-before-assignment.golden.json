@@ -1,38 +1,51 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "User": {
-        "id": "User",
-        "type": "",
-        "label": "User",
-        "text": "User",
-        "cssClasses": "default accent",
-        "methods": [],
-        "members": [],
         "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default accent",
+        "domId": "classId-User-0",
+        "haveCallback": false,
+        "id": "User",
+        "label": "User",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
         "styles": [
           "fill:#fff",
           "stroke:#111"
         ],
-        "domId": "classId-User-0",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "text": "User",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
     "interfaces": [],
     "namespaces": {},
+    "notes": [],
+    "relations": [],
     "styleClasses": {
       "accent": {
         "id": "accent",
@@ -47,19 +60,6 @@
         ]
       }
     },
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    }
+    "type": "classDiagram"
   }
 }

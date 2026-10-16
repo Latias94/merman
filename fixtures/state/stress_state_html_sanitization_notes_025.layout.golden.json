@@ -2,63 +2,44 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 553.31,
+        "max_y": 927.34,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "A",
-          "x": 267.155,
-          "y": 84.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "A----note-2",
-          "x": 454.31,
-          "y": 279.0,
-          "width": 150.0,
-          "height": 72.0,
-          "is_cluster": false
-        },
-        {
-          "id": "A----parent",
-          "x": 454.31,
-          "y": 246.0,
-          "width": 198.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 186.0,
-          "is_cluster": true
-        },
-        {
-          "id": "B",
-          "x": 80.0,
-          "y": 854.84,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_end",
-          "x": 80.0,
-          "y": 920.34,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 267.155,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
+          "id": "A----parent",
+          "offset_y": 0.0,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n<img src=\"x\">",
+          "title_label": {
+            "height": 63.0,
+            "width": 627.34,
+            "x": 454.31,
+            "y": 184.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 198.0,
+          "x": 454.31,
+          "y": 246.0
         }
       ],
       "edges": [
         {
-          "id": "A-A----note-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "A",
-          "to": "A----note-2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "A-A----note-2",
+          "label": null,
           "points": [
             {
               "x": 286.488,
@@ -81,21 +62,21 @@
               "y": 243.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "A----note-2",
+          "to_cluster": null
         },
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "A",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 267.155,
@@ -106,21 +87,26 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "A",
+          "to_cluster": null
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "A",
-          "to": "B",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 21.0,
+            "width": 42.14,
+            "x": 79.57,
+            "y": 469.67
+          },
           "points": [
             {
               "x": 247.822,
@@ -139,26 +125,21 @@
               "y": 836.34
             }
           ],
-          "label": {
-            "x": 79.57,
-            "y": 469.67,
-            "width": 42.14,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "B",
+          "to_cluster": null
         },
         {
-          "id": "edge3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "B",
-          "to": "root_end",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge3",
+          "label": null,
           "points": [
             {
               "x": 80.0,
@@ -169,45 +150,64 @@
               "y": 913.34
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "A----parent",
+          "height": 37.0,
+          "id": "A",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 267.155,
+          "y": 84.5
+        },
+        {
+          "height": 72.0,
+          "id": "A----note-2",
+          "is_cluster": false,
+          "width": 150.0,
           "x": 454.31,
-          "y": 246.0,
-          "width": 198.0,
+          "y": 279.0
+        },
+        {
           "height": 186.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "<a href='https://mermaid.js.org/' rel=\"noopener\" target=\"_blank\"><code>note about mermaid</code></a><br/>\n<img src=x>",
-          "title_label": {
-            "x": 454.31,
-            "y": 184.5,
-            "width": 627.34,
-            "height": 63.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "A----parent",
+          "is_cluster": true,
+          "width": 198.0,
+          "x": 454.31,
+          "y": 246.0
+        },
+        {
+          "height": 37.0,
+          "id": "B",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 80.0,
+          "y": 854.84
+        },
+        {
+          "height": 14.0,
+          "id": "root_end",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 80.0,
+          "y": 920.34
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 267.155,
+          "y": 19.0
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 553.31,
-        "max_y": 927.34
-      }
+      ]
     }
   }
 }

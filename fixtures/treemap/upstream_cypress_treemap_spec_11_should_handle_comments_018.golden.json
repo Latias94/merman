@@ -1,41 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Category A",
-          "children": [
-            {
-              "name": "Item A1",
-              "value": 10
-            },
-            {
-              "name": "Item A2",
-              "value": 20
-            }
-          ]
-        },
-        {
-          "name": "Category B",
-          "children": [
-            {
-              "name": "Item B1",
-              "value": 15
-            },
-            {
-              "name": "Item B2",
-              "value": 25
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -66,6 +34,38 @@
         "value": 25
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "Item A1",
+              "value": 10
+            },
+            {
+              "name": "Item A2",
+              "value": 20
+            }
+          ],
+          "name": "Category A"
+        },
+        {
+          "children": [
+            {
+              "name": "Item B1",
+              "value": 15
+            },
+            {
+              "name": "Item B2",
+              "value": 25
+            }
+          ],
+          "name": "Category B"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

@@ -1,59 +1,59 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Links, brackets, and <br> tokens",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Developer Experience",
       "Release Notes"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Developer Experience",
-        "type": "Developer Experience",
-        "task": "2018 ",
-        "score": 0,
         "events": [
           "Added [docs](https://example.com/docs) ",
           "Added [issues](https://example.com/issues)",
           "Wrapped text with <br> explicit break"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Developer Experience",
+        "task": "2018 ",
+        "type": "Developer Experience"
       },
       {
-        "id": 1,
-        "section": "Developer Experience",
-        "type": "Developer Experience",
-        "task": "2019 ",
-        "score": 0,
         "events": [
           "Supports (parentheses), [brackets], and {braces} as plain text"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Developer Experience",
+        "task": "2019 ",
+        "type": "Developer Experience"
       },
       {
-        "id": 2,
-        "section": "Release Notes",
-        "type": "Release Notes",
-        "task": "v1.0 ",
-        "score": 0,
         "events": [
           "Initial release"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "Release Notes",
+        "task": "v1.0 ",
+        "type": "Release Notes"
       },
       {
-        "id": 3,
-        "section": "Release Notes",
-        "type": "Release Notes",
-        "task": "v1.1 ",
-        "score": 0,
         "events": [
           "Bug fixes ",
           "Performance improvements"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "Release Notes",
+        "task": "v1.1 ",
+        "type": "Release Notes"
       }
-    ]
+    ],
+    "title": "Links, brackets, and <br> tokens",
+    "type": "timeline"
   }
 }

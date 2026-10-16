@@ -2,177 +2,177 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 300.0,
-      "height": 256.0,
-      "frameBorderLeft": 0.0,
-      "frameBorderRight": 0.0,
-      "participants": [
+      "bounds": {
+        "max_x": 300.0,
+        "max_y": 256.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
+      "creations": [
         {
-          "name": "_STARTER_",
-          "label": "",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": true,
-          "labelWidth": 0.0,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
+          "message": {
+            "arrowStyle": "open",
+            "from": "_STARTER_",
+            "fromX": 50.0,
+            "isReverse": false,
+            "label": "«create»",
+            "number": "1",
+            "statementId": "zenuml-statement-0",
+            "style": {},
+            "to": "A1",
+            "toX": 150.0,
+            "y": 92.0
+          },
+          "participant": {
+            "color": null,
+            "emoji": null,
+            "groupId": null,
+            "height": 40.0,
+            "isStarter": false,
+            "label": "A1",
+            "labelWidth": 18.56,
+            "name": "A1",
+            "participantType": null,
+            "stereotype": null,
+            "stereotypeWidth": null,
+            "width": 80.0,
+            "x": 150.0,
+            "y": 72.0
+          },
+          "statementId": "zenuml-statement-0"
         },
         {
-          "name": "A1",
-          "label": "A1",
-          "x": 150.0,
-          "y": 72.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 18.56,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "A2",
-          "label": "A2",
-          "x": 250.0,
-          "y": 150.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 18.56,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
+          "message": {
+            "arrowStyle": "open",
+            "from": "_STARTER_",
+            "fromX": 50.0,
+            "isReverse": false,
+            "label": "«with,parameters»",
+            "number": "2",
+            "statementId": "zenuml-statement-1",
+            "style": {},
+            "to": "A2",
+            "toX": 250.0,
+            "y": 170.0
+          },
+          "participant": {
+            "color": null,
+            "emoji": null,
+            "groupId": null,
+            "height": 40.0,
+            "isStarter": false,
+            "label": "A2",
+            "labelWidth": 18.56,
+            "name": "A2",
+            "participantType": null,
+            "stereotype": null,
+            "stereotypeWidth": null,
+            "width": 80.0,
+            "x": 250.0,
+            "y": 150.0
+          },
+          "statementId": "zenuml-statement-1"
         }
       ],
+      "dividers": [],
+      "fragments": [],
+      "frameBorderLeft": 0.0,
+      "frameBorderRight": 0.0,
+      "groups": [],
+      "height": 256.0,
       "lifelines": [
         {
+          "bottomY": 268.0,
           "participantName": "_STARTER_",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 268.0
+          "x": 50.0
         },
         {
+          "bottomY": 268.0,
           "participantName": "A1",
-          "x": 150.0,
           "topY": 112.0,
-          "bottomY": 268.0
+          "x": 150.0
         },
         {
+          "bottomY": 268.0,
           "participantName": "A2",
-          "x": 250.0,
           "topY": 190.0,
-          "bottomY": 268.0
+          "x": 250.0
         }
       ],
       "messages": [],
-      "selfCalls": [],
-      "creations": [
+      "occurrences": [
         {
+          "height": 24.0,
+          "participantName": "A1",
           "statementId": "zenuml-statement-0",
-          "participant": {
-            "name": "A1",
-            "label": "A1",
-            "x": 150.0,
-            "y": 72.0,
-            "width": 80.0,
-            "height": 40.0,
-            "isStarter": false,
-            "labelWidth": 18.56,
-            "stereotypeWidth": null,
-            "participantType": null,
-            "stereotype": null,
-            "color": null,
-            "emoji": null,
-            "groupId": null
-          },
-          "message": {
-            "statementId": "zenuml-statement-0",
-            "number": "1",
-            "from": "_STARTER_",
-            "to": "A1",
-            "fromX": 50.0,
-            "toX": 150.0,
-            "y": 92.0,
-            "label": "«create»",
-            "arrowStyle": "open",
-            "isReverse": false,
-            "style": {}
-          }
+          "width": 15.0,
+          "x": 143.0,
+          "y": 110.0
         },
         {
+          "height": 24.0,
+          "participantName": "A2",
           "statementId": "zenuml-statement-1",
-          "participant": {
-            "name": "A2",
-            "label": "A2",
-            "x": 250.0,
-            "y": 150.0,
-            "width": 80.0,
-            "height": 40.0,
-            "isStarter": false,
-            "labelWidth": 18.56,
-            "stereotypeWidth": null,
-            "participantType": null,
-            "stereotype": null,
-            "color": null,
-            "emoji": null,
-            "groupId": null
-          },
-          "message": {
-            "statementId": "zenuml-statement-1",
-            "number": "2",
-            "from": "_STARTER_",
-            "to": "A2",
-            "fromX": 50.0,
-            "toX": 250.0,
-            "y": 170.0,
-            "label": "«with,parameters»",
-            "arrowStyle": "open",
-            "isReverse": false,
-            "style": {}
-          }
+          "width": 15.0,
+          "x": 243.0,
+          "y": 188.0
+        }
+      ],
+      "participants": [
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": true,
+          "label": "",
+          "labelWidth": 0.0,
+          "name": "_STARTER_",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "A1",
+          "labelWidth": 18.56,
+          "name": "A1",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 150.0,
+          "y": 72.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "A2",
+          "labelWidth": 18.56,
+          "name": "A2",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 250.0,
+          "y": 150.0
         }
       ],
       "returns": [],
-      "occurrences": [
-        {
-          "statementId": "zenuml-statement-0",
-          "participantName": "A1",
-          "x": 143.0,
-          "y": 110.0,
-          "width": 15.0,
-          "height": 24.0
-        },
-        {
-          "statementId": "zenuml-statement-1",
-          "participantName": "A2",
-          "x": 243.0,
-          "y": 188.0,
-          "width": 15.0,
-          "height": 24.0
-        }
-      ],
-      "fragments": [],
-      "dividers": [],
-      "comments": [],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 300.0,
-        "max_y": 256.0
-      }
+      "selfCalls": [],
+      "width": 300.0
     }
   }
 }

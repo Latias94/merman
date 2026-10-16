@@ -830,7 +830,7 @@ fn usecase_dagre_keeps_self_loop_segments_and_helper_labels() {
 }
 
 #[test]
-fn usecase_plain_labels_preserve_literal_break_tags_and_entities_in_both_label_modes() {
+fn usecase_plain_labels_preserve_sanitized_break_tags_and_entities_in_both_label_modes() {
     let source = r#"usecase-beta
 actor A("a<br/>b")
 B("c<BR />d &lt; e &amp; f")
@@ -848,7 +848,7 @@ A edge@-- "g<br/>h" --> B
                 .filter_map(|child| child.text())
                 .collect::<String>()
         };
-        for (id, expected) in [("A", "a<br/>b"), ("B", "c<BR />d &lt; e &amp; f")] {
+        for (id, expected) in [("A", "a<br>b"), ("B", "c<br>d &lt; e &amp; f")] {
             let node = document
                 .descendants()
                 .find(|node| node.attribute("data-usecase-id") == Some(id))
@@ -866,7 +866,7 @@ A edge@-- "g<br/>h" --> B
             .descendants()
             .find(|node| node.attribute("data-id") == Some("edge") && node.has_tag_name("g"))
             .unwrap();
-        assert_eq!(text_content(edge_label), "g<br/>h", "htmlLabels={html}");
+        assert_eq!(text_content(edge_label), "g<br>h", "htmlLabels={html}");
     }
 }
 

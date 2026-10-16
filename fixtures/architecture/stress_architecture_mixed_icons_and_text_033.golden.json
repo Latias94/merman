@@ -1,426 +1,426 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "ui",
-        "icon": "cloud",
-        "title": "Ui",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "web",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "api",
+        "rhsInto": null,
+        "title": null
       },
       {
-        "id": "data",
-        "icon": "cloud",
-        "title": "Data",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "db",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "disk",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "note",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "web",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "plain",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "api",
+        "rhsInto": null,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "ui",
+        "in": null,
+        "title": "Ui"
+      },
+      {
+        "icon": "cloud",
+        "id": "data",
+        "in": null,
+        "title": "Data"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "web",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "web",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "web",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "note",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "web",
-            "rhsDir": "L",
             "rhsInto": null,
-            "rhsGroup": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "web",
+        "in": "ui",
         "title": "Web",
-        "in": "ui"
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "web",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "api",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "db",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "plain",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "plain",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "ui",
         "title": "Api",
-        "in": "ui"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "data",
         "title": "Db",
-        "in": "data"
+        "type": "service"
       },
       {
-        "id": "disk",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "disk",
+        "in": "data",
         "title": "Disk",
-        "in": "data"
+        "type": "service"
       },
       {
-        "id": "note",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "note",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "web",
+            "lhsId": "note",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "web",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": null,
         "iconText": "OK",
+        "id": "note",
+        "in": "ui",
         "title": "Note",
-        "in": "ui"
+        "type": "service"
       },
       {
-        "id": "plain",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "plain",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "plain",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": null,
         "iconText": null,
+        "id": "plain",
+        "in": null,
         "title": "Plain",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "web",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "web",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "web",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "note",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "web",
-            "rhsDir": "L",
             "rhsInto": null,
-            "rhsGroup": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "web",
+        "in": "ui",
         "title": "Web",
-        "in": "ui"
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "web",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "api",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "db",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "plain",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "plain",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "ui",
         "title": "Api",
-        "in": "ui"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "data",
         "title": "Db",
-        "in": "data"
+        "type": "service"
       },
       {
-        "id": "disk",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "disk",
+        "in": "data",
         "title": "Disk",
-        "in": "data"
+        "type": "service"
       },
       {
-        "id": "note",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "note",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "web",
+            "lhsId": "note",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "web",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": null,
         "iconText": "OK",
+        "id": "note",
+        "in": "ui",
         "title": "Note",
-        "in": "ui"
+        "type": "service"
       },
       {
-        "id": "plain",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "plain",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "plain",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": null,
         "iconText": null,
+        "id": "plain",
+        "in": null,
         "title": "Plain",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "web",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "api",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "api",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "db",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "disk",
-        "rhsDir": "T",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "note",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "web",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "plain",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "api",
-        "rhsDir": "B",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

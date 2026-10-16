@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "API",
       "DB",
@@ -13,102 +11,112 @@
     ],
     "actors": {
       "API": {
-        "name": "API",
         "description": "\"API Gateway\"",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "API",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "DB": {
-        "name": "DB",
         "description": "\"DB (primary)\"",
-        "wrap": false,
+        "links": {},
+        "name": "DB",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "Q": {
-        "name": "Q",
-        "description": "Q",
-        "wrap": false,
-        "type": "queue",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "Logs": {
-        "name": "Logs",
         "description": "Logs",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "Logs",
+        "properties": {},
+        "type": "database",
+        "wrap": false
+      },
+      "Q": {
+        "description": "Q",
+        "links": {},
+        "name": "Q",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "API",
-        "to": "DB",
-        "message": "SELECT * FROM items",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "DB",
-        "to": "API",
-        "message": "rows",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "API",
-        "to": "Q",
-        "message": "publish(itemIds)",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Q",
-        "to": "API",
-        "message": "accepted",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "API",
-        "to": "Logs",
-        "message": "write audit log",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Logs",
-        "to": "API",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "API",
-        "to": "Logs",
-        "message": "quoted labels + typed participants",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": "API",
+        "id": "0",
+        "message": "SELECT * FROM items",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "1",
+        "message": "rows",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "2",
+        "message": "publish(itemIds)",
+        "to": "Q",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Q",
+        "id": "3",
+        "message": "accepted",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "4",
+        "message": "write audit log",
+        "to": "Logs",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Logs",
+        "id": "5",
+        "message": "ok",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "6",
+        "message": "quoted labels + typed participants",
+        "placement": 2,
+        "to": "Logs",
+        "type": 2,
+        "wrap": false
       }
     ],
     "notes": [
@@ -117,20 +125,12 @@
           "API",
           "Logs"
         ],
-        "placement": 2,
         "message": "quoted labels + typed participants",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

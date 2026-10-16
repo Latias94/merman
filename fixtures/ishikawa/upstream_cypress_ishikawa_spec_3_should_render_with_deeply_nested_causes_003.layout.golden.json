@@ -3,328 +3,328 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -205.083,
-        "min_y": -40.337,
         "max_x": 92.0,
-        "max_y": 539.797
+        "max_y": 539.797,
+        "min_x": -205.083,
+        "min_y": -40.337
       },
-      "total_width": 297.083,
-      "total_height": 580.134,
-      "viewbox_x": -205.083,
-      "viewbox_y": -40.337,
-      "padding": 20.0,
-      "use_max_width": true,
       "font_size": 16.0,
       "head": {
-        "x": 0.0,
-        "y": 357.143,
-        "width": 60.0,
         "height": 105.6,
-        "path_d": "M 0 -52.8 L 0 52.8 Q 144 0 0 -52.8 Z",
         "label": {
-          "text": "Server\nOutage",
+          "anchor": "start",
+          "bbox": {
+            "max_x": 52.25,
+            "max_y": 373.543,
+            "min_x": 13.75,
+            "min_y": 340.743
+          },
+          "class_name": "ishikawa-head-label",
+          "font_size": 16.0,
+          "line_height": 16.8,
           "lines": [
             "Server",
             "Outage"
           ],
-          "class_name": "ishikawa-head-label",
+          "text": "Server\nOutage",
           "x": 33.0,
-          "y": 357.143,
-          "anchor": "start",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": 13.75,
-            "min_y": 340.743,
-            "max_x": 52.25,
-            "max_y": 373.543
-          }
-        }
+          "y": 357.143
+        },
+        "path_d": "M 0 -52.8 L 0 52.8 Q 144 0 0 -52.8 Z",
+        "width": 60.0,
+        "x": 0.0,
+        "y": 357.143
       },
-      "spine": {
-        "x1": -185.083,
-        "y1": 357.143,
-        "x2": 0.0,
-        "y2": 357.143,
-        "class_name": "ishikawa-spine",
-        "marker_start": false
-      },
+      "padding": 20.0,
       "pairs": [
         {
-          "upper": {
-            "line": {
-              "x1": -20.0,
-              "y1": 357.143,
-              "x2": -69.705,
-              "y2": 3.476,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
+          "lower": {
             "label_group": {
-              "label_box": {
-                "x": -121.385,
-                "y": -20.337,
-                "width": 103.36,
-                "height": 23.0
-              },
               "label": {
-                "text": "Hardware",
-                "lines": [
-                  "Hardware"
-                ],
-                "class_name": "ishikawa-label cause",
-                "x": -69.705,
-                "y": -7.524,
                 "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
                 "bbox": {
-                  "min_x": -101.385,
-                  "min_y": -18.337,
-                  "max_x": -38.025,
-                  "max_y": 0.663
-                }
+                  "max_x": -8.202,
+                  "max_y": 517.797,
+                  "min_x": -71.562,
+                  "min_y": 498.797
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
+                "lines": [
+                  "Software"
+                ],
+                "text": "Software",
+                "x": -39.882,
+                "y": 509.61
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 103.36,
+                "x": -91.562,
+                "y": 496.797
               }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -20.0,
+              "x2": -39.882,
+              "y1": 357.143,
+              "y2": 498.61
             },
             "sub_groups": [
               {
-                "line": {
-                  "x1": -28.284,
-                  "y1": 298.198,
-                  "x2": -93.284,
-                  "y2": 298.198,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Memory",
-                  "lines": [
-                    "Memory"
-                  ],
+                  "anchor": "end",
+                  "bbox": {
+                    "max_x": -91.627,
+                    "max_y": 412.486,
+                    "min_x": -114.987,
+                    "min_y": 393.486
+                  },
                   "class_name": "ishikawa-label align",
-                  "x": -93.284,
-                  "y": 298.198,
-                  "anchor": "end",
-                  "line_height": 16.8,
                   "font_size": 16.0,
-                  "bbox": {
-                    "min_x": -144.804,
-                    "min_y": 287.386,
-                    "max_x": -93.284,
-                    "max_y": 306.386
-                  }
+                  "line_height": 16.8,
+                  "lines": [
+                    "Bug"
+                  ],
+                  "text": "Bug",
+                  "x": -91.627,
+                  "y": 404.298
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -26.627,
+                  "x2": -91.627,
+                  "y1": 404.298,
+                  "y2": 404.298
                 }
               },
               {
-                "line": {
-                  "x1": -60.784,
-                  "y1": 298.198,
-                  "x2": -69.068,
-                  "y2": 239.254,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Leak detected",
-                  "lines": [
-                    "Leak detected"
-                  ],
-                  "class_name": "ishikawa-label up",
-                  "x": -69.068,
-                  "y": 239.254,
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -161.548,
-                    "min_y": 220.254,
-                    "max_x": -69.068,
-                    "max_y": 239.254
-                  }
-                }
-              },
-              {
-                "line": {
-                  "x1": -44.852,
-                  "y1": 180.309,
-                  "x2": -114.852,
-                  "y2": 180.309,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
+                    "max_x": -65.755,
+                    "max_y": 470.454,
+                    "min_x": -158.395,
+                    "min_y": 451.454
+                  },
+                  "class_name": "ishikawa-label down",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Race condition"
+                  ],
+                  "text": "Race condition",
+                  "x": -65.755,
+                  "y": 451.454
                 },
-                "label": {
-                  "text": "Disk",
-                  "lines": [
-                    "Disk"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -114.852,
-                  "y": 180.309,
-                  "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
-                  "bbox": {
-                    "min_x": -144.612,
-                    "min_y": 169.497,
-                    "max_x": -114.852,
-                    "max_y": 188.497
-                  }
-                }
-              },
-              {
                 "line": {
-                  "x1": -91.519,
-                  "y1": 180.309,
-                  "x2": -99.803,
-                  "y2": 121.365,
                   "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
-                "label": {
-                  "text": "Full capacity",
-                  "lines": [
-                    "Full capacity"
-                  ],
-                  "class_name": "ishikawa-label up",
-                  "x": -99.803,
-                  "y": 121.365,
-                  "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
-                  "bbox": {
-                    "min_x": -185.083,
-                    "min_y": 102.365,
-                    "max_x": -99.803,
-                    "max_y": 121.365
-                  }
-                }
-              },
-              {
-                "line": {
-                  "x1": -68.186,
-                  "y1": 180.309,
-                  "x2": -84.754,
-                  "y2": 62.42,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
-                "label": {
-                  "text": "Bad sectors",
-                  "lines": [
-                    "Bad sectors"
-                  ],
-                  "class_name": "ishikawa-label up",
-                  "x": -84.754,
-                  "y": 62.42,
-                  "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
-                  "bbox": {
-                    "min_x": -161.554,
-                    "min_y": 43.42,
-                    "max_x": -84.754,
-                    "max_y": 62.42
-                  }
+                  "marker_start": true,
+                  "x1": -59.127,
+                  "x2": -65.755,
+                  "y1": 404.298,
+                  "y2": 451.454
                 }
               }
             ]
           },
-          "lower": {
-            "line": {
-              "x1": -20.0,
-              "y1": 357.143,
-              "x2": -39.882,
-              "y2": 498.61,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
+          "upper": {
             "label_group": {
-              "label_box": {
-                "x": -91.562,
-                "y": 496.797,
-                "width": 103.36,
-                "height": 23.0
-              },
               "label": {
-                "text": "Software",
-                "lines": [
-                  "Software"
-                ],
-                "class_name": "ishikawa-label cause",
-                "x": -39.882,
-                "y": 509.61,
                 "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
                 "bbox": {
-                  "min_x": -71.562,
-                  "min_y": 498.797,
-                  "max_x": -8.202,
-                  "max_y": 517.797
-                }
+                  "max_x": -38.025,
+                  "max_y": 0.663,
+                  "min_x": -101.385,
+                  "min_y": -18.337
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
+                "lines": [
+                  "Hardware"
+                ],
+                "text": "Hardware",
+                "x": -69.705,
+                "y": -7.524
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 103.36,
+                "x": -121.385,
+                "y": -20.337
               }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -20.0,
+              "x2": -69.705,
+              "y1": 357.143,
+              "y2": 3.476
             },
             "sub_groups": [
               {
-                "line": {
-                  "x1": -26.627,
-                  "y1": 404.298,
-                  "x2": -91.627,
-                  "y2": 404.298,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Bug",
-                  "lines": [
-                    "Bug"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -91.627,
-                  "y": 404.298,
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -114.987,
-                    "min_y": 393.486,
-                    "max_x": -91.627,
-                    "max_y": 412.486
-                  }
+                    "max_x": -93.284,
+                    "max_y": 306.386,
+                    "min_x": -144.804,
+                    "min_y": 287.386
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Memory"
+                  ],
+                  "text": "Memory",
+                  "x": -93.284,
+                  "y": 298.198
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -28.284,
+                  "x2": -93.284,
+                  "y1": 298.198,
+                  "y2": 298.198
                 }
               },
               {
-                "line": {
-                  "x1": -59.127,
-                  "y1": 404.298,
-                  "x2": -65.755,
-                  "y2": 451.454,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Race condition",
-                  "lines": [
-                    "Race condition"
-                  ],
-                  "class_name": "ishikawa-label down",
-                  "x": -65.755,
-                  "y": 451.454,
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -158.395,
-                    "min_y": 451.454,
-                    "max_x": -65.755,
-                    "max_y": 470.454
-                  }
+                    "max_x": -69.068,
+                    "max_y": 239.254,
+                    "min_x": -161.548,
+                    "min_y": 220.254
+                  },
+                  "class_name": "ishikawa-label up",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Leak detected"
+                  ],
+                  "text": "Leak detected",
+                  "x": -69.068,
+                  "y": 239.254
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -60.784,
+                  "x2": -69.068,
+                  "y1": 298.198,
+                  "y2": 239.254
+                }
+              },
+              {
+                "label": {
+                  "anchor": "end",
+                  "bbox": {
+                    "max_x": -114.852,
+                    "max_y": 188.497,
+                    "min_x": -144.612,
+                    "min_y": 169.497
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Disk"
+                  ],
+                  "text": "Disk",
+                  "x": -114.852,
+                  "y": 180.309
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -44.852,
+                  "x2": -114.852,
+                  "y1": 180.309,
+                  "y2": 180.309
+                }
+              },
+              {
+                "label": {
+                  "anchor": "end",
+                  "bbox": {
+                    "max_x": -99.803,
+                    "max_y": 121.365,
+                    "min_x": -185.083,
+                    "min_y": 102.365
+                  },
+                  "class_name": "ishikawa-label up",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Full capacity"
+                  ],
+                  "text": "Full capacity",
+                  "x": -99.803,
+                  "y": 121.365
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -91.519,
+                  "x2": -99.803,
+                  "y1": 180.309,
+                  "y2": 121.365
+                }
+              },
+              {
+                "label": {
+                  "anchor": "end",
+                  "bbox": {
+                    "max_x": -84.754,
+                    "max_y": 62.42,
+                    "min_x": -161.554,
+                    "min_y": 43.42
+                  },
+                  "class_name": "ishikawa-label up",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Bad sectors"
+                  ],
+                  "text": "Bad sectors",
+                  "x": -84.754,
+                  "y": 62.42
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -68.186,
+                  "x2": -84.754,
+                  "y1": 180.309,
+                  "y2": 62.42
                 }
               }
             ]
           }
         }
-      ]
+      ],
+      "spine": {
+        "class_name": "ishikawa-spine",
+        "marker_start": false,
+        "x1": -185.083,
+        "x2": 0.0,
+        "y1": 357.143,
+        "y2": 357.143
+      },
+      "total_height": 580.134,
+      "total_width": 297.083,
+      "use_max_width": true,
+      "viewbox_x": -205.083,
+      "viewbox_y": -40.337
     }
   }
 }

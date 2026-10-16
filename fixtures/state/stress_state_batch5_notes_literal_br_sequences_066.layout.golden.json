@@ -2,63 +2,44 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 264.0,
+        "max_y": 479.0,
+        "min_x": 15.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "A",
-          "x": 93.5,
-          "y": 329.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "A----note-3",
-          "x": 165.0,
-          "y": 169.5,
-          "width": 150.0,
-          "height": 135.0,
-          "is_cluster": false
-        },
-        {
-          "id": "A----parent",
-          "x": 165.0,
-          "y": 136.5,
-          "width": 198.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 249.0,
-          "is_cluster": true
-        },
-        {
-          "id": "B",
-          "x": 93.5,
-          "y": 406.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_end",
-          "x": 93.5,
-          "y": 472.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 22.0,
-          "y": 254.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
+          "id": "A----parent",
+          "offset_y": 0.0,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "literal <br> should be treated as text\nline2\\\\nline3 (escaped)",
+          "title_label": {
+            "height": 63.0,
+            "width": 147.42,
+            "x": 165.0,
+            "y": 43.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 198.0,
+          "x": 165.0,
+          "y": 136.5
         }
       ],
       "edges": [
         {
-          "id": "A----note-3-A",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "A----note-3",
-          "to": "A",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "A----note-3-A",
+          "label": null,
           "points": [
             {
               "x": 165.0,
@@ -81,21 +62,21 @@
               "y": 311.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "A",
+          "to_cluster": null
         },
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "A",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 22.0,
@@ -114,21 +95,21 @@
               "y": 311.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "A",
+          "to_cluster": null
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "A",
-          "to": "B",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": null,
           "points": [
             {
               "x": 93.5,
@@ -139,21 +120,21 @@
               "y": 388.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "B",
+          "to_cluster": null
         },
         {
-          "id": "edge2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "B",
-          "to": "root_end",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge2",
+          "label": null,
           "points": [
             {
               "x": 93.5,
@@ -164,45 +145,64 @@
               "y": 465.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "A----parent",
+          "height": 37.0,
+          "id": "A",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 93.5,
+          "y": 329.5
+        },
+        {
+          "height": 135.0,
+          "id": "A----note-3",
+          "is_cluster": false,
+          "width": 150.0,
           "x": 165.0,
-          "y": 136.5,
-          "width": 198.0,
+          "y": 169.5
+        },
+        {
           "height": 249.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "literal <br/> should be treated as text\nline2\\\\nline3 (escaped)",
-          "title_label": {
-            "x": 165.0,
-            "y": 43.5,
-            "width": 147.42,
-            "height": 63.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "A----parent",
+          "is_cluster": true,
+          "width": 198.0,
+          "x": 165.0,
+          "y": 136.5
+        },
+        {
+          "height": 37.0,
+          "id": "B",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 93.5,
+          "y": 406.5
+        },
+        {
+          "height": 14.0,
+          "id": "root_end",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 93.5,
+          "y": 472.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 22.0,
+          "y": 254.0
         }
-      ],
-      "bounds": {
-        "min_x": 15.0,
-        "min_y": 12.0,
-        "max_x": 264.0,
-        "max_y": 479.0
-      }
+      ]
     }
   }
 }

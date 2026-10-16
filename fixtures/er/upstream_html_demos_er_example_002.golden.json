@@ -1,78 +1,78 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
-    "entities": {
-      "HOSPITAL": {
-        "id": "entity-HOSPITAL-0",
-        "label": "HOSPITAL",
-        "attributes": [
-          {
-            "type": "int",
-            "name": "id",
-            "keys": [
-              "PK"
-            ],
-            "comment": ""
-          },
-          {
-            "type": "int",
-            "name": "doctor_id",
-            "keys": [
-              "FK"
-            ],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "address",
-            "keys": [
-              "UK"
-            ],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "name",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "phone_number",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "fax_number",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      }
-    },
-    "relationships": [],
+    "accTitle": null,
     "classes": {},
     "constants": {
       "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
+        "mdParent": "MD_PARENT",
         "oneOrMore": "ONE_OR_MORE",
         "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
       },
       "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
       }
-    }
+    },
+    "direction": "TB",
+    "entities": {
+      "HOSPITAL": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [
+              "PK"
+            ],
+            "name": "id",
+            "type": "int"
+          },
+          {
+            "comment": "",
+            "keys": [
+              "FK"
+            ],
+            "name": "doctor_id",
+            "type": "int"
+          },
+          {
+            "comment": "",
+            "keys": [
+              "UK"
+            ],
+            "name": "address",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "phone_number",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "fax_number",
+            "type": "string"
+          }
+        ],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-HOSPITAL-0",
+        "label": "HOSPITAL",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [],
+    "type": "er"
   }
 }

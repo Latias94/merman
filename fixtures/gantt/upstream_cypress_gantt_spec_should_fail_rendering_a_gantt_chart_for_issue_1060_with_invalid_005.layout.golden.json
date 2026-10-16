@@ -2,30 +2,47 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 484.0
-      },
-      "width": 800.0,
-      "height": 484.0,
-      "left_padding": 75.0,
-      "right_padding": 75.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 4.0,
-      "display_mode": "",
-      "date_format": "",
       "axis_format": "",
-      "tick_interval": null,
-      "top_axis": false,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": "2019-06-01",
+          "time_ms": 1559347200000.0,
+          "x": 149.0
+        },
+        {
+          "label": "2019-07-01",
+          "time_ms": 1561939200000.0,
+          "x": 251.0
+        },
+        {
+          "label": "2019-08-01",
+          "time_ms": 1564617600000.0,
+          "x": 356.0
+        },
+        {
+          "label": "2019-09-01",
+          "time_ms": 1567296000000.0,
+          "x": 461.0
+        },
+        {
+          "label": "2019-10-01",
+          "time_ms": 1569888000000.0,
+          "x": 563.0
+        },
+        {
+          "label": "2019-11-01",
+          "time_ms": 1572566400000.0,
+          "x": 667.0
+        }
+      ],
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 484.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "asdf",
         "CEL",
@@ -33,729 +50,712 @@
         "Events",
         "Plasma Calls & updates"
       ],
+      "date_format": "",
+      "display_mode": "",
+      "excludes": [],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": true,
+      "height": 484.0,
+      "left_padding": 75.0,
+      "number_section_styles": 4.0,
+      "right_padding": 75.0,
       "rows": [
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 48.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 3.0,
-          "x": 0.0,
-          "y": 120.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 120.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 72.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 4.0,
-          "x": 0.0,
-          "y": 144.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 144.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 12.0,
-          "x": 0.0,
-          "y": 336.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 336.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 5.0,
-          "x": 0.0,
-          "y": 168.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 168.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 6.0,
-          "x": 0.0,
-          "y": 192.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 192.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 2.0,
-          "x": 0.0,
-          "y": 96.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 96.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 13.0,
-          "x": 0.0,
-          "y": 360.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 360.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 8.0,
-          "x": 0.0,
-          "y": 240.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 240.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 14.0,
-          "x": 0.0,
-          "y": 384.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 384.0
         },
         {
+          "class": "section section3",
+          "height": 24.0,
           "index": 10.0,
-          "x": 0.0,
-          "y": 288.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section3"
+          "x": 0.0,
+          "y": 288.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 15.0,
-          "x": 0.0,
-          "y": 408.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 408.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 7.0,
-          "x": 0.0,
-          "y": 216.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 216.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 9.0,
-          "x": 0.0,
-          "y": 264.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 264.0
         },
         {
-          "index": 11.0,
-          "x": 0.0,
-          "y": 312.0,
-          "width": 762.5,
+          "class": "section section3",
           "height": 24.0,
-          "class": "section section3"
+          "index": 11.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 312.0
         }
       ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "asdf",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 86.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "asdf"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "asdf",
+          "x": 10.0,
+          "y": 86.0
         },
         {
-          "section": "CEL",
-          "index": 1.0,
-          "x": 10.0,
-          "y": 158.0,
+          "class": "sectionTitle sectionTitle1",
           "dy_em": -0.0,
+          "index": 1.0,
           "lines": [
             "CEL"
           ],
-          "class": "sectionTitle sectionTitle1"
+          "section": "CEL",
+          "x": 10.0,
+          "y": 158.0
         },
         {
-          "section": "DEX",
-          "index": 2.0,
-          "x": 10.0,
-          "y": 242.0,
+          "class": "sectionTitle sectionTitle2",
           "dy_em": -0.0,
+          "index": 2.0,
           "lines": [
             "DEX"
           ],
-          "class": "sectionTitle sectionTitle2"
+          "section": "DEX",
+          "x": 10.0,
+          "y": 242.0
         },
         {
-          "section": "Events",
-          "index": 3.0,
-          "x": 10.0,
-          "y": 314.0,
+          "class": "sectionTitle sectionTitle3",
           "dy_em": -0.0,
+          "index": 3.0,
           "lines": [
             "Events"
           ],
-          "class": "sectionTitle sectionTitle3"
+          "section": "Events",
+          "x": 10.0,
+          "y": 314.0
         },
         {
-          "section": "Plasma Calls & updates",
-          "index": 4.0,
-          "x": 10.0,
-          "y": 386.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 4.0,
           "lines": [
             "Plasma Calls & updates"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "Plasma Calls & updates",
+          "x": 10.0,
+          "y": 386.0
         }
       ],
       "tasks": [
         {
-          "id": ":ps",
-          "task": "specs ",
-          "section": "asdf",
-          "task_type": "asdf",
-          "order": 0.0,
-          "start_ms": 1557446400000.0,
-          "end_ms": 1561766400000.0,
-          "render_end_ms": 1561766400000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": ":ps",
-            "x": 75.0,
-            "y": 50.0,
-            "width": 169.0,
+            "class": "task done0",
             "height": 20.0,
+            "id": ":ps",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task done0"
+            "width": 169.0,
+            "x": 75.0,
+            "y": 50.0
           },
+          "end_ms": 1561766400000.0,
+          "id": ":ps",
           "label": {
+            "class": "taskText taskText0 width-23.65",
+            "font_size": 11.0,
             "id": ":ps-text",
             "text": "specs ",
-            "font_size": 11.0,
             "width": 23.65,
             "x": 159.5,
-            "y": 63.5,
-            "class": "taskText taskText0 width-23.65"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": 1561766400000.0,
+          "section": "asdf",
+          "start_ms": 1557446400000.0,
+          "task": "specs ",
+          "task_type": "asdf",
+          "vert": false
         },
         {
-          "id": ":pc",
-          "task": "plasma-chamber      ",
-          "section": "CEL",
-          "task_type": "CEL",
-          "order": 3.0,
-          "start_ms": 1558310400000.0,
-          "end_ms": 1563494400000.0,
-          "render_end_ms": 1563494400000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": ":pc",
-            "x": 109.0,
-            "y": 122.0,
-            "width": 203.0,
+            "class": "task done1",
             "height": 20.0,
+            "id": ":pc",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task done1"
+            "width": 203.0,
+            "x": 109.0,
+            "y": 122.0
           },
+          "end_ms": 1563494400000.0,
+          "id": ":pc",
           "label": {
+            "class": "taskText taskText1 width-71.17",
+            "font_size": 11.0,
             "id": ":pc-text",
             "text": "plasma-chamber      ",
-            "font_size": 11.0,
             "width": 71.17,
             "x": 210.5,
-            "y": 135.5,
-            "class": "taskText taskText1 width-71.17"
-          }
+            "y": 135.5
+          },
+          "milestone": false,
+          "order": 3.0,
+          "render_end_ms": 1563494400000.0,
+          "section": "CEL",
+          "start_ms": 1558310400000.0,
+          "task": "plasma-chamber      ",
+          "task_type": "CEL",
+          "vert": false
         },
         {
-          "id": "pc",
-          "task": "Plasma      ",
-          "section": "asdf",
-          "task_type": "asdf",
-          "order": 1.0,
-          "start_ms": 1560988800000.0,
-          "end_ms": 1566172800000.0,
-          "render_end_ms": 1566172800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "pc",
-            "x": 214.0,
-            "y": 74.0,
-            "width": 203.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "pc",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 203.0,
+            "x": 214.0,
+            "y": 74.0
           },
+          "end_ms": 1566172800000.0,
+          "id": "pc",
           "label": {
+            "class": "taskText taskText0 width-32.45",
+            "font_size": 11.0,
             "id": "pc-text",
             "text": "Plasma      ",
-            "font_size": 11.0,
             "width": 32.45,
             "x": 315.5,
-            "y": 87.5,
-            "class": "taskText taskText0 width-32.45"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": 1566172800000.0,
+          "section": "asdf",
+          "start_ms": 1560988800000.0,
+          "task": "Plasma      ",
+          "task_type": "asdf",
+          "vert": false
         },
         {
-          "id": "por",
-          "task": "Plasma Implementation (Rust)      ",
-          "section": "CEL",
-          "task_type": "CEL",
-          "order": 4.0,
-          "start_ms": 1560988800000.0,
-          "end_ms": 1571356800000.0,
-          "render_end_ms": 1571356800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "por",
-            "x": 214.0,
-            "y": 146.0,
-            "width": 406.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "por",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 406.0,
+            "x": 214.0,
+            "y": 146.0
           },
+          "end_ms": 1571356800000.0,
+          "id": "por",
           "label": {
+            "class": "taskText taskText1 width-136.94999999999996",
+            "font_size": 11.0,
             "id": "por-text",
             "text": "Plasma Implementation (Rust)      ",
-            "font_size": 11.0,
             "width": 136.95,
             "x": 417.0,
-            "y": 159.5,
-            "class": "taskText taskText1 width-136.94999999999996"
-          }
+            "y": 159.5
+          },
+          "milestone": false,
+          "order": 4.0,
+          "render_end_ms": 1571356800000.0,
+          "section": "CEL",
+          "start_ms": 1560988800000.0,
+          "task": "Plasma Implementation (Rust)      ",
+          "task_type": "CEL",
+          "vert": false
         },
         {
-          "id": "ovm",
-          "task": "OVM      ",
-          "section": "Plasma Calls & updates",
-          "task_type": "Plasma Calls & updates",
-          "order": 12.0,
-          "start_ms": 1562889600000.0,
-          "end_ms": 1573257600000.0,
-          "render_end_ms": 1573257600000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "ovm",
-            "x": 288.0,
-            "y": 338.0,
-            "width": 407.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "ovm",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 407.0,
+            "x": 288.0,
+            "y": 338.0
           },
+          "end_ms": 1573257600000.0,
+          "id": "ovm",
           "label": {
+            "class": "taskText taskText0 width-19.799999999999997",
+            "font_size": 11.0,
             "id": "ovm-text",
             "text": "OVM      ",
-            "font_size": 11.0,
             "width": 19.8,
             "x": 491.5,
-            "y": 351.5,
-            "class": "taskText taskText0 width-19.799999999999997"
-          }
+            "y": 351.5
+          },
+          "milestone": false,
+          "order": 12.0,
+          "render_end_ms": 1573257600000.0,
+          "section": "Plasma Calls & updates",
+          "start_ms": 1562889600000.0,
+          "task": "OVM      ",
+          "task_type": "Plasma Calls & updates",
+          "vert": false
         },
         {
-          "id": "pred",
-          "task": "Predicates (Atomic Swap)      ",
-          "section": "CEL",
-          "task_type": "CEL",
-          "order": 5.0,
-          "start_ms": 1563580800000.0,
-          "end_ms": 1568764800000.0,
-          "render_end_ms": 1568764800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "pred",
-            "x": 315.0,
-            "y": 170.0,
-            "width": 203.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "pred",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 203.0,
+            "x": 315.0,
+            "y": 170.0
           },
+          "end_ms": 1568764800000.0,
+          "id": "pred",
           "label": {
+            "class": "taskText taskText1 width-119.12999999999998",
+            "font_size": 11.0,
             "id": "pred-text",
             "text": "Predicates (Atomic Swap)      ",
-            "font_size": 11.0,
             "width": 119.13,
             "x": 416.5,
-            "y": 183.5,
-            "class": "taskText taskText1 width-119.12999999999998"
-          }
+            "y": 183.5
+          },
+          "milestone": false,
+          "order": 5.0,
+          "render_end_ms": 1568764800000.0,
+          "section": "CEL",
+          "start_ms": 1563580800000.0,
+          "task": "Predicates (Atomic Swap)      ",
+          "task_type": "CEL",
+          "vert": false
         },
         {
-          "id": "hs",
-          "task": "History zkSNARK  ",
-          "section": "DEX",
-          "task_type": "DEX",
-          "order": 6.0,
-          "start_ms": 1565395200000.0,
-          "end_ms": 1568851200000.0,
-          "render_end_ms": 1568851200000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "hs",
-            "x": 386.0,
-            "y": 194.0,
-            "width": 136.0,
+            "class": "task task2",
             "height": 20.0,
+            "id": "hs",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task2"
+            "width": 136.0,
+            "x": 386.0,
+            "y": 194.0
           },
+          "end_ms": 1568851200000.0,
+          "id": "hs",
           "label": {
+            "class": "taskText taskText2 width-82.05999999999999",
+            "font_size": 11.0,
             "id": "hs-text",
             "text": "History zkSNARK  ",
-            "font_size": 11.0,
             "width": 82.06,
             "x": 454.0,
-            "y": 207.5,
-            "class": "taskText taskText2 width-82.05999999999999"
-          }
+            "y": 207.5
+          },
+          "milestone": false,
+          "order": 6.0,
+          "render_end_ms": 1568851200000.0,
+          "section": "DEX",
+          "start_ms": 1565395200000.0,
+          "task": "History zkSNARK  ",
+          "task_type": "DEX",
+          "vert": false
         },
         {
-          "id": "or",
-          "task": "Rollup  ",
-          "section": "asdf",
-          "task_type": "asdf",
-          "order": 2.0,
-          "start_ms": 1566259200000.0,
-          "end_ms": 1570579200000.0,
-          "render_end_ms": 1570579200000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "or",
-            "x": 420.0,
-            "y": 98.0,
-            "width": 170.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "or",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 170.0,
+            "x": 420.0,
+            "y": 98.0
           },
+          "end_ms": 1570579200000.0,
+          "id": "or",
           "label": {
+            "class": "taskText taskText0 width-26.950000000000003",
+            "font_size": 11.0,
             "id": "or-text",
             "text": "Rollup  ",
-            "font_size": 11.0,
             "width": 26.95,
             "x": 505.0,
-            "y": 111.5,
-            "class": "taskText taskText0 width-26.950000000000003"
-          }
+            "y": 111.5
+          },
+          "milestone": false,
+          "order": 2.0,
+          "render_end_ms": 1570579200000.0,
+          "section": "asdf",
+          "start_ms": 1566259200000.0,
+          "task": "Rollup  ",
+          "task_type": "asdf",
+          "vert": false
         },
         {
-          "id": "pc26",
-          "task": "Plasma call 26 ",
-          "section": "Plasma Calls & updates",
-          "task_type": "Plasma Calls & updates",
-          "order": 13.0,
-          "start_ms": 1566345600000.0,
-          "end_ms": 1566432000000.0,
-          "render_end_ms": 1566432000000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "pc26",
-            "x": 424.0,
-            "y": 362.0,
-            "width": 3.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "pc26",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 3.0,
+            "x": 424.0,
+            "y": 362.0
           },
+          "end_ms": 1566432000000.0,
+          "id": "pc26",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002",
+            "font_size": 11.0,
             "id": "pc26-text",
             "text": "Plasma call 26 ",
-            "font_size": 11.0,
             "width": 67.65,
             "x": 432.0,
-            "y": 375.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
-          }
+            "y": 375.5
+          },
+          "milestone": false,
+          "order": 13.0,
+          "render_end_ms": 1566432000000.0,
+          "section": "Plasma Calls & updates",
+          "start_ms": 1566345600000.0,
+          "task": "Plasma call 26 ",
+          "task_type": "Plasma Calls & updates",
+          "vert": false
         },
         {
-          "id": "ps",
-          "task": "PredicateSpec          ",
-          "section": "DEX",
-          "task_type": "DEX",
-          "order": 8.0,
-          "start_ms": 1567296000000.0,
-          "end_ms": 1569024000000.0,
-          "render_end_ms": 1569024000000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "ps",
-            "x": 461.0,
-            "y": 242.0,
-            "width": 68.0,
+            "class": "task task2",
             "height": 20.0,
+            "id": "ps",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task2"
+            "width": 68.0,
+            "x": 461.0,
+            "y": 242.0
           },
+          "end_ms": 1569024000000.0,
+          "id": "ps",
           "label": {
+            "class": "taskText taskText2 width-63.57999999999999",
+            "font_size": 11.0,
             "id": "ps-text",
             "text": "PredicateSpec          ",
-            "font_size": 11.0,
             "width": 63.58,
             "x": 495.0,
-            "y": 255.5,
-            "class": "taskText taskText2 width-63.57999999999999"
-          }
+            "y": 255.5
+          },
+          "milestone": false,
+          "order": 8.0,
+          "render_end_ms": 1569024000000.0,
+          "section": "DEX",
+          "start_ms": 1567296000000.0,
+          "task": "PredicateSpec          ",
+          "task_type": "DEX",
+          "vert": false
         },
         {
-          "id": "pc27",
-          "task": "Plasma call 27 ",
-          "section": "Plasma Calls & updates",
-          "task_type": "Plasma Calls & updates",
-          "order": 14.0,
-          "start_ms": 1567468800000.0,
-          "end_ms": 1567555200000.0,
-          "render_end_ms": 1567555200000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "pc27",
-            "x": 468.0,
-            "y": 386.0,
-            "width": 3.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "pc27",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 3.0,
+            "x": 468.0,
+            "y": 386.0
           },
+          "end_ms": 1567555200000.0,
+          "id": "pc27",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002",
+            "font_size": 11.0,
             "id": "pc27-text",
             "text": "Plasma call 27 ",
-            "font_size": 11.0,
             "width": 67.65,
             "x": 476.0,
-            "y": 399.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
-          }
+            "y": 399.5
+          },
+          "milestone": false,
+          "order": 14.0,
+          "render_end_ms": 1567555200000.0,
+          "section": "Plasma Calls & updates",
+          "start_ms": 1567468800000.0,
+          "task": "Plasma call 27 ",
+          "task_type": "Plasma Calls & updates",
+          "vert": false
         },
         {
-          "id": ":eb",
-          "task": "ETHBoston ",
-          "section": "Events",
-          "task_type": "Events",
-          "order": 10.0,
-          "start_ms": 1567900800000.0,
-          "end_ms": 1568160000000.0,
-          "render_end_ms": 1568160000000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": ":eb",
-            "x": 485.0,
-            "y": 290.0,
-            "width": 10.0,
+            "class": "task done3",
             "height": 20.0,
+            "id": ":eb",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task done3"
+            "width": 10.0,
+            "x": 485.0,
+            "y": 290.0
           },
+          "end_ms": 1568160000000.0,
+          "id": ":eb",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside3 width-50.05",
+            "font_size": 11.0,
             "id": ":eb-text",
             "text": "ETHBoston ",
-            "font_size": 11.0,
             "width": 50.05,
             "x": 500.0,
-            "y": 303.5,
-            "class": "taskTextOutsideRight taskTextOutside3 width-50.05"
-          }
+            "y": 303.5
+          },
+          "milestone": false,
+          "order": 10.0,
+          "render_end_ms": 1568160000000.0,
+          "section": "Events",
+          "start_ms": 1567900800000.0,
+          "task": "ETHBoston ",
+          "task_type": "Events",
+          "vert": false
         },
         {
-          "id": "pc28",
-          "task": "Plasma call 28 ",
-          "section": "Plasma Calls & updates",
-          "task_type": "Plasma Calls & updates",
-          "order": 15.0,
-          "start_ms": 1568678400000.0,
-          "end_ms": 1568764800000.0,
-          "render_end_ms": 1568764800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "pc28",
-            "x": 515.0,
-            "y": 410.0,
-            "width": 3.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "pc28",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 3.0,
+            "x": 515.0,
+            "y": 410.0
           },
+          "end_ms": 1568764800000.0,
+          "id": "pc28",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002",
+            "font_size": 11.0,
             "id": "pc28-text",
             "text": "Plasma call 28 ",
-            "font_size": 11.0,
             "width": 67.65,
             "x": 523.0,
-            "y": 423.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-67.65000000000002"
-          }
+            "y": 423.5
+          },
+          "milestone": false,
+          "order": 15.0,
+          "render_end_ms": 1568764800000.0,
+          "section": "Plasma Calls & updates",
+          "start_ms": 1568678400000.0,
+          "task": "Plasma call 28 ",
+          "task_type": "Plasma Calls & updates",
+          "vert": false
         },
         {
-          "id": "vs",
-          "task": "Exit           ",
-          "section": "DEX",
-          "task_type": "DEX",
-          "order": 7.0,
-          "start_ms": 1568851200000.0,
-          "end_ms": 1574035200000.0,
-          "render_end_ms": 1574035200000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "vs",
-            "x": 522.0,
-            "y": 218.0,
-            "width": 203.0,
+            "class": "task task2",
             "height": 20.0,
+            "id": "vs",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task2"
+            "width": 203.0,
+            "x": 522.0,
+            "y": 218.0
           },
+          "end_ms": 1574035200000.0,
+          "id": "vs",
           "label": {
+            "class": "taskText taskText2 width-19.14",
+            "font_size": 11.0,
             "id": "vs-text",
             "text": "Exit           ",
-            "font_size": 11.0,
             "width": 19.14,
             "x": 623.5,
-            "y": 231.5,
-            "class": "taskText taskText2 width-19.14"
-          }
+            "y": 231.5
+          },
+          "milestone": false,
+          "order": 7.0,
+          "render_end_ms": 1574035200000.0,
+          "section": "DEX",
+          "start_ms": 1568851200000.0,
+          "task": "Exit           ",
+          "task_type": "DEX",
+          "vert": false
         },
         {
-          "id": "pi",
-          "task": "PlasmaIntegration     ",
-          "section": "DEX",
-          "task_type": "DEX",
-          "order": 9.0,
-          "start_ms": 1569024000000.0,
-          "end_ms": 1572480000000.0,
-          "render_end_ms": 1572480000000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "pi",
-            "x": 529.0,
-            "y": 266.0,
-            "width": 135.0,
+            "class": "task task2",
             "height": 20.0,
+            "id": "pi",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task2"
+            "width": 135.0,
+            "x": 529.0,
+            "y": 266.0
           },
+          "end_ms": 1572480000000.0,
+          "id": "pi",
           "label": {
+            "class": "taskText taskText2 width-81.39999999999998",
+            "font_size": 11.0,
             "id": "pi-text",
             "text": "PlasmaIntegration     ",
-            "font_size": 11.0,
             "width": 81.4,
             "x": 596.5,
-            "y": 279.5,
-            "class": "taskText taskText2 width-81.39999999999998"
-          }
+            "y": 279.5
+          },
+          "milestone": false,
+          "order": 9.0,
+          "render_end_ms": 1572480000000.0,
+          "section": "DEX",
+          "start_ms": 1569024000000.0,
+          "task": "PlasmaIntegration     ",
+          "task_type": "DEX",
+          "vert": false
         },
         {
-          "id": ":dc",
-          "task": "DevCon ",
-          "section": "Events",
-          "task_type": "Events",
-          "order": 11.0,
-          "start_ms": 1570492800000.0,
-          "end_ms": 1570752000000.0,
-          "render_end_ms": 1570752000000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": ":dc",
-            "x": 586.0,
-            "y": 314.0,
-            "width": 10.0,
+            "class": "task active3",
             "height": 20.0,
+            "id": ":dc",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task active3"
+            "width": 10.0,
+            "x": 586.0,
+            "y": 314.0
           },
+          "end_ms": 1570752000000.0,
+          "id": ":dc",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside3 width-32.120000000000005",
+            "font_size": 11.0,
             "id": ":dc-text",
             "text": "DevCon ",
-            "font_size": 11.0,
             "width": 32.12,
             "x": 601.0,
-            "y": 327.5,
-            "class": "taskTextOutsideRight taskTextOutside3 width-32.120000000000005"
-          }
+            "y": 327.5
+          },
+          "milestone": false,
+          "order": 11.0,
+          "render_end_ms": 1570752000000.0,
+          "section": "Events",
+          "start_ms": 1570492800000.0,
+          "task": "DevCon ",
+          "task_type": "Events",
+          "vert": false
         }
       ],
-      "excludes": [],
-      "has_excludes_layer": true,
-      "bottom_ticks": [
-        {
-          "time_ms": 1559347200000.0,
-          "x": 149.0,
-          "label": "2019-06-01"
-        },
-        {
-          "time_ms": 1561939200000.0,
-          "x": 251.0,
-          "label": "2019-07-01"
-        },
-        {
-          "time_ms": 1564617600000.0,
-          "x": 356.0,
-          "label": "2019-08-01"
-        },
-        {
-          "time_ms": 1567296000000.0,
-          "x": 461.0,
-          "label": "2019-09-01"
-        },
-        {
-          "time_ms": 1569888000000.0,
-          "x": 563.0,
-          "label": "2019-10-01"
-        },
-        {
-          "time_ms": 1572566400000.0,
-          "x": 667.0,
-          "label": "2019-11-01"
-        }
-      ],
-      "top_ticks": [],
+      "tick_interval": null,
       "title": "Projects Timeline",
+      "title_top_margin": 25.0,
       "title_x": 400.0,
-      "title_y": 25.0
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": false,
+      "top_padding": 50.0,
+      "top_ticks": [],
+      "width": 800.0
     }
   }
 }

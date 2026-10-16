@@ -2,76 +2,46 @@
   "diagramType": "radar",
   "layout": {
     "RadarDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 700.0,
-        "max_y": 730.0
-      },
-      "svg_width": 700.0,
-      "svg_height": 730.0,
-      "center_x": 350.0,
-      "center_y": 380.0,
-      "radius": 300.0,
-      "axis_label_factor": 1.25,
-      "title_y": -380.0,
       "axes": [
         {
-          "label": "A",
           "angle": -1.571,
-          "line_x2": 0.0,
-          "line_y2": -300.0,
+          "label": "A",
           "label_x": 0.0,
-          "label_y": -375.0
+          "label_y": -375.0,
+          "line_x2": 0.0,
+          "line_y2": -300.0
         },
         {
-          "label": "B",
           "angle": 0.524,
-          "line_x2": 259.808,
-          "line_y2": 150.0,
+          "label": "B",
           "label_x": 324.76,
-          "label_y": 187.5
+          "label_y": 187.5,
+          "line_x2": 259.808,
+          "line_y2": 150.0
         },
         {
-          "label": "C",
           "angle": 2.618,
-          "line_x2": -259.808,
-          "line_y2": 150.0,
+          "label": "C",
           "label_x": -324.76,
-          "label_y": 187.5
+          "label_y": 187.5,
+          "line_x2": -259.808,
+          "line_y2": 150.0
         }
       ],
-      "graticules": [
-        {
-          "kind": "circle",
-          "r": 60.0,
-          "points": []
-        },
-        {
-          "kind": "circle",
-          "r": 120.0,
-          "points": []
-        },
-        {
-          "kind": "circle",
-          "r": 180.0,
-          "points": []
-        },
-        {
-          "kind": "circle",
-          "r": 240.0,
-          "points": []
-        },
-        {
-          "kind": "circle",
-          "r": 300.0,
-          "points": []
-        }
-      ],
+      "axis_label_factor": 1.25,
+      "bounds": {
+        "max_x": 700.0,
+        "max_y": 730.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "center_x": 350.0,
+      "center_y": 380.0,
       "curves": [
         {
-          "label": "mycurve",
           "class_index": 0.0,
+          "label": "mycurve",
+          "path_d": "M0,-100 C73.612,-108.5 217.372,57.5 173.205,100 C129.038,142.5 -230.363,184 -259.808,150 C-289.252,116 -73.612,-91.5 0,-100 Z",
           "points": [
             {
               "x": 0.0,
@@ -85,18 +55,48 @@
               "x": -259.808,
               "y": 150.0
             }
-          ],
-          "path_d": "M0,-100 C73.612,-108.5 217.372,57.5 173.205,100 C129.038,142.5 -230.363,184 -259.808,150 C-289.252,116 -73.612,-91.5 0,-100 Z"
+          ]
+        }
+      ],
+      "graticules": [
+        {
+          "kind": "circle",
+          "points": [],
+          "r": 60.0
+        },
+        {
+          "kind": "circle",
+          "points": [],
+          "r": 120.0
+        },
+        {
+          "kind": "circle",
+          "points": [],
+          "r": 180.0
+        },
+        {
+          "kind": "circle",
+          "points": [],
+          "r": 240.0
+        },
+        {
+          "kind": "circle",
+          "points": [],
+          "r": 300.0
         }
       ],
       "legend_items": [
         {
-          "label": "mycurve",
           "class_index": 0.0,
+          "label": "mycurve",
           "x": 262.5,
           "y": -285.0
         }
-      ]
+      ],
+      "radius": 300.0,
+      "svg_height": 730.0,
+      "svg_width": 700.0,
+      "title_y": -380.0
     }
   }
 }

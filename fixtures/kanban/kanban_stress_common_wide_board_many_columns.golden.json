@@ -1,284 +1,284 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "backlog",
-        "label": "Backlog",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "todo",
-        "label": "Todo",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "doing",
-        "label": "Doing",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "review",
-        "label": "Review",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "test",
-        "label": "Test",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "done",
-        "label": "Done",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "parked",
-        "label": "Parked",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "archived",
-        "label": "Archived",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "backlog",
-        "label": "Backlog",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Backlog",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i1",
-        "parentId": "backlog",
-        "label": "Item 1",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i1",
+        "isGroup": false,
+        "label": "Item 1",
+        "level": 4,
+        "parentId": "backlog",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "todo",
-        "label": "Todo",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Todo",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i2",
-        "parentId": "todo",
-        "label": "Item 2",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i2",
+        "isGroup": false,
+        "label": "Item 2",
+        "level": 4,
+        "parentId": "todo",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "doing",
-        "label": "Doing",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Doing",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i3",
-        "parentId": "doing",
-        "label": "Item 3",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i3",
+        "isGroup": false,
+        "label": "Item 3",
+        "level": 4,
+        "parentId": "doing",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "review",
-        "label": "Review",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Review",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i4",
-        "parentId": "review",
-        "label": "Item 4",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i4",
+        "isGroup": false,
+        "label": "Item 4",
+        "level": 4,
+        "parentId": "review",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "test",
-        "label": "Test",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Test",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i5",
-        "parentId": "test",
-        "label": "Item 5",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i5",
+        "isGroup": false,
+        "label": "Item 5",
+        "level": 4,
+        "parentId": "test",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "done",
-        "label": "Done",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Done",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i6",
-        "parentId": "done",
-        "label": "Item 6",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i6",
+        "isGroup": false,
+        "label": "Item 6",
+        "level": 4,
+        "parentId": "done",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "parked",
-        "label": "Parked",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Parked",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i7",
-        "parentId": "parked",
-        "label": "Item 7",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i7",
+        "isGroup": false,
+        "label": "Item 7",
+        "level": 4,
+        "parentId": "parked",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "archived",
-        "label": "Archived",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Archived",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "i8",
-        "parentId": "archived",
-        "label": "Item 8",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "i8",
+        "isGroup": false,
+        "label": "Item 8",
+        "level": 4,
+        "parentId": "archived",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "backlog",
+        "isGroup": false,
+        "label": "Backlog",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "todo",
+        "isGroup": false,
+        "label": "Todo",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "doing",
+        "isGroup": false,
+        "label": "Doing",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "review",
+        "isGroup": false,
+        "label": "Review",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "test",
+        "isGroup": false,
+        "label": "Test",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "done",
+        "isGroup": false,
+        "label": "Done",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "parked",
+        "isGroup": false,
+        "label": "Parked",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "archived",
+        "isGroup": false,
+        "label": "Archived",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

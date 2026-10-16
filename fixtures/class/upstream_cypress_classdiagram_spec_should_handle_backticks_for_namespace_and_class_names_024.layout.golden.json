@@ -2,39 +2,44 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 151.344,
+        "max_y": 298.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "A::B",
-          "x": 81.672,
-          "y": 220.5,
-          "width": 139.344,
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 155.0,
-          "is_cluster": true
-        },
-        {
-          "id": "RenderProcessHost",
+          "id": "A::B",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "A::B",
+          "title_label": {
+            "height": 21.0,
+            "width": 24.64,
+            "x": 81.672,
+            "y": 153.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 139.344,
           "x": 81.672,
-          "y": 52.5,
-          "width": 133.484,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "IPC::Sender",
-          "x": 81.672,
-          "y": 233.5,
-          "width": 91.344,
-          "height": 81.0,
-          "is_cluster": false
+          "y": 220.5
         }
       ],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "RenderProcessHost",
-          "to": "IPC::Sender",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 81.672,
@@ -49,45 +54,40 @@
               "y": 193.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "IPC::Sender",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "A::B",
-          "x": 81.672,
-          "y": 220.5,
-          "width": 139.344,
           "height": 155.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "A::B",
-          "title_label": {
-            "x": 81.672,
-            "y": 153.5,
-            "width": 24.64,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "A::B",
+          "is_cluster": true,
+          "width": 139.344,
+          "x": 81.672,
+          "y": 220.5
+        },
+        {
+          "height": 81.0,
+          "id": "RenderProcessHost",
+          "is_cluster": false,
+          "width": 133.484,
+          "x": 81.672,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "IPC::Sender",
+          "is_cluster": false,
+          "width": 91.344,
+          "x": 81.672,
+          "y": 233.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 151.344,
-        "max_y": 298.0
-      }
+      ]
     }
   }
 }

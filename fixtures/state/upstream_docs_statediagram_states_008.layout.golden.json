@@ -2,24 +2,24 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
+      "bounds": {
+        "max_x": 148.0,
+        "max_y": 70.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
-          "id": "s2",
-          "x": 80.0,
-          "y": 41.0,
-          "width": 136.0,
           "height": 58.0,
-          "is_cluster": false
+          "id": "s2",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 80.0,
+          "y": 41.0
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 148.0,
-        "max_y": 70.0
-      }
+      ]
     }
   }
 }

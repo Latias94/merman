@@ -1,139 +1,139 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
-    "entities": {
-      "C": {
-        "id": "entity-C-2",
-        "label": "C",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
       },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
       "A": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-A-0",
         "label": "A",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "E": {
-        "id": "entity-E-4",
-        "label": "E",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "F": {
-        "id": "entity-F-5",
-        "label": "F",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "H": {
-        "id": "entity-H-7",
-        "label": "H",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "G": {
-        "id": "entity-G-6",
-        "label": "G",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
+        "shape": "erBox"
       },
       "B": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-B-1",
         "label": "B",
-        "attributes": [],
+        "shape": "erBox"
+      },
+      "C": {
         "alias": "",
-        "shape": "erBox",
+        "attributes": [],
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-C-2",
+        "label": "C",
+        "shape": "erBox"
       },
       "D": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-D-3",
         "label": "D",
-        "attributes": [],
+        "shape": "erBox"
+      },
+      "E": {
         "alias": "",
-        "shape": "erBox",
+        "attributes": [],
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-E-4",
+        "label": "E",
+        "shape": "erBox"
+      },
+      "F": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-F-5",
+        "label": "F",
+        "shape": "erBox"
+      },
+      "G": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-G-6",
+        "label": "G",
+        "shape": "erBox"
+      },
+      "H": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-H-7",
+        "label": "H",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-A-0",
-        "roleA": "solid-solid",
         "entityB": "entity-B-1",
         "relSpec": {
           "cardA": "ONLY_ONE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "solid-solid"
       },
       {
         "entityA": "entity-C-2",
-        "roleA": "dotted-dotted",
         "entityB": "entity-D-3",
         "relSpec": {
           "cardA": "ONLY_ONE",
           "cardB": "ONLY_ONE",
           "relType": "NON_IDENTIFYING"
-        }
+        },
+        "roleA": "dotted-dotted"
       },
       {
         "entityA": "entity-E-4",
-        "roleA": "dotted-solid",
         "entityB": "entity-F-5",
         "relSpec": {
           "cardA": "ONLY_ONE",
           "cardB": "ONLY_ONE",
           "relType": "NON_IDENTIFYING"
-        }
+        },
+        "roleA": "dotted-solid"
       },
       {
         "entityA": "entity-G-6",
-        "roleA": "solid-dotted",
         "entityB": "entity-H-7",
         "relSpec": {
           "cardA": "ONLY_ONE",
           "cardB": "ONLY_ONE",
           "relType": "NON_IDENTIFYING"
-        }
+        },
+        "roleA": "solid-dotted"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

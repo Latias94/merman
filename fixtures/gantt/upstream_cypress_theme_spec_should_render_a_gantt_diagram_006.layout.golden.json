@@ -2,758 +2,758 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 484.0
-      },
-      "width": 800.0,
-      "height": 484.0,
-      "left_padding": 75.0,
-      "right_padding": 75.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 4.0,
-      "display_mode": "",
-      "date_format": "               :YYYY-MM-DD",
       "axis_format": "",
-      "tick_interval": null,
-      "top_axis": false,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": "2014-01-07",
+          "time_ms": 1389052800000.0,
+          "x": 116.0
+        },
+        {
+          "label": "2014-01-09",
+          "time_ms": 1389225600000.0,
+          "x": 197.0
+        },
+        {
+          "label": "2014-01-11",
+          "time_ms": 1389398400000.0,
+          "x": 278.0
+        },
+        {
+          "label": "2014-01-13",
+          "time_ms": 1389571200000.0,
+          "x": 359.0
+        },
+        {
+          "label": "2014-01-15",
+          "time_ms": 1389744000000.0,
+          "x": 441.0
+        },
+        {
+          "label": "2014-01-17",
+          "time_ms": 1389916800000.0,
+          "x": 522.0
+        },
+        {
+          "label": "2014-01-19",
+          "time_ms": 1390089600000.0,
+          "x": 603.0
+        },
+        {
+          "label": "2014-01-21",
+          "time_ms": 1390262400000.0,
+          "x": 684.0
+        }
+      ],
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 484.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "A section",
         "Critical tasks",
         "Documentation",
         "Last section"
       ],
+      "date_format": "               :YYYY-MM-DD",
+      "display_mode": "",
+      "excludes": [],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": true,
+      "height": 484.0,
+      "left_padding": 75.0,
+      "number_section_styles": 4.0,
+      "right_padding": 75.0,
       "rows": [
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 48.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 4.0,
-          "x": 0.0,
-          "y": 144.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 144.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 5.0,
-          "x": 0.0,
-          "y": 168.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 168.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 10.0,
-          "x": 0.0,
-          "y": 288.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 288.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 6.0,
-          "x": 0.0,
-          "y": 192.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 192.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 72.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 11.0,
-          "x": 0.0,
-          "y": 312.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 312.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 12.0,
-          "x": 0.0,
-          "y": 336.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 336.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 7.0,
-          "x": 0.0,
-          "y": 216.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 216.0
         },
         {
+          "class": "section section3",
+          "height": 24.0,
           "index": 13.0,
-          "x": 0.0,
-          "y": 360.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section3"
+          "x": 0.0,
+          "y": 360.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 2.0,
-          "x": 0.0,
-          "y": 96.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 96.0
         },
         {
+          "class": "section section3",
+          "height": 24.0,
           "index": 14.0,
-          "x": 0.0,
-          "y": 384.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section3"
+          "x": 0.0,
+          "y": 384.0
         },
         {
+          "class": "section section3",
+          "height": 24.0,
           "index": 15.0,
-          "x": 0.0,
-          "y": 408.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section3"
+          "x": 0.0,
+          "y": 408.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 8.0,
-          "x": 0.0,
-          "y": 240.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 240.0
         },
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 3.0,
-          "x": 0.0,
-          "y": 120.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 120.0
         },
         {
-          "index": 9.0,
-          "x": 0.0,
-          "y": 264.0,
-          "width": 762.5,
+          "class": "section section1",
           "height": 24.0,
-          "class": "section section1"
+          "index": 9.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 264.0
         }
       ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "A section",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 98.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "A section"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "A section",
+          "x": 10.0,
+          "y": 98.0
         },
         {
-          "section": "Critical tasks",
-          "index": 1.0,
-          "x": 10.0,
-          "y": 218.0,
+          "class": "sectionTitle sectionTitle1",
           "dy_em": -0.0,
+          "index": 1.0,
           "lines": [
             "Critical tasks"
           ],
-          "class": "sectionTitle sectionTitle1"
+          "section": "Critical tasks",
+          "x": 10.0,
+          "y": 218.0
         },
         {
-          "section": "Documentation",
-          "index": 2.0,
-          "x": 10.0,
-          "y": 326.0,
+          "class": "sectionTitle sectionTitle2",
           "dy_em": -0.0,
+          "index": 2.0,
           "lines": [
             "Documentation"
           ],
-          "class": "sectionTitle sectionTitle2"
+          "section": "Documentation",
+          "x": 10.0,
+          "y": 326.0
         },
         {
-          "section": "Last section",
-          "index": 3.0,
-          "x": 10.0,
-          "y": 398.0,
+          "class": "sectionTitle sectionTitle3",
           "dy_em": -0.0,
+          "index": 3.0,
           "lines": [
             "Last section"
           ],
-          "class": "sectionTitle sectionTitle3"
+          "section": "Last section",
+          "x": 10.0,
+          "y": 398.0
         }
       ],
       "tasks": [
         {
-          "id": "des1",
-          "task": "Completed task            ",
-          "section": "A section",
-          "task_type": "A section",
-          "order": 0.0,
-          "start_ms": 1388966400000.0,
-          "end_ms": 1388966400000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "des1",
-            "x": 75.0,
-            "y": 50.0,
-            "width": 0.0,
+            "class": "task done0",
             "height": 20.0,
+            "id": "des1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task done0"
+            "width": 0.0,
+            "x": 75.0,
+            "y": 50.0
           },
+          "end_ms": 1388966400000.0,
+          "id": "des1",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside0 width-70.51",
+            "font_size": 11.0,
             "id": "des1-text",
             "text": "Completed task            ",
-            "font_size": 11.0,
             "width": 70.51,
             "x": 80.0,
-            "y": 63.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-70.51"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "A section",
+          "start_ms": 1388966400000.0,
+          "task": "Completed task            ",
+          "task_type": "A section",
+          "vert": false
         },
         {
-          "id": "task1",
-          "task": "Completed task in the critical line ",
-          "section": "Critical tasks",
-          "task_type": "Critical tasks",
-          "order": 4.0,
-          "start_ms": 1388966400000.0,
-          "end_ms": 1389052800000.0,
-          "render_end_ms": 1389052800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task1",
-            "x": 75.0,
-            "y": 146.0,
-            "width": 41.0,
+            "class": "task doneCrit1",
             "height": 20.0,
+            "id": "task1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task doneCrit1"
+            "width": 41.0,
+            "x": 75.0,
+            "y": 146.0
           },
+          "end_ms": 1389052800000.0,
+          "id": "task1",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside1 width-155.53999999999994",
+            "font_size": 11.0,
             "id": "task1-text",
             "text": "Completed task in the critical line ",
-            "font_size": 11.0,
             "width": 155.54,
             "x": 121.0,
-            "y": 159.5,
-            "class": "taskTextOutsideRight taskTextOutside1 width-155.53999999999994"
-          }
+            "y": 159.5
+          },
+          "milestone": false,
+          "order": 4.0,
+          "render_end_ms": 1389052800000.0,
+          "section": "Critical tasks",
+          "start_ms": 1388966400000.0,
+          "task": "Completed task in the critical line ",
+          "task_type": "Critical tasks",
+          "vert": false
         },
         {
-          "id": "task2",
-          "task": "Implement parser and jison          ",
-          "section": "Critical tasks",
-          "task_type": "Critical tasks",
-          "order": 5.0,
-          "start_ms": 1388966400000.0,
-          "end_ms": 1389139200000.0,
-          "render_end_ms": 1389139200000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task2",
-            "x": 75.0,
-            "y": 170.0,
-            "width": 81.0,
+            "class": "task doneCrit1",
             "height": 20.0,
+            "id": "task2",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task doneCrit1"
+            "width": 81.0,
+            "x": 75.0,
+            "y": 170.0
           },
+          "end_ms": 1389139200000.0,
+          "id": "task2",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside1 width-122.64999999999996",
+            "font_size": 11.0,
             "id": "task2-text",
             "text": "Implement parser and jison          ",
-            "font_size": 11.0,
             "width": 122.65,
             "x": 161.0,
-            "y": 183.5,
-            "class": "taskTextOutsideRight taskTextOutside1 width-122.64999999999996"
-          }
+            "y": 183.5
+          },
+          "milestone": false,
+          "order": 5.0,
+          "render_end_ms": 1389139200000.0,
+          "section": "Critical tasks",
+          "start_ms": 1388966400000.0,
+          "task": "Implement parser and jison          ",
+          "task_type": "Critical tasks",
+          "vert": false
         },
         {
-          "id": "a1",
-          "task": "Describe gantt syntax               ",
-          "section": "Documentation",
-          "task_type": "Documentation",
-          "order": 10.0,
-          "start_ms": 1388966400000.0,
-          "end_ms": 1389225600000.0,
-          "render_end_ms": 1389225600000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "a1",
-            "x": 75.0,
-            "y": 290.0,
-            "width": 122.0,
+            "class": "task active2",
             "height": 20.0,
+            "id": "a1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task active2"
+            "width": 122.0,
+            "x": 75.0,
+            "y": 290.0
           },
+          "end_ms": 1389225600000.0,
+          "id": "a1",
           "label": {
+            "class": "taskText taskText2 width-98.66999999999997",
+            "font_size": 11.0,
             "id": "a1-text",
             "text": "Describe gantt syntax               ",
-            "font_size": 11.0,
             "width": 98.67,
             "x": 136.0,
-            "y": 303.5,
-            "class": "taskText taskText2 width-98.66999999999997"
-          }
+            "y": 303.5
+          },
+          "milestone": false,
+          "order": 10.0,
+          "render_end_ms": 1389225600000.0,
+          "section": "Documentation",
+          "start_ms": 1388966400000.0,
+          "task": "Describe gantt syntax               ",
+          "task_type": "Documentation",
+          "vert": false
         },
         {
-          "id": "task3",
-          "task": "Create tests for parser             ",
-          "section": "Critical tasks",
-          "task_type": "Critical tasks",
-          "order": 6.0,
-          "start_ms": 1389139200000.0,
-          "end_ms": 1389398400000.0,
-          "render_end_ms": 1389398400000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task3",
-            "x": 156.0,
-            "y": 194.0,
-            "width": 122.0,
+            "class": "task activeCrit1",
             "height": 20.0,
+            "id": "task3",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task activeCrit1"
+            "width": 122.0,
+            "x": 156.0,
+            "y": 194.0
           },
+          "end_ms": 1389398400000.0,
+          "id": "task3",
           "label": {
+            "class": "taskText taskText1 width-107.35999999999999",
+            "font_size": 11.0,
             "id": "task3-text",
             "text": "Create tests for parser             ",
-            "font_size": 11.0,
             "width": 107.36,
             "x": 217.0,
-            "y": 207.5,
-            "class": "taskText taskText1 width-107.35999999999999"
-          }
+            "y": 207.5
+          },
+          "milestone": false,
+          "order": 6.0,
+          "render_end_ms": 1389398400000.0,
+          "section": "Critical tasks",
+          "start_ms": 1389139200000.0,
+          "task": "Create tests for parser             ",
+          "task_type": "Critical tasks",
+          "vert": false
         },
         {
-          "id": "des2",
-          "task": "Active task               ",
-          "section": "A section",
-          "task_type": "A section",
-          "order": 1.0,
-          "start_ms": 1389225600000.0,
-          "end_ms": 1389484800000.0,
-          "render_end_ms": 1389484800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "des2",
-            "x": 197.0,
-            "y": 74.0,
-            "width": 122.0,
+            "class": "task active0",
             "height": 20.0,
+            "id": "des2",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task active0"
+            "width": 122.0,
+            "x": 197.0,
+            "y": 74.0
           },
+          "end_ms": 1389484800000.0,
+          "id": "des2",
           "label": {
+            "class": "taskText taskText0 width-52.470000000000006",
+            "font_size": 11.0,
             "id": "des2-text",
             "text": "Active task               ",
-            "font_size": 11.0,
             "width": 52.47,
             "x": 258.0,
-            "y": 87.5,
-            "class": "taskText taskText0 width-52.470000000000006"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": 1389484800000.0,
+          "section": "A section",
+          "start_ms": 1389225600000.0,
+          "task": "Active task               ",
+          "task_type": "A section",
+          "vert": false
         },
         {
-          "id": "task7",
-          "task": "Add gantt diagram to demo page      ",
-          "section": "Documentation",
-          "task_type": "Documentation",
-          "order": 11.0,
-          "start_ms": 1389225600000.0,
-          "end_ms": 1389297600000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task7",
-            "x": 197.0,
-            "y": 314.0,
-            "width": 34.0,
+            "class": "task task2",
             "height": 20.0,
+            "id": "task7",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task2"
+            "width": 34.0,
+            "x": 197.0,
+            "y": 314.0
           },
+          "end_ms": 1389297600000.0,
+          "id": "task7",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside2 width-144.31999999999996",
+            "font_size": 11.0,
             "id": "task7-text",
             "text": "Add gantt diagram to demo page      ",
-            "font_size": 11.0,
             "width": 144.32,
             "x": 236.0,
-            "y": 327.5,
-            "class": "taskTextOutsideRight taskTextOutside2 width-144.31999999999996"
-          }
+            "y": 327.5
+          },
+          "milestone": false,
+          "order": 11.0,
+          "render_end_ms": null,
+          "section": "Documentation",
+          "start_ms": 1389225600000.0,
+          "task": "Add gantt diagram to demo page      ",
+          "task_type": "Documentation",
+          "vert": false
         },
         {
-          "id": "doc1",
-          "task": "Add another diagram to demo page    ",
-          "section": "Documentation",
-          "task_type": "Documentation",
-          "order": 12.0,
-          "start_ms": 1389225600000.0,
-          "end_ms": 1389398400000.0,
-          "render_end_ms": 1389398400000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "doc1",
-            "x": 197.0,
-            "y": 338.0,
-            "width": 81.0,
+            "class": "task task2",
             "height": 20.0,
+            "id": "doc1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task2"
+            "width": 81.0,
+            "x": 197.0,
+            "y": 338.0
           },
+          "end_ms": 1389398400000.0,
+          "id": "doc1",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside2 width-153.77999999999997",
+            "font_size": 11.0,
             "id": "doc1-text",
             "text": "Add another diagram to demo page    ",
-            "font_size": 11.0,
             "width": 153.78,
             "x": 283.0,
-            "y": 351.5,
-            "class": "taskTextOutsideRight taskTextOutside2 width-153.77999999999997"
-          }
+            "y": 351.5
+          },
+          "milestone": false,
+          "order": 12.0,
+          "render_end_ms": 1389398400000.0,
+          "section": "Documentation",
+          "start_ms": 1389225600000.0,
+          "task": "Add another diagram to demo page    ",
+          "task_type": "Documentation",
+          "vert": false
         },
         {
-          "id": "task4",
-          "task": "Future task in critical line        ",
-          "section": "Critical tasks",
-          "task_type": "Critical tasks",
-          "order": 7.0,
-          "start_ms": 1389398400000.0,
-          "end_ms": 1389830400000.0,
-          "render_end_ms": 1389830400000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task4",
-            "x": 278.0,
-            "y": 218.0,
-            "width": 203.0,
+            "class": "task crit1",
             "height": 20.0,
+            "id": "task4",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task crit1"
+            "width": 203.0,
+            "x": 278.0,
+            "y": 218.0
           },
+          "end_ms": 1389830400000.0,
+          "id": "task4",
           "label": {
+            "class": "taskText taskText1 width-121.32999999999996",
+            "font_size": 11.0,
             "id": "task4-text",
             "text": "Future task in critical line        ",
-            "font_size": 11.0,
             "width": 121.33,
             "x": 379.5,
-            "y": 231.5,
-            "class": "taskText taskText1 width-121.32999999999996"
-          }
+            "y": 231.5
+          },
+          "milestone": false,
+          "order": 7.0,
+          "render_end_ms": 1389830400000.0,
+          "section": "Critical tasks",
+          "start_ms": 1389398400000.0,
+          "task": "Future task in critical line        ",
+          "task_type": "Critical tasks",
+          "vert": false
         },
         {
-          "id": "task8",
-          "task": "Describe gantt syntax               ",
-          "section": "Last section",
-          "task_type": "Last section",
-          "order": 13.0,
-          "start_ms": 1389398400000.0,
-          "end_ms": 1389657600000.0,
-          "render_end_ms": 1389657600000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task8",
-            "x": 278.0,
-            "y": 362.0,
-            "width": 122.0,
+            "class": "task task3",
             "height": 20.0,
+            "id": "task8",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task3"
+            "width": 122.0,
+            "x": 278.0,
+            "y": 362.0
           },
+          "end_ms": 1389657600000.0,
+          "id": "task8",
           "label": {
+            "class": "taskText taskText3 width-98.66999999999997",
+            "font_size": 11.0,
             "id": "task8-text",
             "text": "Describe gantt syntax               ",
-            "font_size": 11.0,
             "width": 98.67,
             "x": 339.0,
-            "y": 375.5,
-            "class": "taskText taskText3 width-98.66999999999997"
-          }
+            "y": 375.5
+          },
+          "milestone": false,
+          "order": 13.0,
+          "render_end_ms": 1389657600000.0,
+          "section": "Last section",
+          "start_ms": 1389398400000.0,
+          "task": "Describe gantt syntax               ",
+          "task_type": "Last section",
+          "vert": false
         },
         {
-          "id": "des3",
-          "task": "Future task               ",
-          "section": "A section",
-          "task_type": "A section",
-          "order": 2.0,
-          "start_ms": 1389484800000.0,
-          "end_ms": 1389916800000.0,
-          "render_end_ms": 1389916800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "des3",
-            "x": 319.0,
-            "y": 98.0,
-            "width": 203.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "des3",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 203.0,
+            "x": 319.0,
+            "y": 98.0
           },
+          "end_ms": 1389916800000.0,
+          "id": "des3",
           "label": {
+            "class": "taskText taskText0 width-54.12",
+            "font_size": 11.0,
             "id": "des3-text",
             "text": "Future task               ",
-            "font_size": 11.0,
             "width": 54.12,
             "x": 420.5,
-            "y": 111.5,
-            "class": "taskText taskText0 width-54.12"
-          }
+            "y": 111.5
+          },
+          "milestone": false,
+          "order": 2.0,
+          "render_end_ms": 1389916800000.0,
+          "section": "A section",
+          "start_ms": 1389484800000.0,
+          "task": "Future task               ",
+          "task_type": "A section",
+          "vert": false
         },
         {
-          "id": "task9",
-          "task": "Add gantt diagram to demo page      ",
-          "section": "Last section",
-          "task_type": "Last section",
-          "order": 14.0,
-          "start_ms": 1389657600000.0,
-          "end_ms": 1389729600000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task9",
-            "x": 400.0,
-            "y": 386.0,
-            "width": 34.0,
+            "class": "task task3",
             "height": 20.0,
+            "id": "task9",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task3"
+            "width": 34.0,
+            "x": 400.0,
+            "y": 386.0
           },
+          "end_ms": 1389729600000.0,
+          "id": "task9",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside3 width-144.31999999999996",
+            "font_size": 11.0,
             "id": "task9-text",
             "text": "Add gantt diagram to demo page      ",
-            "font_size": 11.0,
             "width": 144.32,
             "x": 439.0,
-            "y": 399.5,
-            "class": "taskTextOutsideRight taskTextOutside3 width-144.31999999999996"
-          }
+            "y": 399.5
+          },
+          "milestone": false,
+          "order": 14.0,
+          "render_end_ms": null,
+          "section": "Last section",
+          "start_ms": 1389657600000.0,
+          "task": "Add gantt diagram to demo page      ",
+          "task_type": "Last section",
+          "vert": false
         },
         {
-          "id": "task10",
-          "task": "Add another diagram to demo page    ",
-          "section": "Last section",
-          "task_type": "Last section",
-          "order": 15.0,
-          "start_ms": 1389729600000.0,
-          "end_ms": 1389902400000.0,
-          "render_end_ms": 1389902400000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task10",
-            "x": 434.0,
-            "y": 410.0,
-            "width": 81.0,
+            "class": "task task3",
             "height": 20.0,
+            "id": "task10",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task3"
+            "width": 81.0,
+            "x": 434.0,
+            "y": 410.0
           },
+          "end_ms": 1389902400000.0,
+          "id": "task10",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside3 width-153.77999999999997",
+            "font_size": 11.0,
             "id": "task10-text",
             "text": "Add another diagram to demo page    ",
-            "font_size": 11.0,
             "width": 153.78,
             "x": 520.0,
-            "y": 423.5,
-            "class": "taskTextOutsideRight taskTextOutside3 width-153.77999999999997"
-          }
+            "y": 423.5
+          },
+          "milestone": false,
+          "order": 15.0,
+          "render_end_ms": 1389902400000.0,
+          "section": "Last section",
+          "start_ms": 1389729600000.0,
+          "task": "Add another diagram to demo page    ",
+          "task_type": "Last section",
+          "vert": false
         },
         {
-          "id": "task5",
-          "task": "Create tests for renderer           ",
-          "section": "Critical tasks",
-          "task_type": "Critical tasks",
-          "order": 8.0,
-          "start_ms": 1389830400000.0,
-          "end_ms": 1390003200000.0,
-          "render_end_ms": 1390003200000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task5",
-            "x": 481.0,
-            "y": 242.0,
-            "width": 82.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task5",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 82.0,
+            "x": 481.0,
+            "y": 242.0
           },
+          "end_ms": 1390003200000.0,
+          "id": "task5",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside1 width-116.81999999999996",
+            "font_size": 11.0,
             "id": "task5-text",
             "text": "Create tests for renderer           ",
-            "font_size": 11.0,
             "width": 116.82,
             "x": 568.0,
-            "y": 255.5,
-            "class": "taskTextOutsideRight taskTextOutside1 width-116.81999999999996"
-          }
+            "y": 255.5
+          },
+          "milestone": false,
+          "order": 8.0,
+          "render_end_ms": 1390003200000.0,
+          "section": "Critical tasks",
+          "start_ms": 1389830400000.0,
+          "task": "Create tests for renderer           ",
+          "task_type": "Critical tasks",
+          "vert": false
         },
         {
-          "id": "des4",
-          "task": "Future task2              ",
-          "section": "A section",
-          "task_type": "A section",
-          "order": 3.0,
-          "start_ms": 1389916800000.0,
-          "end_ms": 1390348800000.0,
-          "render_end_ms": 1390348800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "des4",
-            "x": 522.0,
-            "y": 122.0,
-            "width": 203.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "des4",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 203.0,
+            "x": 522.0,
+            "y": 122.0
           },
+          "end_ms": 1390348800000.0,
+          "id": "des4",
           "label": {
+            "class": "taskText taskText0 width-60.28",
+            "font_size": 11.0,
             "id": "des4-text",
             "text": "Future task2              ",
-            "font_size": 11.0,
             "width": 60.28,
             "x": 623.5,
-            "y": 135.5,
-            "class": "taskText taskText0 width-60.28"
-          }
+            "y": 135.5
+          },
+          "milestone": false,
+          "order": 3.0,
+          "render_end_ms": 1390348800000.0,
+          "section": "A section",
+          "start_ms": 1389916800000.0,
+          "task": "Future task2              ",
+          "task_type": "A section",
+          "vert": false
         },
         {
-          "id": "task6",
-          "task": "Add to mermaid                      ",
-          "section": "Critical tasks",
-          "task_type": "Critical tasks",
-          "order": 9.0,
-          "start_ms": 1390003200000.0,
-          "end_ms": 1390089600000.0,
-          "render_end_ms": 1390089600000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task6",
-            "x": 563.0,
-            "y": 266.0,
-            "width": 40.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task6",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 40.0,
+            "x": 563.0,
+            "y": 266.0
           },
+          "end_ms": 1390089600000.0,
+          "id": "task6",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside1 width-71.94",
+            "font_size": 11.0,
             "id": "task6-text",
             "text": "Add to mermaid                      ",
-            "font_size": 11.0,
             "width": 71.94,
             "x": 608.0,
-            "y": 279.5,
-            "class": "taskTextOutsideRight taskTextOutside1 width-71.94"
-          }
+            "y": 279.5
+          },
+          "milestone": false,
+          "order": 9.0,
+          "render_end_ms": 1390089600000.0,
+          "section": "Critical tasks",
+          "start_ms": 1390003200000.0,
+          "task": "Add to mermaid                      ",
+          "task_type": "Critical tasks",
+          "vert": false
         }
       ],
-      "excludes": [],
-      "has_excludes_layer": true,
-      "bottom_ticks": [
-        {
-          "time_ms": 1389052800000.0,
-          "x": 116.0,
-          "label": "2014-01-07"
-        },
-        {
-          "time_ms": 1389225600000.0,
-          "x": 197.0,
-          "label": "2014-01-09"
-        },
-        {
-          "time_ms": 1389398400000.0,
-          "x": 278.0,
-          "label": "2014-01-11"
-        },
-        {
-          "time_ms": 1389571200000.0,
-          "x": 359.0,
-          "label": "2014-01-13"
-        },
-        {
-          "time_ms": 1389744000000.0,
-          "x": 441.0,
-          "label": "2014-01-15"
-        },
-        {
-          "time_ms": 1389916800000.0,
-          "x": 522.0,
-          "label": "2014-01-17"
-        },
-        {
-          "time_ms": 1390089600000.0,
-          "x": 603.0,
-          "label": "2014-01-19"
-        },
-        {
-          "time_ms": 1390262400000.0,
-          "x": 684.0,
-          "label": "2014-01-21"
-        }
-      ],
-      "top_ticks": [],
+      "tick_interval": null,
       "title": "                    :Adding GANTT diagram functionality to mermaid",
+      "title_top_margin": 25.0,
       "title_x": 400.0,
-      "title_y": 25.0
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": false,
+      "top_padding": 50.0,
+      "top_ticks": [],
+      "width": 800.0
     }
   }
 }

@@ -1,12 +1,12 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [],
-    "tasks": []
+    "tasks": [],
+    "title": null,
+    "type": "timeline"
   }
 }

@@ -2,65 +2,65 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
+      "bounds": {
+        "max_x": 281.44,
+        "max_y": 0.0,
+        "min_x": 0.0,
+        "min_y": -44.0
+      },
+      "edges": [],
       "nodes": [
         {
-          "id": "one",
-          "x": 44.24,
-          "y": -24.0,
-          "width": 88.48,
           "height": 40.0,
-          "is_cluster": false
+          "id": "one",
+          "is_cluster": false,
+          "width": 88.48,
+          "x": 44.24,
+          "y": -24.0
         },
         {
-          "id": "two",
-          "x": 188.96,
-          "y": -24.0,
-          "width": 184.96,
           "height": 40.0,
-          "is_cluster": false
+          "id": "two",
+          "is_cluster": false,
+          "width": 184.96,
+          "x": 188.96,
+          "y": -24.0
         }
       ],
-      "edges": [],
       "shapeGeometries": [
         {
-          "id": "one",
           "allocated": {
-            "x": 44.24,
-            "y": -24.0,
+            "height": 40.0,
             "width": 88.48,
-            "height": 40.0
+            "x": 44.24,
+            "y": -24.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 88.48,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 88.48
+          },
+          "id": "one"
         },
         {
-          "id": "two",
           "allocated": {
-            "x": 188.96,
-            "y": -24.0,
+            "height": 40.0,
             "width": 184.96,
-            "height": 40.0
+            "x": 188.96,
+            "y": -24.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 184.96,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 184.96
+          },
+          "id": "two"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -44.0,
-        "max_x": 281.44,
-        "max_y": 0.0
-      }
+      ]
     }
   }
 }

@@ -1,112 +1,112 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
-    "entities": {
-      "NAMED-DRIVER": {
-        "id": "entity-NAMED-DRIVER-1",
-        "label": "NAMED-DRIVER",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
       },
-      "PERSON": {
-        "id": "entity-PERSON-2",
-        "label": "PERSON",
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
+      "CAR": {
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
-            "name": "firstName",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "registrationNumber",
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "lastName",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "make",
+            "type": "string"
           },
           {
-            "type": "int",
-            "name": "age",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "model",
+            "type": "string"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
-      },
-      "CAR": {
+        "cssStyles": [],
         "id": "entity-CAR-0",
         "label": "CAR",
+        "shape": "erBox"
+      },
+      "NAMED-DRIVER": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-NAMED-DRIVER-1",
+        "label": "NAMED-DRIVER",
+        "shape": "erBox"
+      },
+      "PERSON": {
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
-            "name": "registrationNumber",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "firstName",
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "make",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "lastName",
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "model",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "age",
+            "type": "int"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-PERSON-2",
+        "label": "PERSON",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-CAR-0",
-        "roleA": "allows",
         "entityB": "entity-NAMED-DRIVER-1",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "allows"
       },
       {
         "entityA": "entity-PERSON-2",
-        "roleA": "is",
         "entityB": "entity-NAMED-DRIVER-1",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "is"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

@@ -2,47 +2,44 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 212.0,
+        "max_y": 319.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Tiny",
-          "x": 112.0,
-          "y": 165.5,
-          "width": 200.0,
+          "diff": -4.0,
+          "effective_dir": "TB",
           "height": 117.0,
-          "is_cluster": true
-        },
-        {
-          "id": "left",
+          "id": "Tiny",
+          "offset_y": 15.0,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": "Tiny",
+          "title_label": {
+            "height": 19.0,
+            "width": 26.04,
+            "x": 112.0,
+            "y": 126.5
+          },
+          "title_margin_bottom": 5.0,
+          "title_margin_top": 10.0,
+          "width": 200.0,
           "x": 112.0,
-          "y": 34.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "right",
-          "x": 112.0,
-          "y": 296.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "t",
-          "x": 112.0,
-          "y": 177.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 165.5
         }
       ],
       "edges": [
         {
-          "id": "L_left_t_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "left",
-          "to": "t",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_left_t_0",
+          "label": null,
           "points": [
             {
               "x": 112.0,
@@ -57,21 +54,21 @@
               "y": 155.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "t",
+          "to_cluster": null
         },
         {
-          "id": "L_t_right_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "t",
-          "to": "right",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_t_right_0",
+          "label": null,
           "points": [
             {
               "x": 112.0,
@@ -86,45 +83,48 @@
               "y": 274.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "right",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Tiny",
-          "x": 112.0,
-          "y": 165.5,
-          "width": 200.0,
           "height": 117.0,
-          "diff": -4.0,
-          "offset_y": 15.0,
-          "title": "Tiny",
-          "title_label": {
-            "x": 112.0,
-            "y": 126.5,
-            "width": 26.04,
-            "height": 19.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 10.0,
-          "title_margin_bottom": 5.0
+          "id": "Tiny",
+          "is_cluster": true,
+          "width": 200.0,
+          "x": 112.0,
+          "y": 165.5
+        },
+        {
+          "height": 45.0,
+          "id": "left",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 112.0,
+          "y": 34.5
+        },
+        {
+          "height": 45.0,
+          "id": "right",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 112.0,
+          "y": 296.5
+        },
+        {
+          "height": 45.0,
+          "id": "t",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 112.0,
+          "y": 177.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 212.0,
-        "max_y": 319.0
-      }
+      ]
     }
   }
 }

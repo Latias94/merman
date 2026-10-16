@@ -3,48 +3,48 @@
   "layout": {
     "KanbanDiagram": {
       "bounds": {
-        "min_x": 90.0,
-        "min_y": -310.0,
         "max_x": 310.0,
-        "max_y": -211.0
+        "max_y": -211.0,
+        "min_x": 90.0,
+        "min_y": -310.0
       },
-      "section_width": 200.0,
-      "padding": 10.0,
-      "max_label_height": 25.0,
-      "viewbox_padding": 10.0,
-      "use_max_width": true,
-      "sections": [
-        {
-          "id": "column1",
-          "label": "Column Title",
-          "index": 1.0,
-          "center_x": 200.0,
-          "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
-          "rect_height": 79.0,
-          "rx": 5.0,
-          "ry": 5.0,
-          "label_width": 84.8
-        }
-      ],
       "items": [
         {
+          "assigned": null,
+          "center_x": 200.0,
+          "center_y": -253.0,
+          "height": 44.0,
+          "icon": null,
           "id": "task1",
           "label": "Task Description",
           "parent_id": "column1",
-          "center_x": 200.0,
-          "center_y": -253.0,
-          "width": 185.0,
-          "height": 44.0,
+          "priority": null,
           "rx": 5.0,
           "ry": 5.0,
           "ticket": null,
-          "assigned": null,
-          "priority": null,
-          "icon": null
+          "width": 185.0
         }
-      ]
+      ],
+      "max_label_height": 25.0,
+      "padding": 10.0,
+      "section_width": 200.0,
+      "sections": [
+        {
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "id": "column1",
+          "index": 1.0,
+          "label": "Column Title",
+          "label_width": 84.8,
+          "rect_height": 79.0,
+          "rect_y": -300.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "width": 200.0
+        }
+      ],
+      "use_max_width": true,
+      "viewbox_padding": 10.0
     }
   }
 }

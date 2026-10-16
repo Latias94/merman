@@ -1,48 +1,27 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Main",
-          "children": [
-            {
-              "name": "A",
-              "value": 20
-            },
-            {
-              "name": "B",
-              "classSelector": "important",
-              "cssCompiledStyles": [
-                "fill:#f96;stroke:#333;stroke-width:2px"
-              ],
-              "children": [
-                {
-                  "name": "B1",
-                  "value": 10
-                },
-                {
-                  "name": "B2",
-                  "value": 15
-                }
-              ]
-            },
-            {
-              "name": "C",
-              "value": 5,
-              "classSelector": "secondary",
-              "cssCompiledStyles": [
-                "fill:#6cf;stroke:#333;stroke-dasharray:5 5"
-              ]
-            }
-          ]
-        }
-      ]
+    "accTitle": null,
+    "classes": {
+      "important": {
+        "id": "important",
+        "styles": [
+          "fill:#f96",
+          "stroke:#333",
+          "stroke-width:2px"
+        ],
+        "textStyles": []
+      },
+      "secondary": {
+        "id": "secondary",
+        "styles": [
+          "fill:#6cf",
+          "stroke:#333",
+          "stroke-dasharray:5 5"
+        ],
+        "textStyles": []
+      }
     },
     "nodes": [
       {
@@ -55,12 +34,12 @@
         "value": 20
       },
       {
-        "level": 1,
-        "name": "B",
         "classSelector": "important",
         "cssCompiledStyles": [
           "fill:#f96;stroke:#333;stroke-width:2px"
-        ]
+        ],
+        "level": 1,
+        "name": "B"
       },
       {
         "level": 2,
@@ -73,34 +52,55 @@
         "value": 15
       },
       {
-        "level": 1,
-        "name": "C",
-        "value": 5,
         "classSelector": "secondary",
         "cssCompiledStyles": [
           "fill:#6cf;stroke:#333;stroke-dasharray:5 5"
-        ]
+        ],
+        "level": 1,
+        "name": "C",
+        "value": 5
       }
     ],
-    "classes": {
-      "secondary": {
-        "id": "secondary",
-        "styles": [
-          "fill:#6cf",
-          "stroke:#333",
-          "stroke-dasharray:5 5"
-        ],
-        "textStyles": []
-      },
-      "important": {
-        "id": "important",
-        "styles": [
-          "fill:#f96",
-          "stroke:#333",
-          "stroke-width:2px"
-        ],
-        "textStyles": []
-      }
-    }
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "A",
+              "value": 20
+            },
+            {
+              "children": [
+                {
+                  "name": "B1",
+                  "value": 10
+                },
+                {
+                  "name": "B2",
+                  "value": 15
+                }
+              ],
+              "classSelector": "important",
+              "cssCompiledStyles": [
+                "fill:#f96;stroke:#333;stroke-width:2px"
+              ],
+              "name": "B"
+            },
+            {
+              "classSelector": "secondary",
+              "cssCompiledStyles": [
+                "fill:#6cf;stroke:#333;stroke-dasharray:5 5"
+              ],
+              "name": "C",
+              "value": 5
+            }
+          ],
+          "name": "Main"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

@@ -2,100 +2,100 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 292.2,
-      "height": 164.0,
+      "bounds": {
+        "max_x": 292.2,
+        "max_y": 164.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
+      "creations": [],
+      "dividers": [],
+      "fragments": [],
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
-      "participants": [
-        {
-          "name": "A",
-          "label": "Alice",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 32.32,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "J",
-          "label": "John",
-          "x": 242.2,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 30.24,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        }
-      ],
+      "groups": [],
+      "height": 164.0,
       "lifelines": [
         {
+          "bottomY": 176.0,
           "participantName": "A",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 176.0
+          "x": 50.0
         },
         {
+          "bottomY": 176.0,
           "participantName": "J",
-          "x": 242.2,
           "topY": 68.0,
-          "bottomY": 176.0
+          "x": 242.2
         }
       ],
       "messages": [
         {
-          "statementId": "zenuml-statement-0",
-          "number": "1",
-          "from": "A",
-          "to": "J",
-          "fromX": 50.0,
-          "toX": 242.2,
-          "y": 87.5,
-          "label": "Hello John, how are you?",
           "arrowStyle": "open",
+          "from": "A",
+          "fromX": 50.0,
           "isReverse": false,
-          "style": {}
+          "label": "Hello John, how are you?",
+          "number": "1",
+          "statementId": "zenuml-statement-0",
+          "style": {},
+          "to": "J",
+          "toX": 242.2,
+          "y": 87.5
         },
         {
-          "statementId": "zenuml-statement-1",
-          "number": "2",
-          "from": "J",
-          "to": "A",
-          "fromX": 242.2,
-          "toX": 50.0,
-          "y": 119.5,
-          "label": "Great!",
           "arrowStyle": "open",
+          "from": "J",
+          "fromX": 242.2,
           "isReverse": true,
-          "style": {}
+          "label": "Great!",
+          "number": "2",
+          "statementId": "zenuml-statement-1",
+          "style": {},
+          "to": "A",
+          "toX": 50.0,
+          "y": 119.5
         }
       ],
-      "selfCalls": [],
-      "creations": [],
-      "returns": [],
       "occurrences": [],
-      "fragments": [],
-      "dividers": [],
-      "comments": [],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 292.2,
-        "max_y": 164.0
-      }
+      "participants": [
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Alice",
+          "labelWidth": 32.32,
+          "name": "A",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "John",
+          "labelWidth": 30.24,
+          "name": "J",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 242.2,
+          "y": 28.0
+        }
+      ],
+      "returns": [],
+      "selfCalls": [],
+      "width": 292.2
     }
   }
 }

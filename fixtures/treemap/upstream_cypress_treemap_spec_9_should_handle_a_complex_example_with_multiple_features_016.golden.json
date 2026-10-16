@@ -1,78 +1,33 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Company Budget",
-          "children": [
-            {
-              "name": "Engineering",
-              "classSelector": "engineering",
-              "cssCompiledStyles": [
-                "fill:#6b9bc3;stroke:#333"
-              ],
-              "children": [
-                {
-                  "name": "Frontend",
-                  "value": 300000
-                },
-                {
-                  "name": "Backend",
-                  "value": 400000
-                },
-                {
-                  "name": "DevOps",
-                  "value": 200000
-                }
-              ]
-            },
-            {
-              "name": "Marketing",
-              "classSelector": "marketing",
-              "cssCompiledStyles": [
-                "fill:#c36b9b;stroke:#333"
-              ],
-              "children": [
-                {
-                  "name": "Digital",
-                  "value": 250000
-                },
-                {
-                  "name": "Print",
-                  "value": 100000
-                },
-                {
-                  "name": "Events",
-                  "value": 150000
-                }
-              ]
-            },
-            {
-              "name": "Sales",
-              "classSelector": "sales",
-              "cssCompiledStyles": [
-                "fill:#c3a66b;stroke:#333"
-              ],
-              "children": [
-                {
-                  "name": "Direct",
-                  "value": 500000
-                },
-                {
-                  "name": "Channel",
-                  "value": 300000
-                }
-              ]
-            }
-          ]
-        }
-      ]
+    "accTitle": null,
+    "classes": {
+      "engineering": {
+        "id": "engineering",
+        "styles": [
+          "fill:#6b9bc3",
+          "stroke:#333"
+        ],
+        "textStyles": []
+      },
+      "marketing": {
+        "id": "marketing",
+        "styles": [
+          "fill:#c36b9b",
+          "stroke:#333"
+        ],
+        "textStyles": []
+      },
+      "sales": {
+        "id": "sales",
+        "styles": [
+          "fill:#c3a66b",
+          "stroke:#333"
+        ],
+        "textStyles": []
+      }
     },
     "nodes": [
       {
@@ -80,12 +35,12 @@
         "name": "Company Budget"
       },
       {
-        "level": 1,
-        "name": "Engineering",
         "classSelector": "engineering",
         "cssCompiledStyles": [
           "fill:#6b9bc3;stroke:#333"
-        ]
+        ],
+        "level": 1,
+        "name": "Engineering"
       },
       {
         "level": 2,
@@ -103,12 +58,12 @@
         "value": 200000
       },
       {
-        "level": 1,
-        "name": "Marketing",
         "classSelector": "marketing",
         "cssCompiledStyles": [
           "fill:#c36b9b;stroke:#333"
-        ]
+        ],
+        "level": 1,
+        "name": "Marketing"
       },
       {
         "level": 2,
@@ -126,12 +81,12 @@
         "value": 150000
       },
       {
-        "level": 1,
-        "name": "Sales",
         "classSelector": "sales",
         "cssCompiledStyles": [
           "fill:#c3a66b;stroke:#333"
-        ]
+        ],
+        "level": 1,
+        "name": "Sales"
       },
       {
         "level": 2,
@@ -144,31 +99,76 @@
         "value": 300000
       }
     ],
-    "classes": {
-      "sales": {
-        "id": "sales",
-        "styles": [
-          "fill:#c3a66b",
-          "stroke:#333"
-        ],
-        "textStyles": []
-      },
-      "engineering": {
-        "id": "engineering",
-        "styles": [
-          "fill:#6b9bc3",
-          "stroke:#333"
-        ],
-        "textStyles": []
-      },
-      "marketing": {
-        "id": "marketing",
-        "styles": [
-          "fill:#c36b9b",
-          "stroke:#333"
-        ],
-        "textStyles": []
-      }
-    }
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Frontend",
+                  "value": 300000
+                },
+                {
+                  "name": "Backend",
+                  "value": 400000
+                },
+                {
+                  "name": "DevOps",
+                  "value": 200000
+                }
+              ],
+              "classSelector": "engineering",
+              "cssCompiledStyles": [
+                "fill:#6b9bc3;stroke:#333"
+              ],
+              "name": "Engineering"
+            },
+            {
+              "children": [
+                {
+                  "name": "Digital",
+                  "value": 250000
+                },
+                {
+                  "name": "Print",
+                  "value": 100000
+                },
+                {
+                  "name": "Events",
+                  "value": 150000
+                }
+              ],
+              "classSelector": "marketing",
+              "cssCompiledStyles": [
+                "fill:#c36b9b;stroke:#333"
+              ],
+              "name": "Marketing"
+            },
+            {
+              "children": [
+                {
+                  "name": "Direct",
+                  "value": 500000
+                },
+                {
+                  "name": "Channel",
+                  "value": 300000
+                }
+              ],
+              "classSelector": "sales",
+              "cssCompiledStyles": [
+                "fill:#c3a66b;stroke:#333"
+              ],
+              "name": "Sales"
+            }
+          ],
+          "name": "Company Budget"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

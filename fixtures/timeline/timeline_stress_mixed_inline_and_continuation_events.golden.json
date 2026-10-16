@@ -1,40 +1,40 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Mixed inline and continuation events",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Mixed"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Mixed",
-        "type": "Mixed",
-        "task": "2015 ",
-        "score": 0,
         "events": [
           "Event 1 ",
           "Event 2",
           "Event 3",
           "Event 4 ",
           "Event 5"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Mixed",
+        "task": "2015 ",
+        "type": "Mixed"
       },
       {
-        "id": 1,
-        "section": "Mixed",
-        "type": "Mixed",
-        "task": "2016 ",
-        "score": 0,
         "events": [
           "Single event",
           "Continuation event only"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Mixed",
+        "task": "2016 ",
+        "type": "Mixed"
       }
-    ]
+    ],
+    "title": "Mixed inline and continuation events",
+    "type": "timeline"
   }
 }

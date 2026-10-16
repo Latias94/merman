@@ -1,15 +1,15 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": "Simple Architecture Diagram",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [],
     "services": [],
-    "junctions": [],
-    "edges": [],
-    "layoutHints": []
+    "title": "Simple Architecture Diagram",
+    "type": "architecture"
   }
 }

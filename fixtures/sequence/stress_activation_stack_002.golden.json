@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B",
@@ -12,177 +10,179 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "Carol",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "B",
-        "message": "First call",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "1",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "B",
-        "to": "C",
-        "message": "Nested call",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "3",
-        "from": "C",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "C",
-        "to": "B",
-        "message": "return C",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "C",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "B",
-        "to": "A",
-        "message": "return B",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "A",
-        "to": "B",
-        "message": "Second call",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "9",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "B",
-        "to": "B",
-        "message": "internal work",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "13",
-        "from": "B",
-        "to": "A",
-        "message": "done",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "14",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": true,
+        "from": "A",
+        "id": "0",
+        "message": "First call",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "B",
+        "id": "2",
+        "message": "Nested call",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "4",
+        "message": "return C",
+        "to": "B",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "5",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "6",
+        "message": "return B",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "7",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "A",
+        "id": "8",
+        "message": "Second call",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "9",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "10",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "11",
+        "message": "internal work",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "12",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "13",
+        "message": "done",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "14",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

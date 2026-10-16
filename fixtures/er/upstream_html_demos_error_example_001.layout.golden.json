@@ -2,47 +2,26 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-ATLAS-ORGANIZATION-0",
-          "x": 192.12,
-          "y": 52.5,
-          "width": 179.02,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-ATLAS-PROJECTS-1",
-          "x": 192.12,
-          "y": 234.5,
-          "width": 153.82,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-ATLAS-TEAMS-3",
-          "x": 286.93,
-          "y": 416.5,
-          "width": 128.62,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-MONGODB-CLUSTERS-2",
-          "x": 97.31,
-          "y": 416.5,
-          "width": 170.62,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 351.24,
+        "max_y": 457.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "er-rel-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-ATLAS-ORGANIZATION-0",
-          "to": "entity-ATLAS-PROJECTS-1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-0",
+          "label": {
+            "height": 21.0,
+            "width": 53.34,
+            "x": 191.79,
+            "y": 143.5
+          },
           "points": [
             {
               "x": 192.12,
@@ -53,26 +32,26 @@
               "y": 194.0
             }
           ],
-          "label": {
-            "x": 191.79,
-            "y": 143.5,
-            "width": 53.34,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ATLAS-PROJECTS-1",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
+          "from": "entity-ATLAS-PROJECTS-1",
+          "from_cluster": null,
           "id": "er-rel-1",
-          "from": "entity-ATLAS-PROJECTS-1",
-          "to": "entity-MONGODB-CLUSTERS-2",
-          "from_cluster": null,
-          "to_cluster": null,
+          "label": {
+            "height": 21.0,
+            "width": 53.34,
+            "x": 96.98,
+            "y": 325.5
+          },
           "points": [
             {
               "x": 169.817,
@@ -91,26 +70,26 @@
               "y": 376.0
             }
           ],
-          "label": {
-            "x": 96.98,
-            "y": 325.5,
-            "width": 53.34,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-MONGODB-CLUSTERS-2",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-ATLAS-PROJECTS-1",
-          "to": "entity-ATLAS-TEAMS-3",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-2",
+          "label": {
+            "height": 21.0,
+            "width": 53.34,
+            "x": 286.6,
+            "y": 325.5
+          },
           "points": [
             {
               "x": 214.423,
@@ -129,27 +108,48 @@
               "y": 376.0
             }
           ],
-          "label": {
-            "x": 286.6,
-            "y": 325.5,
-            "width": 53.34,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ATLAS-TEAMS-3",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 351.24,
-        "max_y": 457.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "entity-ATLAS-ORGANIZATION-0",
+          "is_cluster": false,
+          "width": 179.02,
+          "x": 192.12,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-ATLAS-PROJECTS-1",
+          "is_cluster": false,
+          "width": 153.82,
+          "x": 192.12,
+          "y": 234.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-ATLAS-TEAMS-3",
+          "is_cluster": false,
+          "width": 128.62,
+          "x": 286.93,
+          "y": 416.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-MONGODB-CLUSTERS-2",
+          "is_cluster": false,
+          "width": 170.62,
+          "x": 97.31,
+          "y": 416.5
+        }
+      ]
     }
   }
 }

@@ -2,50 +2,50 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
-        {
-          "id": "unknown",
-          "x": 0.0,
-          "y": 18.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        }
-      ],
-      "edges": [],
+      "bounds": {
+        "max_x": 80.0,
+        "max_y": 98.0,
+        "min_x": 0.0,
+        "min_y": 18.0
+      },
       "cytoscape_service_bounds": [
         {
-          "id": "unknown",
           "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 18.0,
             "max_x": 80.0,
-            "max_y": 98.0
+            "max_y": 98.0,
+            "min_x": 0.0,
+            "min_y": 18.0
           },
+          "id": "unknown",
           "label_bounds": {
-            "min_x": -7.0,
-            "min_y": 18.0,
             "max_x": 87.0,
-            "max_y": 116.0
+            "max_y": 116.0,
+            "min_x": -7.0,
+            "min_y": 18.0
           },
           "label_metrics": {
-            "text_width": 90.0,
-            "half_width": 45.0
+            "half_width": 45.0,
+            "text_width": 90.0
           },
           "union_bounds": {
-            "min_x": -7.0,
-            "min_y": 17.0,
             "max_x": 87.0,
-            "max_y": 116.0
+            "max_y": 116.0,
+            "min_x": -7.0,
+            "min_y": 17.0
           }
         }
       ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 18.0,
-        "max_x": 80.0,
-        "max_y": 98.0
-      }
+      "edges": [],
+      "nodes": [
+        {
+          "height": 80.0,
+          "id": "unknown",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 0.0,
+          "y": 18.0
+        }
+      ]
     }
   }
 }

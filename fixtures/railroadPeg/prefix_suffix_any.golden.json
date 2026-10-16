@@ -1,38 +1,38 @@
 {
   "diagramType": "railroadPeg",
   "model": {
-    "type": "railroadPeg",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "rule",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "special",
-              "text": "&\"a\""
+              "text": "&\"a\"",
+              "type": "special"
             },
             {
-              "type": "special",
-              "text": "!\"b\""
+              "text": "!\"b\"",
+              "type": "special"
             },
             {
-              "type": "special",
-              "text": "."
+              "text": ".",
+              "type": "special"
             },
             {
-              "type": "optional",
               "element": {
-                "type": "nonterminal",
-                "name": "other"
-              }
+                "name": "other",
+                "type": "nonterminal"
+              },
+              "type": "optional"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "rule"
       }
-    ]
+    ],
+    "title": null,
+    "type": "railroadPeg"
   }
 }

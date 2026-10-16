@@ -1,142 +1,142 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Deployment",
-    "title": "Deployment Diagram for Internet Banking System - Live",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "mobile",
-        "parentBoundary": "mob",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Mobile App"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Xamarin"
-        },
-        "descr": {
-          "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device."
-        }
-      },
-      {
-        "alias": "api",
-        "parentBoundary": "apache",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "API Application"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Java and Spring MVC"
-        },
-        "descr": {
-          "text": "Provides Internet Banking functionality via a JSON/HTTPS API."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "mob",
-        "parentBoundary": "global",
+        "descr": {
+          "text": ""
+        },
         "label": {
           "text": "Customer's mobile device"
         },
+        "nodeType": "node",
+        "parentBoundary": "global",
         "type": {
           "text": "Apple IOS or Android"
         },
-        "descr": {
-          "text": ""
-        },
-        "wrap": false,
-        "nodeType": "node"
+        "wrap": false
       },
       {
         "alias": "plc",
-        "parentBoundary": "global",
+        "descr": {
+          "text": ""
+        },
         "label": {
           "text": "Big Bank plc"
         },
+        "nodeType": "node",
+        "parentBoundary": "global",
         "type": {
           "text": "Big Bank plc data center"
         },
-        "descr": {
-          "text": ""
-        },
-        "wrap": false,
-        "nodeType": "node"
+        "wrap": false
       },
       {
         "alias": "dn",
-        "parentBoundary": "plc",
+        "descr": {
+          "text": ""
+        },
         "label": {
           "text": "bigbank-api*** x8"
         },
+        "nodeType": "node",
+        "parentBoundary": "plc",
         "type": {
           "text": "Ubuntu 16.04 LTS"
         },
-        "descr": {
-          "text": ""
-        },
-        "wrap": false,
-        "nodeType": "node"
+        "wrap": false
       },
       {
         "alias": "apache",
-        "parentBoundary": "dn",
-        "label": {
-          "text": "Apache Tomcat"
-        },
-        "type": {
-          "text": "Apache Tomcat 8.x"
-        },
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "nodeType": "node"
+        "label": {
+          "text": "Apache Tomcat"
+        },
+        "nodeType": "node",
+        "parentBoundary": "dn",
+        "type": {
+          "text": "Apache Tomcat 8.x"
+        },
+        "wrap": false
       }
     ],
+    "c4Type": "C4Deployment",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "mobile",
-        "to": "api",
-        "type": "rel",
         "label": {
           "text": "Makes API calls to"
         },
         "techn": {
           "text": "json/HTTPS"
         },
+        "to": "api",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "mobile",
         "descr": {
-          "text": ""
+          "text": "Provides a limited subset of the Internet Banking functionality to customers via their mobile device."
+        },
+        "label": {
+          "text": "Mobile App"
+        },
+        "parentBoundary": "mob",
+        "techn": {
+          "text": "Xamarin"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "api",
+        "descr": {
+          "text": "Provides Internet Banking functionality via a JSON/HTTPS API."
+        },
+        "label": {
+          "text": "API Application"
+        },
+        "parentBoundary": "apache",
+        "techn": {
+          "text": "Java and Spring MVC"
+        },
+        "typeC4Shape": {
+          "text": "container"
         },
         "wrap": false
       }
-    ]
+    ],
+    "title": "Deployment Diagram for Internet Banking System - Live",
+    "type": "c4",
+    "wrap": false
   }
 }

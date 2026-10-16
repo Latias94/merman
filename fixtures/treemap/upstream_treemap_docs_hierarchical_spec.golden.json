@@ -1,50 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Products",
-          "children": [
-            {
-              "name": "Electronics",
-              "children": [
-                {
-                  "name": "Phones",
-                  "value": 50
-                },
-                {
-                  "name": "Computers",
-                  "value": 30
-                },
-                {
-                  "name": "Accessories",
-                  "value": 20
-                }
-              ]
-            },
-            {
-              "name": "Clothing",
-              "children": [
-                {
-                  "name": "Men's",
-                  "value": 40
-                },
-                {
-                  "name": "Women's",
-                  "value": 40
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -84,6 +43,47 @@
         "value": 40
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Phones",
+                  "value": 50
+                },
+                {
+                  "name": "Computers",
+                  "value": 30
+                },
+                {
+                  "name": "Accessories",
+                  "value": 20
+                }
+              ],
+              "name": "Electronics"
+            },
+            {
+              "children": [
+                {
+                  "name": "Men's",
+                  "value": 40
+                },
+                {
+                  "name": "Women's",
+                  "value": 40
+                }
+              ],
+              "name": "Clothing"
+            }
+          ],
+          "name": "Products"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

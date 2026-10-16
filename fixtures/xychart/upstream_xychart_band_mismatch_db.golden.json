@@ -1,33 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "",
-      "categories": [
-        "cat1",
-        "cat2",
-        "cat3"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "",
-      "min": 10.0,
-      "max": 20.0
-    },
+    "accTitle": null,
+    "orientation": "vertical",
     "plots": [
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          10.0,
-          20.0
-        ],
         "data": [
           [
             "cat1",
@@ -41,9 +19,31 @@
             "cat3",
             null
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          10.0,
+          20.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": null,
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "cat1",
+        "cat2",
+        "cat3"
+      ],
+      "title": "",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 20.0,
+      "min": 10.0,
+      "title": "",
+      "type": "linear"
+    }
   }
 }

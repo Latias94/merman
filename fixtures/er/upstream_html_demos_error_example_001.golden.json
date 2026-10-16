@@ -1,93 +1,93 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
       "ATLAS-ORGANIZATION": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-ATLAS-ORGANIZATION-0",
         "label": "ATLAS-ORGANIZATION",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "MONGODB-CLUSTERS": {
-        "id": "entity-MONGODB-CLUSTERS-2",
-        "label": "MONGODB-CLUSTERS",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "ATLAS-TEAMS": {
-        "id": "entity-ATLAS-TEAMS-3",
-        "label": "ATLAS-TEAMS",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
+        "shape": "erBox"
       },
       "ATLAS-PROJECTS": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-ATLAS-PROJECTS-1",
         "label": "ATLAS-PROJECTS",
-        "attributes": [],
+        "shape": "erBox"
+      },
+      "ATLAS-TEAMS": {
         "alias": "",
-        "shape": "erBox",
+        "attributes": [],
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-ATLAS-TEAMS-3",
+        "label": "ATLAS-TEAMS",
+        "shape": "erBox"
+      },
+      "MONGODB-CLUSTERS": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-MONGODB-CLUSTERS-2",
+        "label": "MONGODB-CLUSTERS",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-ATLAS-ORGANIZATION-0",
-        "roleA": "has many",
         "entityB": "entity-ATLAS-PROJECTS-1",
         "relSpec": {
           "cardA": "ONE_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "has many"
       },
       {
         "entityA": "entity-ATLAS-PROJECTS-1",
-        "roleA": "has many",
         "entityB": "entity-MONGODB-CLUSTERS-2",
         "relSpec": {
           "cardA": "ONE_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "has many"
       },
       {
         "entityA": "entity-ATLAS-PROJECTS-1",
-        "roleA": "has many",
         "entityB": "entity-ATLAS-TEAMS-3",
         "relSpec": {
           "cardA": "ONE_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "has many"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

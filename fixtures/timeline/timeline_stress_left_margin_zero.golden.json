@@ -1,36 +1,36 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Left margin = 0",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Tight"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Tight",
-        "type": "Tight",
-        "task": "2020 ",
-        "score": 0,
         "events": [
           "Node labels may overflow; viewport should include overhang"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Tight",
+        "task": "2020 ",
+        "type": "Tight"
       },
       {
-        "id": 1,
-        "section": "Tight",
-        "type": "Tight",
-        "task": "2021 ",
-        "score": 0,
         "events": [
           "Another event with wider text",
           "WWWWWW iiiiii"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Tight",
+        "task": "2021 ",
+        "type": "Tight"
       }
-    ]
+    ],
+    "title": "Left margin = 0",
+    "type": "timeline"
   }
 }

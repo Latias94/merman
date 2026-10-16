@@ -1,45 +1,45 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Title (visible) — should not overlap",
-    "accTitle": null,
     "accDescr": "This is a multi-line accessibility description.\nIt includes blank lines and punctuation: commas, dashes - and parentheses (ok).",
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Access"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "",
-        "type": "",
-        "task": "accTitle Accessibility title",
-        "score": 0,
         "events": [
           "Timeline"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "",
+        "task": "accTitle Accessibility title",
+        "type": ""
       },
       {
-        "id": 1,
-        "section": "Access",
-        "type": "Access",
-        "task": "2024 ",
-        "score": 0,
         "events": [
           "First milestone"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Access",
+        "task": "2024 ",
+        "type": "Access"
       },
       {
-        "id": 2,
-        "section": "Access",
-        "type": "Access",
-        "task": "2025 ",
-        "score": 0,
         "events": [
           "Second milestone"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "Access",
+        "task": "2025 ",
+        "type": "Access"
       }
-    ]
+    ],
+    "title": "Title (visible) — should not overlap",
+    "type": "timeline"
   }
 }

@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,122 +10,132 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "John": {
-        "name": "John",
         "description": "John<br/>Second Line",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "John",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": "Alice",
-        "to": "Bob",
+        "id": "0",
         "message": "Hello Bob, how are you?",
-        "wrap": false,
+        "to": "Bob",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "1",
-        "from": "Bob",
-        "to": "John",
         "message": "How about you John?",
-        "wrap": false,
+        "to": "John",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "John",
         "id": "2",
-        "from": "John",
-        "to": "John",
         "message": "John thinks a long<br/>long time, so long<br/>that the text does<br/>not fit on a row.",
-        "wrap": false,
+        "placement": 1,
+        "to": "John",
         "type": 2,
-        "activate": false,
-        "placement": 1
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "3",
-        "from": "Bob",
-        "to": "Alice",
         "message": "Checking with John...",
-        "wrap": false,
+        "to": "Alice",
         "type": 6,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "John",
         "id": "4",
-        "from": "John",
-        "to": "John",
         "message": "John looks like he's still thinking, so Bob prods him a bit.",
-        "wrap": true,
+        "placement": 2,
+        "to": "John",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": true
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "5",
-        "from": "Bob",
-        "to": "John",
         "message": "Hey John -<br/>we're still waiting to know<br/>how you're doing",
-        "wrap": false,
+        "to": "John",
         "type": 3,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "John",
         "id": "6",
-        "from": "John",
-        "to": "John",
         "message": "John's trying hard not to break his train of thought.",
-        "wrap": false,
+        "placement": 2,
+        "to": "John",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": false
       },
       {
-        "id": "7",
+        "activate": false,
         "from": "Bob",
-        "to": "John",
+        "id": "7",
         "message": "John! Are you still debating about how you're doing? How long does it take??",
-        "wrap": true,
+        "to": "John",
         "type": 3,
-        "activate": false
+        "wrap": true
       },
       {
-        "id": "8",
-        "from": "John",
-        "to": "John",
-        "message": "After a few more moments, John<br/>finally snaps out of it.",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": "John",
+        "id": "8",
+        "message": "After a few more moments, John<br/>finally snaps out of it.",
+        "placement": 2,
+        "to": "John",
+        "type": 2,
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "John",
-        "placement": 1,
         "message": "John thinks a long<br/>long time, so long<br/>that the text does<br/>not fit on a row.",
+        "placement": 1,
         "wrap": false
       },
       {
@@ -135,8 +143,8 @@
           "John",
           "John"
         ],
-        "placement": 2,
         "message": "John looks like he's still thinking, so Bob prods him a bit.",
+        "placement": 2,
         "wrap": true
       },
       {
@@ -144,8 +152,8 @@
           "John",
           "John"
         ],
-        "placement": 2,
         "message": "John's trying hard not to break his train of thought.",
+        "placement": 2,
         "wrap": false
       },
       {
@@ -153,20 +161,12 @@
           "John",
           "John"
         ],
-        "placement": 2,
         "message": "After a few more moments, John<br/>finally snaps out of it.",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

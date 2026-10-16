@@ -1,191 +1,191 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Context",
-    "title": "Container diagram for Internet Banking Container",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
+    "accTitle": null,
+    "boundaries": [
+      {
+        "alias": "global",
+        "label": {
+          "text": "global"
+        },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
+        "type": {
+          "text": "global"
+        }
+      }
+    ],
+    "c4Type": "C4Context",
     "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
     },
+    "rels": [],
     "shapes": [
       {
         "alias": "ContainerAA",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
+        "descr": {
+          "text": "Allows customers to view information about their bank accounts, and make payments."
         },
         "label": {
           "text": "Internet Banking Container"
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": "Technology"
         },
-        "descr": {
-          "text": "Allows customers to view information about their bank accounts, and make payments."
-        }
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerDbA",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container_db"
+        "descr": {
+          "text": "Database container"
         },
         "label": {
           "text": "Container DB"
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": "Postgres"
         },
-        "descr": {
-          "text": "Database container"
-        }
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerQueueA",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container_queue"
+        "descr": {
+          "text": "Queue container"
         },
         "label": {
           "text": "Container Queue"
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": "RabbitMQ"
         },
-        "descr": {
-          "text": "Queue container"
-        }
+        "typeC4Shape": {
+          "text": "container_queue"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerExtA",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_container"
+        "descr": {
+          "text": "External container"
         },
         "label": {
           "text": "External Container"
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": "Tech"
         },
-        "descr": {
-          "text": "External container"
-        }
+        "typeC4Shape": {
+          "text": "external_container"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerDbExtA",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_container_db"
+        "descr": {
+          "text": "External database container"
         },
         "label": {
           "text": "External Container DB"
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": "Tech"
         },
-        "descr": {
-          "text": "External database container"
-        }
+        "typeC4Shape": {
+          "text": "external_container_db"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerQueueExtA",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_container_queue"
+        "descr": {
+          "text": "External queue container"
         },
         "label": {
           "text": "External Container Queue"
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": "Tech"
         },
-        "descr": {
-          "text": "External queue container"
-        }
+        "typeC4Shape": {
+          "text": "external_container_queue"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerSprite",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
+        "descr": {
+          "text": ""
         },
         "label": {
           "text": {
             "sprite": "users"
           }
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": ""
         },
-        "descr": {
-          "text": ""
-        }
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerLink",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
+        "descr": {
+          "text": ""
         },
         "label": {
           "text": {
             "link": "https://github.com/mermaidjs"
           }
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": ""
         },
-        "descr": {
-          "text": ""
-        }
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
       },
       {
         "alias": "ContainerTags",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
+        "descr": {
+          "text": ""
         },
         "label": {
           "text": {
             "tags": "tag1,tag2"
           }
         },
-        "wrap": false,
+        "parentBoundary": "global",
         "techn": {
           "text": ""
         },
-        "descr": {
-          "text": ""
-        }
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
       }
     ],
-    "boundaries": [
-      {
-        "alias": "global",
-        "parentBoundary": "",
-        "label": {
-          "text": "global"
-        },
-        "type": {
-          "text": "global"
-        },
-        "tags": null,
-        "link": null
-      }
-    ],
-    "rels": []
+    "title": "Container diagram for Internet Banking Container",
+    "type": "c4",
+    "wrap": false
   }
 }

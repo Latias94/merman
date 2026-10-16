@@ -2,47 +2,47 @@
   "diagramType": "requirement",
   "layout": {
     "RequirementDiagram": {
+      "bounds": {
+        "max_x": 598.406,
+        "max_y": 115.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "edges": [],
       "nodes": [
         {
+          "height": 62.0,
           "id": "req",
+          "is_cluster": false,
+          "width": 125.0,
           "x": 12.0,
-          "y": 32.5,
-          "width": 125.0,
-          "height": 62.0,
-          "is_cluster": false
+          "y": 32.5
         },
         {
+          "height": 62.0,
           "id": "myReq",
-          "x": 177.0,
-          "y": 32.5,
+          "is_cluster": false,
           "width": 125.0,
-          "height": 62.0,
-          "is_cluster": false
+          "x": 177.0,
+          "y": 32.5
         },
         {
+          "height": 62.0,
           "id": "elem",
-          "x": 342.0,
-          "y": 32.5,
+          "is_cluster": false,
           "width": 100.922,
-          "height": 62.0,
-          "is_cluster": false
+          "x": 342.0,
+          "y": 32.5
         },
         {
-          "id": "myElem",
-          "x": 482.922,
-          "y": 12.0,
-          "width": 115.484,
           "height": 103.0,
-          "is_cluster": false
+          "id": "myElem",
+          "is_cluster": false,
+          "width": 115.484,
+          "x": 482.922,
+          "y": 12.0
         }
-      ],
-      "edges": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 598.406,
-        "max_y": 115.0
-      }
+      ]
     }
   }
 }

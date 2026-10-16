@@ -6,40 +6,101 @@ use merman_core::OperationPhase;
 use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
 use quick_xml::XmlVersion;
 use quick_xml::events::{BytesStart, Event};
+use std::cell::Cell;
 
 const WORK_BYTES_PER_UNIT: usize = 256;
-// lol_html serializes a literal double quote in an attribute value as `&quot;` (six bytes).
-// The element allowance covers handler-added attributes and normalized closing tags without
-// relying on an empirical whole-document multiplier.
+// XML attribute escaping expands one source scalar by at most `&quot;` (six bytes).
+// This also covers spelling out the closing names of admitted self-closing SVG elements.
+// Per-element additions cover the longest supported default namespace declaration, an XLink
+// binding, and Mermaid's target hook. The outer SVG and optional transform add two elements.
 const SANITIZER_MAX_BYTE_EXPANSION: usize = "&quot;".len();
-const SANITIZER_MAX_ADDED_BYTES_PER_ELEMENT: usize = 64;
-const SANITIZER_FIXED_OVERHEAD_BYTES: usize = 1_024;
+const SANITIZER_MAX_ADDED_BYTES_PER_ELEMENT: usize =
+    r#" xmlns="http://www.w3.org/1998/Math/MathML""#.len()
+        + r#" xmlns:xlink="http://www.w3.org/1999/xlink""#.len()
+        + r#" rel="noopener""#.len();
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum BoundedSanitizeError {
     OutputLimitExceeded { max_bytes: usize },
+    ParseInputLimitExceeded { max_bytes: usize },
     AllocationFailed,
+    Control(crate::resources::OperationWorkError),
 }
 
-#[derive(Debug, Clone, Copy)]
-struct BoundedSanitizeSink {
+#[derive(Debug)]
+struct BoundedSanitizeSink<'a> {
     max_output_bytes: usize,
+    max_parse_input_bytes: usize,
+    parse_work: Cell<usize>,
+    work_meter: &'a crate::resources::OperationWorkMeter,
 }
 
-impl BoundedSanitizeSink {
-    const fn new(max_output_bytes: usize) -> Self {
-        Self { max_output_bytes }
+impl<'a> BoundedSanitizeSink<'a> {
+    const fn new(
+        max_output_bytes: usize,
+        max_parse_input_bytes: usize,
+        work_meter: &'a crate::resources::OperationWorkMeter,
+    ) -> Self {
+        Self {
+            max_output_bytes,
+            max_parse_input_bytes,
+            parse_work: Cell::new(0),
+            work_meter,
+        }
     }
 
-    const fn output_limit_error(self) -> BoundedSanitizeError {
+    const fn output_limit_error(&self) -> BoundedSanitizeError {
         BoundedSanitizeError::OutputLimitExceeded {
             max_bytes: self.max_output_bytes,
         }
     }
 }
 
-impl SanitizeOutputSink for BoundedSanitizeSink {
+impl SanitizeOutputSink for BoundedSanitizeSink<'_> {
     type Error = BoundedSanitizeError;
+
+    fn checkpoint(&self) -> Result<(), Self::Error> {
+        self.work_meter
+            .checkpoint(OperationPhase::Emit)
+            .map_err(BoundedSanitizeError::Control)
+    }
+
+    fn charge_parse_work(&self, additional: usize) -> Result<(), Self::Error> {
+        self.work_meter
+            .charge_emit_work(additional)
+            .map_err(BoundedSanitizeError::Control)
+    }
+
+    fn check_parse_storage(
+        &self,
+        input_bytes: usize,
+        nodes: usize,
+        retained_bytes: usize,
+    ) -> Result<(), Self::Error> {
+        self.checkpoint()?;
+        if input_bytes > self.max_parse_input_bytes {
+            return Err(BoundedSanitizeError::ParseInputLimitExceeded {
+                max_bytes: self.max_parse_input_bytes,
+            });
+        }
+        if nodes == 0 && retained_bytes == 0 {
+            self.parse_work.set(0);
+        }
+        // Charge tokenizer input, tree construction/policy visits, and retained markup before
+        // each parser allocation. A second Mermaid sanitization stage starts a new accounting
+        // epoch; it still contributes to the same operation ledger.
+        let work = nodes
+            .checked_mul(2)
+            .and_then(|work| work.checked_add(ceil_div(input_bytes, WORK_BYTES_PER_UNIT)))
+            .and_then(|work| work.checked_add(ceil_div(retained_bytes, WORK_BYTES_PER_UNIT)))
+            .ok_or_else(|| BoundedSanitizeError::Control(self.work_meter.arithmetic_overflow()))?;
+        let additional = work.saturating_sub(self.parse_work.get());
+        self.work_meter
+            .charge_emit_work(additional)
+            .map_err(BoundedSanitizeError::Control)?;
+        self.parse_work.set(work);
+        Ok(())
+    }
 
     fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
         let next = current
@@ -132,7 +193,7 @@ fn render_resolved_icon_inner(
     )?;
 
     // Both ledgers are charged before cloning the retained body or allocating the assembled SVG.
-    request.work_meter.charge(work_units)?;
+    request.work_meter.charge_emit_work(work_units)?;
     request.work_meter.charge_svg_bytes(projected_svg_bytes)?;
 
     let body = transformed.apply(&icon.body, request.id_scope)?;
@@ -155,13 +216,17 @@ fn render_resolved_icon_inner(
     let reserved_svg_bytes = projected_svg_bytes
         .checked_add(growth_reservation.additional_bytes)
         .ok_or_else(|| crate::Error::icon_processing("sanitizer reservation overflowed"))?;
-    let sanitize_sink = BoundedSanitizeSink::new(reserved_svg_bytes);
-    let sanitized = match merman_core::sanitize::sanitize_text_with_sink(
+    let sanitize_sink =
+        BoundedSanitizeSink::new(reserved_svg_bytes, sanitizer_ceiling, request.work_meter);
+    let sanitized = match merman_core::sanitize::sanitize_xhtml_with_sink(
         &raw_svg,
         request.effective_config,
         &sanitize_sink,
     ) {
         Ok(sanitized) => sanitized,
+        Err(SanitizeFailure::Output(BoundedSanitizeError::Control(error))) => {
+            return Err(error.into());
+        }
         Err(SanitizeFailure::Output(BoundedSanitizeError::OutputLimitExceeded { .. })) => {
             request
                 .work_meter
@@ -182,6 +247,14 @@ fn render_resolved_icon_inner(
                 .reconcile_svg_bytes(reserved_svg_bytes, 0)?;
             return Err(crate::Error::invalid_icon_output(
                 "icon SVG sanitizer rejected the output",
+            ));
+        }
+        Err(SanitizeFailure::Output(BoundedSanitizeError::ParseInputLimitExceeded { .. })) => {
+            request
+                .work_meter
+                .reconcile_svg_bytes(reserved_svg_bytes, 0)?;
+            return Err(crate::Error::icon_processing(
+                "icon sanitizer input exceeded its admitted serialization ceiling",
             ));
         }
         Err(
@@ -266,10 +339,10 @@ fn sanitizer_output_ceiling(
         .checked_mul(SANITIZER_MAX_BYTE_EXPANSION)
         .and_then(|bytes| {
             element_count
+                .checked_add(2)?
                 .checked_mul(SANITIZER_MAX_ADDED_BYTES_PER_ELEMENT)
                 .and_then(|overhead| bytes.checked_add(overhead))
         })
-        .and_then(|bytes| bytes.checked_add(SANITIZER_FIXED_OVERHEAD_BYTES))
         .ok_or_else(|| crate::Error::icon_processing("sanitizer output limit overflowed"))
 }
 
@@ -291,19 +364,14 @@ fn icon_render_work_units(
     } else {
         0
     };
-    let element_work = icon.body.element_count().checked_mul(3).ok_or_else(|| {
-        crate::Error::icon_processing("icon sanitizer element work estimate overflowed")
-    })?;
     ceil_div(icon.body.source_len(), WORK_BYTES_PER_UNIT)
-        // Assembly plus the first sanitizer input traversal.
-        .checked_add(projected_work.checked_mul(2).ok_or_else(|| {
-            crate::Error::icon_processing("icon projected work estimate overflowed")
-        })?)
-        // The second sanitizer pass and final XML validation are bounded by the admitted output.
-        .and_then(|work| work.checked_add(sanitizer_work.checked_mul(2)?))
+        // Assembly is bounded by the transformed source. Tokenizer/tree work is charged by
+        // check_parse_storage before allocation, independently of emitted output length.
+        .checked_add(projected_work)
+        // At most two Mermaid serialization stages plus final XML validation.
+        .and_then(|work| work.checked_add(sanitizer_work.checked_mul(3)?))
         // The optional paint-fact scan is only charged for callers that consume its result.
         .and_then(|work| work.checked_add(paint_scan_work))
-        .and_then(|work| work.checked_add(element_work))
         .and_then(|work| work.checked_add(edit_work))
         .and_then(|work| work.checked_add(1))
         .ok_or_else(|| crate::Error::icon_processing("icon render work estimate overflowed"))
@@ -725,10 +793,10 @@ mod tests {
     use serde_json::json;
     use std::sync::Arc;
 
-    #[derive(Debug, Clone, Copy)]
-    struct InvalidUtf8Sink(BoundedSanitizeSink);
+    #[derive(Debug)]
+    struct InvalidUtf8Sink<'a>(BoundedSanitizeSink<'a>);
 
-    impl SanitizeOutputSink for InvalidUtf8Sink {
+    impl SanitizeOutputSink for InvalidUtf8Sink<'_> {
         type Error = BoundedSanitizeError;
 
         fn checked_output_len(
@@ -843,43 +911,48 @@ mod tests {
     }
 
     #[test]
-    fn ambiguous_icon_markup_is_rejected_in_strict_and_loose_modes() {
+    fn recoverable_icon_markup_is_sanitized_in_strict_and_loose_modes() {
         let body = "<select><xmp><script>alert(1)</script></xmp></select>";
         for security_level in ["strict", "loose"] {
-            let error = render(
+            let rendered = render(
                 body,
                 security_level,
                 RenderResourcePolicy::unbounded_for_trusted_input(),
             )
-            .expect_err("ambiguous sanitizer input must fail closed");
-            assert!(matches!(error, crate::Error::InvalidIconOutput { .. }));
+            .expect("HTML5 recovery retains a safe, well-formed SVG");
+            assert!(!rendered.contains("<script"), "{rendered}");
+            assert!(!rendered.contains("alert(1)"), "{rendered}");
+            assert!(rendered.starts_with("<svg"), "{rendered}");
+            assert!(rendered.ends_with("</svg>"), "{rendered}");
         }
     }
 
     #[test]
     fn bounded_sanitizer_accepts_exact_output_limit_and_rejects_one_less() {
         let input = r#"<a href="https://example.com" target="_blank">example</a>"#;
-        let expected =
-            r#"<a href="https://example.com" rel="noopener" target="_blank">example</a>"#;
         let config = merman_core::MermaidConfig::from_value(json!({
             "securityLevel": "strict",
             "htmlLabels": true
         }));
+        let expected = merman_core::sanitize::sanitize_xhtml(input, &config);
+        assert!(expected.contains(r#"target="_blank""#));
+        assert!(expected.contains(r#"rel="noopener""#));
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
 
         assert_eq!(
-            merman_core::sanitize::sanitize_text_with_sink(
+            merman_core::sanitize::sanitize_xhtml_with_sink(
                 input,
                 &config,
-                &BoundedSanitizeSink::new(expected.len()),
+                &BoundedSanitizeSink::new(expected.len(), 4096, &meter),
             )
             .unwrap(),
             expected
         );
         assert_eq!(
-            merman_core::sanitize::sanitize_text_with_sink(
+            merman_core::sanitize::sanitize_xhtml_with_sink(
                 input,
                 &config,
-                &BoundedSanitizeSink::new(expected.len() - 1),
+                &BoundedSanitizeSink::new(expected.len() - 1, 4096, &meter),
             ),
             Err(SanitizeFailure::Output(
                 BoundedSanitizeError::OutputLimitExceeded {
@@ -891,8 +964,9 @@ mod tests {
 
     #[test]
     fn bounded_sanitizer_classifies_allocation_and_invalid_utf8_failures() {
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         assert_eq!(
-            BoundedSanitizeSink::new(usize::MAX).string_with_capacity(usize::MAX),
+            BoundedSanitizeSink::new(usize::MAX, 4096, &meter).string_with_capacity(usize::MAX),
             Err(BoundedSanitizeError::AllocationFailed)
         );
 
@@ -901,13 +975,120 @@ mod tests {
             "htmlLabels": true
         }));
         assert_eq!(
-            merman_core::sanitize::sanitize_text_with_sink(
+            merman_core::sanitize::sanitize_xhtml_with_sink(
                 "<b>ok</b>",
                 &config,
-                &InvalidUtf8Sink(BoundedSanitizeSink::new(4096)),
+                &InvalidUtf8Sink(BoundedSanitizeSink::new(4096, 4096, &meter)),
             ),
             Err(SanitizeFailure::InvalidUtf8Output)
         );
+    }
+
+    #[test]
+    fn bounded_sanitizer_admits_parser_input_independently_of_output() {
+        let input = "<script>removed</script><b>ok</b>";
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "htmlLabels": true
+        }));
+        assert_eq!(
+            merman_core::sanitize::sanitize_xhtml_with_sink(
+                input,
+                &config,
+                &BoundedSanitizeSink::new(4096, input.len() - 1, &meter),
+            ),
+            Err(SanitizeFailure::Output(
+                BoundedSanitizeError::ParseInputLimitExceeded {
+                    max_bytes: input.len() - 1,
+                },
+            )),
+        );
+    }
+
+    #[test]
+    fn bounded_sanitizer_charges_tree_storage_and_replays_cancellation() {
+        let input = "<b>ok</b>";
+        let config = merman_core::MermaidConfig::from_value(json!({
+            "securityLevel": "strict",
+            "htmlLabels": true
+        }));
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let error = merman_core::sanitize::sanitize_xhtml_with_sink(
+            input,
+            &config,
+            &BoundedSanitizeSink::new(4096, 4096, &meter),
+        )
+        .expect_err("tree growth must be charged before it is retained");
+        assert!(matches!(
+            error,
+            SanitizeFailure::Output(BoundedSanitizeError::Control(
+                crate::resources::OperationWorkError::ResourceLimitExceeded(_),
+            )),
+        ));
+
+        let control = merman_core::OperationControl::new();
+        control.cancel_after_checkpoints(8);
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        );
+        let error = merman_core::sanitize::sanitize_xhtml_with_sink(
+            input,
+            &config,
+            &BoundedSanitizeSink::new(4096, 4096, &meter),
+        )
+        .expect_err("cancellation is observed inside HTML5 parsing");
+        let SanitizeFailure::Output(BoundedSanitizeError::Control(error)) = error else {
+            panic!("sanitizer must retain its caller-owned terminal error");
+        };
+        assert!(matches!(
+            error,
+            crate::resources::OperationWorkError::Cancelled(_)
+        ));
+        assert_eq!(meter.checkpoint(OperationPhase::Postprocess), Err(error));
+    }
+
+    #[test]
+    fn icon_xhtml_projection_preserves_svg_and_xlink_namespaces() {
+        let body = r##"<defs><path id="p" d="M0 0h1v1z"/></defs><a xlink:href="#p"><path d="M0 0h1v1z"/></a>"##;
+        let rendered = render(
+            body,
+            "strict",
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+        )
+        .expect("safe XLink references remain well-formed SVG");
+        let mut reader = quick_xml::NsReader::from_str(&rendered);
+        reader.config_mut().enable_all_checks(true);
+        let mut xlink_seen = false;
+        loop {
+            match reader.read_event().expect("sanitized SVG is XML") {
+                Event::Start(element) | Event::Empty(element) => {
+                    let (namespace, _) = reader.resolver().resolve_element(element.name());
+                    assert!(
+                        matches!(namespace, quick_xml::name::ResolveResult::Bound(ns)
+                        if ns.as_ref() == "http://www.w3.org/2000/svg")
+                    );
+                    for attribute in element.attributes() {
+                        let attribute = attribute.expect("namespace attributes are unique");
+                        if attribute.key.as_ref() == "xlink:href" {
+                            let (namespace, _) = reader.resolver().resolve_attribute(attribute.key);
+                            assert!(
+                                matches!(namespace, quick_xml::name::ResolveResult::Bound(ns)
+                                if ns.as_ref() == "http://www.w3.org/1999/xlink")
+                            );
+                            xlink_seen = true;
+                        }
+                    }
+                }
+                Event::Eof => break,
+                _ => {}
+            }
+        }
+        assert!(xlink_seen, "{rendered}");
     }
 
     #[test]

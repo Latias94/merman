@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "User",
       "AuthService",
@@ -16,173 +14,175 @@
       "OrderQueue"
     ],
     "actors": {
-      "User": {
-        "name": "User",
-        "description": "User",
-        "wrap": false,
-        "type": "actor",
-        "links": {},
-        "properties": {}
-      },
       "AuthService": {
-        "name": "AuthService",
         "description": "AuthService",
-        "wrap": false,
+        "links": {},
+        "name": "AuthService",
+        "properties": {},
         "type": "control",
-        "links": {},
-        "properties": {}
-      },
-      "UI": {
-        "name": "UI",
-        "description": "UI",
-        "wrap": false,
-        "type": "boundary",
-        "links": {},
-        "properties": {}
-      },
-      "OrderController": {
-        "name": "OrderController",
-        "description": "OrderController",
-        "wrap": false,
-        "type": "control",
-        "links": {},
-        "properties": {}
-      },
-      "Product": {
-        "name": "Product",
-        "description": "Product",
-        "wrap": false,
-        "type": "entity",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "MongoDB": {
-        "name": "MongoDB",
         "description": "MongoDB",
-        "wrap": false,
+        "links": {},
+        "name": "MongoDB",
+        "properties": {},
         "type": "database",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
-      "Products": {
-        "name": "Products",
-        "description": "Products",
-        "wrap": false,
-        "type": "collections",
+      "OrderController": {
+        "description": "OrderController",
         "links": {},
-        "properties": {}
+        "name": "OrderController",
+        "properties": {},
+        "type": "control",
+        "wrap": false
       },
       "OrderQueue": {
-        "name": "OrderQueue",
         "description": "OrderQueue",
-        "wrap": false,
-        "type": "queue",
         "links": {},
-        "properties": {}
+        "name": "OrderQueue",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
+      },
+      "Product": {
+        "description": "Product",
+        "links": {},
+        "name": "Product",
+        "properties": {},
+        "type": "entity",
+        "wrap": false
+      },
+      "Products": {
+        "description": "Products",
+        "links": {},
+        "name": "Products",
+        "properties": {},
+        "type": "collections",
+        "wrap": false
+      },
+      "UI": {
+        "description": "UI",
+        "links": {},
+        "name": "UI",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
+      },
+      "User": {
+        "description": "User",
+        "links": {},
+        "name": "User",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "User",
-        "to": "UI",
-        "message": "Login request",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "UI",
-        "to": "AuthService",
-        "message": "Validate credentials",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "AuthService",
-        "to": "UI",
-        "message": "Authentication token",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "UI",
-        "to": "OrderController",
-        "message": "Place order",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "OrderController",
-        "to": "Product",
-        "message": "Check availability",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Product",
-        "to": "OrderController",
-        "message": "Available",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "OrderController",
-        "to": "MongoDB",
-        "message": "Save order",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "MongoDB",
-        "to": "OrderController",
-        "message": "Order saved",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "OrderController",
-        "to": "OrderQueue",
-        "message": "Process payment",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "OrderQueue",
-        "to": "User",
-        "message": "Order confirmation",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "User",
+        "id": "0",
+        "message": "Login request",
+        "to": "UI",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "UI",
+        "id": "1",
+        "message": "Validate credentials",
+        "to": "AuthService",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "AuthService",
+        "id": "2",
+        "message": "Authentication token",
+        "to": "UI",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "UI",
+        "id": "3",
+        "message": "Place order",
+        "to": "OrderController",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "OrderController",
+        "id": "4",
+        "message": "Check availability",
+        "to": "Product",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Product",
+        "id": "5",
+        "message": "Available",
+        "to": "OrderController",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "OrderController",
+        "id": "6",
+        "message": "Save order",
+        "to": "MongoDB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "MongoDB",
+        "id": "7",
+        "message": "Order saved",
+        "to": "OrderController",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "OrderController",
+        "id": "8",
+        "message": "Process payment",
+        "to": "OrderQueue",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "OrderQueue",
+        "id": "9",
+        "message": "Order confirmation",
+        "to": "User",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

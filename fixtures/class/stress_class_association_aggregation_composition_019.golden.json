@@ -1,159 +1,159 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "User": {
-        "id": "User",
-        "type": "",
-        "label": "User",
-        "text": "User",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-User-0",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
       "Cart": {
-        "id": "Cart",
-        "type": "",
-        "label": "Cart",
-        "text": "Cart",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Cart-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Cart",
+        "label": "Cart",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Cart",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Item": {
-        "id": "Item",
-        "type": "",
-        "label": "Item",
-        "text": "Item",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Item-2",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Item",
+        "label": "Item",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Item",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Payment": {
-        "id": "Payment",
-        "type": "",
-        "label": "Payment",
-        "text": "Payment",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Payment-3",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Payment",
+        "label": "Payment",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Payment",
         "tooltip": null,
-        "haveCallback": false,
+        "type": ""
+      },
+      "User": {
+        "annotations": [],
         "callback": null,
-        "callbackEffective": false
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-User-0",
+        "haveCallback": false,
+        "id": "User",
+        "label": "User",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "User",
+        "tooltip": null,
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "LR",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "User",
         "id2": "Cart",
+        "relation": {
+          "lineType": 0,
+          "type1": 0,
+          "type2": -1
+        },
         "relationTitle1": "1",
         "relationTitle2": "1",
-        "title": "owns",
-        "relation": {
-          "type1": 0,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": "owns"
       },
       {
         "id": "1",
         "id1": "Cart",
         "id2": "Item",
+        "relation": {
+          "lineType": 0,
+          "type1": 2,
+          "type2": -1
+        },
         "relationTitle1": "1",
         "relationTitle2": "*",
-        "title": "contains",
-        "relation": {
-          "type1": 2,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": "contains"
       },
       {
         "id": "2",
         "id1": "User",
         "id2": "Payment",
+        "relation": {
+          "lineType": 1,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "initiates",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 1
-        }
+        "title": "initiates"
       },
       {
         "id": "3",
         "id1": "Payment",
         "id2": "Cart",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "charges for",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "charges for"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

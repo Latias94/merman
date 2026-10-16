@@ -2,98 +2,102 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
+      "bounds": {
+        "max_x": 980.16,
+        "max_y": 28.184,
+        "min_x": 0.0,
+        "min_y": -28.184
+      },
+      "edges": [],
       "nodes": [
         {
+          "height": 56.368,
           "id": "A1",
+          "is_cluster": false,
+          "width": 115.52,
           "x": 57.76,
-          "y": -0.0,
-          "width": 115.52,
-          "height": 56.368,
-          "is_cluster": false
+          "y": -0.0
         },
         {
+          "height": 56.368,
           "id": "A2",
+          "is_cluster": false,
+          "width": 115.52,
           "x": 181.28,
-          "y": -0.0,
-          "width": 115.52,
-          "height": 56.368,
-          "is_cluster": false
+          "y": -0.0
         },
         {
+          "height": 56.368,
           "id": "B1",
+          "is_cluster": false,
+          "width": 115.52,
           "x": 304.8,
-          "y": -0.0,
-          "width": 115.52,
-          "height": 56.368,
-          "is_cluster": false
+          "y": -0.0
         },
         {
+          "height": 56.368,
           "id": "C1",
+          "is_cluster": false,
+          "width": 115.52,
           "x": 428.32,
-          "y": -0.0,
-          "width": 115.52,
-          "height": 56.368,
-          "is_cluster": false
+          "y": -0.0
         },
         {
+          "height": 56.368,
           "id": "A3",
+          "is_cluster": false,
+          "width": 115.52,
           "x": 551.84,
-          "y": -0.0,
-          "width": 115.52,
-          "height": 56.368,
-          "is_cluster": false
+          "y": -0.0
         },
         {
+          "height": 56.368,
           "id": "B2",
+          "is_cluster": false,
+          "width": 115.52,
           "x": 675.36,
-          "y": -0.0,
-          "width": 115.52,
-          "height": 56.368,
-          "is_cluster": false
+          "y": -0.0
         },
         {
+          "height": 56.368,
           "id": "C2",
-          "x": 798.88,
-          "y": -0.0,
+          "is_cluster": false,
           "width": 115.52,
-          "height": 56.368,
-          "is_cluster": false
+          "x": 798.88,
+          "y": -0.0
         },
         {
-          "id": "D2",
-          "x": 922.4,
-          "y": -0.0,
-          "width": 115.52,
           "height": 56.368,
-          "is_cluster": false
+          "id": "D2",
+          "is_cluster": false,
+          "width": 115.52,
+          "x": 922.4,
+          "y": -0.0
         }
       ],
-      "edges": [],
       "shapeGeometries": [
         {
-          "id": "A1",
           "allocated": {
-            "x": 57.76,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 57.76,
+            "y": -0.0
           },
           "boundary": {
+            "height": 32.0,
             "shape": "stadium",
-            "width": 67.36,
-            "height": 32.0
-          }
+            "width": 67.36
+          },
+          "id": "A1"
         },
         {
-          "id": "A2",
           "allocated": {
-            "x": 181.28,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 181.28,
+            "y": -0.0
           },
           "boundary": {
-            "shape": "polygon",
             "points": [
               {
                 "x": 0.0,
@@ -136,38 +140,38 @@
                 "y": 0.0
               }
             ],
+            "shape": "polygon",
             "translation": {
               "x": -49.76,
               "y": 28.184
             }
-          }
+          },
+          "id": "A2"
         },
         {
-          "id": "B1",
           "allocated": {
-            "x": 304.8,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 304.8,
+            "y": -0.0
           },
           "boundary": {
-            "shape": "cylinder",
-            "width": 115.52,
             "body_height": 44.007,
             "radius_x": 57.76,
-            "radius_y": 12.007
-          }
+            "radius_y": 12.007,
+            "shape": "cylinder",
+            "width": 115.52
+          },
+          "id": "B1"
         },
         {
-          "id": "C1",
           "allocated": {
-            "x": 428.32,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 428.32,
+            "y": -0.0
           },
           "boundary": {
-            "shape": "polygon",
             "points": [
               {
                 "x": -64.806,
@@ -190,22 +194,22 @@
                 "y": -28.184
               }
             ],
+            "shape": "polygon",
             "translation": {
               "x": 7.046,
               "y": 0.0
             }
-          }
+          },
+          "id": "C1"
         },
         {
-          "id": "A3",
           "allocated": {
-            "x": 551.84,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 551.84,
+            "y": -0.0
           },
           "boundary": {
-            "shape": "polygon",
             "points": [
               {
                 "x": -28.184,
@@ -224,22 +228,22 @@
                 "y": -56.368
               }
             ],
+            "shape": "polygon",
             "translation": {
               "x": -35.2,
               "y": 28.184
             }
-          }
+          },
+          "id": "A3"
         },
         {
-          "id": "B2",
           "allocated": {
-            "x": 675.36,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 675.36,
+            "y": -0.0
           },
           "boundary": {
-            "shape": "polygon",
             "points": [
               {
                 "x": 0.0,
@@ -258,22 +262,22 @@
                 "y": -56.368
               }
             ],
+            "shape": "polygon",
             "translation": {
               "x": -31.76,
               "y": 28.184
             }
-          }
+          },
+          "id": "B2"
         },
         {
-          "id": "C2",
           "allocated": {
-            "x": 798.88,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 798.88,
+            "y": -0.0
           },
           "boundary": {
-            "shape": "polygon",
             "points": [
               {
                 "x": -28.184,
@@ -292,22 +296,22 @@
                 "y": -56.368
               }
             ],
+            "shape": "polygon",
             "translation": {
               "x": -33.76,
               "y": 28.184
             }
-          }
+          },
+          "id": "C2"
         },
         {
-          "id": "D2",
           "allocated": {
-            "x": 922.4,
-            "y": -0.0,
+            "height": 56.368,
             "width": 115.52,
-            "height": 56.368
+            "x": 922.4,
+            "y": -0.0
           },
           "boundary": {
-            "shape": "polygon",
             "points": [
               {
                 "x": 0.0,
@@ -326,19 +330,15 @@
                 "y": -56.368
               }
             ],
+            "shape": "polygon",
             "translation": {
               "x": -37.76,
               "y": 28.184
             }
-          }
+          },
+          "id": "D2"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -28.184,
-        "max_x": 980.16,
-        "max_y": 28.184
-      }
+      ]
     }
   }
 }

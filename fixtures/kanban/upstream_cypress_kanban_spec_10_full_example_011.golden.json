@@ -1,267 +1,267 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "id1",
-        "label": "Todo",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "id7",
-        "label": "In progress",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "id9",
-        "label": "Ready for deploy",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "id10",
-        "label": "Ready for test",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "id11",
-        "label": "Done",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "id12",
-        "label": "Can't reproduce",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "id1",
-        "label": "Todo",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Todo",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "docs",
-        "parentId": "id1",
+        "isGroup": false,
         "label": "Create Documentation",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
-        "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
         "level": 4,
+        "parentId": "id1",
+        "priority": null,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
-        "id": "docs",
-        "parentId": "id1",
-        "label": "Create Blog about the new diagram",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "docs",
+        "isGroup": false,
+        "label": "Create Blog about the new diagram",
+        "level": 4,
+        "parentId": "id1",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "id7",
-        "label": "In progress",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "In progress",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "id6",
-        "parentId": "id7",
-        "label": "Create renderer so that it works in all cases. We also add some extra text here for testing purposes. And some more just for the extra flare.",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "id6",
+        "isGroup": false,
+        "label": "Create renderer so that it works in all cases. We also add some extra text here for testing purposes. And some more just for the extra flare.",
+        "level": 4,
+        "parentId": "id7",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
-        "id": "id8",
-        "parentId": "id7",
-        "label": "Design grammar",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": "knsv",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "id8",
+        "isGroup": false,
+        "label": "Design grammar",
+        "level": 4,
+        "parentId": "id7",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "id9",
-        "label": "Ready for deploy",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Ready for deploy",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "id10",
-        "label": "Ready for test",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Ready for test",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
         "id": "id11",
-        "label": "Done",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Done",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "id5",
-        "parentId": "id11",
+        "isGroup": false,
         "label": "define getData",
-        "isGroup": false,
-        "ticket": null,
+        "level": 4,
+        "parentId": "id11",
         "priority": null,
-        "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "id2",
-        "parentId": "id11",
+        "isGroup": false,
         "label": "Title of diagram is more than 100 chars when user duplicates diagram with 100 char",
-        "isGroup": false,
-        "ticket": "MC-2036",
+        "level": 4,
+        "parentId": "id11",
         "priority": "Very High",
-        "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": "MC-2036"
       },
       {
+        "assigned": "knsv",
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "id3",
-        "parentId": "id11",
+        "isGroup": false,
         "label": "Update DB function",
-        "isGroup": false,
-        "ticket": "MC-2037",
-        "priority": "High",
-        "assigned": "knsv",
-        "icon": null,
-        "shape": "kanbanItem",
         "level": 4,
+        "parentId": "id11",
+        "priority": "High",
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": "MC-2037"
       },
       {
-        "id": "id4",
-        "parentId": "id11",
-        "label": "Create parsing tests",
-        "isGroup": false,
-        "ticket": "MC-2038",
-        "priority": "High",
         "assigned": "K.Sveidqvist",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "id4",
+        "isGroup": false,
+        "label": "Create parsing tests",
+        "level": 4,
+        "parentId": "id11",
+        "priority": "High",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "MC-2038"
       },
       {
-        "id": "id66",
-        "parentId": "id11",
-        "label": "last item",
-        "isGroup": false,
-        "ticket": null,
-        "priority": "Very Low",
         "assigned": "knsv",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "id66",
+        "isGroup": false,
+        "label": "last item",
+        "level": 4,
+        "parentId": "id11",
+        "priority": "Very Low",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "id12",
-        "label": "Can't reproduce",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Can't reproduce",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "id1",
+        "isGroup": false,
+        "label": "Todo",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "id7",
+        "isGroup": false,
+        "label": "In progress",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "id9",
+        "isGroup": false,
+        "label": "Ready for deploy",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "id10",
+        "isGroup": false,
+        "label": "Ready for test",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "id11",
+        "isGroup": false,
+        "label": "Done",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "id12",
+        "isGroup": false,
+        "label": "Can't reproduce",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

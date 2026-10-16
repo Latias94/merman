@@ -2,70 +2,19 @@
   "diagramType": "swimlane",
   "layout": {
     "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 645.422,
+        "max_y": 58.5,
+        "min_x": -96.0,
+        "min_y": -58.5
+      },
       "direction": "LR",
-      "nodes": [
-        {
-          "id": "A",
-          "label": "Start",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "__swimlane_default__",
-          "top_lane_id": "__swimlane_default__",
-          "x": 36.0,
-          "y": 0.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 0.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "B",
-          "label": "Done",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "__swimlane_default__",
-          "top_lane_id": "__swimlane_default__",
-          "x": 549.422,
-          "y": 0.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 1.0,
-          "order": 0.0,
-          "is_edge_label": false
-        }
-      ],
-      "lanes": [
-        {
-          "id": "__swimlane_default__",
-          "title": "",
-          "parent_id": null,
-          "x": 274.711,
-          "y": 0.0,
-          "width": 741.422,
-          "height": 117.0,
-          "padding": 20.0,
-          "title_label_width": 0.0,
-          "title_label_height": 0.0,
-          "content_top": -22.5,
-          "title_rect": {
-            "left": -96.0,
-            "right": -60.0,
-            "top": -58.5,
-            "bottom": 58.5
-          },
-          "requested_dir": "LR"
-        }
-      ],
       "edges": [
         {
-          "id": "L_A_B_0",
+          "curve": "rounded",
           "from": "A",
-          "to": "B",
+          "id": "L_A_B_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 112.0,
@@ -76,17 +25,68 @@
               "y": 0.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "B"
         }
       ],
-      "bounds": {
-        "min_x": -96.0,
-        "min_y": -58.5,
-        "max_x": 645.422,
-        "max_y": 58.5
-      }
+      "lanes": [
+        {
+          "content_top": -22.5,
+          "height": 117.0,
+          "id": "__swimlane_default__",
+          "padding": 20.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "",
+          "title_label_height": 0.0,
+          "title_label_width": 0.0,
+          "title_rect": {
+            "bottom": 58.5,
+            "left": -96.0,
+            "right": -60.0,
+            "top": -58.5
+          },
+          "width": 741.422,
+          "x": 274.711,
+          "y": 0.0
+        }
+      ],
+      "nodes": [
+        {
+          "height": 45.0,
+          "id": "A",
+          "is_edge_label": false,
+          "label": "Start",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "__swimlane_default__",
+          "shape": "squareRect",
+          "top_lane_id": "__swimlane_default__",
+          "width": 152.0,
+          "x": 36.0,
+          "y": 0.0
+        },
+        {
+          "height": 45.0,
+          "id": "B",
+          "is_edge_label": false,
+          "label": "Done",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "__swimlane_default__",
+          "shape": "squareRect",
+          "top_lane_id": "__swimlane_default__",
+          "width": 152.0,
+          "x": 549.422,
+          "y": 0.0
+        }
+      ]
     }
   }
 }

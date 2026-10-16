@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Multiline section title",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5"
     ],
     "tasks": [
       {
-        "section": "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5",
-        "type": "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5",
-        "task": "Task1 ",
-        "id": "a1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-02T00:00:00.000",
+        "id": "a1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":a1, 2024-01-01, 1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-01-01"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "2024-01-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5",
         "startTime": "2024-01-01T00:00:00.000",
-        "endTime": "2024-01-02T00:00:00.000"
+        "task": "Task1 ",
+        "type": "Line1<br>Line2<br/>Line3</br />Line4<br\t/>Line5",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Multiline section title",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Customer",
       "Frontend",
@@ -16,191 +14,193 @@
     ],
     "actors": {
       "Customer": {
-        "name": "Customer",
         "description": "Customer",
-        "wrap": false,
-        "type": "actor",
         "links": {},
-        "properties": {}
+        "name": "Customer",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       },
       "Frontend": {
-        "name": "Frontend",
         "description": "Frontend",
-        "wrap": false,
+        "links": {},
+        "name": "Frontend",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "PaymentService": {
-        "name": "PaymentService",
-        "description": "PaymentService",
-        "wrap": false,
-        "type": "boundary",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "InventoryManager": {
-        "name": "InventoryManager",
         "description": "InventoryManager",
-        "wrap": false,
+        "links": {},
+        "name": "InventoryManager",
+        "properties": {},
         "type": "control",
-        "links": {},
-        "properties": {}
-      },
-      "Order": {
-        "name": "Order",
-        "description": "Order",
-        "wrap": false,
-        "type": "entity",
-        "links": {},
-        "properties": {}
-      },
-      "OrdersDB": {
-        "name": "OrdersDB",
-        "description": "OrdersDB",
-        "wrap": false,
-        "type": "database",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "NotificationQueue": {
-        "name": "NotificationQueue",
         "description": "NotificationQueue",
-        "wrap": false,
-        "type": "queue",
         "links": {},
-        "properties": {}
+        "name": "NotificationQueue",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
+      },
+      "Order": {
+        "description": "Order",
+        "links": {},
+        "name": "Order",
+        "properties": {},
+        "type": "entity",
+        "wrap": false
+      },
+      "OrdersDB": {
+        "description": "OrdersDB",
+        "links": {},
+        "name": "OrdersDB",
+        "properties": {},
+        "type": "database",
+        "wrap": false
+      },
+      "PaymentService": {
+        "description": "PaymentService",
+        "links": {},
+        "name": "PaymentService",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Customer",
-        "to": "Frontend",
-        "message": "Place order",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Frontend",
-        "to": "Order",
-        "message": "Create order",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "Parallel Processing",
-        "wrap": false,
-        "type": 19,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Order",
-        "to": "PaymentService",
-        "message": "Process payment",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Order",
-        "to": "InventoryManager",
-        "message": "Reserve items",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 21,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "PaymentService",
-        "to": "Order",
-        "message": "Payment confirmed",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "InventoryManager",
-        "to": "Order",
-        "message": "Items reserved",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "Order",
-        "to": "OrdersDB",
-        "message": "Save finalized order",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "OrdersDB",
-        "to": "Order",
-        "message": "Order saved",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "Order",
-        "to": "NotificationQueue",
-        "message": "Send confirmation",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": "NotificationQueue",
-        "to": "Customer",
-        "message": "Order confirmation",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Customer",
+        "id": "0",
+        "message": "Place order",
+        "to": "Frontend",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Frontend",
+        "id": "1",
+        "message": "Create order",
+        "to": "Order",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "Parallel Processing",
+        "to": null,
+        "type": 19,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Order",
+        "id": "3",
+        "message": "Process payment",
+        "to": "PaymentService",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Order",
+        "id": "5",
+        "message": "Reserve items",
+        "to": "InventoryManager",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "PaymentService",
+        "id": "7",
+        "message": "Payment confirmed",
+        "to": "Order",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "InventoryManager",
+        "id": "8",
+        "message": "Items reserved",
+        "to": "Order",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Order",
+        "id": "9",
+        "message": "Save finalized order",
+        "to": "OrdersDB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "OrdersDB",
+        "id": "10",
+        "message": "Order saved",
+        "to": "Order",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Order",
+        "id": "11",
+        "message": "Send confirmation",
+        "to": "NotificationQueue",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "NotificationQueue",
+        "id": "12",
+        "message": "Order confirmation",
+        "to": "Customer",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

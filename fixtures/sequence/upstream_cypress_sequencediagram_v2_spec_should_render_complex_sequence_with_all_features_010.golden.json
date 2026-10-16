@@ -1,133 +1,141 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "A",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "B",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": "A",
         "id": "0",
-        "from": "A",
-        "to": "B",
         "message": "This is a very long message that should wrap properly in the diagram rendering",
-        "wrap": false,
+        "to": "B",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "A",
         "id": "1",
-        "from": "A",
-        "to": "B",
         "message": "This is a very long note that should also wrap properly when rendered in the diagram",
-        "wrap": false,
+        "placement": 2,
+        "to": "B",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "2",
-        "from": null,
-        "to": null,
         "message": "Wrapped parallel",
-        "wrap": false,
+        "to": null,
         "type": 19,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "3",
-        "from": "A",
-        "to": "B",
-        "message": "Parallel message 1<br>with explicit line break",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "B",
-        "to": "A",
-        "message": "Parallel message 2<br>with explicit line break",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 21,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "Wrapped loop",
-        "wrap": false,
-        "type": 10,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "B",
-        "to": "B",
-        "message": "This is a long note<br>in a loop",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "9",
         "from": "A",
+        "id": "3",
+        "message": "Parallel message 1<br>with explicit line break",
         "to": "B",
-        "message": "Message in loop",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "10",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "4",
         "message": "",
-        "wrap": false,
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "5",
+        "message": "Parallel message 2<br>with explicit line break",
+        "to": "A",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "Wrapped loop",
+        "to": null,
+        "type": 10,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "8",
+        "message": "This is a long note<br>in a loop",
+        "placement": 1,
+        "to": "B",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "9",
+        "message": "Message in loop",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "",
+        "to": null,
         "type": 11,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -136,26 +144,18 @@
           "A",
           "B"
         ],
-        "placement": 2,
         "message": "This is a very long note that should also wrap properly when rendered in the diagram",
+        "placement": 2,
         "wrap": false
       },
       {
         "actor": "B",
-        "placement": 1,
         "message": "This is a long note<br>in a loop",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

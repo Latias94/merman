@@ -1,7 +1,6 @@
 use crate::MermaidConfig;
 use crate::generated::dompurify_defaults;
-use lol_html::{HtmlRewriter, RewriteStrSettings, Settings, doc_comments, doc_text, element};
-use std::borrow::Cow;
+mod fragment;
 use std::collections::HashSet;
 use std::sync::OnceLock;
 
@@ -12,11 +11,11 @@ use std::sync::OnceLock;
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum SanitizeFailure<E> {
-    /// The HTML parser rejected ambiguous or malformed input.
+    /// Fragment construction exceeded its structural admission bound.
     RejectedInput,
     /// The caller-owned output sink rejected an allocation or output chunk.
     Output(E),
-    /// The HTML rewriter produced bytes that were not valid UTF-8.
+    /// The caller's output sink produced bytes that were not valid UTF-8.
     InvalidUtf8Output,
 }
 
@@ -32,16 +31,49 @@ pub trait SanitizeOutputSink {
     /// Sink-specific output or allocation error.
     type Error;
 
+    /// Checks cancellation while parsing, walking, and serializing a fragment.
+    fn checkpoint(&self) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    /// Accounts for parser tree-builder work that does not allocate retained output.
+    ///
+    /// The HTML5 tree builder performs ancestor and formatting-list scans through
+    /// `TreeSink` callbacks. Renderers override this hook to charge those scans to
+    /// their operation budget; the core-only sink retains the cancellation checkpoint
+    /// semantics without imposing a renderer-specific quota.
+    fn charge_parse_work(&self, _additional: usize) -> Result<(), Self::Error> {
+        self.checkpoint()
+    }
+
+    /// Supplies an optional core-only parser fallback ceiling.
+    ///
+    /// Resource-aware sinks leave this unset and reject work through
+    /// `charge_parse_work`, preserving their typed operation errors.
+    fn parse_work_limit(&self, _input_bytes: usize) -> Option<usize> {
+        None
+    }
+
+    /// Admits parser input and retained tree storage independently of output length.
+    fn check_parse_storage(
+        &self,
+        _input_bytes: usize,
+        _nodes: usize,
+        _retained_bytes: usize,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
     /// Checks the length of a generated output fragment before it is allocated.
     fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error>;
 
     /// Allocates a string whose final length has already passed `checked_output_len`.
     fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error>;
 
-    /// Allocates the byte buffer used by the streaming HTML rewriter.
+    /// Allocates the target serializer's byte buffer.
     fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error>;
 
-    /// Appends one streaming HTML rewriter chunk to the output buffer.
+    /// Appends one serialized chunk to the output buffer.
     fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error>;
 }
 
@@ -53,6 +85,12 @@ struct StringOutputError;
 
 impl SanitizeOutputSink for StringOutputSink {
     type Error = StringOutputError;
+
+    fn parse_work_limit(&self, input_bytes: usize) -> Option<usize> {
+        // Semantic-only APIs have no operation meter. Bound parser amplification
+        // linearly in source bytes and retain their existing fail-closed projection.
+        Some(input_bytes.saturating_add(1).saturating_mul(256))
+    }
 
     fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
         current.checked_add(additional).ok_or(StringOutputError)
@@ -451,10 +489,12 @@ struct DompurifyEffectiveConfig {
     data_uri_tags: HashSet<String>,
     forbid_tags: HashSet<String>,
     forbid_attr: HashSet<String>,
+    forbid_contents: HashSet<String>,
     allow_aria_attr: bool,
     allow_data_attr: bool,
     allow_unknown_protocols: bool,
     keep_content: bool,
+    safe_for_xml: bool,
 }
 
 fn dompurify_config_object(
@@ -576,9 +616,38 @@ fn dompurify_effective_config(
         forbid_tags.insert("style".to_string());
     }
 
+    // DOMPurify inserts the HTML5 parser's implicit `tbody` whenever tables are
+    // allowed and removes `tbody` from FORBID_TAGS at the same time. Keeping the
+    // implicit container is necessary for a table's rows to survive sanitization;
+    // this also applies when callers explicitly supplied FORBID_TAGS or set
+    // KEEP_CONTENT=false.
+    if allowed_tags.contains("table") {
+        forbid_tags.remove("tbody");
+    }
+
     let forbid_attr: HashSet<String> = dompurify_extract_string_list(dompurify_cfg, "FORBID_ATTR")
         .into_iter()
         .collect();
+
+    // Source: the pinned DOMPurify DEFAULT_FORBID_CONTENTS. These elements must
+    // not leak raw-text or foreign children when the surrounding tag is removed.
+    let mut forbid_contents: HashSet<String> = if dompurify_cfg
+        .and_then(|c| c.get("FORBID_CONTENTS"))
+        .is_some_and(serde_json::Value::is_array)
+    {
+        dompurify_extract_string_list(dompurify_cfg, "FORBID_CONTENTS")
+            .into_iter()
+            .collect()
+    } else {
+        dompurify_defaults::DEFAULT_FORBID_CONTENTS
+            .iter()
+            .map(|name| (*name).to_string())
+            .collect()
+    };
+    forbid_contents.extend(dompurify_extract_string_list(
+        dompurify_cfg,
+        "ADD_FORBID_CONTENTS",
+    ));
 
     DompurifyEffectiveConfig {
         allowed_tags,
@@ -587,10 +656,15 @@ fn dompurify_effective_config(
         data_uri_tags,
         forbid_tags,
         forbid_attr,
+        forbid_contents,
         allow_aria_attr,
         allow_data_attr,
         allow_unknown_protocols,
         keep_content,
+        safe_for_xml: dompurify_cfg
+            .and_then(|cfg| cfg.get("SAFE_FOR_XML"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true),
     }
 }
 
@@ -603,6 +677,32 @@ fn dompurify_is_valid_attribute(
     // DOMPurify applies FORBID_ATTR before its data-* and aria-* convenience paths.
     // Keeping that priority here makes every accepted attribute route obey one policy.
     if cfg.forbid_attr.contains(lc_name) {
+        return false;
+    }
+    if cfg.safe_for_xml {
+        if lc_name == "patchsrc" || (lc_name == "for" && !matches!(lc_tag, "label" | "output")) {
+            return false;
+        }
+        if value.contains("-->")
+            || value.contains("--!>")
+            || value.contains("]>")
+            || value.match_indices("</").any(|(offset, _)| {
+                [
+                    "style", "script", "title", "xmp", "textarea", "noscript", "iframe", "noembed",
+                    "noframes",
+                ]
+                .iter()
+                .any(|name| {
+                    value
+                        .get(offset + 2..offset + 2 + name.len())
+                        .is_some_and(|tail| tail.eq_ignore_ascii_case(name))
+                })
+            })
+        {
+            return false;
+        }
+    }
+    if lc_name == "attributename" && value.contains("href") {
         return false;
     }
 
@@ -650,8 +750,8 @@ fn dompurify_is_valid_attribute(
 }
 
 fn decode_attr_html_entities(input: &str) -> String {
-    // `lol_html` exposes the serialized source spelling. Decode exactly the one layer that a
-    // browser parser would consume before DOMPurify reads `Attr.value`.
+    // Serialized SVG callers decode exactly one layer. Parsed HTML attributes already contain
+    // DOM values and do not pass through this helper.
     htmlize::unescape_attribute(input).into_owned()
 }
 
@@ -666,217 +766,12 @@ fn ascii_case_insensitive_starts_with(haystack: &[u8], start: usize, needle: &[u
         })
 }
 
-fn escape_html_text_chunk_greater_than<S: SanitizeOutputSink>(
-    input: &str,
-    sink: &S,
-) -> Result<Option<String>, S::Error> {
-    let greater_than_count = input.bytes().filter(|byte| *byte == b'>').count();
-    if greater_than_count == 0 {
-        return Ok(None);
-    }
-
-    let growth = greater_than_count.saturating_mul("&gt;".len() - 1);
-    let output_len = sink.checked_output_len(input.len(), growth)?;
-    let mut output = sink.string_with_capacity(output_len)?;
-    let mut remaining = input;
-    while let Some(pos) = remaining.find('>') {
-        output.push_str(&remaining[..pos]);
-        output.push_str("&gt;");
-        remaining = &remaining[pos + 1..];
-    }
-    output.push_str(remaining);
-    Ok(Some(output))
-}
-
 fn dompurify_like_sanitize_html<S: SanitizeOutputSink>(
     text: &str,
     cfg: &DompurifyEffectiveConfig,
     sink: &S,
-    escape_text_node_greater_than: bool,
 ) -> Result<String, SanitizeFailure<S::Error>> {
-    if text.is_empty() {
-        return Ok(String::new());
-    }
-
-    // `lol_html::rewrite_str` is less permissive than browser parsing (and therefore DOMPurify).
-    // In particular, fragments containing a "stray" `<` that does not start a valid tag (e.g.
-    // `"foo < bar"` or `"<\""` in a quoted string) can fail to parse. In browsers those `<`
-    // tokens are treated as text and serialized as `&lt;`.
-    //
-    // To stay closer to Mermaid's `sanitizeText` behavior, pre-escape such `<` tokens before
-    // running the DOMPurify-like rewrite.
-    fn escape_stray_lt<'a, S: SanitizeOutputSink>(
-        input: &'a str,
-        sink: &S,
-    ) -> Result<Cow<'a, str>, SanitizeFailure<S::Error>> {
-        let bytes = input.as_bytes();
-        let mut pos = 0usize;
-        let mut stray_count = 0usize;
-        while pos < bytes.len() {
-            if bytes[pos] == b'<' {
-                let next = bytes.get(pos + 1).copied().unwrap_or(b' ');
-                let tag_start = next.is_ascii_alphabetic() || matches!(next, b'/' | b'!' | b'?');
-                if !tag_start {
-                    stray_count = sink
-                        .checked_output_len(stray_count, 1)
-                        .map_err(SanitizeFailure::Output)?;
-                }
-            }
-            pos += 1;
-        }
-        if stray_count == 0 {
-            return Ok(Cow::Borrowed(input));
-        }
-
-        let growth = stray_count.saturating_mul("&lt;".len() - 1);
-        let output_len = sink
-            .checked_output_len(input.len(), growth)
-            .map_err(SanitizeFailure::Output)?;
-
-        let mut out = sink
-            .string_with_capacity(output_len)
-            .map_err(SanitizeFailure::Output)?;
-        let mut last = 0usize;
-        let mut i = 0usize;
-        while i < bytes.len() {
-            if bytes[i] == b'<' {
-                let next = bytes.get(i + 1).copied().unwrap_or(b' ');
-                let tag_start = next.is_ascii_alphabetic() || matches!(next, b'/' | b'!' | b'?');
-                if !tag_start {
-                    out.push_str(&input[last..i]);
-                    out.push_str("&lt;");
-                    i += 1;
-                    last = i;
-                    continue;
-                }
-            }
-            i += 1;
-        }
-        out.push_str(&input[last..]);
-        Ok(Cow::Owned(out))
-    }
-
-    let text = escape_stray_lt(text, sink)?;
-
-    let mut text_output_error = None;
-    let mut rewrite_str_settings =
-        RewriteStrSettings::new().append_document_content_handler(doc_comments!(|comment| {
-            comment.remove();
-            Ok(())
-        }));
-    if escape_text_node_greater_than {
-        rewrite_str_settings =
-            rewrite_str_settings.append_document_content_handler(doc_text!(|text| {
-                if text_output_error.is_some() {
-                    text.remove();
-                    return Ok(());
-                }
-                match escape_html_text_chunk_greater_than(text.as_str(), sink) {
-                    Ok(Some(escaped)) => text.set_str(escaped),
-                    Ok(None) => {}
-                    Err(error) => {
-                        text_output_error = Some(error);
-                        text.remove();
-                    }
-                }
-                Ok(())
-            }));
-    }
-    let rewrite_str_settings = rewrite_str_settings
-        .append_element_content_handler(element!("script", |el| {
-            el.remove();
-            Ok(())
-        }))
-        .append_element_content_handler(element!("iframe", |el| {
-            el.remove();
-            Ok(())
-        }))
-        .append_element_content_handler(element!("style", |el| {
-            el.remove();
-            Ok(())
-        }))
-        .append_element_content_handler(element!("a", |el| {
-            // Mirror Mermaid's DOMPurify hooks:
-            // - beforeSanitizeAttributes stores the target in a temporary data-* attribute
-            // - afterSanitizeAttributes restores it (only if the data-* survived sanitization)
-            if let Some(target) = el.get_attribute("target") {
-                let _ = el.set_attribute("data-temp-href-target", &target);
-            }
-            Ok(())
-        }))
-        .append_element_content_handler(element!("*", |el| {
-            let tag_name = el.tag_name();
-            let lc_tag = tag_name.to_ascii_lowercase();
-
-            if !cfg.allowed_tags.contains(&lc_tag) || cfg.forbid_tags.contains(&lc_tag) {
-                if cfg.keep_content {
-                    el.remove_and_keep_content();
-                } else {
-                    el.remove();
-                }
-                return Ok(());
-            }
-
-            let attrs: Vec<(String, String)> = el
-                .attributes()
-                .iter()
-                .map(|a| (a.name().to_string(), a.value().to_string()))
-                .collect();
-
-            for (name, value) in attrs {
-                let lc_name = name.to_ascii_lowercase();
-                let parsed_value = decode_attr_html_entities(&value);
-                let normalized_value =
-                    dompurify_normalize_dom_attribute_value(&lc_name, &parsed_value);
-                if !dompurify_is_valid_attribute(cfg, &lc_tag, &lc_name, normalized_value) {
-                    el.remove_attribute(&name);
-                    continue;
-                }
-
-                if normalized_value != value {
-                    let _ = el.set_attribute(&name, normalized_value);
-                }
-            }
-
-            if lc_tag == "a"
-                && let Some(target) = el.get_attribute("data-temp-href-target")
-            {
-                let _ = el.set_attribute("target", &target);
-                el.remove_attribute("data-temp-href-target");
-                if target == "_blank" {
-                    let _ = el.set_attribute("rel", "noopener");
-                }
-            }
-
-            Ok(())
-        }));
-
-    let settings: Settings<'_, '_> = rewrite_str_settings.into();
-    let mut output = sink
-        .output_buffer(text.len())
-        .map_err(SanitizeFailure::Output)?;
-    let mut sink_error = None;
-    {
-        let mut rewriter = HtmlRewriter::new(settings, |chunk: &[u8]| {
-            if sink_error.is_some() {
-                return;
-            }
-            if let Err(error) = sink.push_output_chunk(&mut output, chunk) {
-                sink_error = Some(error);
-            }
-        });
-        rewriter
-            .write(text.as_bytes())
-            .map_err(|_| SanitizeFailure::RejectedInput)?;
-        rewriter.end().map_err(|_| SanitizeFailure::RejectedInput)?;
-    }
-    if let Some(error) = sink_error {
-        return Err(SanitizeFailure::Output(error));
-    }
-    if let Some(error) = text_output_error {
-        return Err(SanitizeFailure::Output(error));
-    }
-    String::from_utf8(output).map_err(|_| SanitizeFailure::InvalidUtf8Output)
+    fragment::sanitize(text, cfg, sink, fragment::Output::Html)
 }
 
 pub fn remove_script(text: &str) -> String {
@@ -894,7 +789,7 @@ fn try_remove_script<S: SanitizeOutputSink>(
         &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
         false,
     );
-    dompurify_like_sanitize_html(text, &cfg, sink, false)
+    dompurify_like_sanitize_html(text, &cfg, sink)
 }
 
 fn effective_html_labels(config: &MermaidConfig) -> bool {
@@ -978,11 +873,56 @@ pub fn sanitize_text(text: &str, config: &MermaidConfig) -> String {
     sanitize_text_with_sink(text, config, &StringOutputSink).unwrap_or_default()
 }
 
-/// Runs Mermaid's DOMPurify serialization phase even when the input has no literal tag.
+/// Prepares sanitized HTML for direct embedding beneath an XHTML parent in SVG.
+#[doc(hidden)]
+pub fn sanitize_xhtml(text: &str, config: &MermaidConfig) -> String {
+    sanitize_xhtml_with_sink(text, config, &StringOutputSink).unwrap_or_default()
+}
+
+/// Mirrors SVG `innerHTML` fragment parsing used by Architecture icon labels.
+#[doc(hidden)]
+pub fn sanitize_xhtml_in_svg_context(text: &str, config: &MermaidConfig) -> String {
+    sanitize_xhtml_in_svg_context_with_sink(text, config, &StringOutputSink).unwrap_or_default()
+}
+
+/// Fallible projection of the sanitized SVG `innerHTML` assignment.
+#[doc(hidden)]
+pub fn sanitize_xhtml_in_svg_context_with_sink<S: SanitizeOutputSink>(
+    text: &str,
+    config: &MermaidConfig,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
+    let text = sanitize_text_with_sink(text, config, sink)?;
+    fragment::xhtml_from_sanitized_svg_fragment(&text, sink)
+}
+
+/// Fallible XHTML projection with caller-owned parsing and output controls.
+#[doc(hidden)]
+pub fn sanitize_xhtml_with_sink<S: SanitizeOutputSink>(
+    text: &str,
+    config: &MermaidConfig,
+    sink: &S,
+) -> Result<String, SanitizeFailure<S::Error>> {
+    sink.checkpoint().map_err(SanitizeFailure::Output)?;
+    if is_unformatted_ascii_paragraph(text)
+        && sanitizer_preserves_unformatted_ascii_paragraph(config)
+    {
+        return owned_output(text, sink);
+    }
+    let text = sanitize_more(text, config, sink)?;
+    fragment::sanitize(
+        &text,
+        &dompurify_effective_config(config, true),
+        sink,
+        fragment::Output::Xhtml,
+    )
+}
+
+/// Runs the shape-helper sanitization stage on serialized FlowDB labels.
 ///
 /// Flowchart shape rendering calls `sanitizeText(decodeEntities(label), config)` after FlowDB has
-/// already sanitized the label. Entity-authored text therefore still passes through a DOM, whose
-/// serialization preserves comparison delimiters as entities before SVG word tokenization.
+/// already sanitized the label. DOMPurify returns strings without a literal `<` unchanged; parsing
+/// those strings here would decode entity-authored dollar signs into unintended math delimiters.
 #[cfg(any(test, feature = "diagram-flowchart", feature = "diagram-swimlane",))]
 pub(crate) fn sanitize_text_as_html_fragment(text: &str, config: &MermaidConfig) -> String {
     if text.is_empty() {
@@ -993,13 +933,16 @@ pub(crate) fn sanitize_text_as_html_fragment(text: &str, config: &MermaidConfig)
     let Ok(text) = sanitize_more(text, config, &sink) else {
         return String::new();
     };
+    if !text.contains('<') {
+        return text;
+    }
     let cfg = dompurify_effective_config(config, true);
-    dompurify_like_sanitize_html(&text, &cfg, &sink, true).unwrap_or_default()
+    dompurify_like_sanitize_html(&text, &cfg, &sink).unwrap_or_default()
 }
 
 /// Sanitizes text through a caller-owned output sink.
 ///
-/// Parser ambiguity always fails closed. Resource-aware callers should implement a sink that
+/// Unrecoverable input fails closed. Resource-aware callers should implement a sink that
 /// rejects output growth and allocation failure according to their local policy.
 ///
 /// This is an internal cross-crate SPI, not a stable extension surface.
@@ -1026,7 +969,7 @@ pub fn sanitize_text_with_sink<S: SanitizeOutputSink>(
     }
 
     let cfg = dompurify_effective_config(config, true);
-    dompurify_like_sanitize_html(&t, &cfg, sink, false)
+    dompurify_like_sanitize_html(&t, &cfg, sink)
 }
 
 pub fn sanitize_text_or_array(
@@ -1063,6 +1006,244 @@ mod tests {
             "securityLevel": "strict",
             "flowchart": { "htmlLabels": true }
         }))
+    }
+
+    #[test]
+    fn html5_recovery_closes_and_reconstructs_formatting_before_serialization() {
+        let config = cfg_strict();
+        for (input, expected) in [
+            ("<b>API", "<b>API</b>"),
+            ("<b><i>one</b>two</i>", "<b><i>one</i></b><i>two</i>"),
+            ("<p>one<p>two", "<p>one</p><p>two</p>"),
+            (
+                "<table><tr><td>one",
+                "<table><tbody><tr><td>one</td></tr></tbody></table>",
+            ),
+            ("<template><b>API</b><script>x</script></template>", ""),
+            ("<title>head</title><b>API</b>", "<b>API</b>"),
+            (
+                "<div><template><b>API</b><script>x</script></template></div>",
+                "<div><template><b>API</b></template></div>",
+            ),
+            ("\n  <template><b>API</b></template>", "\n  "),
+        ] {
+            assert_eq!(sanitize_text(input, &config), expected, "{input}");
+            assert_eq!(sanitize_xhtml(input, &config), expected, "{input}");
+        }
+        let noscript = "<noscript><img src=x onerror=alert(1)></noscript><b>API</b>";
+        assert_eq!(
+            sanitize_text(noscript, &config),
+            r#"<img src="x"><b>API</b>"#
+        );
+        assert_eq!(
+            sanitize_xhtml(noscript, &config),
+            r#"<img src="x" /><b>API</b>"#
+        );
+        assert_eq!(
+            sanitize_xhtml("<p><b>API<br><small>domain</small></p>", &config),
+            "<p><b>API<br /><small>domain</small></b></p>"
+        );
+    }
+
+    #[test]
+    fn xhtml_projection_owns_namespaces_entities_and_attribute_quoting() {
+        let config = cfg_strict();
+        assert_eq!(
+            sanitize_xhtml("<p title='a &amp; b'>x&nbsp;<br>1 < 2</p>", &config),
+            "<p title=\"a &amp; b\">x\u{a0}<br />1 &lt; 2</p>"
+        );
+        assert_eq!(
+            sanitize_xhtml(
+                "<svg xmlns='http://www.w3.org/2000/svg'><g xlink:href='#x'/></svg>",
+                &config
+            ),
+            "<svg xmlns=\"http://www.w3.org/2000/svg\"><g xmlns:xlink=\"http://www.w3.org/1999/xlink\" xlink:href=\"#x\"></g></svg>"
+        );
+    }
+
+    #[test]
+    fn recovered_tree_removes_foreign_and_rawtext_content_by_pinned_policy() {
+        let config = cfg_strict();
+        assert_eq!(
+            sanitize_text("<xmp><img src=x onerror=alert(1)></xmp><b>after", &config),
+            "<b>after</b>"
+        );
+        assert_eq!(
+            sanitize_text("<circle>not SVG</circle><svg><circle/></svg>", &config),
+            "<svg><circle></circle></svg>"
+        );
+        assert_eq!(
+            sanitize_text("<svg><unknown><circle/></unknown></svg>", &config),
+            "<svg><circle></circle></svg>"
+        );
+        assert_eq!(
+            sanitize_xhtml(
+                "<b title='--&gt;' data-x='&lt;/script&gt;'>safe</b>",
+                &config
+            ),
+            "<b>safe</b>"
+        );
+        let config = MermaidConfig::from_value(
+            json!({"securityLevel":"loose","dompurifyConfig":{"ADD_TAGS":["xmp"]}}),
+        );
+        assert_eq!(
+            sanitize_text("<xmp>a & b</xmp>", &config),
+            "<xmp>a & b</xmp>"
+        );
+        assert_eq!(
+            sanitize_xhtml("<xmp>a & b</xmp>", &config),
+            "<xmp>a &amp; b</xmp>"
+        );
+        let config = MermaidConfig::from_value(
+            json!({"securityLevel":"loose","dompurifyConfig":{"FORBID_CONTENTS":[]}}),
+        );
+        assert_eq!(
+            sanitize_text("<xmp><img src=x onerror=alert(1)></xmp>", &config),
+            ""
+        );
+    }
+
+    #[test]
+    fn xhtml_serialization_drops_unbound_or_non_xml_attribute_names() {
+        let config = MermaidConfig::from_value(json!({"securityLevel":"loose","dompurifyConfig":{
+            "ADD_ATTR":["custom:attr", "a?b", "1attr"]
+        }}));
+        assert_eq!(
+            sanitize_xhtml("<b custom:attr='x' a?b='y' 1attr='z'>ok</b>", &config),
+            "<b>ok</b>"
+        );
+        assert_eq!(
+            sanitize_xhtml("<b title='a&#10;b&#9;c&#13;d'>ok</b>", &config),
+            "<b title=\"a&#10;b&#9;c&#13;d\">ok</b>"
+        );
+    }
+
+    #[test]
+    fn explicitly_allowed_noscript_cannot_reactivate_serialized_markup() {
+        let config = MermaidConfig::from_value(
+            json!({"securityLevel":"loose", "dompurifyConfig":{"ADD_TAGS":["noscript", "xmp"]}}),
+        );
+        let text = "<body><noscript>&lt;img src=x onerror=alert(1)&gt;</noscript></body>";
+        assert_eq!(
+            sanitize_text(text, &config),
+            "<noscript>&lt;img src=x onerror=alert(1)&gt;</noscript>"
+        );
+        for input in [
+            "<body><noscript>&lt;/noscript&gt;&lt;img src=x onerror=alert(1)&gt;</noscript></body>",
+            "<body><noscript><img src=x onerror=alert(1)></noscript></body>",
+            "<xmp><img src=x onerror=alert(1)></xmp>",
+        ] {
+            assert_eq!(sanitize_text(input, &config), "", "{input}");
+            assert_eq!(sanitize_xhtml(input, &config), "", "{input}");
+        }
+    }
+
+    #[test]
+    fn html5_fragment_lifecycle_is_stack_safe_on_success_and_parse_rejection() {
+        // HTML5 tokenizer/tree-builder debug frames exceed 64 KiB even for one span.
+        // Optimized builds retain the 64 KiB canary; both profiles test identical depth.
+        let stack_bytes = if cfg!(debug_assertions) {
+            512 * 1024
+        } else {
+            64 * 1024
+        };
+        std::thread::Builder::new()
+            .stack_size(stack_bytes)
+            .spawn(|| {
+                let source = format!("{}API{}", "<span>".repeat(2048), "</span>".repeat(2048));
+                let output = sanitize_xhtml(&source, &cfg_strict());
+                assert_eq!(output, source);
+                struct Reject(usize);
+                impl SanitizeOutputSink for Reject {
+                    type Error = ();
+                    fn check_parse_storage(
+                        &self,
+                        _: usize,
+                        nodes: usize,
+                        _: usize,
+                    ) -> Result<(), ()> {
+                        if nodes > self.0 { Err(()) } else { Ok(()) }
+                    }
+                    fn checked_output_len(
+                        &self,
+                        current: usize,
+                        additional: usize,
+                    ) -> Result<usize, ()> {
+                        Ok(current + additional)
+                    }
+                    fn string_with_capacity(&self, _: usize) -> Result<String, ()> {
+                        Ok(String::new())
+                    }
+                    fn output_buffer(&self, _: usize) -> Result<Vec<u8>, ()> {
+                        Ok(Vec::new())
+                    }
+                    fn push_output_chunk(
+                        &self,
+                        output: &mut Vec<u8>,
+                        chunk: &[u8],
+                    ) -> Result<(), ()> {
+                        output.extend_from_slice(chunk);
+                        Ok(())
+                    }
+                }
+                assert!(matches!(
+                    sanitize_xhtml_with_sink(&source, &cfg_strict(), &Reject(512)),
+                    Err(SanitizeFailure::Output(()))
+                ));
+                #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+                enum OutputError {
+                    Cancelled,
+                    Refused,
+                }
+                struct RejectOutput(OutputError);
+                impl SanitizeOutputSink for RejectOutput {
+                    type Error = OutputError;
+                    fn checked_output_len(
+                        &self,
+                        current: usize,
+                        additional: usize,
+                    ) -> Result<usize, Self::Error> {
+                        Ok(current + additional)
+                    }
+                    fn string_with_capacity(&self, _: usize) -> Result<String, Self::Error> {
+                        Ok(String::new())
+                    }
+                    fn output_buffer(&self, _: usize) -> Result<Vec<u8>, Self::Error> {
+                        Ok(Vec::new())
+                    }
+                    fn push_output_chunk(
+                        &self,
+                        _: &mut Vec<u8>,
+                        _: &[u8],
+                    ) -> Result<(), Self::Error> {
+                        Err(self.0)
+                    }
+                }
+                for error in [OutputError::Cancelled, OutputError::Refused] {
+                    // The full deep tree exists before the first serializer output
+                    // callback fails. Both errors must survive flat-tree cleanup.
+                    assert_eq!(
+                        sanitize_xhtml_with_sink(&source, &cfg_strict(), &RejectOutput(error),),
+                        Err(SanitizeFailure::Output(error))
+                    );
+                }
+                for input in [
+                    "<b><p><i>one</b>two</i></p>",
+                    "<table><b><tr><td><i>one</b>two</table>",
+                    "<template><table><b><tr><td>one</template>",
+                    "<svg><foreignObject><b><p>one</b></foreignObject></svg>",
+                ] {
+                    for limit in 0..24 {
+                        // Refused tree callbacks must remain inert while the HTML5
+                        // builder finishes the current chunk's reconstruction rules.
+                        let _ = sanitize_xhtml_with_sink(input, &cfg_strict(), &Reject(limit));
+                    }
+                }
+                assert_eq!(sanitize_xhtml("<b>after", &cfg_strict()), "<b>after</b>");
+            })
+            .unwrap()
+            .join()
+            .unwrap();
     }
 
     #[test]
@@ -1364,18 +1545,17 @@ mod tests {
     }
 
     #[test]
-    fn ambiguous_markup_fails_closed_in_strict_and_loose_modes() {
+    fn malformed_select_markup_is_recovered_without_executable_children() {
         let payload = "<select><xmp><script>alert(1)</script></xmp></select>";
         for security_level in ["strict", "loose"] {
             let config = MermaidConfig::from_value(json!({
                 "securityLevel": security_level,
                 "htmlLabels": true
             }));
-            assert_eq!(
-                sanitize_text_with_sink(payload, &config, &StringOutputSink),
-                Err(SanitizeFailure::RejectedInput)
-            );
-            assert_eq!(sanitize_text(payload, &config), "");
+            let recovered = sanitize_text_with_sink(payload, &config, &StringOutputSink).unwrap();
+            assert!(!recovered.contains("<script"), "{recovered}");
+            assert!(recovered.starts_with("<select>"), "{recovered}");
+            assert!(recovered.ends_with("</select>"), "{recovered}");
         }
     }
 
@@ -1493,7 +1673,7 @@ mod tests {
         assert_eq!(sanitize_text(source, &cfg), source);
         assert_eq!(
             sanitize_text_as_html_fragment(source, &cfg),
-            "x &lt; y and y &gt; z"
+            "x &lt; y and y > z"
         );
         assert_eq!(
             sanitize_text_as_html_fragment(r#"<span title="a > b">x > y</span>"#, &cfg),
@@ -1794,5 +1974,41 @@ mod tests {
             "dompurifyConfig": { "KEEP_CONTENT": false }
         }));
         assert_eq!(sanitize_text("<custom-tag>x</custom-tag>", &cfg), "");
+    }
+
+    #[test]
+    fn html5_table_policy_keeps_explicit_and_implicit_tbody() {
+        let config = MermaidConfig::from_value(json!({
+            "securityLevel": "loose",
+            "flowchart": { "htmlLabels": true },
+            "dompurifyConfig": {
+                "FORBID_TAGS": ["tbody"],
+                "KEEP_CONTENT": false
+            }
+        }));
+        let expected = "<table><tbody><tr><td>one</td></tr></tbody></table>";
+        for input in [
+            "<table><tr><td>one</td></tr></table>",
+            "<table><tbody><tr><td>one</td></tr></tbody></table>",
+        ] {
+            assert_eq!(sanitize_text(input, &config), expected);
+            assert_eq!(sanitize_xhtml(input, &config), expected);
+        }
+    }
+
+    #[test]
+    fn html5_core_sink_bounds_ancestor_scan_amplification() {
+        let config = MermaidConfig::from_value(json!({"securityLevel": "loose"}));
+        let span = format!("{}API{}", "<span>".repeat(4096), "</span>".repeat(4096));
+        assert_eq!(
+            sanitize_xhtml_with_sink(&span, &config, &StringOutputSink).unwrap(),
+            span
+        );
+        let div = format!("{}API{}", "<div>".repeat(4096), "</div>".repeat(4096));
+        assert!(matches!(
+            sanitize_xhtml_with_sink(&div, &config, &StringOutputSink),
+            Err(SanitizeFailure::RejectedInput)
+        ));
+        assert_eq!(sanitize_text(&div, &config), "");
     }
 }

@@ -1,89 +1,89 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "s3",
-        "type": "service",
         "edges": [],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "s3",
+        "in": null,
         "title": "Cloud Store",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "ec2",
-        "type": "service",
         "edges": [],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "ec2",
+        "in": null,
         "title": "Server",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [],
         "icon": "logos:aws-api-gateway",
         "iconText": null,
+        "id": "api",
+        "in": null,
         "title": "Api Gateway",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "fa",
-        "type": "service",
         "edges": [],
         "icon": "fa:image",
         "iconText": null,
+        "id": "fa",
+        "in": null,
         "title": "Font Awesome Icon",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "s3",
-        "type": "service",
         "edges": [],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "s3",
+        "in": null,
         "title": "Cloud Store",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "ec2",
-        "type": "service",
         "edges": [],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "ec2",
+        "in": null,
         "title": "Server",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [],
         "icon": "logos:aws-api-gateway",
         "iconText": null,
+        "id": "api",
+        "in": null,
         "title": "Api Gateway",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "fa",
-        "type": "service",
         "edges": [],
         "icon": "fa:image",
         "iconText": null,
+        "id": "fa",
+        "in": null,
         "title": "Font Awesome Icon",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

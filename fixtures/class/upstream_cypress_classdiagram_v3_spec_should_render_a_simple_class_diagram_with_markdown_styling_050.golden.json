@@ -1,111 +1,111 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Class10": {
-        "id": "Class10",
-        "type": "",
-        "label": "Class10",
-        "text": "Class10",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "_italicmethod_",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "_italicmethod_()",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "__boldmethod__",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "__boldmethod__()",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "_+_swim_",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "a_",
-            "displayText": "_+_swim_() : a_",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "__+quack",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "test__",
-            "displayText": "__+quack() : test__",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "attribute *italic*",
-            "classifier": "*",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+attribute *italic*",
-            "cssStyle": "font-style:italic;"
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "~",
-            "id": "attribute **bold**",
-            "classifier": "*",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "~attribute **bold**",
-            "cssStyle": "font-style:italic;"
-          }
-        ],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Class10-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Class10",
+        "label": "Class10",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "*",
+            "cssStyle": "font-style:italic;",
+            "displayText": "+attribute *italic*",
+            "id": "attribute *italic*",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "*",
+            "cssStyle": "font-style:italic;",
+            "displayText": "~attribute **bold**",
+            "id": "attribute **bold**",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "~"
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "_italicmethod_()",
+            "id": "_italicmethod_",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "__boldmethod__()",
+            "id": "__boldmethod__",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "_+_swim_() : a_",
+            "id": "_+_swim_",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "a_",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "__+quack() : test__",
+            "id": "__+quack",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "test__",
+            "visibility": ""
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Class10",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

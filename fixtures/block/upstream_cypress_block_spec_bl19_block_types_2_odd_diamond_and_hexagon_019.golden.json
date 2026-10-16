@@ -1,84 +1,84 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
+        "children": [],
         "id": "A",
-        "type": "rect_left_inv_arrow",
         "label": "rect_left_inv_arrow",
-        "children": [],
+        "type": "rect_left_inv_arrow",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B",
-        "type": "diamond",
         "label": "diamond",
-        "children": [],
+        "type": "diamond",
         "widthInColumns": 1
       },
       {
-        "id": "C",
-        "type": "hexagon",
-        "label": "hexagon",
         "children": [],
+        "id": "C",
+        "label": "hexagon",
+        "type": "hexagon",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "A",
-            "type": "rect_left_inv_arrow",
             "label": "rect_left_inv_arrow",
-            "children": [],
+            "type": "rect_left_inv_arrow",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "B",
-            "type": "diamond",
             "label": "diamond",
-            "children": [],
+            "type": "diamond",
             "widthInColumns": 1
           },
           {
-            "id": "C",
-            "type": "hexagon",
-            "label": "hexagon",
             "children": [],
+            "id": "C",
+            "label": "hexagon",
+            "type": "hexagon",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "A",
-        "type": "rect_left_inv_arrow",
         "label": "rect_left_inv_arrow",
-        "children": [],
+        "type": "rect_left_inv_arrow",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B",
-        "type": "diamond",
         "label": "diamond",
-        "children": [],
+        "type": "diamond",
         "widthInColumns": 1
       },
       {
-        "id": "C",
-        "type": "hexagon",
-        "label": "hexagon",
         "children": [],
+        "id": "C",
+        "label": "hexagon",
+        "type": "hexagon",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

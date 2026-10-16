@@ -3,21 +3,21 @@
   "layout": {
     "PieDiagram": {
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
         "max_x": 450.0,
-        "max_y": 450.0
+        "max_y": 450.0,
+        "min_x": 0.0,
+        "min_y": 0.0
       },
-      "title": "sample title",
       "center_x": 225.0,
       "center_y": 225.0,
-      "radius": 185.0,
-      "outer_radius": 186.0,
-      "legend_x": 216.0,
+      "legend_items": [],
       "legend_start_y": -11.0,
       "legend_step_y": 22.0,
+      "legend_x": 216.0,
+      "outer_radius": 186.0,
+      "radius": 185.0,
       "slices": [],
-      "legend_items": []
+      "title": "sample title"
     }
   }
 }

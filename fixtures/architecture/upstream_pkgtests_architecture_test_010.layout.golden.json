@@ -2,9 +2,9 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [],
+      "bounds": null,
       "edges": [],
-      "bounds": null
+      "nodes": []
     }
   }
 }

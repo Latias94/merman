@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "U",
       "W",
@@ -12,120 +10,149 @@
       "D"
     ],
     "actors": {
-      "U": {
-        "name": "U",
-        "description": "User",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "W": {
-        "name": "W",
-        "description": "Web",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "A": {
-        "name": "A",
         "description": "API",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "D": {
-        "name": "D",
         "description": "DB",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "D",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "U": {
+        "description": "User",
+        "links": {},
+        "name": "U",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "W": {
+        "description": "Web",
+        "links": {},
+        "name": "W",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [
+      {
+        "actorKeys": [
+          "U",
+          "W"
+        ],
+        "fill": "rgb(240, 240, 255)",
+        "name": "Frontend",
+        "wrap": false
+      },
+      {
+        "actorKeys": [
+          "A",
+          "D"
+        ],
+        "fill": "rgb(255, 240, 240)",
+        "name": "Backend",
+        "wrap": false
+      }
+    ],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": "U",
-        "to": "W",
+        "id": "0",
         "message": "Login",
-        "wrap": false,
+        "to": "W",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "W",
         "id": "1",
-        "from": "W",
-        "to": "W",
         "message": "validate input",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "2",
-        "from": "W",
-        "to": "A",
-        "message": "POST /login",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "A",
-        "to": "D",
-        "message": "query user",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "A",
-        "to": "D",
-        "message": "audit + rate limit",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "5",
-        "from": "D",
-        "to": "A",
-        "message": "user row",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "A",
+        "placement": 1,
         "to": "W",
-        "message": "200 OK",
-        "wrap": false,
-        "type": 1,
-        "activate": false
+        "type": 2,
+        "wrap": false
       },
       {
-        "id": "7",
+        "activate": false,
         "from": "W",
-        "to": "U",
-        "message": "redirect",
-        "wrap": false,
+        "id": "2",
+        "message": "POST /login",
+        "to": "A",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "3",
+        "message": "query user",
+        "to": "D",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "4",
+        "message": "audit + rate limit",
+        "placement": 2,
+        "to": "D",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "D",
+        "id": "5",
+        "message": "user row",
+        "to": "A",
         "type": 1,
-        "activate": false
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "6",
+        "message": "200 OK",
+        "to": "W",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "7",
+        "message": "redirect",
+        "to": "U",
+        "type": 1,
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "W",
-        "placement": 1,
         "message": "validate input",
+        "placement": 1,
         "wrap": false
       },
       {
@@ -133,39 +160,12 @@
           "A",
           "D"
         ],
-        "placement": 2,
         "message": "audit + rate limit",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [
-      {
-        "name": "Frontend",
-        "wrap": false,
-        "fill": "rgb(240, 240, 255)",
-        "actorKeys": [
-          "U",
-          "W"
-        ]
-      },
-      {
-        "name": "Backend",
-        "wrap": false,
-        "fill": "rgb(255, 240, 240)",
-        "actorKeys": [
-          "A",
-          "D"
-        ]
-      }
-    ],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

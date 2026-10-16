@@ -3,74 +3,74 @@
   "layout": {
     "PieDiagram": {
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
         "max_x": 578.3,
-        "max_y": 450.0
+        "max_y": 450.0,
+        "min_x": 0.0,
+        "min_y": 0.0
       },
-      "title": "What Voldemort doesn't have?",
       "center_x": 225.0,
       "center_y": 225.0,
-      "radius": 185.0,
-      "outer_radius": 186.0,
-      "legend_x": 216.0,
-      "legend_start_y": -33.0,
-      "legend_step_y": 22.0,
-      "slices": [
-        {
-          "label": "FRIENDS",
-          "value": 2.0,
-          "start_angle": 0.0,
-          "end_angle": 0.251,
-          "is_full_circle": false,
-          "percent": 4.0,
-          "text_x": 17.39,
-          "text_y": -137.656,
-          "fill": "#ECECFF"
-        },
-        {
-          "label": "FAMILY",
-          "value": 3.0,
-          "start_angle": 0.251,
-          "end_angle": 0.628,
-          "is_full_circle": false,
-          "percent": 6.0,
-          "text_x": 59.077,
-          "text_y": -125.545,
-          "fill": "#ffffde"
-        },
-        {
-          "label": "NOSE",
-          "value": 45.0,
-          "start_angle": 0.628,
-          "end_angle": 6.283,
-          "is_full_circle": false,
-          "percent": 90.0,
-          "text_x": -42.876,
-          "text_y": 131.959,
-          "fill": "hsl(80, 100%, 56.2745098039%)"
-        }
-      ],
       "legend_items": [
         {
+          "fill": "#ECECFF",
           "label": "FRIENDS",
           "value": 2.0,
-          "fill": "#ECECFF",
           "y": -33.0
         },
         {
+          "fill": "#ffffde",
           "label": "FAMILY",
           "value": 3.0,
-          "fill": "#ffffde",
           "y": -11.0
         },
         {
+          "fill": "hsl(80, 100%, 56.2745098039%)",
           "label": "NOSE",
           "value": 45.0,
-          "fill": "hsl(80, 100%, 56.2745098039%)",
           "y": 11.0
         }
-      ]
+      ],
+      "legend_start_y": -33.0,
+      "legend_step_y": 22.0,
+      "legend_x": 216.0,
+      "outer_radius": 186.0,
+      "radius": 185.0,
+      "slices": [
+        {
+          "end_angle": 0.251,
+          "fill": "#ECECFF",
+          "is_full_circle": false,
+          "label": "FRIENDS",
+          "percent": 4.0,
+          "start_angle": 0.0,
+          "text_x": 17.39,
+          "text_y": -137.656,
+          "value": 2.0
+        },
+        {
+          "end_angle": 0.628,
+          "fill": "#ffffde",
+          "is_full_circle": false,
+          "label": "FAMILY",
+          "percent": 6.0,
+          "start_angle": 0.251,
+          "text_x": 59.077,
+          "text_y": -125.545,
+          "value": 3.0
+        },
+        {
+          "end_angle": 6.283,
+          "fill": "hsl(80, 100%, 56.2745098039%)",
+          "is_full_circle": false,
+          "label": "NOSE",
+          "percent": 90.0,
+          "start_angle": 0.628,
+          "text_x": -42.876,
+          "text_y": 131.959,
+          "value": 45.0
+        }
+      ],
+      "title": "What Voldemort doesn't have?"
     }
   }
 }

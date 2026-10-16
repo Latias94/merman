@@ -1,114 +1,114 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Container",
-    "title": "C4Container sprite (positional) on Container",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "p1",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": "Customer"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "A customer of the bank."
-        }
-      },
-      {
-        "alias": "c1",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Single-Page App"
-        },
-        "wrap": false,
-        "sprite": "users",
-        "tags": "frontend",
-        "link": "https://example.com/spa",
-        "techn": {
-          "text": "JavaScript, Angular"
-        },
-        "descr": {
-          "text": "Provides Internet banking functionality."
-        }
-      },
-      {
-        "alias": "db",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container_db"
-        },
-        "label": {
-          "text": "Database"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "PostgreSQL"
-        },
-        "descr": {
-          "text": "Stores account data."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       }
     ],
+    "c4Type": "C4Container",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "p1",
-        "to": "c1",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
         "techn": {
           "text": "HTTPS"
         },
-        "descr": {
-          "text": ""
-        },
+        "to": "c1",
+        "type": "rel",
         "wrap": false
       },
       {
+        "descr": {
+          "text": ""
+        },
         "from": "c1",
-        "to": "db",
-        "type": "rel",
         "label": {
           "text": "Reads/Writes"
         },
         "techn": {
           "text": "JDBC"
         },
+        "to": "db",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "p1",
         "descr": {
-          "text": ""
+          "text": "A customer of the bank."
+        },
+        "label": {
+          "text": "Customer"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "c1",
+        "descr": {
+          "text": "Provides Internet banking functionality."
+        },
+        "label": {
+          "text": "Single-Page App"
+        },
+        "link": "https://example.com/spa",
+        "parentBoundary": "global",
+        "sprite": "users",
+        "tags": "frontend",
+        "techn": {
+          "text": "JavaScript, Angular"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "db",
+        "descr": {
+          "text": "Stores account data."
+        },
+        "label": {
+          "text": "Database"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "PostgreSQL"
+        },
+        "typeC4Shape": {
+          "text": "container_db"
         },
         "wrap": false
       }
-    ]
+    ],
+    "title": "C4Container sprite (positional) on Container",
+    "type": "c4",
+    "wrap": false
   }
 }

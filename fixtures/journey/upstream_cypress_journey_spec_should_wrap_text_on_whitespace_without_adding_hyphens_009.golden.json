@@ -1,26 +1,26 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "Whitespace Test",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "Gustavo Fring is played by Giancarlo Esposito and is a character in Breaking Bad."
+    ],
     "sections": [
       "Test"
     ],
     "tasks": [
       {
-        "score": 5,
         "people": [
           "Gustavo Fring is played by Giancarlo Esposito and is a character in Breaking Bad."
         ],
+        "score": 5,
         "section": "Test",
-        "type": "Test",
-        "task": "    TextWithSpaces"
+        "task": "    TextWithSpaces",
+        "type": "Test"
       }
     ],
-    "actors": [
-      "Gustavo Fring is played by Giancarlo Esposito and is a character in Breaking Bad."
-    ]
+    "title": "Whitespace Test",
+    "type": "journey"
   }
 }

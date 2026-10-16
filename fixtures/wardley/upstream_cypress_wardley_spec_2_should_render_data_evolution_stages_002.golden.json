@@ -1,74 +1,91 @@
 {
   "diagramType": "wardley",
   "model": {
-    "type": "wardley",
-    "title": "Data Evolution Pipeline",
-    "accTitle": null,
     "accDescr": null,
-    "nodes": [
-      {
-        "id": "User Needs",
-        "label": "User Needs",
-        "x": 5.0,
-        "y": 95.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "Data Collection",
-        "label": "Data Collection",
-        "x": 15.0,
-        "y": 80.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "Custom Analytics",
-        "label": "Custom Analytics",
-        "x": 35.0,
-        "y": 70.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "Standardized Reports",
-        "label": "Standardized Reports",
-        "x": 65.0,
-        "y": 65.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "Commodity Storage",
-        "label": "Commodity Storage",
-        "x": 85.0,
-        "y": 60.0,
-        "className": "component",
-        "inertia": false
-      }
-    ],
+    "accTitle": null,
+    "accelerators": [],
+    "annotations": [],
+    "annotationsBox": null,
+    "axes": {
+      "stages": [
+        "Unmodelled",
+        "Divergent",
+        "Convergent",
+        "Modelled"
+      ]
+    },
+    "deaccelerators": [],
     "links": [
       {
+        "dashed": false,
         "source": "User Needs",
-        "target": "Data Collection",
-        "dashed": false
+        "target": "Data Collection"
       },
       {
+        "dashed": false,
         "source": "Data Collection",
-        "target": "Custom Analytics",
-        "dashed": false
+        "target": "Custom Analytics"
       },
       {
+        "dashed": false,
         "source": "Custom Analytics",
-        "target": "Standardized Reports",
-        "dashed": false
+        "target": "Standardized Reports"
       },
       {
+        "dashed": false,
         "source": "Standardized Reports",
-        "target": "Commodity Storage",
-        "dashed": false
+        "target": "Commodity Storage"
       }
     ],
+    "nodes": [
+      {
+        "className": "component",
+        "id": "User Needs",
+        "inertia": false,
+        "label": "User Needs",
+        "x": 5.0,
+        "y": 95.0
+      },
+      {
+        "className": "component",
+        "id": "Data Collection",
+        "inertia": false,
+        "label": "Data Collection",
+        "x": 15.0,
+        "y": 80.0
+      },
+      {
+        "className": "component",
+        "id": "Custom Analytics",
+        "inertia": false,
+        "label": "Custom Analytics",
+        "x": 35.0,
+        "y": 70.0
+      },
+      {
+        "className": "component",
+        "id": "Standardized Reports",
+        "inertia": false,
+        "label": "Standardized Reports",
+        "x": 65.0,
+        "y": 65.0
+      },
+      {
+        "className": "component",
+        "id": "Commodity Storage",
+        "inertia": false,
+        "label": "Commodity Storage",
+        "x": 85.0,
+        "y": 60.0
+      }
+    ],
+    "notes": [],
+    "pipelines": [],
+    "size": {
+      "height": 800.0,
+      "width": 1100.0
+    },
+    "title": "Data Evolution Pipeline",
     "trends": [
       {
         "nodeId": "Custom Analytics",
@@ -81,23 +98,6 @@
         "targetY": 65.0
       }
     ],
-    "pipelines": [],
-    "annotations": [],
-    "notes": [],
-    "accelerators": [],
-    "deaccelerators": [],
-    "annotationsBox": null,
-    "axes": {
-      "stages": [
-        "Unmodelled",
-        "Divergent",
-        "Convergent",
-        "Modelled"
-      ]
-    },
-    "size": {
-      "width": 1100.0,
-      "height": 800.0
-    }
+    "type": "wardley"
   }
 }

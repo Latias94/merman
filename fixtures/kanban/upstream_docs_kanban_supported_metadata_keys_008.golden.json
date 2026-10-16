@@ -1,46 +1,46 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "todo",
-        "label": "Todo",
-        "level": 0,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "todo",
-        "label": "Todo",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Todo",
         "level": 0,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "id3",
-        "parentId": "todo",
-        "label": "Update Database Function",
-        "isGroup": false,
-        "ticket": "MC-2037",
-        "priority": "High",
         "assigned": "knsv",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 2,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "id3",
+        "isGroup": false,
+        "label": "Update Database Function",
+        "level": 2,
+        "parentId": "todo",
+        "priority": "High",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "MC-2037"
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "todo",
+        "isGroup": false,
+        "label": "Todo",
+        "level": 0,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

@@ -183,8 +183,7 @@ pub(crate) use label::{
     FlowchartLabelMetricsRequest, FlowchartSvgWidthMode, flowchart_label_is_empty_for_render,
     flowchart_label_metrics_for_layout, flowchart_label_plain_text_for_layout,
     flowchart_label_text_is_empty_for_mode, flowchart_node_label_min_width,
-    flowchart_node_svg_width_mode, flowchart_non_markdown_label_for_html,
-    flowchart_trim_html_collapsible_whitespace,
+    flowchart_node_svg_width_mode,
 };
 #[cfg(all(
     test,
@@ -225,7 +224,7 @@ pub(crate) use style::{
     flowchart_is_source_spelled_label_style_key, flowchart_split_mermaid_style_decls,
 };
 pub(crate) use svg_label_artifact::{
-    FlowchartNodeSourceTypography, FlowchartPreparedMathResolution, FlowchartSvgLabelOwner,
+    FlowchartNodeSourceTypography, FlowchartPreparedLabelResolution, FlowchartSvgLabelOwner,
     FlowchartSvgLabelRenderPlan, FlowchartSvgLabelSidecar, FlowchartSvgLabelSidecarBuilder,
     measure_flowchart_svg_label_for_layout_with_metrics_style_and_terminal_foreground,
     measure_flowchart_svg_label_for_layout_with_terminal_foreground,

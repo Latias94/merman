@@ -2,31 +2,26 @@
   "diagramType": "requirement",
   "layout": {
     "RequirementDiagram": {
-      "nodes": [
-        {
-          "id": "req2",
-          "x": 44.063,
-          "y": 12.0,
-          "width": 125.0,
-          "height": 166.0,
-          "is_cluster": false
-        },
-        {
-          "id": "e1",
-          "x": 12.0,
-          "y": 279.0,
-          "width": 189.125,
-          "height": 124.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 201.125,
+        "max_y": 403.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "req2-e1-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "req2",
-          "to": "e1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "req2-e1-0",
+          "label": {
+            "height": 21.0,
+            "width": 83.578,
+            "x": 106.352,
+            "y": 228.5
+          },
           "points": [
             {
               "x": 106.563,
@@ -37,27 +32,32 @@
               "y": 279.0
             }
           ],
-          "label": {
-            "x": 106.352,
-            "y": 228.5,
-            "width": 83.578,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "e1",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 201.125,
-        "max_y": 403.0
-      }
+      "nodes": [
+        {
+          "height": 166.0,
+          "id": "req2",
+          "is_cluster": false,
+          "width": 125.0,
+          "x": 44.063,
+          "y": 12.0
+        },
+        {
+          "height": 124.0,
+          "id": "e1",
+          "is_cluster": false,
+          "width": 189.125,
+          "x": 12.0,
+          "y": 279.0
+        }
+      ]
     }
   }
 }

@@ -1,21 +1,16 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Git Issues - days since last update",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": " X",
+    "accTitle": null,
     "axisFormat": "%s",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": " X",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Issue19062",
       "Issue19401",
@@ -25,152 +20,157 @@
     ],
     "tasks": [
       {
-        "section": "Issue19062",
-        "type": "Issue19062",
-        "task": "71   ",
-        "id": "task1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 71000,
+        "id": "task1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": 0, 71",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "0"
-          },
           "endTime": {
             "data": "71"
+          },
+          "startTime": {
+            "startData": "0",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue19062",
         "startTime": 0,
-        "endTime": 71000
+        "task": "71   ",
+        "type": "Issue19062",
+        "vert": false
       },
       {
-        "section": "Issue19401",
-        "type": "Issue19401",
-        "task": "36   ",
-        "id": "task2",
-        "prevTaskId": "task1",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 36000,
+        "id": "task2",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "task1",
+        "processed": true,
         "raw": {
           "data": ": 0, 36",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "0"
-          },
           "endTime": {
             "data": "36"
+          },
+          "startTime": {
+            "startData": "0",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue19401",
         "startTime": 0,
-        "endTime": 36000
+        "task": "36   ",
+        "type": "Issue19401",
+        "vert": false
       },
       {
-        "section": "Issue193",
-        "type": "Issue193",
-        "task": "34   ",
-        "id": "task3",
-        "prevTaskId": "task2",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 34000,
+        "id": "task3",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "task2",
+        "processed": true,
         "raw": {
           "data": ": 0, 34",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "0"
-          },
           "endTime": {
             "data": "34"
+          },
+          "startTime": {
+            "startData": "0",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue193",
         "startTime": 0,
-        "endTime": 34000
+        "task": "34   ",
+        "type": "Issue193",
+        "vert": false
       },
       {
-        "section": "Issue7441",
-        "type": "Issue7441",
-        "task": "9    ",
-        "id": "task4",
-        "prevTaskId": "task3",
-        "order": 3,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 9000,
+        "id": "task4",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "task3",
+        "processed": true,
         "raw": {
           "data": ": 0, 9",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "0"
-          },
           "endTime": {
             "data": "9"
+          },
+          "startTime": {
+            "startData": "0",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue7441",
         "startTime": 0,
-        "endTime": 9000
+        "task": "9    ",
+        "type": "Issue7441",
+        "vert": false
       },
       {
-        "section": "Issue1300",
-        "type": "Issue1300",
-        "task": "5    ",
-        "id": "task5",
-        "prevTaskId": "task4",
-        "order": 4,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": 5000,
+        "id": "task5",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 4,
+        "prevTaskId": "task4",
+        "processed": true,
         "raw": {
           "data": ": 0, 5",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "0"
-          },
           "endTime": {
             "data": "5"
+          },
+          "startTime": {
+            "startData": "0",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue1300",
         "startTime": 0,
-        "endTime": 5000
+        "task": "5    ",
+        "type": "Issue1300",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Git Issues - days since last update",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

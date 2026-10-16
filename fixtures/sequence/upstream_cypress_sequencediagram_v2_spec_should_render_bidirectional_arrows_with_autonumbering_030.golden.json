@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,107 +10,109 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Charlie": {
-        "name": "Charlie",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Charlie",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": {
-          "visible": true
-        },
-        "wrap": false,
-        "type": 26,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Bidirectional solid left to right",
-        "wrap": false,
-        "type": 33,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Bidirectional solid right to left",
-        "wrap": false,
-        "type": 33,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Alice",
-        "to": "Charlie",
-        "message": "Bidirectional dotted left to right",
-        "wrap": false,
-        "type": 34,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "Charlie",
-        "to": "Alice",
-        "message": "Bidirectional dotted right to left",
-        "wrap": false,
-        "type": 34,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Bob",
-        "to": "Charlie",
-        "message": "Bidirectional solid",
-        "wrap": false,
-        "type": 33,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "Charlie",
-        "to": "Bob",
-        "message": "Bidirectional dotted",
-        "wrap": false,
-        "type": 34,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": {
+          "visible": true
+        },
+        "to": null,
+        "type": 26,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "Bidirectional solid left to right",
+        "to": "Bob",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "Bidirectional solid right to left",
+        "to": "Alice",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "3",
+        "message": "Bidirectional dotted left to right",
+        "to": "Charlie",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Charlie",
+        "id": "4",
+        "message": "Bidirectional dotted right to left",
+        "to": "Alice",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "5",
+        "message": "Bidirectional solid",
+        "to": "Charlie",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Charlie",
+        "id": "6",
+        "message": "Bidirectional dotted",
+        "to": "Bob",
+        "type": 34,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

@@ -3194,7 +3194,9 @@ pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError
     let html_tags = extract_frozen_string_array(&src_text, "html$1")?;
     let svg_tags = extract_frozen_string_array(&src_text, "svg$1")?;
     let svg_filters = extract_frozen_string_array(&src_text, "svgFilters")?;
+    let svg_disallowed = extract_frozen_string_array(&src_text, "svgDisallowed")?;
     let mathml_tags = extract_frozen_string_array(&src_text, "mathMl$1")?;
+    let mathml_disallowed = extract_frozen_string_array(&src_text, "mathMlDisallowed")?;
 
     let html_attrs = extract_frozen_string_array(&src_text, "html")?;
     let svg_attrs = extract_frozen_string_array(&src_text, "svg")?;
@@ -3205,6 +3207,33 @@ pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError
         extract_add_to_set_string_array(&src_text, "DEFAULT_DATA_URI_TAGS")?;
     let default_uri_safe_attrs =
         extract_add_to_set_string_array(&src_text, "DEFAULT_URI_SAFE_ATTRIBUTES")?;
+    let forbid_contents = unique_sorted_lowercase(extract_add_to_set_string_array(
+        &src_text,
+        "DEFAULT_FORBID_CONTENTS",
+    )?);
+    let common_svg_html_elements = unique_sorted_lowercase(extract_add_to_set_string_array(
+        &src_text,
+        "COMMON_SVG_AND_HTML_ELEMENTS",
+    )?);
+    let html_integration_points = unique_sorted_lowercase(extract_frozen_string_array(
+        &src_text,
+        "DEFAULT_HTML_INTEGRATION_POINTS",
+    )?);
+    let mathml_text_integration_points = unique_sorted_lowercase(extract_frozen_string_array(
+        &src_text,
+        "DEFAULT_MATHML_TEXT_INTEGRATION_POINTS",
+    )?);
+
+    // Namespace validation needs the complete vocabulary, including tags removed by policy.
+    let all_svg_tags = unique_sorted_lowercase(
+        svg_tags
+            .iter()
+            .chain(&svg_filters)
+            .chain(&svg_disallowed)
+            .cloned(),
+    );
+    let all_mathml_tags =
+        unique_sorted_lowercase(mathml_tags.iter().chain(&mathml_disallowed).cloned());
 
     let allowed_tags = unique_sorted_lowercase(
         html_tags
@@ -3231,12 +3260,21 @@ pub(crate) fn gen_dompurify_defaults(args: Vec<String>) -> Result<(), XtaskError
         source,
     })?;
 
-    let rust = render_dompurify_defaults_rs(
-        &allowed_tags,
-        &allowed_attrs,
-        &uri_safe_attrs,
-        &data_uri_tags,
-    );
+    let rust = render_dompurify_defaults_rs(&[
+        ("DEFAULT_ALLOWED_TAGS", &allowed_tags),
+        ("DEFAULT_ALLOWED_ATTR", &allowed_attrs),
+        ("DEFAULT_URI_SAFE_ATTRIBUTES", &uri_safe_attrs),
+        ("DEFAULT_DATA_URI_TAGS", &data_uri_tags),
+        ("DEFAULT_FORBID_CONTENTS", &forbid_contents),
+        ("ALL_SVG_TAGS", &all_svg_tags),
+        ("ALL_MATHML_TAGS", &all_mathml_tags),
+        ("COMMON_SVG_AND_HTML_ELEMENTS", &common_svg_html_elements),
+        ("DEFAULT_HTML_INTEGRATION_POINTS", &html_integration_points),
+        (
+            "DEFAULT_MATHML_TEXT_INTEGRATION_POINTS",
+            &mathml_text_integration_points,
+        ),
+    ]);
     fs::write(&out_path, rust).map_err(|source| XtaskError::WriteFile {
         path: out_path.display().to_string(),
         source,
@@ -3252,12 +3290,7 @@ fn dompurify_reference_checkout_message(src_path: &Path) -> String {
     )
 }
 
-pub(crate) fn render_dompurify_defaults_rs(
-    allowed_tags: &[String],
-    allowed_attrs: &[String],
-    uri_safe_attrs: &[String],
-    data_uri_tags: &[String],
-) -> String {
+pub(crate) fn render_dompurify_defaults_rs(lists: &[(&str, &[String])]) -> String {
     fn render_slice(name: &str, values: &[String]) -> String {
         let mut out = String::new();
         // Keep small slices compact for readability and stable diffs.
@@ -3285,10 +3318,9 @@ pub(crate) fn render_dompurify_defaults_rs(
     out.push_str(&format!(
         "// Source: `repo-ref/dompurify/dist/purify.cjs.js` (DOMPurify {PINNED_DOMPURIFY_VERSION})\n\n"
     ));
-    out.push_str(&render_slice("DEFAULT_ALLOWED_TAGS", allowed_tags));
-    out.push_str(&render_slice("DEFAULT_ALLOWED_ATTR", allowed_attrs));
-    out.push_str(&render_slice("DEFAULT_URI_SAFE_ATTRIBUTES", uri_safe_attrs));
-    out.push_str(&render_slice("DEFAULT_DATA_URI_TAGS", data_uri_tags));
+    for (name, values) in lists {
+        out.push_str(&render_slice(name, values));
+    }
     // Generated Rust files end with exactly one newline.
     let removed = out.pop();
     debug_assert_eq!(removed, Some('\n'));
@@ -3489,7 +3521,9 @@ mod tests {
             ("html$1", "freeze(", &["DIV", "a"][..]),
             ("svg$1", "freeze(", &["svg"]),
             ("svgFilters", "freeze(", &["feBlend"]),
+            ("svgDisallowed", "freeze(", &["discard"]),
             ("mathMl$1", "freeze(", &["math"]),
+            ("mathMlDisallowed", "freeze(", &["annotation-xml"]),
             ("html", "freeze(", &["href"]),
             ("svg", "freeze(", &["viewBox"]),
             ("mathMl", "freeze(", &["mathvariant"]),
@@ -3499,6 +3533,26 @@ mod tests {
                 "DEFAULT_URI_SAFE_ATTRIBUTES",
                 "addToSet({}, ",
                 &["alt", "title"],
+            ),
+            (
+                "DEFAULT_FORBID_CONTENTS",
+                "addToSet({}, ",
+                &["script", "xmp"],
+            ),
+            (
+                "COMMON_SVG_AND_HTML_ELEMENTS",
+                "addToSet({}, ",
+                &["title", "a"],
+            ),
+            (
+                "DEFAULT_HTML_INTEGRATION_POINTS",
+                "freeze(",
+                &["annotation-xml"],
+            ),
+            (
+                "DEFAULT_MATHML_TEXT_INTEGRATION_POINTS",
+                "freeze(",
+                &["mi", "mtext"],
             ),
         ]
         .into_iter()
@@ -3524,12 +3578,30 @@ mod tests {
                 .map(|value| (*value).to_string())
                 .collect::<Vec<_>>()
         };
-        let expected = render_dompurify_defaults_rs(
-            &owned(&["a", "div", "feblend", "math", "svg"]),
-            &owned(&["href", "mathvariant", "viewbox", "xml:lang"]),
-            &owned(&["alt", "title"]),
-            &owned(&["audio", "img"]),
-        );
+        let expected = render_dompurify_defaults_rs(&[
+            (
+                "DEFAULT_ALLOWED_TAGS",
+                &owned(&["a", "div", "feblend", "math", "svg"]),
+            ),
+            (
+                "DEFAULT_ALLOWED_ATTR",
+                &owned(&["href", "mathvariant", "viewbox", "xml:lang"]),
+            ),
+            ("DEFAULT_URI_SAFE_ATTRIBUTES", &owned(&["alt", "title"])),
+            ("DEFAULT_DATA_URI_TAGS", &owned(&["audio", "img"])),
+            ("DEFAULT_FORBID_CONTENTS", &owned(&["script", "xmp"])),
+            ("ALL_SVG_TAGS", &owned(&["discard", "feblend", "svg"])),
+            ("ALL_MATHML_TAGS", &owned(&["annotation-xml", "math"])),
+            ("COMMON_SVG_AND_HTML_ELEMENTS", &owned(&["a", "title"])),
+            (
+                "DEFAULT_HTML_INTEGRATION_POINTS",
+                &owned(&["annotation-xml"]),
+            ),
+            (
+                "DEFAULT_MATHML_TEXT_INTEGRATION_POINTS",
+                &owned(&["mi", "mtext"]),
+            ),
+        ]);
         for quote in ['\'', '"'] {
             fs::write(&source_path, dompurify_literal_array_fixture(quote))
                 .expect("source fixture");
@@ -3539,7 +3611,7 @@ mod tests {
                 "--out".to_string(),
                 output_path.to_string_lossy().into_owned(),
             ])
-            .expect("generate all four allowlists");
+            .expect("generate all sanitizer policy lists");
             assert_eq!(
                 fs::read_to_string(&output_path).expect("generated output"),
                 expected
@@ -3558,6 +3630,10 @@ mod tests {
             ("\"viewBox\"", "\"viewBox\", unsupportedValue"),
             ("\"audio\",\n\t\"img\"", ""),
             ("\"alt\",\n\t\"title\"", "\"alt\" + \"title\""),
+            ("\"discard\"", ""),
+            ("\"script\",\n\t\"xmp\"", "\"script\", unsupportedValue"),
+            ("\"mi\",\n\t\"mtext\"", ""),
+            ("\"title\",\n\t\"a\"", "\"title\" + \"a\""),
         ] {
             assert!(valid.contains(original));
             fs::write(&source_path, valid.replace(original, replacement)).expect("invalid fixture");
@@ -3580,7 +3656,7 @@ mod tests {
 
     #[test]
     fn dompurify_generated_header_uses_current_baseline_version() {
-        let rust = render_dompurify_defaults_rs(&[], &[], &[], &[]);
+        let rust = render_dompurify_defaults_rs(&[]);
 
         assert!(rust.contains(&format!("DOMPurify {PINNED_DOMPURIFY_VERSION}")));
         assert!(rust.ends_with('\n'));

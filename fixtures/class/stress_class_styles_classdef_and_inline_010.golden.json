@@ -1,31 +1,68 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "Server": {
-        "id": "Server",
-        "type": "",
-        "label": "Server",
-        "text": "Server",
-        "cssClasses": "default critical",
+      "Client": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default normal",
+        "domId": "classId-Client-1",
+        "haveCallback": false,
+        "id": "Client",
+        "label": "Client",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
         "methods": [
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "start",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+request()",
+            "id": "request",
+            "memberType": "method",
             "parameters": "",
             "returnType": "",
-            "displayText": "+start()",
-            "cssStyle": ""
+            "visibility": "+"
           }
         ],
-        "members": [],
+        "parent": null,
+        "styles": [
+          "fill:#ddffdd",
+          "stroke:#00aa00",
+          "stroke-width:2px"
+        ],
+        "text": "Client",
+        "tooltip": null,
+        "type": ""
+      },
+      "Server": {
         "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default critical",
+        "domId": "classId-Server-0",
+        "haveCallback": false,
+        "id": "Server",
+        "label": "Server",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+start()",
+            "id": "start",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
         "styles": [
           "fill:#ffdddd",
           "stroke:#aa0000",
@@ -34,82 +71,44 @@
           "stroke:#aa0000",
           "stroke-width:2px"
         ],
-        "domId": "classId-Server-0",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "text": "Server",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Client": {
-        "id": "Client",
-        "type": "",
-        "label": "Client",
-        "text": "Client",
-        "cssClasses": "default normal",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "request",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+request()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
-        "annotations": [],
-        "styles": [
-          "fill:#ddffdd",
-          "stroke:#00aa00",
-          "stroke-width:2px"
-        ],
-        "domId": "classId-Client-1",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Client",
         "id2": "Server",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "connects",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "connects"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
     "styleClasses": {
       "critical": {
         "id": "critical",
@@ -129,6 +128,7 @@
         ],
         "textStyles": []
       }
-    }
+    },
+    "type": "classDiagram"
   }
 }

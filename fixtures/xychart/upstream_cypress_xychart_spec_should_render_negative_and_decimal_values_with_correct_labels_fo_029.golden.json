@@ -1,34 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "horizontal",
-    "title": "Decimal and Negative Values",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "Categories",
-      "categories": [
-        "A",
-        "B",
-        "C"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "",
-      "min": -10.0,
-      "max": 10.0
-    },
+    "accTitle": null,
+    "orientation": "horizontal",
     "plots": [
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          -2.5,
-          0.75,
-          5.1
-        ],
         "data": [
           [
             "A",
@@ -42,9 +19,32 @@
             "C",
             5.1
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          -2.5,
+          0.75,
+          5.1
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Decimal and Negative Values",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "A",
+        "B",
+        "C"
+      ],
+      "title": "Categories",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 10.0,
+      "min": -10.0,
+      "title": "",
+      "type": "linear"
+    }
   }
 }

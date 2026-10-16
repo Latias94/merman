@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": false,
-    "title": "Monthly Cloud Infrastructure Costs",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "sections": [
       {
         "label": "Compute (EC2/GCE)",
@@ -27,6 +24,9 @@
         "label": "Monitoring & Logging",
         "value": 6.0
       }
-    ]
+    ],
+    "showData": false,
+    "title": "Monthly Cloud Infrastructure Costs",
+    "type": "pie"
   }
 }

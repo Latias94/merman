@@ -1,48 +1,48 @@
 {
   "diagramType": "er",
   "model": {
-    "accTitle": null,
     "accDescr": null,
-    "direction": "TB",
+    "accTitle": null,
     "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
       "ACCOUNT": {
-        "id": "entity-ACCOUNT-0",
-        "label": "ACCOUNT",
+        "alias": "客户账户",
         "attributes": [
           {
-            "type": "string",
-            "name": "name",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "name",
+            "type": "string"
           },
           {
-            "type": "boolean",
-            "name": "active",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "active",
+            "type": "boolean"
           }
         ],
-        "alias": "客户账户",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-ACCOUNT-0",
+        "label": "ACCOUNT",
+        "shape": "erBox"
       }
     },
     "relationships": [],
-    "type": "er",
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

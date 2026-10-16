@@ -1,104 +1,100 @@
 {
   "diagramType": "railroadEbnf",
   "model": {
-    "type": "railroadEbnf",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "expression",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "nonterminal",
-              "name": "term"
+              "name": "term",
+              "type": "nonterminal"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "choice",
                 "alternatives": [
                   {
-                    "type": "sequence",
                     "elements": [
                       {
                         "type": "terminal",
                         "value": "+"
                       },
                       {
-                        "type": "nonterminal",
-                        "name": "term"
+                        "name": "term",
+                        "type": "nonterminal"
                       }
-                    ]
+                    ],
+                    "type": "sequence"
                   },
                   {
-                    "type": "sequence",
                     "elements": [
                       {
                         "type": "terminal",
                         "value": "-"
                       },
                       {
-                        "type": "nonterminal",
-                        "name": "term"
+                        "name": "term",
+                        "type": "nonterminal"
                       }
-                    ]
+                    ],
+                    "type": "sequence"
                   }
-                ]
+                ],
+                "type": "choice"
               },
+              "max": null,
               "min": 0,
-              "max": null
+              "type": "repetition"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "expression"
       },
       {
-        "name": "term",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
-              "type": "nonterminal",
-              "name": "number"
+              "name": "number",
+              "type": "nonterminal"
             },
             {
-              "type": "sequence",
               "elements": [
                 {
                   "type": "terminal",
                   "value": "("
                 },
                 {
-                  "type": "nonterminal",
-                  "name": "expression"
+                  "name": "expression",
+                  "type": "nonterminal"
                 },
                 {
                   "type": "terminal",
                   "value": ")"
                 }
-              ]
+              ],
+              "type": "sequence"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "term"
       },
       {
-        "name": "number",
         "definition": {
-          "type": "repetition",
           "element": {
-            "type": "nonterminal",
-            "name": "digit"
+            "name": "digit",
+            "type": "nonterminal"
           },
+          "max": null,
           "min": 1,
-          "max": null
-        }
+          "type": "repetition"
+        },
+        "name": "number"
       },
       {
-        "name": "digit",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -112,9 +108,13 @@
               "type": "terminal",
               "value": "2"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "digit"
       }
-    ]
+    ],
+    "title": null,
+    "type": "railroadEbnf"
   }
 }

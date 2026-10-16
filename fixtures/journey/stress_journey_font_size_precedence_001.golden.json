@@ -1,26 +1,26 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "Font size precedence should be deterministic",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "A"
+    ],
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "score": 5,
         "people": [
           "A"
         ],
+        "score": 5,
         "section": "A",
-        "type": "A",
-        "task": "    Hello"
+        "task": "    Hello",
+        "type": "A"
       }
     ],
-    "actors": [
-      "A"
-    ]
+    "title": "Font size precedence should be deterministic",
+    "type": "journey"
   }
 }

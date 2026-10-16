@@ -2,39 +2,27 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Client",
-          "x": 93.264,
-          "y": 72.0,
-          "width": 162.528,
-          "height": 120.0,
-          "is_cluster": false
-        },
-        {
-          "id": "API",
-          "x": 388.048,
-          "y": 72.0,
-          "width": 218.88,
-          "height": 120.0,
-          "is_cluster": false
-        },
-        {
-          "id": "DB",
-          "x": 706.178,
-          "y": 72.0,
-          "width": 185.138,
-          "height": 120.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 798.747,
+        "max_y": 132.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Client",
-          "to": "API",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": {
+            "height": 21.0,
+            "width": 24.08,
+            "x": 226.568,
+            "y": 71.5
+          },
           "points": [
             {
               "x": 174.528,
@@ -45,26 +33,26 @@
               "y": 72.0
             }
           ],
-          "label": {
-            "x": 226.568,
-            "y": 71.5,
-            "width": 24.08,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "API",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "API",
-          "to": "DB",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 30.1,
+            "x": 555.548,
+            "y": 55.333
+          },
           "points": [
             {
               "x": 497.488,
@@ -87,26 +75,26 @@
               "y": 55.333
             }
           ],
-          "label": {
-            "x": 555.548,
-            "y": 55.333,
-            "width": 30.1,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "DB",
+          "to_cluster": null
         },
         {
-          "id": "2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "API",
-          "to": "DB",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "2",
+          "label": {
+            "height": 21.0,
+            "width": 36.12,
+            "x": 555.548,
+            "y": 88.667
+          },
           "points": [
             {
               "x": 497.488,
@@ -129,28 +117,40 @@
               "y": 88.667
             }
           ],
-          "label": {
-            "x": 555.548,
-            "y": 88.667,
-            "width": 36.12,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "DB",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 798.747,
-        "max_y": 132.0
-      }
+      "nodes": [
+        {
+          "height": 120.0,
+          "id": "Client",
+          "is_cluster": false,
+          "width": 162.528,
+          "x": 93.264,
+          "y": 72.0
+        },
+        {
+          "height": 120.0,
+          "id": "API",
+          "is_cluster": false,
+          "width": 218.88,
+          "x": 388.048,
+          "y": 72.0
+        },
+        {
+          "height": 120.0,
+          "id": "DB",
+          "is_cluster": false,
+          "width": 185.138,
+          "x": 706.178,
+          "y": 72.0
+        }
+      ]
     }
   }
 }

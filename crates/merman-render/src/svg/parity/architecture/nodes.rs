@@ -4,9 +4,6 @@ use crate::text::TextMeasurer;
 
 use super::super::{SvgDiagramId, SvgOutput, escape_attr_into, escape_xml_into, fmt};
 use super::ArchitectureEmitCheckpoints;
-use super::foreign_object::{
-    escape_xml_ampersands_preserving_xml_entities, normalize_xhtml_fragment_for_foreign_object,
-};
 use super::geometry::{GroupRect, extend_bounds};
 use super::icons::{
     arch_icon_needs_id_scope, write_arch_icon_svg, write_arch_icon_svg_with_registry,
@@ -201,10 +198,21 @@ pub(super) fn push_architecture_services_and_junctions<M: ArchitectureModelAcces
                     let line_clamp = ((settings.icon_size_px - 2.0) / settings.text_style.font_size)
                         .floor()
                         .max(1.0) as i64;
-                    let sanitized =
-                        merman_core::sanitize::sanitize_text(icon_text.trim(), sanitize_config);
-                    let sanitized = normalize_xhtml_fragment_for_foreign_object(&sanitized);
-                    let sanitized = escape_xml_ampersands_preserving_xml_entities(&sanitized);
+                    let parse_work = std::cell::Cell::new(0);
+                    let sink = crate::html::HtmlSanitizeSink::new(
+                        work_meter.max_svg_bytes().unwrap_or(usize::MAX),
+                        work_meter,
+                        &parse_work,
+                        merman_core::OperationPhase::Emit,
+                    );
+                    let sanitized = crate::html::resolve_svg_fragment(
+                        merman_core::sanitize::sanitize_xhtml_in_svg_context_with_sink(
+                            icon_text.trim(),
+                            sanitize_config,
+                            &sink,
+                        ),
+                        work_meter,
+                    )?;
                     let _ = write!(
                         out,
                         r#"<g><foreignObject width="{w}" height="{h}"><div class="node-icon-text" style="height: {h}px;" xmlns="http://www.w3.org/1999/xhtml"><div style="-webkit-line-clamp: {clamp};">"#,

@@ -2,317 +2,317 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 882.0,
-        "max_y": 794.275
-      },
-      "width": 932.0,
-      "height": 804.275,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Dynamic",
-      "title": "Dynamic diagram for Internet Banking System - API Application",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 732.0,
+          "descr": null,
           "height": 678.275,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 732.0,
+          "x": 100.0,
+          "y": 66.0
         },
         {
           "alias": "b",
-          "parent_boundary": "global",
-          "x": 150.0,
-          "y": 434.519,
-          "width": 632.0,
+          "descr": null,
           "height": 259.756,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "API Application",
-            "y": 8.0,
-            "width": 100.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "API Application",
+            "width": 100.0,
+            "y": 8.0
           },
+          "parent_boundary": "global",
           "ty": {
-            "text": "[CONTAINER]",
-            "y": 31.0,
-            "width": 81.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[CONTAINER]",
+            "width": 81.0,
+            "y": 31.0
           },
-          "descr": null
-        }
-      ],
-      "shapes": [
-        {
-          "alias": "c4",
-          "parent_boundary": "global",
-          "type_c4_shape": "container_db",
+          "width": 632.0,
           "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 162.519,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: Relational Database Schema]",
-            "y": 49.95,
-            "width": 134.295,
-            "height": 23.1,
-            "line_count": 2.0
-          },
-          "label": {
-            "text": "Database",
-            "y": 27.7,
-            "width": 50.54,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
-            "y": 89.756,
-            "width": 123.525,
-            "height": 50.512,
-            "line_count": 4.0
-          }
-        },
-        {
-          "alias": "c1",
-          "parent_boundary": "global",
-          "type_c4_shape": "container",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 110.834,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: JavaScript and Angular]",
-            "y": 44.175,
-            "width": 153.615,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Single-Page Application",
-            "y": 27.7,
-            "width": 132.3,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides all of the Internet banking functionality to customers via their web browser.",
-            "y": 71.892,
-            "width": 169.904,
-            "height": 37.884,
-            "line_count": 3.0
-          }
-        },
-        {
-          "alias": "c3",
-          "parent_boundary": "b",
-          "type_c4_shape": "component",
-          "x": 200.0,
-          "y": 534.519,
-          "width": 216.0,
-          "height": 98.206,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Component: Spring Bean]",
-            "y": 44.175,
-            "width": 110.04,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Security Component",
-            "y": 27.7,
-            "width": 116.2,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides functionality Related to signing in, changing passwords, etc.",
-            "y": 65.578,
-            "width": 165.082,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        },
-        {
-          "alias": "c2",
-          "parent_boundary": "b",
-          "type_c4_shape": "component",
-          "x": 516.0,
-          "y": 534.519,
-          "width": 216.0,
-          "height": 109.756,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Component: Spring MVC Rest Controller]",
-            "y": 49.95,
-            "width": 128.94,
-            "height": 23.1,
-            "line_count": 2.0
-          },
-          "label": {
-            "text": "Sign In Controller",
-            "y": 27.7,
-            "width": 102.2,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Allows users to sign in to the Internet Banking System.",
-            "y": 77.128,
-            "width": 140.286,
-            "height": 25.256,
-            "line_count": 2.0
-          }
+          "y": 434.519
         }
       ],
+      "bounds": {
+        "max_x": 882.0,
+        "max_y": 794.275,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Dynamic",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 804.275,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 616.543,
+            "y": 534.519
+          },
           "from": "c1",
-          "to": "c2",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "1: Submits credentials to",
+            "width": 126.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": -40.0,
           "rel_type": "rel",
           "start_point": {
             "x": 581.53,
             "y": 276.834
           },
-          "end_point": {
-            "x": 616.543,
-            "y": 534.519
-          },
-          "offset_x": null,
-          "offset_y": -40.0,
-          "label": {
-            "text": "1: Submits credentials to",
-            "y": 0.0,
-            "width": 126.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "JSON/HTTPS",
-            "y": 0.0,
-            "width": 69.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "JSON/HTTPS",
+            "width": 69.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "c2"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 416.0,
+            "y": 585.596
+          },
           "from": "c2",
-          "to": "c3",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "2: Calls isAuthenticated() on",
+            "width": 140.0,
+            "y": 0.0
+          },
+          "offset_x": -40.0,
+          "offset_y": 60.0,
           "rel_type": "rel",
           "start_point": {
             "x": 516.0,
             "y": 587.424
           },
-          "end_point": {
-            "x": 416.0,
-            "y": 585.596
-          },
-          "offset_x": -40.0,
-          "offset_y": 60.0,
-          "label": {
-            "text": "2: Calls isAuthenticated() on",
-            "y": 0.0,
-            "width": 140.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": null,
-          "descr": null
+          "to": "c3"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 270.079,
+            "y": 328.42
+          },
           "from": "c3",
-          "to": "c4",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "3: select * from users where username = ?",
+            "width": 215.0,
+            "y": 0.0
+          },
+          "offset_x": 10.0,
+          "offset_y": -40.0,
           "rel_type": "rel",
           "start_point": {
             "x": 300.701,
             "y": 534.519
           },
-          "end_point": {
-            "x": 270.079,
-            "y": 328.42
-          },
-          "offset_x": 10.0,
-          "offset_y": -40.0,
-          "label": {
-            "text": "3: select * from users where username = ?",
-            "y": 0.0,
-            "width": 215.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "JDBC",
-            "y": 0.0,
-            "width": 29.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "JDBC",
+            "width": 29.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "c4"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "c4",
+          "descr": {
+            "height": 50.512,
+            "line_count": 4.0,
+            "text": "Stores user registration information, hashed authentication credentials, access logs, etc.",
+            "width": 123.525,
+            "y": 89.756
+          },
+          "height": 162.519,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Database",
+            "width": 50.54,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 23.1,
+            "line_count": 2.0,
+            "text": "[Container: Relational Database Schema]",
+            "width": 134.295,
+            "y": 49.95
+          },
+          "type_c4_shape": "container_db",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "c1",
+          "descr": {
+            "height": 37.884,
+            "line_count": 3.0,
+            "text": "Provides all of the Internet banking functionality to customers via their web browser.",
+            "width": 169.904,
+            "y": 71.892
+          },
+          "height": 110.834,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Single-Page Application",
+            "width": 132.3,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: JavaScript and Angular]",
+            "width": 153.615,
+            "y": 44.175
+          },
+          "type_c4_shape": "container",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
+        },
+        {
+          "alias": "c3",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Provides functionality Related to signing in, changing passwords, etc.",
+            "width": 165.082,
+            "y": 65.578
+          },
+          "height": 98.206,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Security Component",
+            "width": 116.2,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "b",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Component: Spring Bean]",
+            "width": 110.04,
+            "y": 44.175
+          },
+          "type_c4_shape": "component",
+          "width": 216.0,
+          "x": 200.0,
+          "y": 534.519
+        },
+        {
+          "alias": "c2",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Allows users to sign in to the Internet Banking System.",
+            "width": 140.286,
+            "y": 77.128
+          },
+          "height": 109.756,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Sign In Controller",
+            "width": 102.2,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "b",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 23.1,
+            "line_count": 2.0,
+            "text": "[Component: Spring MVC Rest Controller]",
+            "width": 128.94,
+            "y": 49.95
+          },
+          "type_c4_shape": "component",
+          "width": 216.0,
+          "x": 516.0,
+          "y": 534.519
+        }
+      ],
+      "title": "Dynamic diagram for Internet Banking System - API Application",
+      "use_max_width": true,
+      "width": 932.0
     }
   }
 }

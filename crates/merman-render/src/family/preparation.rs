@@ -138,7 +138,7 @@ fn prepare_mindmap_family(
         &model,
         execution.work_meter_ref(),
     )?;
-    let layout = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
+    let (layout, prepared_labels) = crate::mindmap::layout_mindmap_diagram_typed_with_work_meter(
         &model,
         &meta.effective_config,
         node_palette.font_family_css(),
@@ -152,6 +152,7 @@ fn prepare_mindmap_family(
         MindmapFamilyArtifact {
             pair: FamilyPair::new(model, layout),
             node_palette,
+            prepared_labels,
         },
     )))
 }

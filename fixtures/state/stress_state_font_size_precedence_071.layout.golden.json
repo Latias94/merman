@@ -2,31 +2,22 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
-        {
-          "id": "A",
-          "x": 89.844,
-          "y": 128.0,
-          "width": 155.688,
-          "height": 232.0,
-          "is_cluster": false
-        },
-        {
-          "id": "B",
-          "x": 89.844,
-          "y": 310.0,
-          "width": 136.0,
-          "height": 52.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 167.688,
+        "max_y": 336.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "A",
-          "to": "B",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 89.844,
@@ -37,23 +28,32 @@
               "y": 284.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "B",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 167.688,
-        "max_y": 336.0
-      }
+      "nodes": [
+        {
+          "height": 232.0,
+          "id": "A",
+          "is_cluster": false,
+          "width": 155.688,
+          "x": 89.844,
+          "y": 128.0
+        },
+        {
+          "height": 52.0,
+          "id": "B",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 89.844,
+          "y": 310.0
+        }
+      ]
     }
   }
 }

@@ -1,94 +1,94 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "IPC::Sender": {
-        "id": "IPC::Sender",
-        "type": "",
-        "label": "IPC::Sender",
-        "text": "IPC::Sender",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-IPC::Sender-0",
-        "parent": "A::B",
+        "haveCallback": false,
+        "id": "IPC::Sender",
+        "label": "IPC::Sender",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": "A::B",
+        "styles": [],
+        "text": "IPC::Sender",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "RenderProcessHost": {
-        "id": "RenderProcessHost",
-        "type": "",
-        "label": "RenderProcessHost",
-        "text": "RenderProcessHost",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-RenderProcessHost-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "RenderProcessHost",
+        "label": "RenderProcessHost",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "RenderProcessHost",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "A::B": {
+        "classIds": [
+          "IPC::Sender"
+        ],
+        "domId": "classId-A::B-0",
+        "explicit": true,
+        "id": "A::B",
+        "label": "A::B",
+        "noteIds": [],
+        "parent": null
+      }
+    },
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "RenderProcessHost",
         "id2": "IPC::Sender",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": -1,
-          "type2": 1,
-          "lineType": 0
-        }
+        "title": ""
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {
-      "A::B": {
-        "id": "A::B",
-        "label": "A::B",
-        "domId": "classId-A::B-0",
-        "classIds": [
-          "IPC::Sender"
-        ],
-        "noteIds": [],
-        "parent": null,
-        "explicit": true
-      }
-    },
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

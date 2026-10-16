@@ -2,105 +2,105 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 200.64,
-      "height": 194.0,
-      "frameBorderLeft": 0.0,
-      "frameBorderRight": 0.0,
-      "participants": [
+      "bounds": {
+        "max_x": 200.64,
+        "max_y": 194.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [
         {
-          "name": "_STARTER_",
-          "label": "",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": true,
-          "labelWidth": 0.0,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "BookService",
-          "label": "BookService",
-          "x": 150.32,
-          "y": 28.0,
-          "width": 96.64,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 80.64,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
+          "fragmentComment": false,
+          "statementId": "zenuml-statement-0",
+          "style": {},
+          "text": "a comment on a message.\n **Markdown** is supported.",
+          "x": 51.0,
+          "y": 87.0
         }
       ],
+      "creations": [],
+      "dividers": [],
+      "fragments": [],
+      "frameBorderLeft": 0.0,
+      "frameBorderRight": 0.0,
+      "groups": [],
+      "height": 194.0,
       "lifelines": [
         {
+          "bottomY": 206.0,
           "participantName": "_STARTER_",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 206.0
+          "x": 50.0
         },
         {
+          "bottomY": 206.0,
           "participantName": "BookService",
-          "x": 150.32,
           "topY": 68.0,
-          "bottomY": 206.0
+          "x": 150.32
         }
       ],
       "messages": [
         {
-          "statementId": "zenuml-statement-0",
-          "number": "1",
-          "from": "_STARTER_",
-          "to": "BookService",
-          "fromX": 50.0,
-          "toX": 143.32,
-          "y": 127.5,
-          "label": "getBook()",
           "arrowStyle": "solid",
+          "from": "_STARTER_",
+          "fromX": 50.0,
           "isReverse": false,
-          "style": {}
+          "label": "getBook()",
+          "number": "1",
+          "statementId": "zenuml-statement-0",
+          "style": {},
+          "to": "BookService",
+          "toX": 143.32,
+          "y": 127.5
         }
       ],
-      "selfCalls": [],
-      "creations": [],
-      "returns": [],
       "occurrences": [
         {
-          "statementId": "zenuml-statement-0",
+          "height": 24.0,
           "participantName": "BookService",
-          "x": 143.32,
-          "y": 126.0,
-          "width": 15.0,
-          "height": 24.0
-        }
-      ],
-      "fragments": [],
-      "dividers": [],
-      "comments": [
-        {
           "statementId": "zenuml-statement-0",
-          "x": 51.0,
-          "y": 87.0,
-          "text": "a comment on a message.\n **Markdown** is supported.",
-          "style": {},
-          "fragmentComment": false
+          "width": 15.0,
+          "x": 143.32,
+          "y": 126.0
         }
       ],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 200.64,
-        "max_y": 194.0
-      }
+      "participants": [
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": true,
+          "label": "",
+          "labelWidth": 0.0,
+          "name": "_STARTER_",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "BookService",
+          "labelWidth": 80.64,
+          "name": "BookService",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 96.64,
+          "x": 150.32,
+          "y": 28.0
+        }
+      ],
+      "returns": [],
+      "selfCalls": [],
+      "width": 200.64
     }
   }
 }

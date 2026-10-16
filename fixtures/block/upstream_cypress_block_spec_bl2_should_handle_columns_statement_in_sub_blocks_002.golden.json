@@ -1,181 +1,181 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "id1",
-        "type": "square",
-        "label": "Hello",
         "children": [],
+        "id": "id1",
+        "label": "Hello",
+        "type": "square",
         "widthInColumns": 1
       },
       {
-        "id": "id-<id>-1",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "id2",
-            "type": "square",
             "label": "to",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "id3",
-            "type": "square",
             "label": "the",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "id4",
-            "type": "square",
             "label": "World",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
-            "id": "id5",
-            "type": "square",
-            "label": "World",
             "children": [],
+            "id": "id5",
+            "label": "World",
+            "type": "square",
             "widthInColumns": 1
           }
         ],
         "colorIndex": 0,
-        "columns": 3
+        "columns": 3,
+        "id": "id-<id>-1",
+        "label": "",
+        "type": "composite"
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "id1",
-            "type": "square",
-            "label": "Hello",
             "children": [],
+            "id": "id1",
+            "label": "Hello",
+            "type": "square",
             "widthInColumns": 1
           },
           {
-            "id": "id-<id>-1",
-            "type": "composite",
-            "label": "",
             "children": [
               {
+                "children": [],
                 "id": "id2",
-                "type": "square",
                 "label": "to",
-                "children": [],
+                "type": "square",
                 "widthInColumns": 1
               },
               {
+                "children": [],
                 "id": "id3",
-                "type": "square",
                 "label": "the",
-                "children": [],
+                "type": "square",
                 "widthInColumns": 1
               },
               {
+                "children": [],
                 "id": "id4",
-                "type": "square",
                 "label": "World",
-                "children": [],
+                "type": "square",
                 "widthInColumns": 1
               },
               {
-                "id": "id5",
-                "type": "square",
-                "label": "World",
                 "children": [],
+                "id": "id5",
+                "label": "World",
+                "type": "square",
                 "widthInColumns": 1
               }
             ],
             "colorIndex": 0,
-            "columns": 3
+            "columns": 3,
+            "id": "id-<id>-1",
+            "label": "",
+            "type": "composite"
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "id1",
-        "type": "square",
-        "label": "Hello",
         "children": [],
+        "id": "id1",
+        "label": "Hello",
+        "type": "square",
         "widthInColumns": 1
       },
       {
-        "id": "id-<id>-1",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "id2",
-            "type": "square",
             "label": "to",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "id3",
-            "type": "square",
             "label": "the",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "id4",
-            "type": "square",
             "label": "World",
-            "children": [],
+            "type": "square",
             "widthInColumns": 1
           },
           {
-            "id": "id5",
-            "type": "square",
-            "label": "World",
             "children": [],
+            "id": "id5",
+            "label": "World",
+            "type": "square",
             "widthInColumns": 1
           }
         ],
         "colorIndex": 0,
-        "columns": 3
+        "columns": 3,
+        "id": "id-<id>-1",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "id2",
-        "type": "square",
         "label": "to",
-        "children": [],
+        "type": "square",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "id3",
-        "type": "square",
         "label": "the",
-        "children": [],
+        "type": "square",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "id4",
-        "type": "square",
         "label": "World",
-        "children": [],
+        "type": "square",
         "widthInColumns": 1
       },
       {
-        "id": "id5",
-        "type": "square",
-        "label": "World",
         "children": [],
+        "id": "id5",
+        "label": "World",
+        "type": "square",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

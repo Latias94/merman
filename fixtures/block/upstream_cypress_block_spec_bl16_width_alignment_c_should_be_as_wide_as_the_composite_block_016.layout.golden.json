@@ -2,113 +2,113 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
+      "bounds": {
+        "max_x": 532.8,
+        "max_y": 28.0,
+        "min_x": 0.0,
+        "min_y": -28.0
+      },
+      "edges": [],
       "nodes": [
         {
+          "height": 56.0,
           "id": "id-<id>-1",
+          "is_cluster": false,
+          "width": 262.4,
           "x": 131.2,
-          "y": 0.0,
-          "width": 262.4,
-          "height": 56.0,
-          "is_cluster": false
+          "y": 0.0
         },
         {
+          "height": 40.0,
           "id": "A",
+          "is_cluster": false,
+          "width": 119.2,
           "x": 67.6,
-          "y": 0.0,
-          "width": 119.2,
-          "height": 40.0,
-          "is_cluster": false
+          "y": 0.0
         },
         {
+          "height": 40.0,
           "id": "B",
-          "x": 194.8,
-          "y": 0.0,
+          "is_cluster": false,
           "width": 119.2,
-          "height": 40.0,
-          "is_cluster": false
+          "x": 194.8,
+          "y": 0.0
         },
         {
-          "id": "C",
-          "x": 401.6,
-          "y": 0.0,
-          "width": 262.4,
           "height": 56.0,
-          "is_cluster": false
+          "id": "C",
+          "is_cluster": false,
+          "width": 262.4,
+          "x": 401.6,
+          "y": 0.0
         }
       ],
-      "edges": [],
       "shapeGeometries": [
         {
-          "id": "id-<id>-1",
           "allocated": {
+            "height": 56.0,
+            "width": 262.4,
             "x": 131.2,
-            "y": 0.0,
-            "width": 262.4,
-            "height": 56.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 262.4,
             "height": 56.0,
+            "kind": "composite",
             "radius": 0.0,
-            "kind": "composite"
-          }
+            "shape": "rectangle",
+            "width": 262.4
+          },
+          "id": "id-<id>-1"
         },
         {
-          "id": "A",
           "allocated": {
+            "height": 40.0,
+            "width": 119.2,
             "x": 67.6,
-            "y": 0.0,
-            "width": 119.2,
-            "height": 40.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 119.2,
             "height": 40.0,
+            "kind": "basic",
             "radius": 5.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 119.2
+          },
+          "id": "A"
         },
         {
-          "id": "B",
           "allocated": {
-            "x": 194.8,
-            "y": 0.0,
-            "width": 119.2,
-            "height": 40.0
-          },
-          "boundary": {
-            "shape": "rectangle",
-            "width": 119.2,
             "height": 40.0,
-            "radius": 0.0,
-            "kind": "basic"
-          }
-        },
-        {
-          "id": "C",
-          "allocated": {
-            "x": 401.6,
-            "y": 0.0,
-            "width": 262.4,
-            "height": 56.0
+            "width": 119.2,
+            "x": 194.8,
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 262.4,
-            "height": 56.0,
+            "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 119.2
+          },
+          "id": "B"
+        },
+        {
+          "allocated": {
+            "height": 56.0,
+            "width": 262.4,
+            "x": 401.6,
+            "y": 0.0
+          },
+          "boundary": {
+            "height": 56.0,
+            "kind": "basic",
+            "radius": 0.0,
+            "shape": "rectangle",
+            "width": 262.4
+          },
+          "id": "C"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -28.0,
-        "max_x": 532.8,
-        "max_y": 28.0
-      }
+      ]
     }
   }
 }

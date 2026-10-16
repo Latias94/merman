@@ -2,39 +2,101 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
+      "bounds": {
+        "max_x": 171.532,
+        "max_y": 188.532,
+        "min_x": -91.532,
+        "min_y": -74.532
+      },
+      "cytoscape_service_bounds": [
         {
+          "body_bounds": {
+            "max_x": -11.532,
+            "max_y": 5.468,
+            "min_x": -91.532,
+            "min_y": -74.532
+          },
           "id": "api_gw",
-          "x": -91.532,
-          "y": -74.532,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "private_net",
+          "label_bounds": {
+            "max_x": -23.032,
+            "max_y": 23.468,
+            "min_x": -80.032,
+            "min_y": -74.532
+          },
+          "label_metrics": {
+            "half_width": 26.5,
+            "text_width": 53.0
+          },
+          "union_bounds": {
+            "max_x": -10.532,
+            "max_y": 23.468,
+            "min_x": -92.532,
+            "min_y": -75.532
+          }
         },
         {
+          "body_bounds": {
+            "max_x": 171.532,
+            "max_y": 5.468,
+            "min_x": 91.532,
+            "min_y": -74.532
+          },
           "id": "auth_svc",
-          "x": 91.532,
-          "y": -74.532,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "private_net",
+          "label_bounds": {
+            "max_x": 149.032,
+            "max_y": 23.468,
+            "min_x": 114.032,
+            "min_y": -74.532
+          },
+          "label_metrics": {
+            "half_width": 15.5,
+            "text_width": 31.0
+          },
+          "union_bounds": {
+            "max_x": 172.532,
+            "max_y": 23.468,
+            "min_x": 90.532,
+            "min_y": -75.532
+          }
         },
         {
+          "body_bounds": {
+            "max_x": 171.532,
+            "max_y": 188.532,
+            "min_x": 91.532,
+            "min_y": 108.532
+          },
           "id": "orders_db",
-          "x": 91.532,
-          "y": 108.532,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "private_net",
+          "label_bounds": {
+            "max_x": 168.032,
+            "max_y": 206.532,
+            "min_x": 95.032,
+            "min_y": 108.532
+          },
+          "label_metrics": {
+            "half_width": 34.5,
+            "text_width": 69.0
+          },
+          "union_bounds": {
+            "max_x": 172.532,
+            "max_y": 206.532,
+            "min_x": 90.532,
+            "min_y": 107.532
+          }
         }
       ],
       "edges": [
         {
-          "id": "edge-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "api_gw",
-          "to": "auth_svc",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-0",
+          "label": null,
           "points": [
             {
               "x": -11.532,
@@ -49,21 +111,21 @@
               "y": -34.532
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "auth_svc",
+          "to_cluster": null
         },
         {
-          "id": "edge-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "auth_svc",
-          "to": "orders_db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-1",
+          "label": null,
           "points": [
             {
               "x": 131.532,
@@ -78,21 +140,21 @@
               "y": 108.532
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "orders_db",
+          "to_cluster": null
         },
         {
-          "id": "edge-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "orders_db",
-          "to": "api_gw",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-2",
+          "label": null,
           "points": [
             {
               "x": 171.532,
@@ -107,122 +169,60 @@
               "y": -34.532
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        }
-      ],
-      "cytoscape_service_bounds": [
-        {
-          "id": "api_gw",
-          "in_group": "private_net",
-          "body_bounds": {
-            "min_x": -91.532,
-            "min_y": -74.532,
-            "max_x": -11.532,
-            "max_y": 5.468
-          },
-          "label_bounds": {
-            "min_x": -80.032,
-            "min_y": -74.532,
-            "max_x": -23.032,
-            "max_y": 23.468
-          },
-          "label_metrics": {
-            "text_width": 53.0,
-            "half_width": 26.5
-          },
-          "union_bounds": {
-            "min_x": -92.532,
-            "min_y": -75.532,
-            "max_x": -10.532,
-            "max_y": 23.468
-          }
-        },
-        {
-          "id": "auth_svc",
-          "in_group": "private_net",
-          "body_bounds": {
-            "min_x": 91.532,
-            "min_y": -74.532,
-            "max_x": 171.532,
-            "max_y": 5.468
-          },
-          "label_bounds": {
-            "min_x": 114.032,
-            "min_y": -74.532,
-            "max_x": 149.032,
-            "max_y": 23.468
-          },
-          "label_metrics": {
-            "text_width": 31.0,
-            "half_width": 15.5
-          },
-          "union_bounds": {
-            "min_x": 90.532,
-            "min_y": -75.532,
-            "max_x": 172.532,
-            "max_y": 23.468
-          }
-        },
-        {
-          "id": "orders_db",
-          "in_group": "private_net",
-          "body_bounds": {
-            "min_x": 91.532,
-            "min_y": 108.532,
-            "max_x": 171.532,
-            "max_y": 188.532
-          },
-          "label_bounds": {
-            "min_x": 95.032,
-            "min_y": 108.532,
-            "max_x": 168.032,
-            "max_y": 206.532
-          },
-          "label_metrics": {
-            "text_width": 69.0,
-            "half_width": 34.5
-          },
-          "union_bounds": {
-            "min_x": 90.532,
-            "min_y": 107.532,
-            "max_x": 172.532,
-            "max_y": 206.532
-          }
+          "stroke_dasharray": null,
+          "to": "api_gw",
+          "to_cluster": null
         }
       ],
       "fcose_compound_bounds": [
         {
-          "id": "prod_env",
           "bounds": {
-            "min_x": -211.532,
-            "min_y": -194.532,
             "max_x": 211.532,
-            "max_y": 228.532
-          }
+            "max_y": 228.532,
+            "min_x": -211.532,
+            "min_y": -194.532
+          },
+          "id": "prod_env"
         },
         {
-          "id": "private_net",
           "bounds": {
-            "min_x": -171.532,
-            "min_y": -154.532,
             "max_x": 171.532,
-            "max_y": 188.532
-          }
+            "max_y": 188.532,
+            "min_x": -171.532,
+            "min_y": -154.532
+          },
+          "id": "private_net"
         }
       ],
-      "bounds": {
-        "min_x": -91.532,
-        "min_y": -74.532,
-        "max_x": 171.532,
-        "max_y": 188.532
-      }
+      "nodes": [
+        {
+          "height": 80.0,
+          "id": "api_gw",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": -91.532,
+          "y": -74.532
+        },
+        {
+          "height": 80.0,
+          "id": "auth_svc",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 91.532,
+          "y": -74.532
+        },
+        {
+          "height": 80.0,
+          "id": "orders_db",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 91.532,
+          "y": 108.532
+        }
+      ]
     }
   }
 }

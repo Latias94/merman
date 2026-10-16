@@ -1,221 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "1-abcdefg",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "2-abcdefg",
-        "message": "",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "1-abcdefg"
-        ],
-        "branch": "branch1"
-      },
-      {
-        "id": "2-<dynamic>",
-        "message": "merged branch branch1 into main",
-        "seq": 2,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "1-abcdefg",
-          "2-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "3-abcdefg",
-        "message": "",
-        "seq": 3,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "2-<dynamic>"
-        ],
-        "branch": "branch2"
-      },
-      {
-        "id": "4-<dynamic>",
-        "message": "merged branch branch2 into main",
-        "seq": 4,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "2-<dynamic>",
-          "3-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "4-abcdefg",
-        "message": "",
-        "seq": 5,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "4-<dynamic>"
-        ],
-        "branch": "branch3"
-      },
-      {
-        "id": "6-<dynamic>",
-        "message": "merged branch branch3 into main",
-        "seq": 6,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "4-<dynamic>",
-          "4-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "5-abcdefg",
-        "message": "",
-        "seq": 7,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "6-<dynamic>"
-        ],
-        "branch": "branch4"
-      },
-      {
-        "id": "8-<dynamic>",
-        "message": "merged branch branch4 into main",
-        "seq": 8,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "6-<dynamic>",
-          "5-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "6-abcdefg",
-        "message": "",
-        "seq": 9,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "8-<dynamic>"
-        ],
-        "branch": "branch5"
-      },
-      {
-        "id": "10-<dynamic>",
-        "message": "merged branch branch5 into main",
-        "seq": 10,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "8-<dynamic>",
-          "6-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "7-abcdefg",
-        "message": "",
-        "seq": 11,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "10-<dynamic>"
-        ],
-        "branch": "branch6"
-      },
-      {
-        "id": "12-<dynamic>",
-        "message": "merged branch branch6 into main",
-        "seq": 12,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "10-<dynamic>",
-          "7-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "8-abcdefg",
-        "message": "",
-        "seq": 13,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "12-<dynamic>"
-        ],
-        "branch": "branch7"
-      },
-      {
-        "id": "14-<dynamic>",
-        "message": "merged branch branch7 into main",
-        "seq": 14,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "12-<dynamic>",
-          "8-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "9-abcdefg",
-        "message": "",
-        "seq": 15,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "14-<dynamic>"
-        ],
-        "branch": "branch8"
-      },
-      {
-        "id": "16-<dynamic>",
-        "message": "merged branch branch8 into main",
-        "seq": 16,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "14-<dynamic>",
-          "9-abcdefg"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "10-abcdefg",
-        "message": "",
-        "seq": 17,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "16-<dynamic>"
-        ],
-        "branch": "branch9"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -248,10 +35,223 @@
         "name": "branch9"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "1-abcdefg",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "branch1",
+        "id": "2-abcdefg",
+        "message": "",
+        "parents": [
+          "1-abcdefg"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "2-<dynamic>",
+        "message": "merged branch branch1 into main",
+        "parents": [
+          "1-abcdefg",
+          "2-abcdefg"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch2",
+        "id": "3-abcdefg",
+        "message": "",
+        "parents": [
+          "2-<dynamic>"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "4-<dynamic>",
+        "message": "merged branch branch2 into main",
+        "parents": [
+          "2-<dynamic>",
+          "3-abcdefg"
+        ],
+        "seq": 4,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch3",
+        "id": "4-abcdefg",
+        "message": "",
+        "parents": [
+          "4-<dynamic>"
+        ],
+        "seq": 5,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "6-<dynamic>",
+        "message": "merged branch branch3 into main",
+        "parents": [
+          "4-<dynamic>",
+          "4-abcdefg"
+        ],
+        "seq": 6,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch4",
+        "id": "5-abcdefg",
+        "message": "",
+        "parents": [
+          "6-<dynamic>"
+        ],
+        "seq": 7,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "8-<dynamic>",
+        "message": "merged branch branch4 into main",
+        "parents": [
+          "6-<dynamic>",
+          "5-abcdefg"
+        ],
+        "seq": 8,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch5",
+        "id": "6-abcdefg",
+        "message": "",
+        "parents": [
+          "8-<dynamic>"
+        ],
+        "seq": 9,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "10-<dynamic>",
+        "message": "merged branch branch5 into main",
+        "parents": [
+          "8-<dynamic>",
+          "6-abcdefg"
+        ],
+        "seq": 10,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch6",
+        "id": "7-abcdefg",
+        "message": "",
+        "parents": [
+          "10-<dynamic>"
+        ],
+        "seq": 11,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "12-<dynamic>",
+        "message": "merged branch branch6 into main",
+        "parents": [
+          "10-<dynamic>",
+          "7-abcdefg"
+        ],
+        "seq": 12,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch7",
+        "id": "8-abcdefg",
+        "message": "",
+        "parents": [
+          "12-<dynamic>"
+        ],
+        "seq": 13,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "14-<dynamic>",
+        "message": "merged branch branch7 into main",
+        "parents": [
+          "12-<dynamic>",
+          "8-abcdefg"
+        ],
+        "seq": 14,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch8",
+        "id": "9-abcdefg",
+        "message": "",
+        "parents": [
+          "14-<dynamic>"
+        ],
+        "seq": 15,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "16-<dynamic>",
+        "message": "merged branch branch8 into main",
+        "parents": [
+          "14-<dynamic>",
+          "9-abcdefg"
+        ],
+        "seq": 16,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "branch9",
+        "id": "10-abcdefg",
+        "message": "",
+        "parents": [
+          "16-<dynamic>"
+        ],
+        "seq": 17,
+        "tags": [],
+        "type": 0
+      }
+    ],
     "currentBranch": "branch9",
     "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

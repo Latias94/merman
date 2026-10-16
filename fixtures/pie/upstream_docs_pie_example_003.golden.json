@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": true,
-    "title": "Key elements in Product X",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "sections": [
       {
         "label": "Calcium",
@@ -23,6 +20,9 @@
         "label": "Iron",
         "value": 5.0
       }
-    ]
+    ],
+    "showData": true,
+    "title": "Key elements in Product X",
+    "type": "pie"
   }
 }

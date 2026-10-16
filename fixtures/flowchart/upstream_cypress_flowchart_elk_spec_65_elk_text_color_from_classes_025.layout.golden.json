@@ -2,39 +2,22 @@
   "diagramType": "flowchart-elk",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
-        {
-          "id": "Lorem",
-          "x": 88.0,
-          "y": 34.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Ipsum",
-          "x": 280.0,
-          "y": 34.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Dolor",
-          "x": 472.0,
-          "y": 34.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 548.0,
+        "max_y": 57.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "L_Lorem_Ipsum_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Lorem",
-          "to": "Ipsum",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Lorem_Ipsum_0",
+          "label": null,
           "points": [
             {
               "x": 164.0,
@@ -45,21 +28,21 @@
               "y": 34.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Ipsum",
+          "to_cluster": null
         },
         {
-          "id": "L_Ipsum_Dolor_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Ipsum",
-          "to": "Dolor",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Ipsum_Dolor_0",
+          "label": null,
           "points": [
             {
               "x": 356.0,
@@ -70,23 +53,40 @@
               "y": 34.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Dolor",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 548.0,
-        "max_y": 57.0
-      }
+      "nodes": [
+        {
+          "height": 45.0,
+          "id": "Lorem",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 88.0,
+          "y": 34.5
+        },
+        {
+          "height": 45.0,
+          "id": "Ipsum",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 280.0,
+          "y": 34.5
+        },
+        {
+          "height": 45.0,
+          "id": "Dolor",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 472.0,
+          "y": 34.5
+        }
+      ]
     }
   }
 }

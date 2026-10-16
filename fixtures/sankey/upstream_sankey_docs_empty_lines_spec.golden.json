@@ -1,22 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "Bio-conversion"
-        },
-        {
-          "id": "Losses"
-        },
-        {
-          "id": "Solid"
-        },
-        {
-          "id": "Gas"
-        }
-      ],
       "links": [
         {
           "source": "Bio-conversion",
@@ -33,7 +18,22 @@
           "target": "Gas",
           "value": 81.144
         }
+      ],
+      "nodes": [
+        {
+          "id": "Bio-conversion"
+        },
+        {
+          "id": "Losses"
+        },
+        {
+          "id": "Solid"
+        },
+        {
+          "id": "Gas"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

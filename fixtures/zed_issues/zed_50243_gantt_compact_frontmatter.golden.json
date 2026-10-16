@@ -1,173 +1,173 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "%Y-%m",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "compact",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "MacOS",
       "support"
     ],
     "tasks": [
       {
-        "section": "MacOS",
-        "type": "MacOS",
-        "task": "MacOS 26 Tahoe ",
-        "id": "MacOS26",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": true,
-        "vert": false,
+        "done": false,
+        "endTime": "2025-09-01T00:00:00.000",
+        "id": "MacOS26",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": true,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": milestone, MacOS26, 2025-09-1, 0d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2025-09-1"
-          },
           "endTime": {
             "data": "0d"
+          },
+          "startTime": {
+            "startData": "2025-09-1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "MacOS",
         "startTime": "2025-09-01T00:00:00.000",
-        "endTime": "2025-09-01T00:00:00.000"
+        "task": "MacOS 26 Tahoe ",
+        "type": "MacOS",
+        "vert": false
       },
       {
-        "section": "MacOS",
-        "type": "MacOS",
-        "task": "MacOS 27 ",
-        "id": "MacOS27",
-        "prevTaskId": "MacOS26",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": true,
-        "vert": false,
+        "done": false,
+        "endTime": "2026-09-01T00:00:00.000",
+        "id": "MacOS27",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": true,
+        "order": 1,
+        "prevTaskId": "MacOS26",
+        "processed": true,
         "raw": {
           "data": ": milestone, MacOS27, 2026-09-1, 0d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2026-09-1"
-          },
           "endTime": {
             "data": "0d"
+          },
+          "startTime": {
+            "startData": "2026-09-1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "MacOS",
         "startTime": "2026-09-01T00:00:00.000",
-        "endTime": "2026-09-01T00:00:00.000"
+        "task": "MacOS 27 ",
+        "type": "MacOS",
+        "vert": false
       },
       {
-        "section": "MacOS",
-        "type": "MacOS",
-        "task": "MacOS 28 ",
-        "id": "MacOS28",
-        "prevTaskId": "MacOS27",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": true,
-        "vert": false,
+        "done": false,
+        "endTime": "2027-09-01T00:00:00.000",
+        "id": "MacOS28",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": true,
+        "order": 2,
+        "prevTaskId": "MacOS27",
+        "processed": true,
         "raw": {
           "data": ": milestone, MacOS28, 2027-09-1, 0d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2027-09-1"
-          },
           "endTime": {
             "data": "0d"
+          },
+          "startTime": {
+            "startData": "2027-09-1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "MacOS",
         "startTime": "2027-09-01T00:00:00.000",
-        "endTime": "2027-09-01T00:00:00.000"
+        "task": "MacOS 28 ",
+        "type": "MacOS",
+        "vert": false
       },
       {
-        "section": "support",
-        "type": "support",
-        "task": "x86 hardware",
-        "id": "x86iron",
-        "prevTaskId": "MacOS28",
-        "order": 3,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": true,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": true,
+        "endTime": "2026-09-01T00:00:00.000",
+        "id": "x86iron",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "MacOS28",
+        "processed": true,
         "raw": {
           "data": ": done, x86iron, 2025-09-1, 1y",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2025-09-1"
-          },
           "endTime": {
             "data": "1y"
+          },
+          "startTime": {
+            "startData": "2025-09-1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "support",
         "startTime": "2025-09-01T00:00:00.000",
-        "endTime": "2026-09-01T00:00:00.000"
+        "task": "x86 hardware",
+        "type": "support",
+        "vert": false
       },
       {
-        "section": "support",
-        "type": "support",
-        "task": "x86 software",
-        "id": "x86prog",
-        "prevTaskId": "x86iron",
-        "order": 4,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": true,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": true,
+        "endTime": "2027-09-01T00:00:00.000",
+        "id": "x86prog",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 4,
+        "prevTaskId": "x86iron",
+        "processed": true,
         "raw": {
           "data": ": done, x86prog, 2025-09-1, 2y",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2025-09-1"
-          },
           "endTime": {
             "data": "2y"
+          },
+          "startTime": {
+            "startData": "2025-09-1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "support",
         "startTime": "2025-09-01T00:00:00.000",
-        "endTime": "2027-09-01T00:00:00.000"
+        "task": "x86 software",
+        "type": "support",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": null,
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

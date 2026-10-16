@@ -1,80 +1,80 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "中",
       "G",
       "P"
     ],
     "actors": {
-      "中": {
-        "name": "中",
-        "description": "中文",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "G": {
-        "name": "G",
         "description": "Greek",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "G",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "P": {
-        "name": "P",
         "description": "Punct",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "P",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "中": {
+        "description": "中文",
+        "links": {},
+        "name": "中",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "中",
-        "to": "G",
-        "message": "你好，世界！",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "G",
-        "to": "中",
-        "message": "αβγδεζηθ",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "P",
-        "to": "P",
-        "message": "Mixed — em-dash, en–dash, quotes “like this”, and symbols ✓✗",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "中",
+        "id": "0",
+        "message": "你好，世界！",
+        "to": "G",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "G",
+        "id": "1",
+        "message": "αβγδεζηθ",
+        "to": "中",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "P",
+        "id": "2",
+        "message": "Mixed — em-dash, en–dash, quotes “like this”, and symbols ✓✗",
+        "to": "P",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

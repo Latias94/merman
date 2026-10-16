@@ -1,21 +1,127 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
+    "direction": "LR",
+    "edgeDefaults": {
+      "interpolate": null,
+      "style": []
+    },
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "456ac9b0d15a8b7f1e71073221059886",
+        "id": "L_456ac9b0d15a8b7f1e71073221059886_f7f580e11d00a75814d2ded41fe8e8fe_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": "Node",
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "f7f580e11d00a75814d2ded41fe8e8fe",
+        "type": "arrow_point"
+      },
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "f7f580e11d00a75814d2ded41fe8e8fe",
+        "id": "L_f7f580e11d00a75814d2ded41fe8e8fe_81dc9bdb52d04dc20036dbd8313ed055_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": "Node",
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "81dc9bdb52d04dc20036dbd8313ed055",
+        "type": "arrow_point"
+      }
+    ],
+    "keyword": "graph",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "clickable"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "456ac9b0d15a8b7f1e71073221059886",
+        "img": null,
+        "label": "1051 AAA fa:fa-check",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": "/admin/user/view?id=1051",
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ]
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "clickable"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "f7f580e11d00a75814d2ded41fe8e8fe",
+        "img": null,
+        "label": "1141 BBB fa:fa-check",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": "/admin/user/view?id=1141",
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "clickable"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "81dc9bdb52d04dc20036dbd8313ed055",
+        "img": null,
+        "label": "1234 CCC fa:fa-check",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": "/admin/user/view?id=1234",
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      }
+    ],
+    "subgraphs": [],
     "tooltips": {
       "456ac9b0d15a8b7f1e71073221059886": "AAA\n6000",
-      "f7f580e11d00a75814d2ded41fe8e8fe": "BBB\n600",
-      "81dc9bdb52d04dc20036dbd8313ed055": "CCC\n3000"
+      "81dc9bdb52d04dc20036dbd8313ed055": "CCC\n3000",
+      "f7f580e11d00a75814d2ded41fe8e8fe": "BBB\n600"
     },
-    "edgeDefaults": {
-      "style": [],
-      "interpolate": null
-    },
+    "type": "flowchart-v2",
     "vertexCalls": [
       "456ac9b0d15a8b7f1e71073221059886",
       "f7f580e11d00a75814d2ded41fe8e8fe",
@@ -25,112 +131,6 @@
       "f7f580e11d00a75814d2ded41fe8e8fe",
       "81dc9bdb52d04dc20036dbd8313ed055",
       "456ac9b0d15a8b7f1e71073221059886"
-    ],
-    "nodes": [
-      {
-        "id": "456ac9b0d15a8b7f1e71073221059886",
-        "label": "1051 AAA fa:fa-check",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [
-          "fill:#f9f",
-          "stroke:#333",
-          "stroke-width:4px"
-        ],
-        "classes": [
-          "clickable"
-        ],
-        "link": "/admin/user/view?id=1051",
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "f7f580e11d00a75814d2ded41fe8e8fe",
-        "label": "1141 BBB fa:fa-check",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "/admin/user/view?id=1141",
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "81dc9bdb52d04dc20036dbd8313ed055",
-        "label": "1234 CCC fa:fa-check",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "/admin/user/view?id=1234",
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [
-      {
-        "from": "456ac9b0d15a8b7f1e71073221059886",
-        "to": "f7f580e11d00a75814d2ded41fe8e8fe",
-        "id": "L_456ac9b0d15a8b7f1e71073221059886_f7f580e11d00a75814d2ded41fe8e8fe_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "Node",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "f7f580e11d00a75814d2ded41fe8e8fe",
-        "to": "81dc9bdb52d04dc20036dbd8313ed055",
-        "id": "L_f7f580e11d00a75814d2ded41fe8e8fe_81dc9bdb52d04dc20036dbd8313ed055_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "Node",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      }
-    ],
-    "subgraphs": []
+    ]
   }
 }

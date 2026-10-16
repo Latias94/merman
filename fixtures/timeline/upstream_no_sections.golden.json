@@ -1,54 +1,54 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "History of Social Media Platform",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [],
     "tasks": [
       {
-        "id": 0,
-        "section": "",
-        "type": "",
-        "task": "2002 ",
-        "score": 0,
         "events": [
           "LinkedIn"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "",
+        "task": "2002 ",
+        "type": ""
       },
       {
-        "id": 1,
-        "section": "",
-        "type": "",
-        "task": "2004 ",
-        "score": 0,
         "events": [
           "Facebook",
           "Google"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "",
+        "task": "2004 ",
+        "type": ""
       },
       {
-        "id": 2,
-        "section": "",
-        "type": "",
-        "task": "2005 ",
-        "score": 0,
         "events": [
           "YouTube"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "",
+        "task": "2005 ",
+        "type": ""
       },
       {
-        "id": 3,
-        "section": "",
-        "type": "",
-        "task": "2006 ",
-        "score": 0,
         "events": [
           "Twitter"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "",
+        "task": "2006 ",
+        "type": ""
       }
-    ]
+    ],
+    "title": "History of Social Media Platform",
+    "type": "timeline"
   }
 }

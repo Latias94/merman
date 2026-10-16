@@ -2,31 +2,22 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
-        {
-          "id": "XState1",
-          "x": 104.48,
-          "y": 41.0,
-          "width": 136.0,
-          "height": 58.0,
-          "is_cluster": false
-        },
-        {
-          "id": "XState2",
-          "x": 104.48,
-          "y": 139.5,
-          "width": 184.96,
-          "height": 59.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 196.96,
+        "max_y": 169.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "XState1",
-          "to": "XState2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 104.48,
@@ -37,23 +28,32 @@
               "y": 110.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "XState2",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 196.96,
-        "max_y": 169.0
-      }
+      "nodes": [
+        {
+          "height": 58.0,
+          "id": "XState1",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 104.48,
+          "y": 41.0
+        },
+        {
+          "height": 59.0,
+          "id": "XState2",
+          "is_cluster": false,
+          "width": 184.96,
+          "x": 104.48,
+          "y": 139.5
+        }
+      ]
     }
   }
 }

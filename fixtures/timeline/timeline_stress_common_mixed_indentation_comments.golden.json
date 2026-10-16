@@ -1,60 +1,60 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Mixed indentation, comments, and continuation lines",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Indentation",
       "Comments"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Indentation",
-        "type": "Indentation",
-        "task": "Period 1 ",
-        "score": 0,
         "events": [
           "Event A",
           "Event B"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Indentation",
+        "task": "Period 1 ",
+        "type": "Indentation"
       },
       {
-        "id": 1,
-        "section": "Indentation",
-        "type": "Indentation",
-        "task": "Period 2 ",
-        "score": 0,
         "events": [
           "Event C ",
           "Event D",
           "Event E"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Indentation",
+        "task": "Period 2 ",
+        "type": "Indentation"
       },
       {
-        "id": 2,
-        "section": "Comments",
-        "type": "Comments",
-        "task": "Period 3 ",
-        "score": 0,
         "events": [
           "Event F %% trailing comment",
           "Event G"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "Comments",
+        "task": "Period 3 ",
+        "type": "Comments"
       },
       {
-        "id": 3,
-        "section": "Comments",
-        "type": "Comments",
-        "task": "Period 4 ",
-        "score": 0,
         "events": [
           "Event H"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "Comments",
+        "task": "Period 4 ",
+        "type": "Comments"
       }
-    ]
+    ],
+    "title": "Mixed indentation, comments, and continuation lines",
+    "type": "timeline"
   }
 }

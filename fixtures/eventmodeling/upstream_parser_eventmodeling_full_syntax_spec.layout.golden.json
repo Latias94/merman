@@ -3,46 +3,46 @@
   "layout": {
     "EventModelingDiagram": {
       "bounds": {
-        "min_x": -30.0,
-        "min_y": -30.0,
         "max_x": 440.0,
-        "max_y": 160.0
+        "max_y": 160.0,
+        "min_x": -30.0,
+        "min_y": -30.0
       },
-      "total_width": 470.0,
-      "total_height": 190.0,
-      "viewbox_x": -30.0,
-      "viewbox_y": -30.0,
+      "boxes": [
+        {
+          "entity_identifier": "Start",
+          "fill": "#ffb778",
+          "frame_kind": "timeframe",
+          "frame_name": "01",
+          "height": 100.0,
+          "index": 0.0,
+          "model_entity_type": "event",
+          "stroke": "#c19a0f",
+          "swimlane_index": 200.0,
+          "text": "Start",
+          "width": 135.0,
+          "x": 250.0,
+          "y": 15.0
+        }
+      ],
       "padding": 30.0,
-      "use_max_width": true,
+      "relations": [],
       "swimlanes": [
         {
+          "height": 130.0,
           "index": 200.0,
           "label": "Events",
           "namespace": null,
-          "x": 0.0,
-          "y": 0.0,
           "width": 410.0,
-          "height": 130.0
+          "x": 0.0,
+          "y": 0.0
         }
       ],
-      "boxes": [
-        {
-          "index": 0.0,
-          "frame_name": "01",
-          "frame_kind": "timeframe",
-          "model_entity_type": "event",
-          "entity_identifier": "Start",
-          "text": "Start",
-          "x": 250.0,
-          "y": 15.0,
-          "width": 135.0,
-          "height": 100.0,
-          "fill": "#ffb778",
-          "stroke": "#c19a0f",
-          "swimlane_index": 200.0
-        }
-      ],
-      "relations": []
+      "total_height": 190.0,
+      "total_width": 470.0,
+      "use_max_width": true,
+      "viewbox_x": -30.0,
+      "viewbox_y": -30.0
     }
   }
 }

@@ -1,19 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "A very long source label with many words for measurement"
-        },
-        {
-          "id": "Intermediate with a very long label too"
-        },
-        {
-          "id": "A very long target label with many words for measurement"
-        }
-      ],
       "links": [
         {
           "source": "A very long source label with many words for measurement",
@@ -25,7 +13,19 @@
           "target": "A very long target label with many words for measurement",
           "value": 12
         }
+      ],
+      "nodes": [
+        {
+          "id": "A very long source label with many words for measurement"
+        },
+        {
+          "id": "Intermediate with a very long label too"
+        },
+        {
+          "id": "A very long target label with many words for measurement"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

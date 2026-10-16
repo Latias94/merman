@@ -1,155 +1,155 @@
 {
   "diagramType": "requirement",
   "model": {
-    "type": "requirement",
-    "accTitle": "Requirements demo in black and white",
     "accDescr": "A series of requirement boxes showing relationships among them. Has meaningless task names",
+    "accTitle": "Requirements demo in black and white",
+    "classes": {},
     "direction": "TB",
-    "requirements": [
-      {
-        "name": "test_req",
-        "type": "Requirement",
-        "requirementId": "1",
-        "text": "the test text.",
-        "risk": "High",
-        "verifyMethod": "Test",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      },
-      {
-        "name": "test_req2",
-        "type": "Functional Requirement",
-        "requirementId": "1.1",
-        "text": "the second test text.",
-        "risk": "Low",
-        "verifyMethod": "Inspection",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      },
-      {
-        "name": "test_req3",
-        "type": "Performance Requirement",
-        "requirementId": "1.2",
-        "text": "the third test text.",
-        "risk": "Medium",
-        "verifyMethod": "Demonstration",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      },
-      {
-        "name": "test_req4",
-        "type": "Interface Requirement",
-        "requirementId": "1.2.1",
-        "text": "the fourth test text.",
-        "risk": "Medium",
-        "verifyMethod": "Analysis",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      },
-      {
-        "name": "test_req5",
-        "type": "Physical Requirement",
-        "requirementId": "1.2.2",
-        "text": "the fifth test text.",
-        "risk": "Medium",
-        "verifyMethod": "Analysis",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      },
-      {
-        "name": "test_req6",
-        "type": "Design Constraint",
-        "requirementId": "1.2.3",
-        "text": "the sixth test text.",
-        "risk": "Medium",
-        "verifyMethod": "Analysis",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      }
-    ],
     "elements": [
       {
-        "name": "test_entity",
-        "type": "simulation",
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
         "docRef": "",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
+        "name": "test_entity",
+        "type": "simulation"
       },
       {
-        "name": "test_entity2",
-        "type": "word doc",
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
         "docRef": "reqs/test_entity",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
+        "name": "test_entity2",
+        "type": "word doc"
       },
       {
-        "name": "test_entity3",
-        "type": "test suite",
-        "docRef": "github.com/all_the_tests",
-        "cssStyles": [],
         "classes": [
           "default"
-        ]
+        ],
+        "cssStyles": [],
+        "docRef": "github.com/all_the_tests",
+        "name": "test_entity3",
+        "type": "test suite"
       }
     ],
     "relationships": [
       {
-        "type": "satisfies",
+        "dst": "test_req2",
         "src": "test_entity",
-        "dst": "test_req2"
+        "type": "satisfies"
       },
       {
-        "type": "traces",
+        "dst": "test_req2",
         "src": "test_req",
-        "dst": "test_req2"
+        "type": "traces"
       },
       {
-        "type": "contains",
+        "dst": "test_req3",
         "src": "test_req",
-        "dst": "test_req3"
+        "type": "contains"
       },
       {
-        "type": "contains",
+        "dst": "test_req4",
         "src": "test_req3",
-        "dst": "test_req4"
+        "type": "contains"
       },
       {
-        "type": "derives",
+        "dst": "test_req5",
         "src": "test_req4",
-        "dst": "test_req5"
+        "type": "derives"
       },
       {
-        "type": "refines",
+        "dst": "test_req6",
         "src": "test_req5",
-        "dst": "test_req6"
+        "type": "refines"
       },
       {
-        "type": "verifies",
+        "dst": "test_req5",
         "src": "test_entity3",
-        "dst": "test_req5"
+        "type": "verifies"
       },
       {
-        "type": "copies",
+        "dst": "test_req",
         "src": "test_entity2",
-        "dst": "test_req"
+        "type": "copies"
       }
     ],
-    "classes": {}
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req",
+        "requirementId": "1",
+        "risk": "High",
+        "text": "the test text.",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req2",
+        "requirementId": "1.1",
+        "risk": "Low",
+        "text": "the second test text.",
+        "type": "Functional Requirement",
+        "verifyMethod": "Inspection"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req3",
+        "requirementId": "1.2",
+        "risk": "Medium",
+        "text": "the third test text.",
+        "type": "Performance Requirement",
+        "verifyMethod": "Demonstration"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req4",
+        "requirementId": "1.2.1",
+        "risk": "Medium",
+        "text": "the fourth test text.",
+        "type": "Interface Requirement",
+        "verifyMethod": "Analysis"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req5",
+        "requirementId": "1.2.2",
+        "risk": "Medium",
+        "text": "the fifth test text.",
+        "type": "Physical Requirement",
+        "verifyMethod": "Analysis"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req6",
+        "requirementId": "1.2.3",
+        "risk": "Medium",
+        "text": "the sixth test text.",
+        "type": "Design Constraint",
+        "verifyMethod": "Analysis"
+      }
+    ],
+    "type": "requirement"
   }
 }

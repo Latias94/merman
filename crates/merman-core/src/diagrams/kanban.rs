@@ -2162,6 +2162,6 @@ mod tests {
     fn kanban_shape_data_rewrites_newline_whitespace_in_double_quotes() {
         let model = parse("kanban\n  root@{ label: \"line1\n      line2\" }\n");
         let sections = sections(&model);
-        assert_eq!(sections[0]["label"].as_str().unwrap(), "line1<br/>line2");
+        assert_eq!(sections[0]["label"].as_str().unwrap(), "line1<br>line2");
     }
 }

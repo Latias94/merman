@@ -1,97 +1,97 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "_STARTER_",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
+        "declarationSpan": null,
+        "emoji": null,
         "explicit": false,
+        "groupId": null,
         "isStarter": true,
-        "declarationSpan": null,
+        "label": null,
+        "name": "_STARTER_",
         "occurrences": [],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
+        "color": null,
+        "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
         "name": "A1",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
-        "declarationSpan": null,
         "occurrences": [
           {
-            "start": 15,
-            "end": 17
+            "end": 17,
+            "start": 15
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
-        "name": "A2",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "A2",
         "occurrences": [
           {
-            "start": 26,
-            "end": 28
+            "end": 28,
+            "start": 26
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 11,
-          "end": 17
-        },
+        "constructor": "A1",
+        "id": "zenuml-statement-0",
         "kind": "creation",
+        "label": "«create»",
+        "parameters": "",
         "resolved_from": null,
         "resolved_to": "A1",
-        "constructor": "A1",
-        "parameters": "",
-        "assignment": null,
-        "label": "«create»",
-        "body": []
+        "span": {
+          "end": 17,
+          "start": 11
+        }
       },
       {
-        "id": "zenuml-statement-1",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 22,
-          "end": 46
-        },
+        "constructor": "A2",
+        "id": "zenuml-statement-1",
         "kind": "creation",
+        "label": "«with,parameters»",
+        "parameters": "with,parameters",
         "resolved_from": null,
         "resolved_to": "A2",
-        "constructor": "A2",
-        "parameters": "with,parameters",
-        "assignment": null,
-        "label": "«with,parameters»",
-        "body": []
+        "span": {
+          "end": 46,
+          "start": 22
+        }
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

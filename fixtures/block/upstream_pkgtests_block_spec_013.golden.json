@@ -1,101 +1,101 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "id-<id>-1",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "aBlock",
-            "type": "square",
-            "label": "ABlock",
             "children": [],
+            "id": "aBlock",
+            "label": "ABlock",
+            "type": "square",
             "widthInColumns": 1
           },
           {
-            "id": "bBlock",
-            "type": "square",
-            "label": "BBlock",
             "children": [],
+            "id": "bBlock",
+            "label": "BBlock",
+            "type": "square",
             "widthInColumns": 1
           }
         ],
-        "colorIndex": 0
+        "colorIndex": 0,
+        "id": "id-<id>-1",
+        "label": "",
+        "type": "composite"
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "id-<id>-1",
-            "type": "composite",
-            "label": "",
             "children": [
               {
-                "id": "aBlock",
-                "type": "square",
-                "label": "ABlock",
                 "children": [],
+                "id": "aBlock",
+                "label": "ABlock",
+                "type": "square",
                 "widthInColumns": 1
               },
               {
-                "id": "bBlock",
-                "type": "square",
-                "label": "BBlock",
                 "children": [],
+                "id": "bBlock",
+                "label": "BBlock",
+                "type": "square",
                 "widthInColumns": 1
               }
             ],
-            "colorIndex": 0
+            "colorIndex": 0,
+            "id": "id-<id>-1",
+            "label": "",
+            "type": "composite"
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "id-<id>-1",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "aBlock",
-            "type": "square",
-            "label": "ABlock",
             "children": [],
+            "id": "aBlock",
+            "label": "ABlock",
+            "type": "square",
             "widthInColumns": 1
           },
           {
-            "id": "bBlock",
-            "type": "square",
-            "label": "BBlock",
             "children": [],
+            "id": "bBlock",
+            "label": "BBlock",
+            "type": "square",
             "widthInColumns": 1
           }
         ],
-        "colorIndex": 0
+        "colorIndex": 0,
+        "id": "id-<id>-1",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "aBlock",
-        "type": "square",
-        "label": "ABlock",
         "children": [],
+        "id": "aBlock",
+        "label": "ABlock",
+        "type": "square",
         "widthInColumns": 1
       },
       {
-        "id": "bBlock",
-        "type": "square",
-        "label": "BBlock",
         "children": [],
+        "id": "bBlock",
+        "label": "BBlock",
+        "type": "square",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

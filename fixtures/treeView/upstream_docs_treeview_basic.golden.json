@@ -1,48 +1,8 @@
 {
   "diagramType": "treeView",
   "model": {
-    "type": "treeView",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "id": 0,
-      "level": -1,
-      "name": "/",
-      "nodeType": "directory",
-      "children": [
-        {
-          "id": 1,
-          "level": 4,
-          "name": "packages",
-          "nodeType": "file",
-          "children": [
-            {
-              "id": 2,
-              "level": 8,
-              "name": "mermaid",
-              "nodeType": "file",
-              "children": [
-                {
-                  "id": 3,
-                  "level": 12,
-                  "name": "src",
-                  "nodeType": "file",
-                  "children": []
-                }
-              ]
-            },
-            {
-              "id": 4,
-              "level": 8,
-              "name": "parser",
-              "nodeType": "file",
-              "children": []
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
         "id": 0,
@@ -74,6 +34,46 @@
         "name": "parser",
         "nodeType": "file"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "id": 3,
+                  "level": 12,
+                  "name": "src",
+                  "nodeType": "file"
+                }
+              ],
+              "id": 2,
+              "level": 8,
+              "name": "mermaid",
+              "nodeType": "file"
+            },
+            {
+              "children": [],
+              "id": 4,
+              "level": 8,
+              "name": "parser",
+              "nodeType": "file"
+            }
+          ],
+          "id": 1,
+          "level": 4,
+          "name": "packages",
+          "nodeType": "file"
+        }
+      ],
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory"
+    },
+    "title": null,
+    "type": "treeView"
   }
 }

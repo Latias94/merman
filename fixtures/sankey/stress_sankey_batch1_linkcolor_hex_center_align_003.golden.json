@@ -1,22 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "Source"
-        },
-        {
-          "id": "Mid"
-        },
-        {
-          "id": "Alt"
-        },
-        {
-          "id": "Sink"
-        }
-      ],
       "links": [
         {
           "source": "Source",
@@ -38,7 +23,22 @@
           "target": "Sink",
           "value": 1.9
         }
+      ],
+      "nodes": [
+        {
+          "id": "Source"
+        },
+        {
+          "id": "Mid"
+        },
+        {
+          "id": "Alt"
+        },
+        {
+          "id": "Sink"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

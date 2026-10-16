@@ -2,111 +2,44 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 597.333,
+        "max_y": 899.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Done",
-          "x": 168.0,
-          "y": 806.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Fail",
-          "x": 378.333,
-          "y": 668.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Fork",
-          "x": 168.0,
-          "y": 514.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Init",
-          "x": 378.333,
-          "y": 84.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Join",
-          "x": 168.0,
-          "y": 668.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "WorkA",
-          "x": 80.0,
-          "y": 591.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "WorkB",
-          "x": 256.0,
-          "y": 591.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "if_state",
-          "x": 378.333,
-          "y": 222.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "if_state----note-4",
-          "x": 498.333,
-          "y": 396.0,
-          "width": 150.0,
-          "height": 72.0,
-          "is_cluster": false
-        },
-        {
-          "id": "if_state----parent",
-          "x": 498.333,
-          "y": 373.5,
-          "width": 198.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 165.0,
-          "is_cluster": true
-        },
-        {
-          "id": "root_end",
-          "x": 255.0,
-          "y": 892.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 378.333,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
+          "id": "if_state----parent",
+          "offset_y": 0.0,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "Decision point.\nMultiple lines.",
+          "title_label": {
+            "height": 42.0,
+            "width": 82.88,
+            "x": 498.333,
+            "y": 312.0
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 198.0,
+          "x": 498.333,
+          "y": 373.5
         }
       ],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "Init",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 378.333,
@@ -117,21 +50,26 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Init",
+          "to_cluster": null
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Init",
-          "to": "if_state",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 21.0,
+            "width": 31.781,
+            "x": 378.224,
+            "y": 153.5
+          },
           "points": [
             {
               "x": 378.333,
@@ -142,26 +80,21 @@
               "y": 204.0
             }
           ],
-          "label": {
-            "x": 378.224,
-            "y": 153.5,
-            "width": 31.781,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "if_state",
+          "to_cluster": null
         },
         {
-          "id": "edge10",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Fail",
-          "to": "root_end",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge10",
+          "label": null,
           "points": [
             {
               "x": 378.333,
@@ -188,21 +121,21 @@
               "y": 885.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
         },
         {
-          "id": "edge11",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Done",
-          "to": "root_end",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge11",
+          "label": null,
           "points": [
             {
               "x": 168.0,
@@ -221,21 +154,26 @@
               "y": 885.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
         },
         {
-          "id": "edge2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "if_state",
-          "to": "Fork",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge2",
+          "label": {
+            "height": 21.0,
+            "width": 19.734,
+            "x": 167.867,
+            "y": 368.5
+          },
           "points": [
             {
               "x": 349.333,
@@ -254,26 +192,26 @@
               "y": 496.0
             }
           ],
-          "label": {
-            "x": 167.867,
-            "y": 368.5,
-            "width": 19.734,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Fork",
+          "to_cluster": null
         },
         {
-          "id": "edge3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "if_state",
-          "to": "Fail",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge3",
+          "label": {
+            "height": 21.0,
+            "width": 12.047,
+            "x": 377.857,
+            "y": 514.5
+          },
           "points": [
             {
               "x": 378.333,
@@ -292,59 +230,54 @@
               "y": 650.0
             }
           ],
-          "label": {
-            "x": 377.857,
-            "y": 514.5,
-            "width": 12.047,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Fail",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Fork",
+          "from_cluster": null,
           "id": "edge5",
-          "from": "Fork",
+          "label": null,
+          "points": [
+            {
+              "x": 148.667,
+              "y": 533.0
+            },
+            {
+              "x": 148.667,
+              "y": 553.0
+            },
+            {
+              "x": 80.0,
+              "y": 553.0
+            },
+            {
+              "x": 80.0,
+              "y": 573.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "WorkA",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 148.667,
-              "y": 533.0
-            },
-            {
-              "x": 148.667,
-              "y": 553.0
-            },
-            {
-              "x": 80.0,
-              "y": 553.0
-            },
-            {
-              "x": 80.0,
-              "y": 573.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "edge6",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Fork",
-          "to": "WorkB",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge6",
+          "label": null,
           "points": [
             {
               "x": 187.333,
@@ -363,21 +296,21 @@
               "y": 573.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "WorkB",
+          "to_cluster": null
         },
         {
-          "id": "edge7",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "WorkA",
-          "to": "Join",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge7",
+          "label": null,
           "points": [
             {
               "x": 80.0,
@@ -396,21 +329,21 @@
               "y": 650.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Join",
+          "to_cluster": null
         },
         {
-          "id": "edge8",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "WorkB",
-          "to": "Join",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge8",
+          "label": null,
           "points": [
             {
               "x": 256.0,
@@ -429,21 +362,26 @@
               "y": 650.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Join",
+          "to_cluster": null
         },
         {
-          "id": "edge9",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Join",
-          "to": "Done",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge9",
+          "label": {
+            "height": 21.0,
+            "width": 35.0,
+            "x": 168.0,
+            "y": 737.5
+          },
           "points": [
             {
               "x": 168.0,
@@ -454,26 +392,21 @@
               "y": 788.0
             }
           ],
-          "label": {
-            "x": 168.0,
-            "y": 737.5,
-            "width": 35.0,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Done",
+          "to_cluster": null
         },
         {
-          "id": "if_state-if_state----note-4",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "if_state",
-          "to": "if_state----note-4",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "if_state-if_state----note-4",
+          "label": null,
           "points": [
             {
               "x": 407.333,
@@ -496,45 +429,112 @@
               "y": 360.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "if_state----note-4",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "if_state----parent",
+          "height": 37.0,
+          "id": "Done",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 168.0,
+          "y": 806.5
+        },
+        {
+          "height": 37.0,
+          "id": "Fail",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 378.333,
+          "y": 668.5
+        },
+        {
+          "height": 37.0,
+          "id": "Fork",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 168.0,
+          "y": 514.5
+        },
+        {
+          "height": 37.0,
+          "id": "Init",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 378.333,
+          "y": 84.5
+        },
+        {
+          "height": 37.0,
+          "id": "Join",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 168.0,
+          "y": 668.5
+        },
+        {
+          "height": 37.0,
+          "id": "WorkA",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 80.0,
+          "y": 591.5
+        },
+        {
+          "height": 37.0,
+          "id": "WorkB",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 256.0,
+          "y": 591.5
+        },
+        {
+          "height": 37.0,
+          "id": "if_state",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 378.333,
+          "y": 222.5
+        },
+        {
+          "height": 72.0,
+          "id": "if_state----note-4",
+          "is_cluster": false,
+          "width": 150.0,
           "x": 498.333,
-          "y": 373.5,
-          "width": 198.0,
+          "y": 396.0
+        },
+        {
           "height": 165.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Decision point.\nMultiple lines.",
-          "title_label": {
-            "x": 498.333,
-            "y": 312.0,
-            "width": 82.88,
-            "height": 42.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "if_state----parent",
+          "is_cluster": true,
+          "width": 198.0,
+          "x": 498.333,
+          "y": 373.5
+        },
+        {
+          "height": 14.0,
+          "id": "root_end",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 255.0,
+          "y": 892.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 378.333,
+          "y": 19.0
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 597.333,
-        "max_y": 899.0
-      }
+      ]
     }
   }
 }

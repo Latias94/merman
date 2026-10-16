@@ -1,148 +1,148 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "inner2",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "inner1",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Big State 1",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "bigState1",
+        "description": [],
         "dir": "TB",
         "domId": "state-bigState1-0",
-        "type": "group",
+        "id": "bigState1",
         "isGroup": true,
+        "label": "Big State 1",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true,
-        "description": []
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "inner state 1",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "inner1",
+        "description": [],
         "dir": null,
         "domId": "state-inner1-0",
-        "type": null,
+        "id": "inner1",
         "isGroup": false,
+        "label": "inner state 1",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "bigState1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "bigState1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "inner state 2",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "inner2",
+        "description": [],
         "dir": null,
         "domId": "state-inner2-0",
-        "type": null,
+        "id": "inner2",
         "isGroup": false,
+        "label": "inner state 2",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "bigState1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "bigState1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "inner1",
-        "end": "inner2",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "relations": [],
     "states": {
       "bigState1": {
-        "id": "bigState1",
-        "type": "default",
+        "classes": [],
         "descriptions": [
           "Big State 1"
         ],
         "doc": [
           {
-            "stmt": "state",
-            "id": "inner1",
-            "type": "default",
+            "classes": [],
             "description": "inner state 1",
             "doc": null,
-            "classes": []
+            "id": "inner1",
+            "stmt": "state",
+            "type": "default"
           },
           {
-            "stmt": "state",
-            "id": "inner2",
-            "type": "default",
+            "classes": [],
             "description": "inner state 2",
             "doc": null,
-            "classes": []
+            "id": "inner2",
+            "stmt": "state",
+            "type": "default"
           },
           {
-            "stmt": "relation",
+            "description": null,
             "state1": {
+              "classes": [],
               "id": "inner1",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "inner2",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": null
+            "stmt": "relation"
           }
         ],
+        "id": "bigState1",
         "note": null,
-        "classes": [],
+        "start": null,
         "styles": [],
         "textStyles": [],
-        "start": null
+        "type": "default"
       }
     },
-    "relations": [],
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

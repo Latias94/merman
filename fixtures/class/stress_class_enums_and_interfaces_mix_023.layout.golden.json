@@ -2,39 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Status",
-          "x": 453.416,
-          "y": 100.5,
-          "width": 129.21,
-          "height": 177.0,
-          "is_cluster": false
-        },
-        {
-          "id": "IService",
-          "x": 58.44,
-          "y": 100.5,
-          "width": 92.88,
-          "height": 102.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Impl",
-          "x": 205.776,
-          "y": 100.5,
-          "width": 121.791,
-          "height": 120.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 518.021,
+        "max_y": 189.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "IService",
-          "to": "Impl",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 104.88,
@@ -45,21 +28,26 @@
               "y": 100.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Impl",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Impl",
-          "to": "Status",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 42.14,
+            "x": 327.741,
+            "y": 100.0
+          },
           "points": [
             {
               "x": 266.671,
@@ -70,28 +58,40 @@
               "y": 100.5
             }
           ],
-          "label": {
-            "x": 327.741,
-            "y": 100.0,
-            "width": 42.14,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Status",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 518.021,
-        "max_y": 189.0
-      }
+      "nodes": [
+        {
+          "height": 177.0,
+          "id": "Status",
+          "is_cluster": false,
+          "width": 129.21,
+          "x": 453.416,
+          "y": 100.5
+        },
+        {
+          "height": 102.0,
+          "id": "IService",
+          "is_cluster": false,
+          "width": 92.88,
+          "x": 58.44,
+          "y": 100.5
+        },
+        {
+          "height": 120.0,
+          "id": "Impl",
+          "is_cluster": false,
+          "width": 121.791,
+          "x": 205.776,
+          "y": 100.5
+        }
+      ]
     }
   }
 }

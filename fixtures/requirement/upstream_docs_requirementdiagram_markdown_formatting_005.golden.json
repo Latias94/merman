@@ -1,26 +1,26 @@
 {
   "diagramType": "requirement",
   "model": {
-    "type": "requirement",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
     "direction": "TB",
-    "requirements": [
-      {
-        "name": "__test_req__",
-        "type": "Requirement",
-        "requirementId": "1",
-        "text": "*italicized text* **bold text**",
-        "risk": "High",
-        "verifyMethod": "Test",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      }
-    ],
     "elements": [],
     "relationships": [],
-    "classes": {}
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "__test_req__",
+        "requirementId": "1",
+        "risk": "High",
+        "text": "*italicized text* **bold text**",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      }
+    ],
+    "type": "requirement"
   }
 }

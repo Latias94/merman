@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "lead",
       "dsa",
@@ -12,96 +10,98 @@
       "Database"
     ],
     "actors": {
-      "lead": {
-        "name": "lead",
-        "description": "lead",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "dsa": {
-        "name": "dsa",
-        "description": "dsa",
-        "wrap": false,
-        "type": "queue",
-        "links": {},
-        "properties": {}
-      },
       "API": {
-        "name": "API",
         "description": "API",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "API",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Database": {
-        "name": "Database",
         "description": "Database",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Database",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "dsa": {
+        "description": "dsa",
+        "links": {},
+        "name": "dsa",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
+      },
+      "lead": {
+        "description": "lead",
+        "links": {},
+        "name": "lead",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "API",
-        "to": "Database",
-        "message": "getUserb",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "1",
-        "from": "Database",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Database",
-        "to": "API",
-        "message": "userb",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Database",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "dsa",
-        "to": "Database",
-        "message": "hello",
-        "wrap": false,
-        "type": 6,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": true,
+        "from": "API",
+        "id": "0",
+        "message": "getUserb",
+        "to": "Database",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Database",
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Database",
+        "id": "2",
+        "message": "userb",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Database",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "dsa",
+        "id": "4",
+        "message": "hello",
+        "to": "Database",
+        "type": 6,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

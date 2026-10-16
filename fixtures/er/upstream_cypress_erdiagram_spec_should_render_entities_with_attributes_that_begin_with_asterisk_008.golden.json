@@ -1,93 +1,93 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
-      "STORE": {
-        "id": "entity-STORE-1",
-        "label": "STORE",
+      "BOOK": {
+        "alias": "",
         "attributes": [
           {
-            "type": "int",
+            "comment": "",
+            "keys": [],
             "name": "*id",
-            "keys": [],
-            "comment": ""
+            "type": "int"
           },
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "name",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "varchar(50)",
-            "name": "address",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "summary",
+            "type": "varchar(99)"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
-      },
-      "BOOK": {
+        "cssStyles": [],
         "id": "entity-BOOK-0",
         "label": "BOOK",
+        "shape": "erBox"
+      },
+      "STORE": {
+        "alias": "",
         "attributes": [
           {
-            "type": "int",
+            "comment": "",
+            "keys": [],
             "name": "*id",
-            "keys": [],
-            "comment": ""
+            "type": "int"
           },
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "name",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "varchar(99)",
-            "name": "summary",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "address",
+            "type": "varchar(50)"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-STORE-1",
+        "label": "STORE",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-BOOK-0",
-        "roleA": "soldBy",
         "entityB": "entity-STORE-1",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ZERO_OR_MORE",
           "relType": "NON_IDENTIFYING"
-        }
+        },
+        "roleA": "soldBy"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

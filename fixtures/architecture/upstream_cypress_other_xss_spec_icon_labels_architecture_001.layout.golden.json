@@ -2,62 +2,62 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
+      "bounds": {
+        "max_x": 80.0,
+        "max_y": 97.0,
+        "min_x": 0.0,
+        "min_y": 17.0
+      },
+      "cytoscape_service_bounds": [
         {
+          "body_bounds": {
+            "max_x": 80.0,
+            "max_y": 97.0,
+            "min_x": 0.0,
+            "min_y": 17.0
+          },
           "id": "db",
-          "x": 0.0,
-          "y": 17.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "api",
+          "label_bounds": {
+            "max_x": 71.0,
+            "max_y": 115.0,
+            "min_x": 9.0,
+            "min_y": 17.0
+          },
+          "label_metrics": {
+            "half_width": 29.0,
+            "text_width": 58.0
+          },
+          "union_bounds": {
+            "max_x": 81.0,
+            "max_y": 115.0,
+            "min_x": -1.0,
+            "min_y": 16.0
+          }
         }
       ],
       "edges": [],
-      "cytoscape_service_bounds": [
-        {
-          "id": "db",
-          "in_group": "api",
-          "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 17.0,
-            "max_x": 80.0,
-            "max_y": 97.0
-          },
-          "label_bounds": {
-            "min_x": 9.0,
-            "min_y": 17.0,
-            "max_x": 71.0,
-            "max_y": 115.0
-          },
-          "label_metrics": {
-            "text_width": 58.0,
-            "half_width": 29.0
-          },
-          "union_bounds": {
-            "min_x": -1.0,
-            "min_y": 16.0,
-            "max_x": 81.0,
-            "max_y": 115.0
-          }
-        }
-      ],
       "fcose_compound_bounds": [
         {
-          "id": "api",
           "bounds": {
-            "min_x": -80.0,
-            "min_y": -63.0,
             "max_x": 80.0,
-            "max_y": 97.0
-          }
+            "max_y": 97.0,
+            "min_x": -80.0,
+            "min_y": -63.0
+          },
+          "id": "api"
         }
       ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 17.0,
-        "max_x": 80.0,
-        "max_y": 97.0
-      }
+      "nodes": [
+        {
+          "height": 80.0,
+          "id": "db",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 0.0,
+          "y": 17.0
+        }
+      ]
     }
   }
 }

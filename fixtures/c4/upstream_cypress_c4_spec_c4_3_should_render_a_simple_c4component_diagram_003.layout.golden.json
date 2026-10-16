@@ -2,187 +2,187 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 566.0,
-        "max_y": 731.04
-      },
-      "width": 616.0,
-      "height": 741.04,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Component",
-      "title": "Component diagram for Internet Banking System - API Application",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 416.0,
+          "descr": null,
           "height": 615.04,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 416.0,
+          "x": 100.0,
+          "y": 66.0
         },
         {
           "alias": "api",
-          "parent_boundary": "global",
-          "x": 150.0,
-          "y": 382.834,
-          "width": 316.0,
+          "descr": null,
           "height": 248.206,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "API Application",
-            "y": 8.0,
-            "width": 100.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "API Application",
+            "width": 100.0,
+            "y": 8.0
           },
-          "ty": {
-            "text": "[CONTAINER]",
-            "y": 31.0,
-            "width": 81.0,
-            "height": 15.0,
-            "line_count": 1.0
-          },
-          "descr": null
-        }
-      ],
-      "shapes": [
-        {
-          "alias": "spa",
           "parent_boundary": "global",
-          "type_c4_shape": "container",
+          "ty": {
+            "height": 15.0,
+            "line_count": 1.0,
+            "text": "[CONTAINER]",
+            "width": 81.0,
+            "y": 31.0
+          },
+          "width": 316.0,
           "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 110.834,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: javascript and angular]",
-            "y": 44.175,
-            "width": 148.26,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Single Page Application",
-            "y": 27.7,
-            "width": 132.3,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides all the internet banking functionality to customers via their web browser.",
-            "y": 71.892,
-            "width": 169.904,
-            "height": 37.884,
-            "line_count": 3.0
-          }
-        },
-        {
-          "alias": "sign",
-          "parent_boundary": "api",
-          "type_c4_shape": "component",
-          "x": 200.0,
-          "y": 482.834,
-          "width": 216.0,
-          "height": 98.206,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Component: MVC Rest Controller]",
-            "y": 44.175,
-            "width": 148.89,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Sign In Controller",
-            "y": 27.7,
-            "width": 102.2,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Allows users to sign in to the internet banking system",
-            "y": 65.578,
-            "width": 140.286,
-            "height": 25.256,
-            "line_count": 2.0
-          }
+          "y": 382.834
         }
       ],
+      "bounds": {
+        "max_x": 566.0,
+        "max_y": 731.04,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Component",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 741.04,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 300.093,
+            "y": 482.834
+          },
           "from": "spa",
-          "to": "sign",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": -40.0,
           "rel_type": "rel_b",
           "start_point": {
             "x": 266.923,
             "y": 276.834
           },
-          "end_point": {
-            "x": 300.093,
-            "y": 482.834
-          },
-          "offset_x": null,
-          "offset_y": -40.0,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "JSON/HTTPS",
-            "y": 0.0,
-            "width": 69.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "JSON/HTTPS",
+            "width": 69.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "sign"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "spa",
+          "descr": {
+            "height": 37.884,
+            "line_count": 3.0,
+            "text": "Provides all the internet banking functionality to customers via their web browser.",
+            "width": 169.904,
+            "y": 71.892
+          },
+          "height": 110.834,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Single Page Application",
+            "width": 132.3,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: javascript and angular]",
+            "width": 148.26,
+            "y": 44.175
+          },
+          "type_c4_shape": "container",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "sign",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Allows users to sign in to the internet banking system",
+            "width": 140.286,
+            "y": 65.578
+          },
+          "height": 98.206,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Sign In Controller",
+            "width": 102.2,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "api",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Component: MVC Rest Controller]",
+            "width": 148.89,
+            "y": 44.175
+          },
+          "type_c4_shape": "component",
+          "width": 216.0,
+          "x": 200.0,
+          "y": 482.834
+        }
+      ],
+      "title": "Component diagram for Internet Banking System - API Application",
+      "use_max_width": true,
+      "width": 616.0
     }
   }
 }

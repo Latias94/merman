@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "User",
       "LoginUI",
@@ -15,286 +13,288 @@
       "AuditLogs"
     ],
     "actors": {
-      "User": {
-        "name": "User",
-        "description": "User",
-        "wrap": false,
-        "type": "actor",
+      "AuditLogs": {
+        "description": "AuditLogs",
         "links": {},
-        "properties": {}
-      },
-      "LoginUI": {
-        "name": "LoginUI",
-        "description": "LoginUI",
-        "wrap": false,
-        "type": "boundary",
-        "links": {},
-        "properties": {}
+        "name": "AuditLogs",
+        "properties": {},
+        "type": "collections",
+        "wrap": false
       },
       "AuthService": {
-        "name": "AuthService",
         "description": "AuthService",
-        "wrap": false,
+        "links": {},
+        "name": "AuthService",
+        "properties": {},
         "type": "control",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
-      "UserDB": {
-        "name": "UserDB",
-        "description": "UserDB",
-        "wrap": false,
-        "type": "database",
+      "LoginUI": {
+        "description": "LoginUI",
         "links": {},
-        "properties": {}
+        "name": "LoginUI",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
       },
       "Order": {
-        "name": "Order",
         "description": "Order",
-        "wrap": false,
-        "type": "entity",
         "links": {},
-        "properties": {}
+        "name": "Order",
+        "properties": {},
+        "type": "entity",
+        "wrap": false
       },
       "OrderQueue": {
-        "name": "OrderQueue",
         "description": "OrderQueue",
-        "wrap": false,
+        "links": {},
+        "name": "OrderQueue",
+        "properties": {},
         "type": "queue",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
-      "AuditLogs": {
-        "name": "AuditLogs",
-        "description": "AuditLogs",
-        "wrap": false,
-        "type": "collections",
+      "User": {
+        "description": "User",
         "links": {},
-        "properties": {}
+        "name": "User",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
+      },
+      "UserDB": {
+        "description": "UserDB",
+        "links": {},
+        "name": "UserDB",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "User",
-        "to": "LoginUI",
-        "message": "Enter credentials",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "LoginUI",
-        "to": "AuthService",
-        "message": "Validate",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "AuthService",
-        "to": "UserDB",
-        "message": "Query user",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "UserDB",
-        "to": "AuthService",
-        "message": "User data",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "Valid credentials",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "AuthService",
-        "to": "LoginUI",
-        "message": "Success",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "LoginUI",
-        "to": "User",
-        "message": "Welcome",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "Place order",
-        "wrap": false,
-        "type": 19,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "User",
-        "to": "Order",
-        "message": "New order",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "Order",
-        "to": "OrderQueue",
-        "message": "Process",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "Order",
-        "to": "AuditLogs",
-        "message": "Record",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 21,
-        "activate": false
-      },
-      {
-        "id": "13",
-        "from": null,
-        "to": null,
-        "message": "Until confirmed",
-        "wrap": false,
-        "type": 10,
-        "activate": false
-      },
-      {
-        "id": "14",
-        "from": "OrderQueue",
-        "to": "Order",
-        "message": "Update status",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "15",
-        "from": "Order",
-        "to": "User",
-        "message": "Notification",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "16",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 11,
-        "activate": false
-      },
-      {
-        "id": "17",
-        "from": null,
-        "to": null,
-        "message": "Invalid credentials",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "18",
-        "from": "AuthService",
-        "to": "LoginUI",
-        "message": "Failure",
-        "wrap": false,
-        "type": 4,
-        "activate": false
-      },
-      {
-        "id": "19",
-        "from": "LoginUI",
-        "to": "User",
-        "message": "Retry",
-        "wrap": false,
-        "type": 4,
-        "activate": false
-      },
-      {
-        "id": "20",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [
       {
-        "name": "Authentication",
-        "wrap": false,
-        "fill": "rgb(200,220,255)",
         "actorKeys": [
           "User",
           "LoginUI",
           "AuthService",
           "UserDB"
-        ]
+        ],
+        "fill": "rgb(200,220,255)",
+        "name": "Authentication",
+        "wrap": false
       },
       {
-        "name": "Order Processing",
-        "wrap": false,
-        "fill": "rgb(200,255,220)",
         "actorKeys": [
           "Order",
           "OrderQueue",
           "AuditLogs"
-        ]
+        ],
+        "fill": "rgb(200,255,220)",
+        "name": "Order Processing",
+        "wrap": false
       }
     ],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "User",
+        "id": "0",
+        "message": "Enter credentials",
+        "to": "LoginUI",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "LoginUI",
+        "id": "1",
+        "message": "Validate",
+        "to": "AuthService",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "AuthService",
+        "id": "2",
+        "message": "Query user",
+        "to": "UserDB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "UserDB",
+        "id": "3",
+        "message": "User data",
+        "to": "AuthService",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "Valid credentials",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "AuthService",
+        "id": "5",
+        "message": "Success",
+        "to": "LoginUI",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "LoginUI",
+        "id": "6",
+        "message": "Welcome",
+        "to": "User",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "Place order",
+        "to": null,
+        "type": 19,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "User",
+        "id": "8",
+        "message": "New order",
+        "to": "Order",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Order",
+        "id": "9",
+        "message": "Process",
+        "to": "OrderQueue",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Order",
+        "id": "11",
+        "message": "Record",
+        "to": "AuditLogs",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "12",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "13",
+        "message": "Until confirmed",
+        "to": null,
+        "type": 10,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "OrderQueue",
+        "id": "14",
+        "message": "Update status",
+        "to": "Order",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Order",
+        "id": "15",
+        "message": "Notification",
+        "to": "User",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "16",
+        "message": "",
+        "to": null,
+        "type": 11,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "17",
+        "message": "Invalid credentials",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "AuthService",
+        "id": "18",
+        "message": "Failure",
+        "to": "LoginUI",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "LoginUI",
+        "id": "19",
+        "message": "Retry",
+        "to": "User",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "20",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

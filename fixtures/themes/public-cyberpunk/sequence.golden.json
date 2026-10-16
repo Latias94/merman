@@ -1,96 +1,104 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Client",
       "API"
     ],
     "actors": {
       "API": {
-        "name": "API",
         "description": "API",
-        "type": "participant",
-        "wrap": false,
         "links": {},
-        "properties": {}
+        "name": "API",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Client": {
-        "name": "Client",
         "description": "Client",
-        "type": "participant",
-        "wrap": false,
         "links": {},
-        "properties": {}
+        "name": "Client",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": "Client",
+        "id": "0",
+        "message": "Request data",
         "to": "API",
         "type": 0,
-        "message": "Request data",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "1",
+        "activate": false,
         "from": "API",
+        "id": "1",
+        "message": "",
         "to": null,
         "type": 17,
-        "message": "",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "2",
+        "activate": false,
         "from": "API",
+        "id": "2",
+        "message": "Verify token",
+        "placement": 1,
         "to": "API",
         "type": 2,
-        "message": "Verify token",
-        "wrap": false,
-        "activate": false,
-        "placement": 1
+        "wrap": false
       },
       {
-        "id": "3",
+        "activate": false,
         "from": null,
+        "id": "3",
+        "message": "Each request",
         "to": null,
         "type": 10,
-        "message": "Each request",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "4",
+        "activate": false,
         "from": "API",
+        "id": "4",
+        "message": "Return data",
         "to": "Client",
         "type": 1,
-        "message": "Return data",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "5",
+        "activate": false,
         "from": null,
+        "id": "5",
+        "message": "",
         "to": null,
         "type": 11,
-        "message": "",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "6",
+        "activate": false,
         "from": "API",
+        "id": "6",
+        "message": "",
         "to": null,
         "type": 18,
-        "message": "",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -101,15 +109,7 @@
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

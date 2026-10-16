@@ -2,39 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Class10",
-          "x": 264.25,
-          "y": 173.5,
-          "width": 78.251,
-          "height": 135.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note0",
-          "x": 75.68,
-          "y": 39.0,
-          "width": 127.359,
-          "height": 54.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note1",
-          "x": 264.25,
-          "y": 39.0,
-          "width": 169.781,
-          "height": 54.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 349.141,
+        "max_y": 241.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edgeNote1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "note1",
-          "to": "Class10",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edgeNote1",
+          "label": null,
           "points": [
             {
               "x": 264.25,
@@ -45,23 +28,40 @@
               "y": 106.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Class10",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 349.141,
-        "max_y": 241.0
-      }
+      "nodes": [
+        {
+          "height": 135.0,
+          "id": "Class10",
+          "is_cluster": false,
+          "width": 78.251,
+          "x": 264.25,
+          "y": 173.5
+        },
+        {
+          "height": 54.0,
+          "id": "note0",
+          "is_cluster": false,
+          "width": 127.359,
+          "x": 75.68,
+          "y": 39.0
+        },
+        {
+          "height": 54.0,
+          "id": "note1",
+          "is_cluster": false,
+          "width": 169.781,
+          "x": 264.25,
+          "y": 39.0
+        }
+      ]
     }
   }
 }

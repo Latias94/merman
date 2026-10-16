@@ -1,42 +1,42 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "id1",
-        "type": "hexagon",
-        "label": "This is the text in the box",
         "children": [],
+        "id": "id1",
+        "label": "This is the text in the box",
+        "type": "hexagon",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "id1",
-            "type": "hexagon",
-            "label": "This is the text in the box",
             "children": [],
+            "id": "id1",
+            "label": "This is the text in the box",
+            "type": "hexagon",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "id1",
-        "type": "hexagon",
-        "label": "This is the text in the box",
         "children": [],
+        "id": "id1",
+        "label": "This is the text in the box",
+        "type": "hexagon",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

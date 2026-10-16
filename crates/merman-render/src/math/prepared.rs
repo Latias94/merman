@@ -7,6 +7,7 @@
 
 #[cfg(feature = "math")]
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::fmt;
 #[cfg(feature = "math")]
 use std::fmt::Write as _;
@@ -16,6 +17,7 @@ use merman_core::sanitize::{SanitizeFailure, SanitizeOutputSink};
 use merman_core::{MermaidConfig, OperationPhase};
 
 use super::MathRenderer;
+use crate::html::{HtmlOutputError, HtmlSanitizeSink};
 use crate::resources::{
     OperationWorkError, OperationWorkMeter, RenderResourcePolicy, RenderResourceProfile,
 };
@@ -628,101 +630,34 @@ fn valid_metrics(metrics: &TextMetrics) -> bool {
         && metrics.line_count > 0
 }
 
-#[derive(Debug, Clone, Copy)]
-enum PreparedMathOutputError {
-    Limit { attempted: usize },
-    Allocation,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct PreparedMathSanitizeSink {
-    max: usize,
-}
-
-impl PreparedMathSanitizeSink {
-    const fn new(max: usize) -> Self {
-        Self { max }
-    }
-
-    fn checked_len(
-        &self,
-        current: usize,
-        additional: usize,
-    ) -> Result<usize, PreparedMathOutputError> {
-        let attempted = current
-            .checked_add(additional)
-            .ok_or(PreparedMathOutputError::Limit {
-                attempted: usize::MAX,
-            })?;
-        if attempted > self.max {
-            return Err(PreparedMathOutputError::Limit { attempted });
-        }
-        Ok(attempted)
-    }
-}
-
-impl SanitizeOutputSink for PreparedMathSanitizeSink {
-    type Error = PreparedMathOutputError;
-
-    fn checked_output_len(&self, current: usize, additional: usize) -> Result<usize, Self::Error> {
-        self.checked_len(current, additional)
-    }
-
-    fn string_with_capacity(&self, capacity: usize) -> Result<String, Self::Error> {
-        self.checked_len(0, capacity)?;
-        let mut output = String::new();
-        output
-            .try_reserve_exact(capacity)
-            .map_err(|_| PreparedMathOutputError::Allocation)?;
-        Ok(output)
-    }
-
-    fn output_buffer(&self, input_len: usize) -> Result<Vec<u8>, Self::Error> {
-        self.checked_len(0, input_len)?;
-        let mut output = Vec::new();
-        output
-            .try_reserve_exact(input_len)
-            .map_err(|_| PreparedMathOutputError::Allocation)?;
-        Ok(output)
-    }
-
-    fn push_output_chunk(&self, output: &mut Vec<u8>, chunk: &[u8]) -> Result<(), Self::Error> {
-        self.checked_len(output.len(), chunk.len())?;
-        output
-            .try_reserve(chunk.len())
-            .map_err(|_| PreparedMathOutputError::Allocation)?;
-        output.extend_from_slice(chunk);
-        Ok(())
-    }
-}
-
 fn push_bounded(
     output: &mut String,
     value: &str,
-    sink: PreparedMathSanitizeSink,
-) -> Result<(), PreparedMathOutputError> {
+    sink: HtmlSanitizeSink<'_>,
+) -> Result<(), HtmlOutputError> {
     sink.checked_len(output.len(), value.len())?;
     output
         .try_reserve(value.len())
-        .map_err(|_| PreparedMathOutputError::Allocation)?;
+        .map_err(|_| HtmlOutputError::Allocation)?;
     output.push_str(value);
     Ok(())
 }
 
 fn resolve_output_error(
-    error: PreparedMathOutputError,
+    error: HtmlOutputError,
     retained_prefix: usize,
     work_meter: &OperationWorkMeter,
 ) -> Result<Option<String>, OperationWorkError> {
     match error {
-        PreparedMathOutputError::Limit { attempted } => {
+        HtmlOutputError::Limit { attempted } => {
             let additional = retained_prefix.saturating_add(attempted);
             match work_meter.preflight_prepared_text_retained_bytes(additional) {
                 Err(error) => Err(error),
                 Ok(()) => Ok(None),
             }
         }
-        PreparedMathOutputError::Allocation => Ok(None),
+        HtmlOutputError::Allocation => Ok(None),
+        HtmlOutputError::Operation(error) => Err(error),
     }
 }
 
@@ -754,7 +689,13 @@ fn browser_payload(
         .map_or(usize::MAX, |remaining| {
             remaining.saturating_sub(retained_prefix)
         });
-    let sink = PreparedMathSanitizeSink::new(max_browser_bytes);
+    let parse_work = Cell::new(0);
+    let sink = HtmlSanitizeSink::new(
+        max_browser_bytes,
+        work_meter,
+        &parse_work,
+        OperationPhase::Layout,
+    );
 
     let style = match resolved_wrapper_style(request.style, request.foreground, sink) {
         Ok(style) => style,
@@ -787,7 +728,7 @@ fn browser_payload(
         .unwrap_or(usize::MAX);
     if fixed_bytes > max_browser_bytes {
         return resolve_output_error(
-            PreparedMathOutputError::Limit {
+            HtmlOutputError::Limit {
                 attempted: fixed_bytes,
             },
             retained_prefix,
@@ -795,43 +736,30 @@ fn browser_payload(
         );
     }
 
-    let body_sink = PreparedMathSanitizeSink::new(max_browser_bytes - fixed_bytes);
-    let sanitized = match merman_core::sanitize::sanitize_text_with_sink(
-        rendered,
-        request.config,
-        &body_sink,
-    ) {
-        Ok(sanitized) => sanitized,
-        Err(SanitizeFailure::Output(error)) => {
-            let error = match error {
-                PreparedMathOutputError::Limit { attempted } => PreparedMathOutputError::Limit {
-                    attempted: fixed_bytes.saturating_add(attempted),
-                },
-                PreparedMathOutputError::Allocation => PreparedMathOutputError::Allocation,
-            };
-            return resolve_output_error(error, retained_prefix, work_meter);
-        }
-        Err(SanitizeFailure::RejectedInput | SanitizeFailure::InvalidUtf8Output) | Err(_) => {
-            return Ok(None);
-        }
-    };
-    let rendered = match crate::xml::normalize_html_fragment_for_xhtml_bounded(
-        &sanitized,
+    let body_sink = HtmlSanitizeSink::new(
         max_browser_bytes - fixed_bytes,
-    ) {
-        Ok(rendered) => rendered,
-        Err(crate::xml::XmlOutputError::Limit { attempted, .. }) => {
-            return resolve_output_error(
-                PreparedMathOutputError::Limit {
-                    attempted: fixed_bytes.saturating_add(attempted),
-                },
-                retained_prefix,
-                work_meter,
-            );
-        }
-        Err(crate::xml::XmlOutputError::Allocation) => return Ok(None),
-    };
-
+        work_meter,
+        &parse_work,
+        OperationPhase::Layout,
+    );
+    let rendered =
+        match merman_core::sanitize::sanitize_xhtml_with_sink(rendered, request.config, &body_sink)
+        {
+            Ok(sanitized) => sanitized,
+            Err(SanitizeFailure::Output(error)) => {
+                let error = match error {
+                    HtmlOutputError::Limit { attempted } => HtmlOutputError::Limit {
+                        attempted: fixed_bytes.saturating_add(attempted),
+                    },
+                    HtmlOutputError::Allocation => HtmlOutputError::Allocation,
+                    HtmlOutputError::Operation(error) => HtmlOutputError::Operation(error),
+                };
+                return resolve_output_error(error, retained_prefix, work_meter);
+            }
+            Err(SanitizeFailure::RejectedInput | SanitizeFailure::InvalidUtf8Output) | Err(_) => {
+                return Ok(None);
+            }
+        };
     let final_len = fixed_bytes.saturating_add(rendered.len());
     let mut payload = match sink.string_with_capacity(final_len) {
         Ok(payload) => payload,
@@ -882,8 +810,8 @@ fn preflight_raw_math_output(
 fn resolved_wrapper_style(
     style: &TextStyle,
     foreground: &str,
-    sink: PreparedMathSanitizeSink,
-) -> Result<String, PreparedMathOutputError> {
+    sink: HtmlSanitizeSink<'_>,
+) -> Result<String, HtmlOutputError> {
     let mut declarations = sink.string_with_capacity(0)?;
     push_bounded(&mut declarations, "font-size:", sink)?;
     push_bounded(
@@ -926,8 +854,8 @@ fn resolved_wrapper_style(
 
 fn escape_xml_attribute(
     value: &str,
-    sink: PreparedMathSanitizeSink,
-) -> Result<String, PreparedMathOutputError> {
+    sink: HtmlSanitizeSink<'_>,
+) -> Result<String, HtmlOutputError> {
     let mut escaped = sink.string_with_capacity(0)?;
     for character in value.chars() {
         let mut encoded = [0; 4];
@@ -1411,6 +1339,68 @@ mod tests {
         Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
         ))
+    }
+
+    #[test]
+    fn browser_payload_reports_parse_work_limits_without_retaining_artifact() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let style = TextStyle::default();
+        let request = PrepareMathLabelRequest::flowchart(
+            "$$x$$",
+            &config,
+            &style,
+            "#334155",
+            None,
+            WrapMode::HtmlLike,
+        );
+
+        let error = browser_payload("<b>math", None, request, &meter)
+            .expect_err("tree construction must obey the operation work budget");
+        let OperationWorkError::ResourceLimitExceeded(error) = error else {
+            panic!("expected parser work resource limit")
+        };
+        assert_eq!(error.limit, "max_layout_work_units");
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+    }
+
+    #[test]
+    fn browser_payload_preserves_cancellation_during_html_recovery() {
+        let control = merman_core::OperationControl::new();
+        control.cancel_after_checkpoints(12);
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control,
+        );
+        let config = MermaidConfig::from_value(serde_json::json!({ "securityLevel": "loose" }));
+        let style = TextStyle::default();
+        let request = PrepareMathLabelRequest::flowchart(
+            "$$x$$",
+            &config,
+            &style,
+            "#334155",
+            None,
+            WrapMode::HtmlLike,
+        );
+
+        let error = browser_payload(&"<span>math</span>".repeat(64), None, request, &meter)
+            .expect_err("cancellation during recovery must escape backend-unavailable fallback");
+        let OperationWorkError::Cancelled(cancelled) = error else {
+            panic!("expected parser cancellation")
+        };
+        assert_eq!(cancelled.phase, OperationPhase::Layout);
+        assert!(
+            meter.used() > 0,
+            "cancellation follows admitted parser work"
+        );
+        assert_eq!(meter.prepared_text_retained_bytes(), 0);
+        assert_eq!(
+            meter.checkpoint(OperationPhase::Layout),
+            Err(OperationWorkError::Cancelled(cancelled))
+        );
     }
 
     #[cfg(feature = "math")]

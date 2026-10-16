@@ -2,100 +2,100 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 200.0,
-      "height": 164.0,
+      "bounds": {
+        "max_x": 200.0,
+        "max_y": 164.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
+      "creations": [],
+      "dividers": [],
+      "fragments": [],
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
-      "participants": [
-        {
-          "name": "Alice",
-          "label": "Alice",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 32.32,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "Bob",
-          "label": "Bob",
-          "x": 150.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 23.36,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        }
-      ],
+      "groups": [],
+      "height": 164.0,
       "lifelines": [
         {
+          "bottomY": 176.0,
           "participantName": "Alice",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 176.0
+          "x": 50.0
         },
         {
+          "bottomY": 176.0,
           "participantName": "Bob",
-          "x": 150.0,
           "topY": 68.0,
-          "bottomY": 176.0
+          "x": 150.0
         }
       ],
       "messages": [
         {
-          "statementId": "zenuml-statement-0",
-          "number": "1",
-          "from": "Alice",
-          "to": "Bob",
-          "fromX": 50.0,
-          "toX": 150.0,
-          "y": 87.5,
-          "label": "Hello",
           "arrowStyle": "open",
+          "from": "Alice",
+          "fromX": 50.0,
           "isReverse": false,
-          "style": {}
-        }
-      ],
-      "selfCalls": [],
-      "creations": [],
-      "returns": [
-        {
-          "statementId": "zenuml-statement-1",
-          "number": "2",
-          "from": "Bob",
-          "to": "Alice",
-          "fromX": 150.0,
-          "toX": 51.0,
-          "y": 119.5,
-          "label": "Reply",
-          "isReverse": true,
-          "isSelf": false
+          "label": "Hello",
+          "number": "1",
+          "statementId": "zenuml-statement-0",
+          "style": {},
+          "to": "Bob",
+          "toX": 150.0,
+          "y": 87.5
         }
       ],
       "occurrences": [],
-      "fragments": [],
-      "dividers": [],
-      "comments": [],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 200.0,
-        "max_y": 164.0
-      }
+      "participants": [
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Alice",
+          "labelWidth": 32.32,
+          "name": "Alice",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Bob",
+          "labelWidth": 23.36,
+          "name": "Bob",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 150.0,
+          "y": 28.0
+        }
+      ],
+      "returns": [
+        {
+          "from": "Bob",
+          "fromX": 150.0,
+          "isReverse": true,
+          "isSelf": false,
+          "label": "Reply",
+          "number": "2",
+          "statementId": "zenuml-statement-1",
+          "to": "Alice",
+          "toX": 51.0,
+          "y": 119.5
+        }
+      ],
+      "selfCalls": [],
+      "width": 200.0
     }
   }
 }

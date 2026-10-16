@@ -2,39 +2,27 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
-        {
-          "id": "DataStore",
-          "x": 88.0,
-          "y": 52.866,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Process",
-          "x": 312.866,
-          "y": 52.866,
-          "width": 81.731,
-          "height": 81.731,
-          "is_cluster": false
-        },
-        {
-          "id": "Entity",
-          "x": 545.851,
-          "y": 52.866,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 621.851,
+        "max_y": 93.731,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "L_DataStore_Process_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "DataStore",
-          "to": "Process",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_DataStore_Process_0",
+          "label": {
+            "height": 21.0,
+            "width": 28.0,
+            "x": 218.0,
+            "y": 52.366
+          },
           "points": [
             {
               "x": 164.0,
@@ -45,26 +33,26 @@
               "y": 52.866
             }
           ],
-          "label": {
-            "x": 218.0,
-            "y": 52.366,
-            "width": 28.0,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Process",
+          "to_cluster": null
         },
         {
-          "id": "L_Process_Entity_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Process",
-          "to": "Entity",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Process_Entity_0",
+          "label": {
+            "height": 21.0,
+            "width": 36.12,
+            "x": 411.791,
+            "y": 52.366
+          },
           "points": [
             {
               "x": 353.731,
@@ -75,28 +63,40 @@
               "y": 52.866
             }
           ],
-          "label": {
-            "x": 411.791,
-            "y": 52.366,
-            "width": 36.12,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Entity",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 621.851,
-        "max_y": 93.731
-      }
+      "nodes": [
+        {
+          "height": 45.0,
+          "id": "DataStore",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 88.0,
+          "y": 52.866
+        },
+        {
+          "height": 81.731,
+          "id": "Process",
+          "is_cluster": false,
+          "width": 81.731,
+          "x": 312.866,
+          "y": 52.866
+        },
+        {
+          "height": 45.0,
+          "id": "Entity",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 545.851,
+          "y": 52.866
+        }
+      ]
     }
   }
 }

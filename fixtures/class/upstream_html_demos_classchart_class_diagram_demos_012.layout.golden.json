@@ -2,141 +2,132 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 374.722,
+        "max_y": 863.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Shapes",
-          "x": 187.795,
-          "y": 679.0,
-          "width": 328.278,
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 368.0,
-          "is_cluster": true
+          "id": "Shapes",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "Shapes",
+          "title_label": {
+            "height": 21.0,
+            "width": 38.5,
+            "x": 187.795,
+            "y": 505.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 328.278,
+          "x": 187.795,
+          "y": 679.0
         },
         {
-          "id": "Vehicles",
-          "x": 193.361,
-          "y": 193.0,
-          "width": 362.722,
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 362.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Shape",
-          "x": 191.108,
-          "y": 605.0,
-          "width": 179.402,
-          "height": 120.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Circle",
-          "x": 107.71,
-          "y": 782.0,
-          "width": 120.108,
-          "height": 114.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Square",
-          "x": 272.85,
-          "y": 782.0,
-          "width": 110.17,
-          "height": 114.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Vehicle",
-          "x": 190.28,
-          "y": 119.0,
-          "width": 121.576,
-          "height": 114.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Car",
-          "x": 99.099,
-          "y": 293.0,
-          "width": 126.199,
-          "height": 114.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Bike",
-          "x": 281.46,
-          "y": 293.0,
-          "width": 138.523,
-          "height": 114.0,
-          "is_cluster": false
+          "id": "Vehicles",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "Vehicles",
+          "title_label": {
+            "height": 21.0,
+            "width": 46.34,
+            "x": 193.361,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 362.722,
+          "x": 193.361,
+          "y": 193.0
         }
       ],
       "edges": [
         {
-          "id": "4",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Car",
-          "to": "Circle",
           "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 99.099,
-              "y": 350.0
-            },
-            {
-              "x": 99.099,
-              "y": 384.0
-            },
-            {
-              "x": 99.099,
-              "y": 404.0
-            },
-            {
-              "x": 95.948,
-              "y": 404.0
-            },
-            {
-              "x": 95.948,
-              "y": 465.0
-            },
-            {
-              "x": 70.01,
-              "y": 465.0
-            },
-            {
-              "x": 70.01,
-              "y": 485.0
-            },
-            {
-              "x": 70.01,
-              "y": 695.0
-            },
-            {
-              "x": 91.292,
-              "y": 695.0
-            },
-            {
-              "x": 91.292,
-              "y": 725.0
-            }
-          ],
+          "id": "4",
           "label": {
+            "height": 21.0,
+            "width": 80.36,
             "x": 95.628,
-            "y": 434.5,
-            "width": 80.36,
-            "height": 21.0
+            "y": 434.5
           },
+          "points": [
+            {
+              "x": 99.099,
+              "y": 350.0
+            },
+            {
+              "x": 99.099,
+              "y": 384.0
+            },
+            {
+              "x": 99.099,
+              "y": 404.0
+            },
+            {
+              "x": 95.948,
+              "y": 404.0
+            },
+            {
+              "x": 95.948,
+              "y": 465.0
+            },
+            {
+              "x": 70.01,
+              "y": 465.0
+            },
+            {
+              "x": 70.01,
+              "y": 485.0
+            },
+            {
+              "x": 70.01,
+              "y": 695.0
+            },
+            {
+              "x": 91.292,
+              "y": 695.0
+            },
+            {
+              "x": 91.292,
+              "y": 725.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Circle",
+          "to_cluster": null
         },
         {
-          "id": "5",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Bike",
-          "to": "Square",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "5",
+          "label": {
+            "height": 21.0,
+            "width": 80.36,
+            "x": 284.291,
+            "y": 434.5
+          },
           "points": [
             {
               "x": 281.46,
@@ -179,59 +170,54 @@
               "y": 725.0
             }
           ],
-          "label": {
-            "x": 284.291,
-            "y": 434.5,
-            "width": 80.36,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "0",
-          "from": "Shape",
-          "to": "Circle",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 164.808,
-              "y": 665.0
-            },
-            {
-              "x": 164.808,
-              "y": 695.0
-            },
-            {
-              "x": 124.128,
-              "y": 695.0
-            },
-            {
-              "x": 124.128,
-              "y": 725.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "1",
-          "from": "Shape",
+          "stroke_dasharray": null,
           "to": "Square",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Shape",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
+          "points": [
+            {
+              "x": 164.808,
+              "y": 665.0
+            },
+            {
+              "x": 164.808,
+              "y": 695.0
+            },
+            {
+              "x": 124.128,
+              "y": 695.0
+            },
+            {
+              "x": 124.128,
+              "y": 725.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Circle",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Shape",
+          "from_cluster": null,
+          "id": "1",
+          "label": null,
           "points": [
             {
               "x": 217.408,
@@ -250,54 +236,54 @@
               "y": 725.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Square",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Vehicle",
+          "from_cluster": null,
           "id": "2",
-          "from": "Vehicle",
+          "label": null,
+          "points": [
+            {
+              "x": 173.617,
+              "y": 176.0
+            },
+            {
+              "x": 173.617,
+              "y": 206.0
+            },
+            {
+              "x": 99.099,
+              "y": 206.0
+            },
+            {
+              "x": 99.099,
+              "y": 236.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "Car",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 173.617,
-              "y": 176.0
-            },
-            {
-              "x": 173.617,
-              "y": 206.0
-            },
-            {
-              "x": 99.099,
-              "y": 206.0
-            },
-            {
-              "x": 99.099,
-              "y": 236.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Vehicle",
-          "to": "Bike",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "3",
+          "label": null,
           "points": [
             {
               "x": 206.943,
@@ -316,66 +302,80 @@
               "y": 236.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Bike",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Shapes",
-          "x": 187.795,
-          "y": 679.0,
-          "width": 328.278,
           "height": 368.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "Shapes",
-          "title_label": {
-            "x": 187.795,
-            "y": 505.5,
-            "width": 38.5,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Shapes",
+          "is_cluster": true,
+          "width": 328.278,
+          "x": 187.795,
+          "y": 679.0
         },
         {
-          "id": "Vehicles",
-          "x": 193.361,
-          "y": 193.0,
-          "width": 362.722,
           "height": 362.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "Vehicles",
-          "title_label": {
-            "x": 193.361,
-            "y": 22.5,
-            "width": 46.34,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Vehicles",
+          "is_cluster": true,
+          "width": 362.722,
+          "x": 193.361,
+          "y": 193.0
+        },
+        {
+          "height": 120.0,
+          "id": "Shape",
+          "is_cluster": false,
+          "width": 179.402,
+          "x": 191.108,
+          "y": 605.0
+        },
+        {
+          "height": 114.0,
+          "id": "Circle",
+          "is_cluster": false,
+          "width": 120.108,
+          "x": 107.71,
+          "y": 782.0
+        },
+        {
+          "height": 114.0,
+          "id": "Square",
+          "is_cluster": false,
+          "width": 110.17,
+          "x": 272.85,
+          "y": 782.0
+        },
+        {
+          "height": 114.0,
+          "id": "Vehicle",
+          "is_cluster": false,
+          "width": 121.576,
+          "x": 190.28,
+          "y": 119.0
+        },
+        {
+          "height": 114.0,
+          "id": "Car",
+          "is_cluster": false,
+          "width": 126.199,
+          "x": 99.099,
+          "y": 293.0
+        },
+        {
+          "height": 114.0,
+          "id": "Bike",
+          "is_cluster": false,
+          "width": 138.523,
+          "x": 281.46,
+          "y": 293.0
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 374.722,
-        "max_y": 863.0
-      }
+      ]
     }
   }
 }

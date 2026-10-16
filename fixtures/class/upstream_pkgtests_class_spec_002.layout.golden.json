@@ -2,54 +2,54 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 92.406,
+        "max_y": 167.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "X",
-          "x": 52.203,
-          "y": 89.5,
-          "width": 80.406,
+          "diff": -12.0,
+          "effective_dir": "TB",
           "height": 155.0,
-          "is_cluster": true
-        },
-        {
-          "id": "A",
+          "id": "X",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "X",
+          "title_label": {
+            "height": 21.0,
+            "width": 8.4,
+            "x": 52.203,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 80.406,
           "x": 52.203,
-          "y": 102.5,
-          "width": 32.406,
-          "height": 81.0,
-          "is_cluster": false
+          "y": 89.5
         }
       ],
       "edges": [],
-      "clusters": [
+      "nodes": [
         {
-          "id": "X",
-          "x": 52.203,
-          "y": 89.5,
-          "width": 80.406,
           "height": 155.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "X",
-          "title_label": {
-            "x": 52.203,
-            "y": 22.5,
-            "width": 8.4,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "X",
+          "is_cluster": true,
+          "width": 80.406,
+          "x": 52.203,
+          "y": 89.5
+        },
+        {
+          "height": 81.0,
+          "id": "A",
+          "is_cluster": false,
+          "width": 32.406,
+          "x": 52.203,
+          "y": 102.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 92.406,
-        "max_y": 167.0
-      }
+      ]
     }
   }
 }

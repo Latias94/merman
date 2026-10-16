@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "web",
       "blog",
@@ -13,247 +11,257 @@
       "db"
     ],
     "actors": {
-      "web": {
-        "name": "web",
-        "description": "Web Browser",
-        "wrap": false,
-        "type": "participant",
+      "account": {
+        "description": "Account Service",
         "links": {},
-        "properties": {}
+        "name": "account",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "blog": {
-        "name": "blog",
         "description": "Blog Service",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
-      },
-      "account": {
-        "name": "account",
-        "description": "Account Service",
-        "wrap": false,
+        "name": "blog",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "mail": {
-        "name": "mail",
-        "description": "Mail Service",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "db": {
-        "name": "db",
         "description": "Storage",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "db",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "mail": {
+        "description": "Mail Service",
+        "links": {},
+        "name": "mail",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "web": {
+        "description": "Web Browser",
+        "links": {},
+        "name": "web",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": "web",
         "id": "0",
-        "from": "web",
-        "to": "db",
         "message": "The user must be logged in to submit blog posts",
-        "wrap": false,
+        "placement": 2,
+        "to": "db",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": false
       },
       {
+        "activate": true,
+        "from": "web",
         "id": "1",
-        "from": "web",
-        "to": "account",
         "message": "Logs in using credentials",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "2",
-        "from": "account",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "account",
-        "to": "db",
-        "message": "Query stored accounts",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "db",
         "to": "account",
-        "message": "Respond with query result",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "5",
-        "from": null,
-        "to": null,
-        "message": "Credentials not found",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "account",
-        "to": "web",
-        "message": "Invalid credentials",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "Credentials found",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "account",
-        "to": "web",
-        "message": "Successfully logged in",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "account",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "web",
-        "to": "db",
-        "message": "When the user is authenticated, they can now submit new posts",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "11",
-        "from": "web",
-        "to": "blog",
-        "message": "Submit new post",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "12",
-        "from": "blog",
-        "to": null,
+        "from": "account",
+        "id": "2",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 17,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "13",
-        "from": "blog",
+        "activate": false,
+        "from": "account",
+        "id": "3",
+        "message": "Query stored accounts",
         "to": "db",
-        "message": "Store post data",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "14",
+        "activate": false,
+        "from": "db",
+        "id": "4",
+        "message": "Respond with query result",
+        "to": "account",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
         "from": null,
+        "id": "5",
+        "message": "Credentials not found",
         "to": null,
-        "message": "Notifications",
-        "wrap": false,
-        "type": 19,
-        "activate": false
+        "type": 12,
+        "wrap": false
       },
       {
-        "id": "15",
-        "from": "blog",
-        "to": "mail",
-        "message": "Send mail to blog subscribers",
-        "wrap": false,
-        "type": 25,
-        "activate": false
-      },
-      {
-        "id": "16",
-        "from": "blog",
-        "to": "db",
-        "message": "Store in-site notifications",
-        "wrap": false,
-        "type": 25,
-        "activate": false
-      },
-      {
-        "id": "17",
-        "from": null,
-        "to": null,
-        "message": "Response",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "18",
-        "from": "blog",
+        "activate": false,
+        "from": "account",
+        "id": "6",
+        "message": "Invalid credentials",
         "to": "web",
-        "message": "Successfully posted",
-        "wrap": false,
-        "type": 1,
-        "activate": false
+        "type": 0,
+        "wrap": false
       },
       {
-        "id": "19",
-        "from": "blog",
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "Credentials found",
         "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "account",
+        "id": "8",
+        "message": "Successfully logged in",
+        "to": "web",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "account",
+        "id": "9",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 18,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "web",
+        "id": "10",
+        "message": "When the user is authenticated, they can now submit new posts",
+        "placement": 2,
+        "to": "db",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "web",
+        "id": "11",
+        "message": "Submit new post",
+        "to": "blog",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "blog",
+        "id": "12",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "blog",
+        "id": "13",
+        "message": "Store post data",
+        "to": "db",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "14",
+        "message": "Notifications",
+        "to": null,
+        "type": 19,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "blog",
+        "id": "15",
+        "message": "Send mail to blog subscribers",
+        "to": "mail",
+        "type": 25,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "blog",
+        "id": "16",
+        "message": "Store in-site notifications",
+        "to": "db",
+        "type": 25,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "17",
+        "message": "Response",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "blog",
+        "id": "18",
+        "message": "Successfully posted",
+        "to": "web",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "blog",
+        "id": "19",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
         "id": "20",
-        "from": null,
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 21,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "21",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "21",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 14,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -262,8 +270,8 @@
           "web",
           "db"
         ],
-        "placement": 2,
         "message": "The user must be logged in to submit blog posts",
+        "placement": 2,
         "wrap": false
       },
       {
@@ -271,20 +279,12 @@
           "web",
           "db"
         ],
-        "placement": 2,
         "message": "When the user is authenticated, they can now submit new posts",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

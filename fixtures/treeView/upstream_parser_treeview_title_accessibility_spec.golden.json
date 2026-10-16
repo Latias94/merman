@@ -1,33 +1,8 @@
 {
   "diagramType": "treeView",
   "model": {
-    "type": "treeView",
-    "title": "My TreeView Diagram",
-    "accTitle": "Accessible Title",
     "accDescr": "This is an accessible description",
-    "root": {
-      "id": 0,
-      "level": -1,
-      "name": "/",
-      "nodeType": "directory",
-      "children": [
-        {
-          "id": 1,
-          "level": 0,
-          "name": "Root",
-          "nodeType": "file",
-          "children": [
-            {
-              "id": 2,
-              "level": 4,
-              "name": "Child",
-              "nodeType": "file",
-              "children": []
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": "Accessible Title",
     "nodes": [
       {
         "id": 0,
@@ -47,6 +22,31 @@
         "name": "Child",
         "nodeType": "file"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "id": 2,
+              "level": 4,
+              "name": "Child",
+              "nodeType": "file"
+            }
+          ],
+          "id": 1,
+          "level": 0,
+          "name": "Root",
+          "nodeType": "file"
+        }
+      ],
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory"
+    },
+    "title": "My TreeView Diagram",
+    "type": "treeView"
   }
 }

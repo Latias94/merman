@@ -1,76 +1,76 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "flowchart",
-    "direction": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": null,
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [],
+    "keyword": "flowchart",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n0",
+        "img": null,
+        "label": "dbl-circ",
+        "labelType": "markdown",
+        "layoutShape": "dbl-circ",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "dbl-circ",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "n1",
+        "img": null,
+        "label": "double-circle",
+        "labelType": "markdown",
+        "layoutShape": "double-circle",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "double-circle",
+        "styles": []
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
     "vertexCalls": [
       "n0",
       "n0",
       "n1",
       "n1"
     ],
-    "nodes": [
-      {
-        "id": "n0",
-        "label": "dbl-circ",
-        "labelType": "markdown",
-        "shape": "dbl-circ",
-        "layoutShape": "dbl-circ",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "n1",
-        "label": "double-circle",
-        "labelType": "markdown",
-        "shape": "double-circle",
-        "layoutShape": "double-circle",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [],
-    "subgraphs": [],
     "warningFacts": [
       {
-        "ruleId": "merman.authoring.flowchart.explicit_direction",
-        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
-        "span": {
-          "start": 0,
-          "end": 9
-        },
         "fixSpan": {
-          "start": 9,
-          "end": 9
+          "end": 9,
+          "start": 9
+        },
+        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+        "ruleId": "merman.authoring.flowchart.explicit_direction",
+        "span": {
+          "end": 9,
+          "start": 0
         }
       }
     ],

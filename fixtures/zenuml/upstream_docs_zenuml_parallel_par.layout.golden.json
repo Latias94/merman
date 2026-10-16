@@ -2,164 +2,164 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 301.64,
-      "height": 234.0,
-      "frameBorderLeft": 10.0,
-      "frameBorderRight": 10.0,
-      "participants": [
+      "bounds": {
+        "max_x": 301.64,
+        "max_y": 234.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
+      "creations": [],
+      "dividers": [],
+      "fragments": [
         {
-          "name": "Alice",
-          "label": "Alice",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 32.32,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "Bob",
-          "label": "Bob",
-          "x": 151.64,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 23.36,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "John",
-          "label": "John",
-          "x": 251.64,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 30.24,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
+          "depth": 0.0,
+          "headerY": 73.0,
+          "height": 118.0,
+          "kind": "parallel",
+          "label": "",
+          "labelWidth": null,
+          "number": "1",
+          "sections": [
+            {
+              "contentInsetLeft": null,
+              "detail": null,
+              "detailWidth": null,
+              "height": 0.0,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "label": "",
+              "labelWidth": null,
+              "y": 72.0
+            },
+            {
+              "contentInsetLeft": 60.0,
+              "detail": null,
+              "detailWidth": null,
+              "height": 0.0,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "label": "",
+              "labelWidth": null,
+              "y": 146.0
+            }
+          ],
+          "statementId": "zenuml-statement-0",
+          "width": 321.64,
+          "x": -10.0,
+          "y": 72.0
         }
       ],
+      "frameBorderLeft": 10.0,
+      "frameBorderRight": 10.0,
+      "groups": [],
+      "height": 234.0,
       "lifelines": [
         {
+          "bottomY": 246.0,
           "participantName": "Alice",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 246.0
+          "x": 50.0
         },
         {
+          "bottomY": 246.0,
           "participantName": "Bob",
-          "x": 151.64,
           "topY": 68.0,
-          "bottomY": 246.0
+          "x": 151.64
         },
         {
+          "bottomY": 246.0,
           "participantName": "John",
-          "x": 251.64,
           "topY": 68.0,
-          "bottomY": 246.0
+          "x": 251.64
         }
       ],
       "messages": [
         {
-          "statementId": "zenuml-statement-1",
-          "number": "1.1",
-          "from": "Alice",
-          "to": "Bob",
-          "fromX": 50.0,
-          "toX": 151.64,
-          "y": 129.5,
-          "label": "Hello guys!",
           "arrowStyle": "open",
+          "from": "Alice",
+          "fromX": 50.0,
           "isReverse": false,
-          "style": {}
+          "label": "Hello guys!",
+          "number": "1.1",
+          "statementId": "zenuml-statement-1",
+          "style": {},
+          "to": "Bob",
+          "toX": 151.64,
+          "y": 129.5
         },
         {
-          "statementId": "zenuml-statement-2",
-          "number": "1.2",
-          "from": "Alice",
-          "to": "John",
-          "fromX": 50.0,
-          "toX": 251.64,
-          "y": 162.5,
-          "label": "Hello guys!",
           "arrowStyle": "open",
+          "from": "Alice",
+          "fromX": 50.0,
           "isReverse": false,
-          "style": {}
+          "label": "Hello guys!",
+          "number": "1.2",
+          "statementId": "zenuml-statement-2",
+          "style": {},
+          "to": "John",
+          "toX": 251.64,
+          "y": 162.5
         }
       ],
-      "selfCalls": [],
-      "creations": [],
-      "returns": [],
       "occurrences": [],
-      "fragments": [
+      "participants": [
         {
-          "statementId": "zenuml-statement-0",
-          "kind": "parallel",
-          "label": "",
-          "labelWidth": null,
-          "x": -10.0,
-          "y": 72.0,
-          "width": 321.64,
-          "height": 118.0,
-          "headerY": 73.0,
-          "sections": [
-            {
-              "label": "",
-              "y": 72.0,
-              "height": 0.0,
-              "labelWidth": null,
-              "innerLabel": null,
-              "innerLabelWidth": null,
-              "keyword": null,
-              "keywordWidth": null,
-              "detail": null,
-              "detailWidth": null,
-              "contentInsetLeft": null
-            },
-            {
-              "label": "",
-              "y": 146.0,
-              "height": 0.0,
-              "labelWidth": null,
-              "innerLabel": null,
-              "innerLabelWidth": null,
-              "keyword": null,
-              "keywordWidth": null,
-              "detail": null,
-              "detailWidth": null,
-              "contentInsetLeft": 60.0
-            }
-          ],
-          "number": "1",
-          "depth": 0.0
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Alice",
+          "labelWidth": 32.32,
+          "name": "Alice",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Bob",
+          "labelWidth": 23.36,
+          "name": "Bob",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 151.64,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "John",
+          "labelWidth": 30.24,
+          "name": "John",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 251.64,
+          "y": 28.0
         }
       ],
-      "dividers": [],
-      "comments": [],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 301.64,
-        "max_y": 234.0
-      }
+      "returns": [],
+      "selfCalls": [],
+      "width": 301.64
     }
   }
 }

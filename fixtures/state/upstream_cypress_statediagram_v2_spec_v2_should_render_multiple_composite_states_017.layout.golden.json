@@ -2,111 +2,86 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 244.0,
+        "max_y": 1040.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Alive",
-          "x": 128.0,
-          "y": 912.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Console",
-          "x": 128.0,
-          "y": 758.0,
-          "width": 232.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 564.0,
-          "is_cluster": true
+          "id": "Console",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "Console",
+          "title_label": {
+            "height": 21.0,
+            "width": 42.42,
+            "x": 128.0,
+            "y": 486.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 232.0,
+          "x": 128.0,
+          "y": 758.0
         },
         {
-          "id": "Console_start",
-          "x": 128.0,
-          "y": 531.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Dead",
-          "x": 128.0,
-          "y": 973.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Off",
-          "x": 128.0,
-          "y": 215.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Off2",
-          "x": 128.0,
-          "y": 625.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "On",
-          "x": 128.0,
-          "y": 393.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "On2",
-          "x": 128.0,
-          "y": 803.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Playing",
-          "x": 128.0,
-          "y": 931.0,
-          "width": 184.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 170.0,
-          "is_cluster": true
-        },
-        {
-          "id": "TV",
-          "x": 128.0,
-          "y": 251.0,
+          "id": "Playing",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "Playing",
+          "title_label": {
+            "height": 21.0,
+            "width": 42.0,
+            "x": 128.0,
+            "y": 856.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
           "width": 184.0,
+          "x": 128.0,
+          "y": 931.0
+        },
+        {
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 370.0,
-          "is_cluster": true
-        },
-        {
-          "id": "TV_start",
+          "id": "TV",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "TV",
+          "title_label": {
+            "height": 21.0,
+            "width": 16.8,
+            "x": 128.0,
+            "y": 76.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 184.0,
           "x": 128.0,
-          "y": 121.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 128.0,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
+          "y": 251.0
         }
       ],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "TV",
           "from_cluster": null,
-          "to_cluster": "TV",
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 128.0,
@@ -117,21 +92,26 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "TV",
+          "to_cluster": "TV"
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "TV_start",
-          "to": "Off",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 21.0,
+            "width": 103.32,
+            "x": 127.66,
+            "y": 162.5
+          },
           "points": [
             {
               "x": 128.0,
@@ -142,26 +122,21 @@
               "y": 197.0
             }
           ],
-          "label": {
-            "x": 127.66,
-            "y": 162.5,
-            "width": 103.32,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Off",
+          "to_cluster": null
         },
         {
-          "id": "edge10",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Dead",
-          "to": "Alive",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge10",
+          "label": null,
           "points": [
             {
               "x": 108.933,
@@ -172,67 +147,72 @@
               "y": 931.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Alive",
+          "to_cluster": null
         },
         {
-          "id": "edge2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "On",
-          "to": "Off",
           "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 147.067,
-              "y": 375.0
-            },
-            {
-              "x": 147.067,
-              "y": 345.0
-            },
-            {
-              "x": 161.06,
-              "y": 345.0
-            },
-            {
-              "x": 161.06,
-              "y": 264.0
-            },
-            {
-              "x": 147.067,
-              "y": 264.0
-            },
-            {
-              "x": 147.067,
-              "y": 234.0
-            }
-          ],
+          "id": "edge2",
           "label": {
-            "x": 153.065,
-            "y": 304.5,
+            "height": 21.0,
             "width": 49.14,
-            "height": 21.0
+            "x": 153.065,
+            "y": 304.5
           },
+          "points": [
+            {
+              "x": 147.067,
+              "y": 375.0
+            },
+            {
+              "x": 147.067,
+              "y": 345.0
+            },
+            {
+              "x": 161.06,
+              "y": 345.0
+            },
+            {
+              "x": 161.06,
+              "y": 264.0
+            },
+            {
+              "x": 147.067,
+              "y": 264.0
+            },
+            {
+              "x": 147.067,
+              "y": 234.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Off",
+          "to_cluster": null
         },
         {
-          "id": "edge3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Off",
-          "to": "On",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge3",
+          "label": {
+            "height": 21.0,
+            "width": 43.12,
+            "x": 102.935,
+            "y": 304.5
+          },
           "points": [
             {
               "x": 108.933,
@@ -259,26 +239,21 @@
               "y": 375.0
             }
           ],
-          "label": {
-            "x": 102.935,
-            "y": 304.5,
-            "width": 43.12,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "On",
+          "to_cluster": null
         },
         {
-          "id": "edge4",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "TV",
-          "to": "Console",
           "from_cluster": "TV",
-          "to_cluster": "Console",
+          "id": "edge4",
+          "label": null,
           "points": [
             {
               "x": 128.0,
@@ -289,21 +264,26 @@
               "y": 476.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Console",
+          "to_cluster": "Console"
         },
         {
-          "id": "edge5",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Console_start",
-          "to": "Off2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge5",
+          "label": {
+            "height": 21.0,
+            "width": 103.32,
+            "x": 127.66,
+            "y": 572.5
+          },
           "points": [
             {
               "x": 128.0,
@@ -314,118 +294,113 @@
               "y": 607.0
             }
           ],
-          "label": {
-            "x": 127.66,
-            "y": 572.5,
-            "width": 103.32,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge6",
-          "from": "On2",
+          "stroke_dasharray": null,
           "to": "Off2",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 147.067,
-              "y": 785.0
-            },
-            {
-              "x": 147.067,
-              "y": 755.0
-            },
-            {
-              "x": 161.06,
-              "y": 755.0
-            },
-            {
-              "x": 161.06,
-              "y": 674.0
-            },
-            {
-              "x": 147.067,
-              "y": 674.0
-            },
-            {
-              "x": 147.067,
-              "y": 644.0
-            }
-          ],
-          "label": {
-            "x": 153.065,
-            "y": 714.5,
-            "width": 49.14,
-            "height": 21.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "edge7",
-          "from": "Off2",
-          "to": "On2",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 108.933,
-              "y": 644.0
-            },
-            {
-              "x": 108.933,
-              "y": 674.0
-            },
-            {
-              "x": 94.94,
-              "y": 674.0
-            },
-            {
-              "x": 94.94,
-              "y": 755.0
-            },
-            {
-              "x": 108.933,
-              "y": 755.0
-            },
-            {
-              "x": 108.933,
-              "y": 785.0
-            }
-          ],
-          "label": {
-            "x": 102.935,
-            "y": 714.5,
-            "width": 43.12,
-            "height": 21.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
           "end_label_left": null,
           "end_label_right": null,
-          "start_marker": null,
           "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge8",
           "from": "On2",
-          "to": "Playing",
           "from_cluster": null,
-          "to_cluster": "Playing",
+          "id": "edge6",
+          "label": {
+            "height": 21.0,
+            "width": 49.14,
+            "x": 153.065,
+            "y": 714.5
+          },
+          "points": [
+            {
+              "x": 147.067,
+              "y": 785.0
+            },
+            {
+              "x": 147.067,
+              "y": 755.0
+            },
+            {
+              "x": 161.06,
+              "y": 755.0
+            },
+            {
+              "x": 161.06,
+              "y": 674.0
+            },
+            {
+              "x": 147.067,
+              "y": 674.0
+            },
+            {
+              "x": 147.067,
+              "y": 644.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Off2",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Off2",
+          "from_cluster": null,
+          "id": "edge7",
+          "label": {
+            "height": 21.0,
+            "width": 43.12,
+            "x": 102.935,
+            "y": 714.5
+          },
+          "points": [
+            {
+              "x": 108.933,
+              "y": 644.0
+            },
+            {
+              "x": 108.933,
+              "y": 674.0
+            },
+            {
+              "x": 94.94,
+              "y": 674.0
+            },
+            {
+              "x": 94.94,
+              "y": 755.0
+            },
+            {
+              "x": 108.933,
+              "y": 755.0
+            },
+            {
+              "x": 108.933,
+              "y": 785.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "On2",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "On2",
+          "from_cluster": null,
+          "id": "edge8",
+          "label": null,
           "points": [
             {
               "x": 128.0,
@@ -436,21 +411,21 @@
               "y": 846.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Playing",
+          "to_cluster": "Playing"
         },
         {
-          "id": "edge9",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Alive",
-          "to": "Dead",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge9",
+          "label": null,
           "points": [
             {
               "x": 147.067,
@@ -461,87 +436,112 @@
               "y": 955.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Dead",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Console",
+          "height": 37.0,
+          "id": "Alive",
+          "is_cluster": false,
+          "width": 136.0,
           "x": 128.0,
-          "y": 758.0,
-          "width": 232.0,
+          "y": 912.5
+        },
+        {
           "height": 564.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Console",
-          "title_label": {
-            "x": 128.0,
-            "y": 486.5,
-            "width": 42.42,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Console",
+          "is_cluster": true,
+          "width": 232.0,
+          "x": 128.0,
+          "y": 758.0
         },
         {
-          "id": "Playing",
+          "height": 14.0,
+          "id": "Console_start",
+          "is_cluster": false,
+          "width": 14.0,
           "x": 128.0,
-          "y": 931.0,
-          "width": 184.0,
+          "y": 531.0
+        },
+        {
+          "height": 37.0,
+          "id": "Dead",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 128.0,
+          "y": 973.5
+        },
+        {
+          "height": 37.0,
+          "id": "Off",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 128.0,
+          "y": 215.5
+        },
+        {
+          "height": 37.0,
+          "id": "Off2",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 128.0,
+          "y": 625.5
+        },
+        {
+          "height": 37.0,
+          "id": "On",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 128.0,
+          "y": 393.5
+        },
+        {
+          "height": 37.0,
+          "id": "On2",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 128.0,
+          "y": 803.5
+        },
+        {
           "height": 170.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Playing",
-          "title_label": {
-            "x": 128.0,
-            "y": 856.5,
-            "width": 42.0,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Playing",
+          "is_cluster": true,
+          "width": 184.0,
+          "x": 128.0,
+          "y": 931.0
         },
         {
-          "id": "TV",
-          "x": 128.0,
-          "y": 251.0,
-          "width": 184.0,
           "height": 370.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "TV",
-          "title_label": {
-            "x": 128.0,
-            "y": 76.5,
-            "width": 16.8,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "TV",
+          "is_cluster": true,
+          "width": 184.0,
+          "x": 128.0,
+          "y": 251.0
+        },
+        {
+          "height": 14.0,
+          "id": "TV_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 128.0,
+          "y": 121.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 128.0,
+          "y": 19.0
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 244.0,
-        "max_y": 1040.0
-      }
+      ]
     }
   }
 }

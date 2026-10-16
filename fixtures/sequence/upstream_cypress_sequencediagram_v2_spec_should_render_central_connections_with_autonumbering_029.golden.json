@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,185 +10,187 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Charlie": {
-        "name": "Charlie",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Charlie",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": {
-          "visible": true
-        },
-        "wrap": false,
-        "type": 26,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Central connection at destination",
-        "wrap": false,
-        "type": 0,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "2",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Reverse central at source",
-        "wrap": false,
-        "type": 0,
-        "activate": false,
-        "centralConnection": 60
-      },
-      {
-        "id": "4",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Dual central connections",
-        "wrap": false,
-        "type": 0,
-        "activate": true,
-        "centralConnection": 61
-      },
-      {
-        "id": "6",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "Bob",
-        "to": "Charlie",
-        "message": "Another central connection",
-        "wrap": false,
-        "type": 0,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "9",
-        "from": "Charlie",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "Charlie",
-        "to": "Alice",
-        "message": "Reverse central dotted",
-        "wrap": false,
-        "type": 1,
-        "activate": false,
-        "centralConnection": 60
-      },
-      {
-        "id": "11",
-        "from": "Charlie",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Dual central bidirectional",
-        "wrap": false,
-        "type": 34,
-        "activate": true,
-        "centralConnection": 61
-      },
-      {
-        "id": "13",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "14",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 60,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": {
+          "visible": true
+        },
+        "to": null,
+        "type": 26,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Alice",
+        "id": "1",
+        "message": "Central connection at destination",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "centralConnection": 60,
+        "from": "Bob",
+        "id": "3",
+        "message": "Reverse central at source",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 61,
+        "from": "Alice",
+        "id": "5",
+        "message": "Dual central connections",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "7",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Bob",
+        "id": "8",
+        "message": "Another central connection",
+        "to": "Charlie",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Charlie",
+        "id": "9",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "centralConnection": 60,
+        "from": "Charlie",
+        "id": "10",
+        "message": "Reverse central dotted",
+        "to": "Alice",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Charlie",
+        "id": "11",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 61,
+        "from": "Alice",
+        "id": "12",
+        "message": "Dual central bidirectional",
+        "to": "Bob",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "13",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "14",
+        "message": "",
+        "to": null,
+        "type": 60,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

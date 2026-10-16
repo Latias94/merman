@@ -1,148 +1,148 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "Todo",
-        "label": "Todo",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false
-      },
-      {
-        "id": "In progress",
-        "label": "In progress",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "Todo",
-        "label": "Todo",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Todo",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "Create JISON",
-        "parentId": "Todo",
+        "isGroup": false,
         "label": "Create JISON",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
-        "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
         "level": 4,
+        "parentId": "Todo",
+        "priority": null,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "Update DB function",
-        "parentId": "Todo",
+        "isGroup": false,
         "label": "Update DB function",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
-        "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
         "level": 4,
+        "parentId": "Todo",
+        "priority": null,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "Create parsing tests",
-        "parentId": "Todo",
+        "isGroup": false,
         "label": "Create parsing tests",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
-        "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
         "level": 4,
+        "parentId": "Todo",
+        "priority": null,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
+        "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
+        "icon": null,
         "id": "define getData",
-        "parentId": "Todo",
-        "label": "define getData",
         "isGroup": false,
-        "ticket": null,
-        "priority": null,
-        "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
+        "label": "define getData",
         "level": 4,
+        "parentId": "Todo",
+        "priority": null,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
-        "id": "Create renderer",
-        "parentId": "Todo",
-        "label": "Create renderer",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "Create renderer",
+        "isGroup": false,
+        "label": "Create renderer",
+        "level": 4,
+        "parentId": "Todo",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "In progress",
-        "label": "In progress",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "In progress",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "Design grammar",
-        "parentId": "In progress",
-        "label": "Design grammar",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "Design grammar",
+        "isGroup": false,
+        "label": "Design grammar",
+        "level": 4,
+        "parentId": "In progress",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "Todo",
+        "isGroup": false,
+        "label": "Todo",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "id": "In progress",
+        "isGroup": false,
+        "label": "In progress",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }
