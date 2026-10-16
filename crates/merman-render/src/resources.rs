@@ -828,8 +828,8 @@ pub(crate) struct OperationWorkMeter {
 
 /// Immutable operation-owned admission for retained SVG bytes, separate from producer charges.
 ///
-/// A document writer may reuse an admitted backing capacity while observing cancellation on each
-/// write. The ceiling and its error provenance have the same lifetime as the originating meter.
+/// A document writer may reuse admitted capacity while observing cancellation at bounded work
+/// intervals. The ceiling and its error provenance share the originating meter's lifetime.
 pub(crate) struct SvgByteBudget<'a> {
     meter: &'a OperationWorkMeter,
     maximum: Option<usize>,

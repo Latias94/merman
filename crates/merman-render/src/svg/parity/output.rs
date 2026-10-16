@@ -15,6 +15,11 @@ pub(super) trait SvgOutput: fmt::Write {
     fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()>;
     fn checkpoint(&mut self) -> crate::Result<()>;
 
+    /// Accounts for scanned input, including input discarded by serialization.
+    fn observe_scanned_work(&mut self, _bytes: usize) -> crate::Result<()> {
+        self.observe_operation()
+    }
+
     /// Observes operation cancellation without pretending to append an empty fragment.
     fn observe_operation(&mut self) -> crate::Result<()> {
         self.checkpoint()
@@ -71,35 +76,44 @@ impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
         const MAX_PLAIN_FRAGMENT_BYTES: usize = 2_048;
 
-        self.out.observe_operation().map_err(|_| fmt::Error)?;
+        let bytes = value.as_bytes();
         let mut start = 0;
-        while start < value.len() {
+        while start < bytes.len() {
             let mut end = start
                 .saturating_add(MAX_PLAIN_FRAGMENT_BYTES)
-                .min(value.len());
+                .min(bytes.len());
             while !value.is_char_boundary(end) {
                 end += 1;
             }
+            self.out
+                .observe_scanned_work(end - start)
+                .map_err(|_| fmt::Error)?;
             let mut plain_start = start;
-            // Normalize and escape in the same bounded pass. UTF-8 completion adds at most
-            // three bytes to the observation interval, including chunks that emit no text.
-            for (relative, ch) in value[start..end].char_indices() {
-                let offset = start + relative;
-                let replacement = if !crate::xml::is_xml_1_0_char(ch) {
-                    Some("")
-                } else {
-                    let replacement = match ch {
-                        '&' => Some("&amp;"),
-                        '<' => Some("&lt;"),
-                        '>' if self.trailing_brackets == 2 => Some("&gt;"),
-                        _ => None,
-                    };
-                    self.trailing_brackets = if ch == ']' {
-                        (self.trailing_brackets + 1).min(2)
-                    } else {
-                        0
-                    };
-                    replacement
+            let mut offset = start;
+            // A str already proves UTF-8 validity. XML 1.0 excludes only ASCII controls and
+            // U+FFFE/U+FFFF from its scalar range, so other UTF-8 bytes need no decoding.
+            while offset < end {
+                let (replacement, consumed) = match bytes[offset] {
+                    0..=8 | 11 | 12 | 14..=31 => (Some(""), 1),
+                    0xef if bytes[offset..end].starts_with(&[0xef, 0xbf, 0xbe])
+                        || bytes[offset..end].starts_with(&[0xef, 0xbf, 0xbf]) =>
+                    {
+                        (Some(""), 3)
+                    }
+                    b']' => {
+                        self.trailing_brackets = (self.trailing_brackets + 1).min(2);
+                        (None, 1)
+                    }
+                    byte => {
+                        let replacement = match byte {
+                            b'&' => Some("&amp;"),
+                            b'<' => Some("&lt;"),
+                            b'>' if self.trailing_brackets == 2 => Some("&gt;"),
+                            _ => None,
+                        };
+                        self.trailing_brackets = 0;
+                        (replacement, 1)
+                    }
                 };
                 if let Some(replacement) = replacement {
                     if plain_start < offset {
@@ -109,16 +123,14 @@ impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
                         self.out.write_str(replacement)?;
                     }
                     // Removed scalars do not break a retained `]]` sequence.
-                    plain_start = offset + ch.len_utf8();
+                    plain_start = offset + consumed;
                 }
+                offset += consumed;
             }
             if plain_start < end {
                 self.out.write_str(&value[plain_start..end])?;
             }
             start = end;
-            if start < value.len() {
-                self.out.observe_operation().map_err(|_| fmt::Error)?;
-            }
         }
         self.out.checkpoint().map_err(|_| fmt::Error)
     }
@@ -153,6 +165,10 @@ impl<S: SvgOutput> SvgOutput for XmlTextOutput<'_, S> {
         self.out.checkpoint()
     }
 
+    fn observe_scanned_work(&mut self, bytes: usize) -> crate::Result<()> {
+        self.out.observe_scanned_work(bytes)
+    }
+
     fn observe_operation(&mut self) -> crate::Result<()> {
         self.out.observe_operation()
     }
@@ -167,6 +183,7 @@ pub(super) struct BoundedSvgOutput<'a> {
     out: String,
     budget: SvgByteBudget<'a>,
     admitted_end: usize,
+    work_until_observation: usize,
     state: BoundedSvgOutputState,
     #[cfg(test)]
     capacity_admissions: usize,
@@ -228,6 +245,7 @@ impl<'a> BoundedSvgOutput<'a> {
             out: String::new(),
             budget: work_meter.svg_byte_budget(),
             admitted_end: 0,
+            work_until_observation: 0,
             state: BoundedSvgOutputState::Active,
             #[cfg(test)]
             capacity_admissions: 0,
@@ -239,7 +257,10 @@ impl<'a> BoundedSvgOutput<'a> {
     pub(super) fn finish(self) -> crate::Result<String> {
         match self.state.into_error() {
             Some(error) => Err(error),
-            None => Ok(self.out),
+            None => {
+                self.budget.observe_operation()?;
+                Ok(self.out)
+            }
         }
     }
 
@@ -273,8 +294,7 @@ impl<'a> BoundedSvgOutput<'a> {
     }
 
     fn admit_growth(&mut self, additional: usize) -> Result<(), BoundedSvgOutputFailure> {
-        self.budget
-            .observe_operation()
+        self.observe_work(additional)
             .map_err(BoundedSvgOutputFailure::Operation)?;
         // Credit is explicit: an allocator may return more capacity than requested. Fitting the
         // admitted end proves both non-overflow and the exact retained-byte ceiling; excess
@@ -299,6 +319,16 @@ impl<'a> BoundedSvgOutput<'a> {
             BoundedSvgOutputFailure::InvalidModel("failed to reserve bounded SVG output")
         })?;
         self.admitted_end = target_capacity;
+        Ok(())
+    }
+
+    fn observe_work(&mut self, bytes: usize) -> Result<(), crate::resources::OperationWorkError> {
+        const OBSERVATION_INTERVAL: usize = 2_048;
+        if bytes >= self.work_until_observation {
+            self.budget.observe_operation()?;
+            self.work_until_observation = OBSERVATION_INTERVAL;
+        }
+        self.work_until_observation = self.work_until_observation.saturating_sub(bytes);
         Ok(())
     }
 
@@ -366,6 +396,14 @@ impl SvgOutput for BoundedSvgOutput<'_> {
         }
     }
 
+    fn observe_scanned_work(&mut self, bytes: usize) -> crate::Result<()> {
+        if let Some(error) = self.state.error() {
+            return Err(error);
+        }
+        self.observe_work(bytes)
+            .map_err(|error| self.fail(BoundedSvgOutputFailure::Operation(error)))
+    }
+
     fn observe_operation(&mut self) -> crate::Result<()> {
         if let Some(error) = self.state.error() {
             return Err(error);
@@ -380,6 +418,31 @@ impl SvgOutput for BoundedSvgOutput<'_> {
 mod tests {
     use super::*;
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
+
+    #[test]
+    fn xml_text_output_matches_scalar_normalization_across_unicode_and_fragments() {
+        let mut logical = String::from("]]\0> &< ]\u{fffe}]\u{ffff}> ");
+        logical.extend((0..=0x10ffff).filter_map(char::from_u32));
+        logical.push_str("]]\u{1f}> &<");
+        let expected = crate::xml::strip_forbidden_xml_1_0_chars(&logical)
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace("]]>", "]]&gt;");
+        let mut serialized = String::new();
+        {
+            let mut out = XmlTextOutput::new(&mut serialized);
+            let mut start = 0;
+            while start < logical.len() {
+                let mut end = (start + 509).min(logical.len());
+                while !logical.is_char_boundary(end) {
+                    end += 1;
+                }
+                fmt::Write::write_str(&mut out, &logical[start..end]).unwrap();
+                start = end;
+            }
+        }
+        assert_eq!(serialized, expected);
+    }
 
     #[test]
     fn xml_text_output_preserves_logical_css_across_fragment_boundaries() {
@@ -607,6 +670,19 @@ mod tests {
         let finished = resource_limit(out.finish().unwrap_err());
         assert_eq!(finished, first);
         assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn bounded_svg_output_observes_cancellation_before_returning_completed_document() {
+        let control = merman_core::OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        );
+        let mut out = BoundedSvgOutput::new(&meter);
+        out.push_str("<svg/>");
+        control.cancel();
+        assert!(matches!(out.finish(), Err(crate::Error::Cancelled(_))));
     }
 
     #[test]
