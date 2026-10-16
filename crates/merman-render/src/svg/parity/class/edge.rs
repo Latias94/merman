@@ -57,7 +57,12 @@ pub(super) struct ClassEdgeGroupsRenderContext<'a> {
 }
 
 pub(super) use crate::class::class_arrow_type_for_relation_end;
-pub(super) type ClassEdgeLabelCenters = FxHashMap<String, LayoutPoint>;
+
+/// Path observations and their immutable order stay borrowed until labels finish emitting.
+pub(super) struct ClassEdgePathEmission<'edges> {
+    ordered_edges: Vec<&'edges LayoutEdge>,
+    label_centers: FxHashMap<&'edges str, LayoutPoint>,
+}
 
 pub(super) fn class_line_with_marker_offset_points_into(
     input: &[LayoutPoint],
@@ -163,13 +168,13 @@ pub(super) fn class_line_with_marker_offset_points_into(
     }
 }
 
-pub(super) fn render_class_edge_paths<O: SvgOutput>(
+pub(super) fn render_class_edge_paths<'edges, O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
-    ctx: &ClassEdgeGroupsRenderContext<'_>,
-) -> crate::Result<ClassEdgeLabelCenters> {
+    ctx: &ClassEdgeGroupsRenderContext<'edges>,
+) -> crate::Result<ClassEdgePathEmission<'edges>> {
     let mut edge_points_json_buf = String::new();
     let mut edge_points_json_ryu = ryu_js::Buffer::new();
     let mut edge_points_b64_buf = String::new();
@@ -183,7 +188,7 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
     let edge_paths_start = ctx.timing.start();
     let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
     let mut edge_label_centers =
-        ClassEdgeLabelCenters::with_capacity_and_hasher(ordered_edges.len(), Default::default());
+        FxHashMap::with_capacity_and_hasher(ordered_edges.len(), Default::default());
     let _ = write!(out, r#"<g class="{}">"#, ctx.edge_paths_class);
     out.checkpoint()?;
     for e in ordered_edges.iter().copied() {
@@ -280,7 +285,7 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
         let render_d = hopped_d.map(String::as_str).unwrap_or(paint_d);
         if let Some(lbl) = e.label.as_ref() {
             edge_label_centers.insert(
-                e.id.to_string(),
+                e.id.as_str(),
                 if missing_section.is_some() {
                     let first = &edge_raw_points[0];
                     let last = &edge_raw_points[edge_raw_points.len() - 1];
@@ -477,18 +482,18 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
                 hopped_d,
                 ctx.work_meter,
             )?
-            .into_owned()
         } else {
-            edge_style_buf.clone()
+            std::borrow::Cow::Borrowed(edge_style_buf.as_str())
         };
         if let Some((_, stroke)) = typed_stroke {
+            let terminal_style = terminal_style.to_mut();
             if !terminal_style.ends_with(';') {
                 terminal_style.push(';');
             }
-            let _ = write!(&mut terminal_style, "stroke:{stroke} !important;");
+            let _ = write!(terminal_style, "stroke:{stroke} !important;");
         }
         if let Some(width) = typed_stroke_width {
-            let _ = write!(&mut terminal_style, "stroke-width:{width} !important");
+            let _ = write!(terminal_style.to_mut(), "stroke-width:{width} !important");
         }
         let _ = write!(out, r#" style="{}""#, escape_attr_display(&terminal_style));
         out.push_str("/>");
@@ -528,7 +533,10 @@ pub(super) fn render_class_edge_paths<O: SvgOutput>(
         detail.edge_paths += s.elapsed();
     }
 
-    Ok(edge_label_centers)
+    Ok(ClassEdgePathEmission {
+        ordered_edges,
+        label_centers: edge_label_centers,
+    })
 }
 
 pub(super) fn render_class_edge_labels<O: SvgOutput>(
@@ -538,11 +546,11 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
     typography_receipt: &mut Option<crate::class::ClassTextThemeReceipt>,
     ctx: &ClassEdgeGroupsRenderContext<'_>,
-    edge_label_centers: &ClassEdgeLabelCenters,
+    path_emission: &ClassEdgePathEmission<'_>,
 ) -> crate::Result<()> {
     let mut edge_dom_id_buf = String::with_capacity(64);
     let edge_labels_start = ctx.timing.start();
-    let ordered_edges = class_edge_render_order(ctx.edges, ctx.relation_index_by_id);
+    let ordered_edges = &path_emission.ordered_edges;
     out.push_str(r#"<g class="edgeLabels">"#);
     out.checkpoint()?;
     // Mermaid's serialized SVG keeps all `edgeLabel` groups before `edgeTerminals`.
@@ -584,7 +592,8 @@ pub(super) fn render_class_edge_labels<O: SvgOutput>(
         }
 
         let label_center = e.label.as_ref().map(|lbl| {
-            edge_label_centers
+            path_emission
+                .label_centers
                 .get(e.id.as_str())
                 .cloned()
                 .unwrap_or(LayoutPoint {
@@ -1112,6 +1121,59 @@ mod tests {
             width: 20.0,
             height: 16.0,
         }
+    }
+
+    #[test]
+    fn class_edge_order_preserves_notes_source_indices_and_stable_ties() {
+        let edges = [
+            ("edge10", "source-second"),
+            ("edgeNote10", "note-ten"),
+            ("edgeNote2", "note-two-first"),
+            ("fallback-z", "fallback-last"),
+            ("edge2", "source-first"),
+            ("fallback-a", "fallback-first"),
+            ("edgeNote2", "note-two-second"),
+            ("edge9", "source-second-tie"),
+            ("edgeNoteInvalid", "note-invalid"),
+            ("edgeNote02", "note-two-id-tie"),
+        ]
+        .map(|(id, from)| LayoutEdge {
+            id: id.to_owned(),
+            from: from.to_owned(),
+            to: String::new(),
+            from_cluster: None,
+            to_cluster: None,
+            points: Vec::new(),
+            label: None,
+            start_label_left: None,
+            start_label_right: None,
+            end_label_left: None,
+            end_label_right: None,
+            start_marker: None,
+            end_marker: None,
+            stroke_dasharray: None,
+        });
+        let relation_indices = FxHashMap::from_iter([("edge2", 0), ("edge10", 1), ("edge9", 1)]);
+
+        let ordered = class_edge_render_order(&edges, &relation_indices);
+        assert_eq!(
+            ordered
+                .iter()
+                .map(|edge| edge.from.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "note-two-id-tie",
+                "note-two-first",
+                "note-two-second",
+                "note-ten",
+                "note-invalid",
+                "source-first",
+                "source-second",
+                "source-second-tie",
+                "fallback-first",
+                "fallback-last",
+            ]
+        );
     }
 
     #[test]

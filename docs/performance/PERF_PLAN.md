@@ -17,6 +17,12 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 Class edge ownership refactor](native_class_edge_ownership_windows_2026-10-16.md)
+shares one ordered borrowed edge sequence across path/label emission. Class medium removes 29
+allocations and 1,028 allocated bytes; the zero-edge tiny control is unchanged. All 152 SVG rows
+and 3,321 renderer tests pass. This removes duplicate work and transient ownership; observed
+external compilation rejects the diagnostic before measuring, so no latency claim is admitted.
+
 The [October 16 Class default-binding repair](native_class_shared_defaults_windows_2026-10-16.md)
 removes node-dependent copies of shared defaults: padding a raw border token by K bytes now adds
 exactly 4K preparation bytes at both 16 and 64 nodes, versus 20K/68K previously. It removes four default

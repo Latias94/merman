@@ -3,7 +3,7 @@ use super::super::timing::RenderTiming;
 use super::ClassSvgRelation;
 use super::context::{ClassEmitCheckpoint, ClassRenderDetails};
 use super::edge::{
-    ClassEdgeGroupsRenderContext, ClassEdgeLabelCenters, render_class_edge_labels,
+    ClassEdgeGroupsRenderContext, ClassEdgePathEmission, render_class_edge_labels,
     render_class_edge_paths,
 };
 use crate::model::{Bounds, LayoutEdge, LayoutPoint};
@@ -58,7 +58,7 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
         theme_receipt,
         typography_receipt,
     } = state;
-    let edge_label_centers = render_class_split_edge_paths(
+    let path_emission = render_class_split_edge_paths(
         out,
         content_bounds,
         detail,
@@ -76,19 +76,19 @@ pub(super) fn render_class_split_edge_groups<O: SvgOutput>(
         ctx,
         bounds_dx,
         bounds_dy,
-        &edge_label_centers,
+        &path_emission,
     )
 }
 
-pub(super) fn render_class_split_edge_paths<O: SvgOutput>(
+pub(super) fn render_class_split_edge_paths<'edges, O: SvgOutput>(
     out: &mut O,
     content_bounds: &mut Option<Bounds>,
     detail: &mut ClassRenderDetails,
     theme_receipt: &mut crate::class::ClassRelationThemeReceipt<'_>,
-    ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
+    ctx: &ClassSplitEdgeGroupsRenderContext<'edges>,
     bounds_dx: f64,
     bounds_dy: f64,
-) -> crate::Result<ClassEdgeLabelCenters> {
+) -> crate::Result<ClassEdgePathEmission<'edges>> {
     let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
     render_class_edge_paths(out, content_bounds, detail, theme_receipt, &local_ctx)
 }
@@ -106,7 +106,7 @@ pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
     ctx: &ClassSplitEdgeGroupsRenderContext<'_>,
     bounds_dx: f64,
     bounds_dy: f64,
-    edge_label_centers: &ClassEdgeLabelCenters,
+    path_emission: &ClassEdgePathEmission<'_>,
 ) -> crate::Result<()> {
     let local_ctx = local_edge_context(ctx, bounds_dx, bounds_dy);
     render_class_edge_labels(
@@ -116,7 +116,7 @@ pub(super) fn render_class_split_edge_labels<O: SvgOutput>(
         theme_receipt,
         typography_receipt,
         &local_ctx,
-        edge_label_centers,
+        path_emission,
     )
 }
 
