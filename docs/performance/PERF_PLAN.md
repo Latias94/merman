@@ -17,6 +17,12 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 overlay-order correction](native_theme_overlay_order_2026-10-16.md) preserves
+actual Map insertion order for overlapping literal roots and their replay. Its sparse index
+contains both ancestor and descendant participants, K <= E; unrelated roots add no entries.
+All 2,006 core tests pass, including 42 eager-oracle order cases. This corrects interpreter
+equivalence without reintroducing full-table reads or making a new latency claim.
+
 The [October 16 reference dispatch checkpoint](native_xml_dispatch_windows_2026-10-16.md)
 retains exact-name routing as an internal refactor with 5,352 renderer tests and all 152 SVG
 identities passing. The native benchmark shrinks 87,040 bytes. External compilation invalidates

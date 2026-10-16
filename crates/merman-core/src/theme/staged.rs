@@ -11,7 +11,9 @@ use crate::compatibility_json::number_value;
 use crate::theme_color::{self, ColorAdjustment, ColorError};
 use crate::{MermaidConfig, ThemeEvaluationLimitExceeded};
 use serde_json::{Map, Value};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+#[cfg(test)]
+use std::collections::BTreeSet;
 
 mod base;
 
@@ -130,9 +132,9 @@ struct AuthorityState<'a> {
     explicit: &'a Map<String, Value>,
     owner_source: OwnerSource<'a>,
     explicit_applied: bool,
-    // Only overlapping literal roots need a barrier for an otherwise unchanged full replay.
-    // Borrow the keys; ordinary unrelated scalar overrides allocate no barrier or self seed.
-    replay_barriers: BTreeSet<&'a str>,
+    // Only overlapping literal roots need an overlay-order index and explicit full replay.
+    // Borrow the keys; ordinary unrelated scalar overrides allocate no index or self seed.
+    overlay_order: BTreeMap<&'a str, usize>,
     // Only actual interpreter writes are represented. Unread explicit variables have no entry.
     replacements: BTreeMap<String, ValueAuthority<'a>>,
     sources: std::cell::RefCell<SourceTable>,
@@ -147,12 +149,26 @@ struct ResolvedAuthority {
 
 impl<'a> AuthorityState<'a> {
     fn new(explicit: &'a Map<String, Value>, owner_source: OwnerSource<'a>) -> Self {
-        let mut replay_barriers = BTreeSet::new();
+        let mut overlay_order = BTreeMap::new();
         for key in explicit.keys() {
+            let mut overlaps_ancestor = false;
             for (index, _) in key.match_indices('.') {
                 let ancestor = &key[..index];
                 if explicit.contains_key(ancestor) {
-                    replay_barriers.insert(ancestor);
+                    overlay_order.entry(ancestor).or_default();
+                    overlaps_ancestor = true;
+                }
+            }
+            if overlaps_ancestor {
+                overlay_order.entry(key.as_str()).or_default();
+            }
+        }
+        // Map iteration is the interpreter's write order, including preserve_order builds.
+        // Index both sides of each overlap without indexing unrelated authored variables.
+        if !overlay_order.is_empty() {
+            for (order, key) in explicit.keys().enumerate() {
+                if let Some(indexed_order) = overlay_order.get_mut(key.as_str()) {
+                    *indexed_order = order;
                 }
             }
         }
@@ -160,7 +176,7 @@ impl<'a> AuthorityState<'a> {
             explicit,
             owner_source,
             explicit_applied: false,
-            replay_barriers,
+            overlay_order,
             replacements: BTreeMap::new(),
             sources: std::cell::RefCell::new(SourceTable::default()),
             #[cfg(test)]
@@ -199,7 +215,7 @@ impl<'a> AuthorityState<'a> {
             Some((root, ValueAuthority::Authored(value))) => {
                 authored_value_has_leaf(value, &path[root.len()..])
             }
-            None => explicit_has_leaf_path(self.explicit, path),
+            None => self.explicit_has_leaf_path(path),
         };
         if !authored_leaf {
             return Owners::default();
@@ -217,6 +233,27 @@ impl<'a> AuthorityState<'a> {
         });
         sources.seeds.insert(path.to_string(), owner);
         Owners(owner.into_iter().collect())
+    }
+
+    /// Every matching literal root overwrites this path, even when it supplies no leaf there.
+    /// Select the last such write in Map order, not the longest dotted prefix.
+    fn explicit_has_leaf_path(&self, path: &str) -> bool {
+        let mut latest: Option<(usize, usize, &Value)> = None;
+        for root in
+            std::iter::once(path).chain(path.rmatch_indices('.').map(|(index, _)| &path[..index]))
+        {
+            let Some(value) = self.explicit.get(root) else {
+                continue;
+            };
+            let Some(&order) = self.overlay_order.get(root) else {
+                // If another literal root could match this same path, both would be indexed.
+                return authored_value_has_leaf(value, &path[root.len()..]);
+            };
+            if latest.is_none_or(|(previous, _, _)| order > previous) {
+                latest = Some((order, root.len(), value));
+            }
+        }
+        latest.is_some_and(|(_, root_len, value)| authored_value_has_leaf(value, &path[root_len..]))
     }
 
     fn remove_subtree(&mut self, root: &str) {
@@ -248,15 +285,15 @@ impl<'a> AuthorityState<'a> {
 
     fn replay(&mut self, root: &str, value: &'a Value) {
         self.remove_subtree(root);
-        // An unchanged full replay still clears later dotted roots below it. Preserve that
-        // barrier even when no computed write exists: a later empty-object shallow replay makes
-        // no writes and cannot restore the cleared descendant. Unrelated roots need no entry.
+        // Full replay can clear dotted descendants or restore a root shadowed during overlay.
+        // Preserve both sides of an overlap: a later shallow replay may not write this path.
+        // Unrelated unchanged roots already have the right authored fallback and need no entry.
         // Nested replay binds the actual shallow write, including literal dotted-key aliases.
         let unchanged_root = self
             .explicit
             .get(root)
             .is_some_and(|original| std::ptr::eq(original, value));
-        if !unchanged_root || self.origin(root).is_some() || self.replay_barriers.contains(root) {
+        if !unchanged_root || self.origin(root).is_some() || self.overlay_order.contains_key(root) {
             self.replacements
                 .insert(root.to_string(), ValueAuthority::Authored(value));
         }
@@ -294,20 +331,6 @@ impl<'a> AuthorityState<'a> {
         record(&mut work);
         self.work.set(work);
     }
-}
-
-/// Overlay writes top-level keys in lexical order. The longest matching literal root is the
-/// last writer and replaces earlier dotted descendants, even when its value is not a leaf.
-fn explicit_has_leaf_path(explicit: &Map<String, Value>, path: &str) -> bool {
-    if let Some(value) = explicit.get(path) {
-        return authored_value_has_leaf(value, "");
-    }
-    for (index, _) in path.rmatch_indices('.') {
-        if let Some(value) = explicit.get(&path[..index]) {
-            return authored_value_has_leaf(value, &path[index..]);
-        }
-    }
-    false
 }
 
 /// Inside one authored value, flattening does not perform intervening subtree replacements.
@@ -2240,6 +2263,101 @@ mod tests {
         assert!(!state.depends_on("a.b", "a.b"));
     }
 
+    #[test]
+    fn literal_root_insertion_order_matches_eager_overlay_and_replay() {
+        let orders = [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ];
+        for values in [
+            [json!(false), json!(true), json!(false)],
+            [json!(false), json!({}), json!({})],
+            [json!({}), json!(true), json!({"d": 1})],
+            [json!({"c": 1}), json!(true), json!({})],
+            [json!({"b": true}), json!({}), json!(false)],
+            [
+                json!({"b": {"c": {"d": 1}}, "other": 1}),
+                json!({"c": false}),
+                json!({"d": true}),
+            ],
+            [json!({"b.c": true}), json!({"c": {}}), json!({"d": 1})],
+        ] {
+            let keys = ["a", "a.b", "a.b.c"];
+            for order in orders {
+                // Construct the Map directly: its insertion order is the interpreter's overlay
+                // and replay order, including descendants written before their ancestors.
+                let explicit = order
+                    .map(|index| (keys[index].to_string(), values[index].clone()))
+                    .into_iter()
+                    .collect::<Map<_, _>>();
+                assert_eq!(
+                    explicit.keys().map(String::as_str).collect::<Vec<_>>(),
+                    order.map(|index| keys[index])
+                );
+                let mut state =
+                    ThemeState::constructor(Map::new(), &explicit, Some(OwnerSource::AllExplicit));
+                state.overlay_explicit(&explicit);
+                let mut oracle = EagerAuthority::new(&explicit);
+                assert_eq!(
+                    state.snapshot().dependencies,
+                    oracle.dependencies,
+                    "overlay: {explicit:?}"
+                );
+
+                // A shadowed authored leaf must not become a source at its first actual read.
+                let reads = ["a", "a.b", "a.b.c", "a.b.c.d", "a.other"];
+                let computed = state.computed(Value::Null, &reads);
+                state.commit_computed("derived", computed);
+                oracle.commit("derived", &[("", &reads)]);
+                assert_eq!(
+                    state.snapshot().dependencies,
+                    oracle.dependencies,
+                    "first read: {explicit:?}"
+                );
+
+                let before = state.variables.clone();
+                state.replay_explicit(&explicit);
+                oracle.replay(&explicit, &before);
+                assert_eq!(
+                    state.snapshot().dependencies,
+                    oracle.dependencies,
+                    "replay: {explicit:?}"
+                );
+                let computed = state.computed(Value::Null, &reads);
+                state.commit_computed("after_replay", computed);
+                oracle.commit("after_replay", &[("", &reads)]);
+                assert_eq!(
+                    state.snapshot().dependencies,
+                    oracle.dependencies,
+                    "read after replay: {explicit:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn overlay_order_indexes_only_overlapping_literal_roots() {
+        for unrelated in [0, 16, 256] {
+            let mut explicit = (0..unrelated)
+                .map(|index| (format!("unrelated{index}.leaf"), json!(true)))
+                .collect::<Map<_, _>>();
+            explicit.insert("a.b".to_string(), json!(true));
+            explicit.insert("a".to_string(), json!(false));
+            let authority = AuthorityState::new(&explicit, OwnerSource::AllExplicit);
+            assert_eq!(
+                authority.overlay_order,
+                BTreeMap::from([("a.b", unrelated), ("a", unrelated + 1)])
+            );
+            assert!(!authority.explicit_has_leaf_path("a.b"));
+            assert!(authority.sources.borrow().seeds.is_empty());
+            assert!(authority.replacements.is_empty());
+        }
+    }
+
     fn staged_programs() -> [(StagedProgram, super::super::MermaidThemeId); 4] {
         use super::super::MermaidThemeId;
         [
@@ -2264,7 +2382,7 @@ mod tests {
                 config.deep_merge_explicit(&json!({"themeVariables": explicit}));
                 assert!(
                     AuthorityState::new(&explicit, OwnerSource::Config(&config))
-                        .replay_barriers
+                        .overlay_order
                         .is_empty()
                 );
                 let resolved =
