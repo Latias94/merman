@@ -115,6 +115,10 @@ pub(crate) struct ErEntitySourceStyle {
 }
 
 impl ErEntitySourceStyle {
+    pub(crate) fn label_style(&self, html_labels: bool) -> String {
+        visual::label_style(self, html_labels)
+    }
+
     pub(crate) fn rect_value(&self, property: &str) -> Option<&str> {
         last_source_style_value(&self.rect_declarations, property)
     }
@@ -941,23 +945,23 @@ impl ErEntityThemePlan {
             .map(|expected| (expected.rule_index, expected.css.as_str()))
     }
 
-    pub(crate) fn typed_entity_name(&self, entity_id: &str) -> Option<(usize, &str)> {
+    pub(crate) fn entity_name_visual(&self, entity_id: &str) -> Option<&visual::ErTextVisual> {
         if self.text_terminals.is_empty() {
             return None;
         }
-        self.typed_text_terminal(&ErTextTerminalId::entity_name(entity_id))
+        self.text_terminal_visual(&ErTextTerminalId::entity_name(entity_id))
     }
 
-    pub(crate) fn typed_attribute_text(
+    pub(crate) fn attribute_text_visual(
         &self,
         entity_id: &str,
         row_index: usize,
         role: ErAttributeTextRole,
-    ) -> Option<(usize, &str)> {
+    ) -> Option<&visual::ErTextVisual> {
         if self.text_terminals.is_empty() {
             return None;
         }
-        self.typed_text_terminal(&ErTextTerminalId::attribute(entity_id, row_index, role))
+        self.text_terminal_visual(&ErTextTerminalId::attribute(entity_id, row_index, role))
     }
 
     pub(crate) fn records_subgraph_labels(&self) -> bool {
@@ -966,12 +970,11 @@ impl ErEntityThemePlan {
             .any(|id| matches!(id, ErTextTerminalId::SubgraphLabel(_)))
     }
 
-    fn typed_text_terminal(&self, id: &ErTextTerminalId) -> Option<(usize, &str)> {
+    fn text_terminal_visual(&self, id: &ErTextTerminalId) -> Option<&visual::ErTextVisual> {
         self.text_terminals
-            .get(id)?
-            .paint
-            .as_ref()
-            .map(|expected| (expected.rule_index, expected.css.as_str()))
+            .get(id)
+            .filter(|terminal| terminal.paint.is_some())
+            .map(|terminal| &terminal.visual)
     }
 
     pub(crate) fn typed_table_row(

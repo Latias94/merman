@@ -3,6 +3,29 @@ use super::super::*;
 
 // ER diagram SVG renderer implementation (split from parity.rs).
 
+struct ErTextStyleAttr<'a> {
+    source_style: &'a str,
+    typed_style: &'a str,
+}
+
+impl std::fmt::Display for ErTextStyleAttr<'_> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.source_style.is_empty() && self.typed_style.is_empty() {
+            return formatter.write_str("style=\"\"");
+        }
+        formatter.write_str("style=\"")?;
+        formatter.write_str(self.source_style)?;
+        if !self.source_style.is_empty() && !self.typed_style.is_empty() {
+            formatter.write_str("; ")?;
+        }
+        write!(
+            formatter,
+            "{}\"",
+            super::super::util::escape_attr_display(self.typed_style),
+        )
+    }
+}
+
 // ELK overwrites the model curve after routing; Dagre retains ER's basis curve.
 fn er_edge_path_d(
     points: &[crate::model::LayoutPoint],
@@ -256,7 +279,6 @@ fn render_er_subgraph_cluster(
             fmt(title_y - title_height / 2.0),
             visual.svg_source_text_attr,
         );
-        let typed_style = visual.name.typed_style.as_str();
         let terminal_style = visual.subgraph_text_style.as_str();
         if subgraph.label_type == "string" || subgraph.label_type == "text" {
             crate::svg::parity::label::write_svg_text_centered_from_create_text_source_with_style(
@@ -277,7 +299,6 @@ fn render_er_subgraph_cluster(
         if context.record_text {
             receipt.record_subgraph_label(
                 &subgraph.id,
-                typed_style,
                 &crate::er::subgraph_svg_text_facts(subgraph, source_style),
             );
         }
@@ -1041,12 +1062,7 @@ pub(crate) fn render_er_diagram_svg_model(
             options.checkpoint_emit()?;
             out.push_str(" />");
             out.checkpoint()?;
-            entity_theme_receipt.record_checkpointed_relation_path(
-                &e.id,
-                typed_relation_stroke,
-                start_marker_id.as_deref(),
-                end_marker_id.as_deref(),
-            );
+            entity_theme_receipt.record_checkpointed_relation_path(typed_relation_stroke);
         }
     }
     out.push_str("</g>");
@@ -1211,11 +1227,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     && facts.parse_valid()
                     && facts.has_visible_runs()
                 {
-                    entity_theme_receipt.record_relation_label_text(
-                        relationship_index,
-                        relation_label_terminal_style,
-                        facts,
-                    );
+                    entity_theme_receipt.record_relation_label_text(relationship_index, facts);
                 }
             } else {
                 if edge_html_labels {
@@ -1312,6 +1324,12 @@ pub(crate) fn render_er_diagram_svg_model(
                     ),
                 })?;
         let visual = &source_style.visual;
+        let source_label_style =
+            source_style.label_style(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
+        let entity_name_terminal_style = entity_theme
+            .entity_name_visual(&entity.id)
+            .map(|visual| visual.typed_style.as_str())
+            .unwrap_or("");
         let typed_fill = entity_theme.typed_fill(entity_index);
         let typed_stroke = entity_theme.typed_stroke(entity_index);
 
@@ -1362,10 +1380,10 @@ pub(crate) fn render_er_diagram_svg_model(
         out.checkpoint()?;
 
         if entity.attributes.is_empty() {
-            let entity_name_style_attr = visual
-                .name
-                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
-            let entity_name_terminal_style = visual.name.typed_style.as_str();
+            let entity_name_style_attr = ErTextStyleAttr {
+                source_style: &source_label_style,
+                typed_style: entity_name_terminal_style,
+            };
             let paint_emission = {
                 let rect_style_attr = &visual.rect_style_attr;
                 let paint_emission = er_entity_paint_emission(typed_fill, typed_stroke);
@@ -1423,7 +1441,6 @@ pub(crate) fn render_er_diagram_svg_model(
             out.push_str("</g>");
             out.checkpoint()?;
             entity_theme_receipt.record_checkpointed_entity(
-                entity_index,
                 paint_emission.emitted_fill,
                 paint_emission.emitted_stroke,
             );
@@ -1432,12 +1449,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 && facts.parse_valid()
                 && facts.has_visible_runs()
             {
-                entity_theme_receipt.record_entity_name_text(
-                    &entity.id,
-                    entity_name_terminal_style,
-                    facts,
-                    label_style.font_size,
-                );
+                entity_theme_receipt.record_entity_name_text(&entity.id, facts);
             }
             continue;
         }
@@ -1628,7 +1640,6 @@ pub(crate) fn render_er_diagram_svg_model(
                 group_style_attr, row_class
             );
             let row_override_style_attr = &row_visual.border_style_attr;
-            let typed_row_terminal_style = row_visual.typed_style.as_str();
             let row_fill_style_attr = &row_visual.fill_style_attr;
             let has_row_fill = row_visual.has_fill;
             if has_row_fill {
@@ -1651,7 +1662,7 @@ pub(crate) fn render_er_diagram_svg_model(
             );
             out.push_str("</g>");
             out.checkpoint()?;
-            entity_theme_receipt.record_table_row(&entity.id, idx, typed_row_terminal_style);
+            entity_theme_receipt.record_table_row(&entity.id, idx);
         }
 
         // ER entity tables read root `htmlLabels` directly. This intentionally differs from
@@ -1678,10 +1689,10 @@ pub(crate) fn render_er_diagram_svg_model(
             &label_style,
             measure.label.markdown_input(),
         ) + 100;
-        let entity_name_style_attr = visual
-            .name
-            .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
-        let entity_name_terminal_style = visual.name.typed_style.as_str();
+        let entity_name_style_attr = ErTextStyleAttr {
+            source_style: &source_label_style,
+            typed_style: entity_name_terminal_style,
+        };
         if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
             let _ = write!(
                 &mut out,
@@ -1717,12 +1728,7 @@ pub(crate) fn render_er_diagram_svg_model(
             && facts.parse_valid()
             && facts.has_visible_runs()
         {
-            entity_theme_receipt.record_entity_name_text(
-                &entity.id,
-                entity_name_terminal_style,
-                facts,
-                label_style.font_size,
-            );
+            entity_theme_receipt.record_entity_name_text(&entity.id, facts);
         }
 
         let type_col_w = measure.type_col_w.max(0.0);
@@ -1799,25 +1805,38 @@ pub(crate) fn render_er_diagram_svg_model(
                 row.comment_label.markdown_input(),
             ) + 100;
 
-            let attribute_visuals =
-                visual
-                    .attributes
-                    .get(row_index)
-                    .ok_or_else(|| Error::InvalidModel {
-                        message: format!(
-                            "ER prepared visual is missing attribute {row_index} for {}",
-                            entity.id
-                        ),
-                    })?;
-            let [type_visual, name_visual, keys_visual, comment_visual] = attribute_visuals;
-            let type_style_attr = type_visual
-                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
-            let name_style_attr = name_visual
-                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
-            let keys_style_attr = keys_visual
-                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
-            let comment_style_attr = comment_visual
-                .label_style_attr(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
+            let [
+                type_terminal_style,
+                name_terminal_style,
+                keys_terminal_style,
+                comment_terminal_style,
+            ] = [
+                crate::er::ErAttributeTextRole::Type,
+                crate::er::ErAttributeTextRole::Name,
+                crate::er::ErAttributeTextRole::Keys,
+                crate::er::ErAttributeTextRole::Comment,
+            ]
+            .map(|role| {
+                entity_theme
+                    .attribute_text_visual(&entity.id, row_index, role)
+                    .map(|visual| visual.typed_style.as_str())
+                    .unwrap_or("")
+            });
+            let [
+                type_style_attr,
+                name_style_attr,
+                keys_style_attr,
+                comment_style_attr,
+            ] = [
+                type_terminal_style,
+                name_terminal_style,
+                keys_terminal_style,
+                comment_terminal_style,
+            ]
+            .map(|typed_style| ErTextStyleAttr {
+                source_style: &source_label_style,
+                typed_style,
+            });
 
             if matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike) {
                 let _ = write!(
@@ -1950,38 +1969,16 @@ pub(crate) fn render_er_diagram_svg_model(
             out.checkpoint()?;
 
             if entity_theme_receipt.records_text_terminals() {
-                for (role, label, terminal_visual) in [
-                    (
-                        crate::er::ErAttributeTextRole::Type,
-                        &row.type_label,
-                        type_visual,
-                    ),
-                    (
-                        crate::er::ErAttributeTextRole::Name,
-                        &row.name_label,
-                        name_visual,
-                    ),
-                    (
-                        crate::er::ErAttributeTextRole::Keys,
-                        &row.key_label,
-                        keys_visual,
-                    ),
-                    (
-                        crate::er::ErAttributeTextRole::Comment,
-                        &row.comment_label,
-                        comment_visual,
-                    ),
+                for (role, label) in [
+                    (crate::er::ErAttributeTextRole::Type, &row.type_label),
+                    (crate::er::ErAttributeTextRole::Name, &row.name_label),
+                    (crate::er::ErAttributeTextRole::Keys, &row.key_label),
+                    (crate::er::ErAttributeTextRole::Comment, &row.comment_label),
                 ] {
                     let facts = label.visible_style_facts();
                     if facts.parse_valid() && facts.has_visible_runs() {
-                        entity_theme_receipt.record_attribute_text(
-                            &entity.id,
-                            row_index,
-                            role,
-                            &terminal_visual.typed_style,
-                            facts,
-                            attr_style.font_size,
-                        );
+                        entity_theme_receipt
+                            .record_attribute_text(&entity.id, row_index, role, facts);
                     }
                 }
             }
@@ -2073,11 +2070,8 @@ pub(crate) fn render_er_diagram_svg_model(
 
         out.push_str("</g>");
         out.checkpoint()?;
-        entity_theme_receipt.record_checkpointed_entity(
-            entity_index,
-            paint_emission.emitted_fill,
-            paint_emission.emitted_stroke,
-        );
+        entity_theme_receipt
+            .record_checkpointed_entity(paint_emission.emitted_fill, paint_emission.emitted_stroke);
     }
     out.push_str("</g>\n");
     out.checkpoint()?;
@@ -2096,9 +2090,6 @@ pub(crate) fn render_er_diagram_svg_model(
             .map(|view_box| view_box.min_x + view_box.width / 2.0)
             .unwrap_or(root_width_for_title / 2.0);
         let title_visual = entity_theme.title_visual();
-        let title_style = title_visual
-            .map(|visual| visual.typed_style.as_str())
-            .unwrap_or("");
         let title_style_attr = title_visual
             .map(|visual| visual.inline_attr.as_str())
             .unwrap_or("");
@@ -2112,7 +2103,7 @@ pub(crate) fn render_er_diagram_svg_model(
         );
         out.push_str("</text>\n");
         out.checkpoint()?;
-        entity_theme_receipt.record_diagram_title_paint(title, title_style);
+        entity_theme_receipt.record_diagram_title_paint(title);
     }
 
     push_er_shadow_defs(&mut out, diagram_id.semantic_str(), binding)?;

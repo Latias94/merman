@@ -167,7 +167,6 @@ impl<'a> ErEntityThemeReceipt<'a> {
 
     pub(crate) fn record_checkpointed_entity(
         &mut self,
-        _index: usize,
         fill: Option<(usize, &str)>,
         stroke: Option<(usize, &str)>,
     ) {
@@ -202,13 +201,7 @@ impl<'a> ErEntityThemeReceipt<'a> {
         }
     }
 
-    pub(crate) fn record_entity_name_text(
-        &mut self,
-        id: &str,
-        _style: &str,
-        facts: &VisibleTextStyleFacts,
-        _font_size: f64,
-    ) {
+    pub(crate) fn record_entity_name_text(&mut self, id: &str, facts: &VisibleTextStyleFacts) {
         self.record_text(ErTextTerminalId::entity_name(id), facts);
     }
 
@@ -217,9 +210,7 @@ impl<'a> ErEntityThemeReceipt<'a> {
         id: &str,
         row: usize,
         role: ErAttributeTextRole,
-        _style: &str,
         facts: &VisibleTextStyleFacts,
-        _font_size: f64,
     ) {
         self.record_text(ErTextTerminalId::attribute(id, row, role), facts);
     }
@@ -227,22 +218,16 @@ impl<'a> ErEntityThemeReceipt<'a> {
     pub(crate) fn record_relation_label_text(
         &mut self,
         index: usize,
-        _style: &str,
         facts: &VisibleTextStyleFacts,
     ) {
         self.record_text(ErTextTerminalId::relation_label(index), facts);
     }
 
-    pub(crate) fn record_subgraph_label(
-        &mut self,
-        id: &str,
-        _style: &str,
-        facts: &VisibleTextStyleFacts,
-    ) {
+    pub(crate) fn record_subgraph_label(&mut self, id: &str, facts: &VisibleTextStyleFacts) {
         self.record_text(ErTextTerminalId::SubgraphLabel(id.into()), facts);
     }
 
-    pub(crate) fn record_diagram_title_paint(&mut self, title: &str, _style: &str) {
+    pub(crate) fn record_diagram_title_paint(&mut self, title: &str) {
         if self.records_text_terminals() {
             self.record_text(
                 ErTextTerminalId::DiagramTitle,
@@ -251,20 +236,14 @@ impl<'a> ErEntityThemeReceipt<'a> {
         }
     }
 
-    pub(crate) fn record_table_row(&mut self, id: &str, row: usize, _style: &str) {
+    pub(crate) fn record_table_row(&mut self, id: &str, row: usize) {
         let index = self.plan.typed_table_row(id, row).map(|(index, _)| index);
         if let Some(index) = index {
             self.outcomes.applied_rules.insert(index);
         }
     }
 
-    pub(crate) fn record_checkpointed_relation_path(
-        &mut self,
-        _id: &str,
-        stroke: Option<(usize, &str)>,
-        _start: Option<&str>,
-        _end: Option<&str>,
-    ) {
+    pub(crate) fn record_checkpointed_relation_path(&mut self, stroke: Option<(usize, &str)>) {
         self.record_paint(stroke);
     }
 }
