@@ -143,7 +143,7 @@ pub(crate) struct StateNodeStylePlan {
     radius_override: Option<f64>,
     padding_override: Option<f64>,
     effect: Option<StateNodeEffectPlan>,
-    cluster_label_typography: ResolvedLabelTypography,
+    cluster_label_typography: Option<ResolvedLabelTypography>,
     label_typography: ResolvedLabelTypography,
 }
 
@@ -338,7 +338,10 @@ impl StateNodeStylePlan {
     }
 
     pub(crate) const fn resolved_cluster_label_typography(&self) -> &ResolvedLabelTypography {
-        &self.cluster_label_typography
+        match &self.cluster_label_typography {
+            Some(typography) => typography,
+            None => &self.label_typography,
+        }
     }
 
     pub(crate) const fn effect(&self) -> Option<&StateNodeEffectPlan> {
@@ -2553,31 +2556,26 @@ fn prepare_node(
             insert_emitted(&mut composite_header_text_emission, "color", color);
         }
     }
-    let mut cluster_label_typography = ResolvedLabelTypography::new(semantic_text_style.clone())
-        .with_config_typography(base_text_style, compatibility);
-    let mut ignored_cluster_residuals = Vec::new();
-    for declaration in &label_declarations {
-        if target == ThemeTarget::Composite
-            && declaration.provenance().origin() != SourceStyleOrigin::AssignedClass
-        {
-            continue;
-        }
-        if declaration.provenance().origin() == SourceStyleOrigin::AssignedClass {
-            let accepted = apply_source_text_property(
-                declaration,
-                base_text_style,
-                &mut cluster_label_typography,
-                &mut ignored_cluster_residuals,
-            );
-            if target == ThemeTarget::Composite && accepted {
-                composite_header_text_emission.insert(
-                    declaration.property().to_string(),
-                    EmittedDeclaration::from_source(declaration),
-                );
+    // Composite labels and headers share the same assigned-class-only source decisions.
+    // Other effective groups, such as noteGroup, measure their title without inline styles.
+    let cluster_label_typography = (super::config::state_node_is_effective_group(node)
+        && target != ThemeTarget::Composite)
+        .then(|| {
+            let mut typography = ResolvedLabelTypography::new(semantic_text_style.clone())
+                .with_config_typography(base_text_style, compatibility);
+            let mut ignored_residuals = Vec::new();
+            for declaration in &label_declarations {
+                if declaration.provenance().origin() == SourceStyleOrigin::AssignedClass {
+                    apply_source_text_property(
+                        declaration,
+                        base_text_style,
+                        &mut typography,
+                        &mut ignored_residuals,
+                    );
+                }
             }
-        }
-    }
-    cluster_label_typography.canonicalize_emission(&mut composite_header_text_emission);
+            typography
+        });
     let mut label_typography = ResolvedLabelTypography::new(semantic_text_style)
         .with_config_typography(base_text_style, compatibility);
     for declaration in &label_declarations {
@@ -2597,6 +2595,12 @@ fn prepare_node(
             residuals,
         );
         if accepted {
+            if target == ThemeTarget::Composite {
+                composite_header_text_emission.insert(
+                    declaration.property().to_string(),
+                    EmittedDeclaration::from_source(declaration),
+                );
+            }
             if let Some(kind) = source_style_theme_property(declaration.property())
                 && shadowed_label_properties.insert(kind)
             {
@@ -2612,6 +2616,7 @@ fn prepare_node(
         }
     }
     label_typography.canonicalize_emission(&mut label_emission);
+    label_typography.canonicalize_emission(&mut composite_header_text_emission);
 
     let label_source =
         (resolved_theme.is_some() && compatibility.html_labels() && label_ordinal.is_some())
@@ -3899,6 +3904,73 @@ mod tests {
                 .label_style_attr()
                 .contains("font-style:oblique !important")
         );
+    }
+
+    #[test]
+    fn group_titles_keep_class_typography_when_inline_styles_change_leaf_labels() {
+        let mut model = StateDiagramRenderModel::default();
+        model.style_classes.insert(
+            "title".to_string(),
+            StateDiagramRenderStyleClass {
+                id: "title".to_string(),
+                styles: vec!["font-size:18px".to_string()],
+                text_styles: vec!["font-family:\"Class Sans\", serif".to_string()],
+            },
+        );
+        for (id, shape, is_group) in [
+            ("Composite", "roundedWithTitle", true),
+            ("CompositeLeaf", "roundedWithTitle", false),
+            ("NoteGroup", "noteGroup", true),
+            ("Leaf", "rect", false),
+        ] {
+            let mut node = semantic_node(id, shape);
+            node.is_group = is_group;
+            node.css_classes = "title".to_string();
+            node.css_styles = vec!["font-size:32px".to_string()];
+            node.label_style = "font-family:\"Inline Sans\", monospace".to_string();
+            model.nodes.push(node);
+        }
+
+        let plan = StateStylePlan::resolve_unthemed(&model, &json!({}));
+        for id in ["Composite", "CompositeLeaf"] {
+            let node = plan.node(id).expect("composite style");
+            assert_eq!(
+                node.resolved_label_typography().text_style().font_size,
+                18.0
+            );
+            assert!(
+                node.composite_header_text_style_attr()
+                    .contains("font-size:18px !important")
+            );
+            assert!(
+                node.composite_header_text_style_attr()
+                    .contains("font-family:\"Class Sans\", serif !important")
+            );
+        }
+        for id in ["Composite", "NoteGroup"] {
+            let typography = plan
+                .node(id)
+                .expect("group style")
+                .resolved_cluster_label_typography()
+                .text_style();
+            assert_eq!(typography.font_size, 18.0);
+            assert_eq!(
+                typography.font_family.as_deref(),
+                Some("\"Class Sans\", serif")
+            );
+        }
+        for id in ["NoteGroup", "Leaf"] {
+            let typography = plan
+                .node(id)
+                .expect("node style")
+                .resolved_label_typography()
+                .text_style();
+            assert_eq!(typography.font_size, 32.0);
+            assert_eq!(
+                typography.font_family.as_deref(),
+                Some("\"Inline Sans\", monospace")
+            );
+        }
     }
 
     #[test]
