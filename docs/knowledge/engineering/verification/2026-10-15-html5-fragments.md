@@ -197,3 +197,20 @@ The structural work ledger is retained under
 not a measured production latency improvement. Current-token residual work and host preemption
 remain distinct from the operation's cooperative budget. CI owns final Linux, cross-platform,
 Web, and browser evidence for the pushed revision.
+
+## Mindmap Layout Snapshot Follow-up (2026-10-16)
+
+CI run `38855963243` at `475f6c713` passed 13,026 workspace tests and failed only the layout
+snapshot owner. The same command reproduced all four mismatches on Windows, excluding a
+platform-specific failure. The shared XHTML preparation intentionally changes measurement of
+three indented multiline labels and the entity-authored backtick stress fixture: layout now sees
+the final preserved whitespace and the post-Markdown entity decoding that emission already uses.
+The pinned `createText.ts` applies Markdown conversion before entity decoding, and the committed
+upstream SVGs retain the same whitespace and emphasis structure as the prepared labels.
+
+Regenerated existing Mindmap layouts with the formal `update-layout-snapshots --diagram mindmap
+--existing-only` owner. Only the four reported golden JSON files changed; the diff contains numeric
+geometry updates, with no runtime, semantic model, upstream SVG, or comparator change. A second
+generation was byte-identical. The complete `layout_snapshots_test` owner then passed all three
+tests, including the full fixture comparison that had failed in CI. The earlier repair validation
+omitted this owner; its prior no-golden-change statement predates this follow-up.

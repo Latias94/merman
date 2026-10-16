@@ -3,20 +3,20 @@
   "layout": {
     "MindmapDiagram": {
       "bounds": {
-        "max_x": 96.07,
-        "max_y": 96.07,
+        "max_x": 100.959,
+        "max_y": 100.959,
         "min_x": 15.0,
         "min_y": 15.0
       },
       "edges": [],
       "nodes": [
         {
-          "height": 81.07,
+          "height": 85.959,
           "id": "0",
           "is_cluster": false,
-          "width": 81.07,
-          "x": 55.535,
-          "y": 55.535
+          "width": 85.959,
+          "x": 57.979,
+          "y": 57.979
         }
       ]
     }
