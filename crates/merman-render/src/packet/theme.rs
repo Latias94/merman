@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::sync::OnceLock;
 
 use merman_core::{
     __private::{
@@ -22,11 +21,8 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 mod terminal;
 
-use terminal::{
-    PacketFillProof, PacketTerminalEvidence, PacketTerminalWinnerLedger,
-    PacketTerminalWinnerResolver, PacketTextColorOwnership,
-};
-pub(crate) use terminal::{PacketSurfaceReceipt, PacketTextRole};
+use terminal::{PacketTextColorOwnership, PacketTextWinners};
+pub(crate) use terminal::{PacketTextOutput, PacketTextRole};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PacketTypographyOutcome {
@@ -44,7 +40,6 @@ struct PacketUnsupportedRoute {
 
 #[derive(Debug)]
 struct PacketRuleObservation {
-    target: ThemeTarget,
     selector: FamilyThemeSelectorShape,
     pending_fill: Option<ThemeCapability>,
     unsupported: BTreeMap<ResolvedStyleProperty, FamilyThemeResidualReason>,
@@ -52,9 +47,8 @@ struct PacketRuleObservation {
 }
 
 impl PacketRuleObservation {
-    const fn new(target: ThemeTarget, selector: FamilyThemeSelectorShape) -> Self {
+    const fn new(selector: FamilyThemeSelectorShape) -> Self {
         Self {
-            target,
             selector,
             pending_fill: None,
             unsupported: BTreeMap::new(),
@@ -63,30 +57,46 @@ impl PacketRuleObservation {
     }
 }
 
-impl PacketUnsupportedRoute {
-    fn is_applicable(&self, receipt: &PacketSurfaceReceipt) -> bool {
-        receipt.occurrence_count(self.target) != 0
-    }
-}
-
-/// Final Packet stylesheet values shared by emission and terminal evidence.
+/// Final Packet stylesheet values used by the SVG writer.
 #[derive(Debug)]
 pub(crate) struct PacketTypographyThemePlan {
     css_binding: super::config::PacketStyleSettings,
     font_family_css: Box<str>,
-    byte_label_fill: Option<DirectStaticPaint>,
-    field_label_fill: Option<DirectStaticPaint>,
-    title_fill: Option<DirectStaticPaint>,
+    selection: Option<PacketThemeSelection>,
+}
+
+#[derive(Debug)]
+struct PacketThemeSelection {
     text_color_ownership: PacketTextColorOwnership,
-    evidence: FamilyThemeEvidence,
-    outcome: PacketTypographyOutcome,
+    typography: PacketTypographyOutcome,
     unsupported_properties: BTreeSet<ThemeTypographyProperty>,
     compatibility_surface_candidate: bool,
     canonical_dark_mode: bool,
     rule_observations: BTreeMap<FamilyThemeMechanismKey, PacketRuleObservation>,
     unsupported_routes: Box<[PacketUnsupportedRoute]>,
-    terminal_winner_resolver: Option<PacketTerminalWinnerResolver>,
-    terminal_evidence: OnceLock<PacketTerminalEvidence>,
+    text_winners: PacketTextWinners,
+}
+
+/// Requested theme results produced only by successful visible SVG writes.
+pub(crate) struct PacketThemeOutcome {
+    pub(crate) evidence: FamilyThemeEvidence,
+    compatibility: Option<(ThemeCompatibilityConsumptionDisposition, bool)>,
+}
+
+impl PacketThemeOutcome {
+    pub(crate) fn compatibility_consumptions(
+        &self,
+        parse_evidence: &ThemeParseEvidence,
+    ) -> Box<[ThemeCompatibilityFieldConsumption]> {
+        let Some((disposition, canonical_dark_mode)) = self.compatibility else {
+            return Box::new([]);
+        };
+        packet_text_surface_compatibility_consumptions(
+            parse_evidence,
+            disposition,
+            canonical_dark_mode,
+        )
+    }
 }
 
 impl PacketTypographyThemePlan {
@@ -95,29 +105,17 @@ impl PacketTypographyThemePlan {
         effective_config: &MermaidConfig,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let configured_font = crate::config::config_font_family_css(effective_config.as_value());
-        let text_color_ownership = PacketTextColorOwnership::from_config(effective_config);
         let mut css_binding =
             super::PacketConfigView::new(effective_config.as_value()).style_settings();
-        let Some(theme) = theme else {
+        let Some(theme) = theme.filter(|theme| !theme.family_mechanism_routes().is_empty()) else {
             return Ok(Self {
                 css_binding,
-                font_family_css: configured_font.into_boxed_str(),
-                byte_label_fill: None,
-                field_label_fill: None,
-                title_fill: None,
-                text_color_ownership,
-                evidence: FamilyThemeEvidence::default(),
-                outcome: PacketTypographyOutcome::Inactive,
-                unsupported_properties: BTreeSet::new(),
-                compatibility_surface_candidate: false,
-                canonical_dark_mode: packet_dark_mode_is_canonical(effective_config),
-                rule_observations: BTreeMap::new(),
-                unsupported_routes: Box::new([]),
-                terminal_winner_resolver: None,
-                terminal_evidence: OnceLock::new(),
+                font_family_css: crate::config::config_font_family_css(effective_config.as_value())
+                    .into_boxed_str(),
+                selection: None,
             });
         };
+        let text_color_ownership = PacketTextColorOwnership::from_config(effective_config);
 
         let config_owns_font_stack = packet_config_owns_font_stack(effective_config);
         let mut typed_font_stack = false;
@@ -148,12 +146,8 @@ impl PacketTypographyThemePlan {
             &[ThemeTarget::Text, ThemeTarget::PacketFieldLabel],
         );
         let title_fill = packet_direct_static_fill(theme, &title_style, &[ThemeTarget::Title]);
-        let terminal_winner_resolver = Some(PacketTerminalWinnerResolver::new(
-            theme,
-            &byte_label_style,
-            &field_label_style,
-            &title_style,
-        ));
+        let text_winners =
+            PacketTextWinners::new(theme, &byte_label_style, &field_label_style, &title_style);
         let mut rule_observations = BTreeMap::new();
         let mut unsupported_routes = Vec::new();
 
@@ -179,7 +173,7 @@ impl PacketTypographyThemePlan {
                     let key = theme.family_mechanism_key(route);
                     let observation = rule_observations
                         .entry(key)
-                        .or_insert_with(|| PacketRuleObservation::new(target, selector));
+                        .or_insert_with(|| PacketRuleObservation::new(selector));
                     let property = resolved_style_property_for_facet(facet);
                     match (route.disposition(), selector, facet) {
                         (
@@ -231,7 +225,7 @@ impl PacketTypographyThemePlan {
         let font_family_css = if typed_font_stack && !config_owns_font_stack {
             theme.typography().font_stack().as_css()
         } else {
-            configured_font
+            crate::config::config_font_family_css(effective_config.as_value())
         };
         let outcome = if typed_font_stack && config_owns_font_stack {
             PacketTypographyOutcome::ConfigOwned
@@ -266,19 +260,16 @@ impl PacketTypographyThemePlan {
         Ok(Self {
             css_binding,
             font_family_css: font_family_css.into_boxed_str(),
-            byte_label_fill,
-            field_label_fill,
-            title_fill,
-            text_color_ownership,
-            evidence: FamilyThemeEvidence::from_theme(Some(theme)),
-            outcome,
-            unsupported_properties,
-            compatibility_surface_candidate,
-            canonical_dark_mode: packet_dark_mode_is_canonical(effective_config),
-            rule_observations,
-            unsupported_routes: unsupported_routes.into_boxed_slice(),
-            terminal_winner_resolver,
-            terminal_evidence: OnceLock::new(),
+            selection: Some(PacketThemeSelection {
+                text_color_ownership,
+                typography: outcome,
+                unsupported_properties,
+                compatibility_surface_candidate,
+                canonical_dark_mode: packet_dark_mode_is_canonical(effective_config),
+                rule_observations,
+                unsupported_routes: unsupported_routes.into_boxed_slice(),
+                text_winners,
+            }),
         })
     }
 
@@ -290,49 +281,19 @@ impl PacketTypographyThemePlan {
         &self.css_binding
     }
 
-    pub(crate) fn begin_terminal_receipt(
-        &self,
-        expected_counts: [(PacketTextRole, usize); 4],
-    ) -> PacketSurfaceReceipt {
-        PacketSurfaceReceipt::new(
-            expected_counts,
-            &self.font_family_css,
-            self.terminal_winner_resolver.as_ref(),
-        )
+    pub(crate) fn begin_text_output(&self) -> Option<PacketTextOutput<'_>> {
+        self.selection.as_ref().map(PacketTextOutput::new)
     }
+}
 
-    pub(crate) fn record_terminal(
-        &self,
-        receipt: PacketSurfaceReceipt,
-        work_meter: &OperationWorkMeter,
-    ) -> Result<bool, OperationWorkError> {
-        let winners = match &self.terminal_winner_resolver {
-            Some(resolver) => resolver.resolve(&receipt, self.text_color_ownership, work_meter)?,
-            None => PacketTerminalWinnerLedger::default(),
-        };
-        Ok(self
-            .terminal_evidence
-            .set(PacketTerminalEvidence { receipt, winners })
-            .is_ok())
-    }
-
-    pub(crate) fn finish_evidence(&self) -> FamilyThemeEvidence {
-        let mut evidence = self.evidence.clone();
-        let Some(terminal) = self.terminal_evidence.get() else {
-            return evidence;
-        };
-        let receipt = &terminal.receipt;
+impl PacketThemeSelection {
+    fn finish(&self, output: &PacketTextOutput<'_>) -> PacketThemeOutcome {
+        let mut evidence = FamilyThemeEvidence::outcomes();
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
-        if receipt.has_visible_text() {
-            match self.outcome {
-                PacketTypographyOutcome::TypedFontStack
-                    if receipt.typography_stylesheet_verified()
-                        && receipt.terminal_dom_verified() =>
-                {
-                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
-                }
+        if output.has_visible_text() {
+            match self.typography {
                 PacketTypographyOutcome::TypedFontStack => {
-                    evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                    evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
                 }
                 PacketTypographyOutcome::ConfigOwned => evidence.mark_not_applicable(key),
                 PacketTypographyOutcome::Inactive => {}
@@ -342,39 +303,39 @@ impl PacketTypographyThemePlan {
         }
         for property in &self.unsupported_properties {
             let key = FamilyThemeMechanismKey::Typography(*property);
-            if receipt.has_visible_text() {
+            if output.has_visible_text() {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             } else {
                 evidence.mark_not_applicable(key);
             }
         }
         for route in &self.unsupported_routes {
-            if route.is_applicable(receipt) {
+            if output.occurrence_count(route.target) != 0 {
                 evidence.mark_residual(route.key.clone(), route.reason);
             } else {
                 evidence.mark_not_applicable(route.key.clone());
             }
         }
         for (key, observation) in &self.rule_observations {
+            let FamilyThemeMechanismKey::Rule {
+                index: rule_index,
+                target,
+            } = *key
+            else {
+                unreachable!("Packet rule observations must use rule mechanism keys");
+            };
             if !selector_intersects_default_occurrences(
                 observation.selector,
-                receipt.occurrence_count(observation.target),
+                output.occurrence_count(target),
             ) {
                 evidence.mark_not_applicable(key.clone());
                 continue;
             }
-            let rule_index = match key {
-                FamilyThemeMechanismKey::Rule { index, .. } => *index,
-                _ => unreachable!("Packet rule observations must use rule mechanism keys"),
-            };
             if let Some(reason) = observation
                 .unsupported
                 .iter()
                 .find_map(|(property, reason)| {
-                    terminal
-                        .winners
-                        .route_won(rule_index, *property)
-                        .then_some(*reason)
+                    output.route_won(rule_index, *property).then_some(*reason)
                 })
             {
                 evidence.mark_residual(key.clone(), reason);
@@ -383,93 +344,37 @@ impl PacketTypographyThemePlan {
             if observation
                 .incomplete
                 .iter()
-                .any(|property| terminal.winners.route_won(rule_index, *property))
+                .any(|property| output.route_won(rule_index, *property))
             {
                 continue;
             }
-            let Some(capability) = observation.pending_fill else {
-                evidence.mark_not_applicable(key.clone());
-                continue;
-            };
-            if !terminal
-                .winners
-                .route_won(rule_index, ResolvedStyleProperty::Fill)
-            {
-                evidence.mark_not_applicable(key.clone());
-                continue;
-            }
-            let Some(fill) = selected_fill_for_target(
-                observation.target,
-                &self.byte_label_fill,
-                &self.field_label_fill,
-                &self.title_fill,
-            ) else {
-                continue;
-            };
-            match receipt.prove_typed_fill(
-                observation.target,
-                fill.css(),
-                self.text_color_ownership,
-            ) {
-                PacketFillProof::NotApplicable => evidence.mark_not_applicable(key.clone()),
-                PacketFillProof::Verified => {
+            match observation.pending_fill {
+                Some(capability)
+                    if output.route_won(rule_index, ResolvedStyleProperty::Fill)
+                        && output.has_typed_fill(target) =>
+                {
                     evidence.mark_applied_with_capabilities(key.clone(), [capability]);
                 }
-                PacketFillProof::Unverified => {
-                    evidence
-                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
-                }
+                _ => evidence.mark_not_applicable(key.clone()),
             }
         }
-        evidence
-    }
-
-    /// Returns compatibility consumptions only after the terminal writer proves the direct text
-    /// surface plan that allowed pre-SVG admission to defer these conceptual fields.
-    pub(crate) fn terminal_mermaid_compatibility_consumptions(
-        &self,
-        parse_evidence: &ThemeParseEvidence,
-    ) -> Box<[ThemeCompatibilityFieldConsumption]> {
-        if !self.compatibility_surface_candidate {
-            return Box::new([]);
-        }
-        let Some(terminal) = self.terminal_evidence.get() else {
-            return Box::new([]);
-        };
-        let receipt = &terminal.receipt;
-        if !receipt.typography_stylesheet_verified() || !receipt.terminal_dom_verified() {
-            return Box::new([]);
-        }
-        for (target, fill) in [
-            (ThemeTarget::PacketByteLabel, &self.byte_label_fill),
-            (ThemeTarget::PacketFieldLabel, &self.field_label_fill),
-            (ThemeTarget::Title, &self.title_fill),
-        ] {
-            let Some(fill) = fill else {
-                return Box::new([]);
+        let compatibility = self.compatibility_surface_candidate.then(|| {
+            let disposition = if output.has_visible_text() {
+                ThemeCompatibilityConsumptionDisposition::ReplacedByTypedSurface
+            } else {
+                ThemeCompatibilityConsumptionDisposition::NotReadByFamily
             };
-            if receipt.prove_typed_fill(target, fill.css(), self.text_color_ownership)
-                == PacketFillProof::Unverified
-            {
-                return Box::new([]);
-            }
+            (disposition, self.canonical_dark_mode)
+        });
+        PacketThemeOutcome {
+            evidence,
+            compatibility,
         }
-
-        let disposition = if receipt.has_visible_text() {
-            ThemeCompatibilityConsumptionDisposition::ReplacedByTypedSurface
-        } else {
-            ThemeCompatibilityConsumptionDisposition::NotReadByFamily
-        };
-        packet_text_surface_compatibility_consumptions(
-            parse_evidence,
-            disposition,
-            self.canonical_dark_mode,
-        )
     }
 }
 
 /// Returns provisional path coverage used only to preserve pre-SVG compatibility error order.
-/// Final reports replace this deferral with writer-owned terminal consumptions.
+/// Final reports replace this deferral with actual writer outcomes.
 pub(crate) fn deferred_mermaid_compatibility_consumptions(
     theme: Option<&ResolvedDiagramTheme>,
     effective_config: &MermaidConfig,
@@ -582,186 +487,4 @@ fn packet_config_owns_font_stack(config: &MermaidConfig) -> bool {
 
 fn packet_config_path_owns(config: &MermaidConfig, path: &str) -> bool {
     merman_core::__private::config_path_overrides_typed_default(config, path)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::DiagramFamilyId;
-    use crate::diagram_theme::{
-        CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
-        MermaidThemeCompatibility, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTextStyle,
-        TypographySpec,
-    };
-
-    fn typed_packet_plan() -> PacketTypographyThemePlan {
-        let typography = ThemeTextStyle::default().with_font_stack(
-            FontStack::single("monospace").expect("valid Packet receipt font stack"),
-        );
-        let theme = DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_typography(
-                TypographySpec::default().with_family_style(DiagramFamilyId::PACKET, typography),
-            ))
-            .expect("compile Packet receipt theme");
-        let resolved = theme.resolve(DiagramFamilyId::PACKET);
-        let work_meter = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        PacketTypographyThemePlan::resolve(
-            Some(&resolved),
-            &MermaidConfig::from_value(serde_json::json!({})),
-            &work_meter,
-        )
-        .expect("resolve Packet receipt theme")
-    }
-
-    fn complete_typed_packet_theme() -> DiagramTheme {
-        let typography = ThemeTextStyle::default().with_font_stack(
-            FontStack::single("monospace").expect("valid Packet receipt font stack"),
-        );
-        let compatibility = MermaidThemeCompatibility::default()
-            .with_theme("base")
-            .expect("valid Packet receipt compatibility theme")
-            .with_dark_mode(true)
-            .expect("valid Packet receipt compatibility dark mode");
-        DiagramThemeCompiler::new()
-            .compile(
-                DiagramThemeSpec::new()
-                    .with_mermaid_compatibility(compatibility)
-                    .with_typography(
-                        TypographySpec::default()
-                            .with_family_style(DiagramFamilyId::PACKET, typography),
-                    )
-                    .with_styles(
-                        ThemeRuleSet::default()
-                            .with_rule(
-                                ThemeRule::new(
-                                    ThemeTarget::PacketByteLabel,
-                                    ThemeStylePatch::default().with_fill(
-                                        CanvasPaint::solid("#e5e7eb")
-                                            .expect("valid Packet byte fill"),
-                                    ),
-                                )
-                                .for_family(DiagramFamilyId::PACKET),
-                            )
-                            .with_rule(
-                                ThemeRule::new(
-                                    ThemeTarget::PacketFieldLabel,
-                                    ThemeStylePatch::default().with_fill(
-                                        CanvasPaint::solid("#111827")
-                                            .expect("valid Packet label fill"),
-                                    ),
-                                )
-                                .for_family(DiagramFamilyId::PACKET),
-                            )
-                            .with_rule(
-                                ThemeRule::new(
-                                    ThemeTarget::Title,
-                                    ThemeStylePatch::default().with_fill(
-                                        CanvasPaint::solid("#fef3c7")
-                                            .expect("valid Packet title fill"),
-                                    ),
-                                )
-                                .for_family(DiagramFamilyId::PACKET),
-                            ),
-                    ),
-            )
-            .expect("compile complete Packet receipt theme")
-    }
-
-    #[test]
-    fn unverified_packet_typography_stylesheet_is_a_strict_residual() {
-        let plan = typed_packet_plan();
-        let mut receipt = plan.begin_terminal_receipt([
-            (PacketTextRole::Label, 1),
-            (PacketTextRole::ByteStart, 0),
-            (PacketTextRole::ByteEnd, 0),
-            (PacketTextRole::Title, 0),
-        ]);
-        receipt.record_successful_css_emission(
-            "serif",
-            [
-                (PacketTextRole::ByteStart, "black"),
-                (PacketTextRole::ByteEnd, "black"),
-                (PacketTextRole::Label, "black"),
-                (PacketTextRole::Title, "black"),
-            ],
-        );
-        receipt.record_text_occurrence(
-            PacketTextRole::Label,
-            PacketTextRole::Label.class_attribute(),
-        );
-        let work_meter = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        assert!(
-            plan.record_terminal(receipt, &work_meter)
-                .expect("resolve Packet terminal winners")
-        );
-
-        let evidence = plan.finish_evidence();
-        assert!(evidence.applied().is_empty());
-        assert_eq!(evidence.residuals().len(), 1);
-        assert_eq!(
-            evidence.residuals()[0].reason(),
-            FamilyThemeResidualReason::UnsupportedTypography
-        );
-    }
-
-    #[test]
-    fn failed_packet_writer_receipt_cannot_consume_compatibility_fields() {
-        let theme = complete_typed_packet_theme();
-        let metadata =
-            crate::__private::install_parse_compatibility(&theme, merman_core::Engine::new())
-                .parse_metadata_sync("packet\ntitle Receipt\n0-7: Header")
-                .expect("parse Packet receipt metadata");
-        let parse_evidence = merman_core::__private::theme_parse_evidence(&metadata);
-        assert_eq!(parse_evidence.mermaid_residual_count(), 2);
-        let resolved = theme.resolve(DiagramFamilyId::PACKET);
-        let work_meter = OperationWorkMeter::new(
-            crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
-        );
-        let plan = PacketTypographyThemePlan::resolve(
-            Some(&resolved),
-            &metadata.effective_config,
-            &work_meter,
-        )
-        .expect("resolve complete Packet receipt plan");
-        let mut receipt = plan.begin_terminal_receipt([
-            (PacketTextRole::Label, 1),
-            (PacketTextRole::ByteStart, 1),
-            (PacketTextRole::ByteEnd, 1),
-            (PacketTextRole::Title, 1),
-        ]);
-        receipt.record_successful_css_emission(
-            "serif",
-            [
-                (PacketTextRole::ByteStart, "#e5e7eb"),
-                (PacketTextRole::ByteEnd, "#e5e7eb"),
-                (PacketTextRole::Label, "#111827"),
-                (PacketTextRole::Title, "#fef3c7"),
-            ],
-        );
-        for role in [
-            PacketTextRole::Label,
-            PacketTextRole::ByteStart,
-            PacketTextRole::ByteEnd,
-            PacketTextRole::Title,
-        ] {
-            receipt.record_text_occurrence(role, role.class_attribute());
-        }
-        assert!(
-            plan.record_terminal(receipt, &work_meter)
-                .expect("resolve failed Packet terminal receipt")
-        );
-
-        let consumptions = plan.terminal_mermaid_compatibility_consumptions(&parse_evidence);
-        assert!(consumptions.is_empty());
-        assert_eq!(
-            parse_evidence
-                .reconcile_mermaid_consumptions(consumptions.iter())
-                .remaining_field_count(),
-            2
-        );
-    }
 }

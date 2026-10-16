@@ -567,7 +567,7 @@ fn packet_generic_text_fill_reaches_visible_field_labels() {
 }
 
 #[test]
-fn packet_source_label_color_outranks_generic_text_fill_at_css_and_dom_receipt() {
+fn packet_source_label_color_outranks_generic_text_fill_in_styles_and_report() {
     let theme = packet_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Packet generic text fill"),
     );
@@ -598,7 +598,7 @@ packet
 }
 
 #[test]
-fn packet_site_label_color_outranks_generic_text_fill_at_css_and_dom_receipt() {
+fn packet_site_label_color_outranks_generic_text_fill_in_styles_and_report() {
     let theme = packet_text_fill_theme(
         CanvasPaint::solid("#123456").expect("valid Packet generic text fill"),
     );
@@ -1047,7 +1047,7 @@ fn packet_role_style_values_cannot_override_the_typed_font_stack() {
 }
 
 #[test]
-fn packet_direct_font_stack_is_not_limited_by_the_legacy_bridge_budget() {
+fn packet_large_direct_font_stack_reaches_styles_and_report() {
     let families = (0..32)
         .map(|index| format!("PacketFont{index:02}{}", "x".repeat(140)))
         .collect::<Vec<_>>();

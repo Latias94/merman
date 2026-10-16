@@ -884,11 +884,44 @@ pub(crate) struct RootThemeAppliedSvg {
     svg: String,
     root_theme: crate::diagram_theme::RootThemeReport,
     preserves_typed_theme_evidence: bool,
+    family_theme_evidence: Option<crate::family::FamilyThemeEvidence>,
+    #[cfg(feature = "diagram-packet")]
+    packet_theme_outcome: Option<crate::packet::PacketThemeOutcome>,
+    #[cfg(all(
+        merman_internal_theme_acceptance,
+        feature = "diagram-architecture",
+        feature = "layout-cytoscape"
+    ))]
+    architecture_text_receipt: Option<crate::__private::ArchitectureTextReceipt>,
 }
 
 impl RootThemeAppliedSvg {
     pub(crate) fn as_str(&self) -> &str {
         &self.svg
+    }
+
+    pub(crate) fn take_family_theme_evidence(
+        &mut self,
+    ) -> Option<crate::family::FamilyThemeEvidence> {
+        self.family_theme_evidence.take()
+    }
+
+    #[cfg(feature = "diagram-packet")]
+    pub(crate) fn take_packet_theme_outcome(
+        &mut self,
+    ) -> Option<crate::packet::PacketThemeOutcome> {
+        self.packet_theme_outcome.take()
+    }
+
+    #[cfg(all(
+        merman_internal_theme_acceptance,
+        feature = "diagram-architecture",
+        feature = "layout-cytoscape"
+    ))]
+    pub(crate) fn take_architecture_text_receipt(
+        &mut self,
+    ) -> Option<crate::__private::ArchitectureTextReceipt> {
+        self.architecture_text_receipt.take()
     }
 
     pub(crate) fn into_parts(self) -> (String, crate::diagram_theme::RootThemeReport, bool) {
@@ -1103,8 +1136,18 @@ pub(crate) fn render_builtin_family_artifact(
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
 ) -> Result<RootThemeAppliedSvg> {
     let execution = SvgExecution::new(options, debug, family_execution)?;
-    let rooted_svg =
-        render_builtin_family_artifact_raw(family, metadata, &execution, edge_paint_geometry);
+    let mut family_theme_evidence = None;
+    #[cfg(feature = "diagram-packet")]
+    let mut packet_theme_outcome = None;
+    let rooted_svg = render_builtin_family_artifact_raw(
+        family,
+        metadata,
+        &execution,
+        edge_paint_geometry,
+        &mut family_theme_evidence,
+        #[cfg(feature = "diagram-packet")]
+        &mut packet_theme_outcome,
+    );
     execution.finish_diagram_id_projection()?;
     let rooted_svg = rooted_svg?;
     let (rooted_svg, root_theme) =
@@ -1124,6 +1167,15 @@ pub(crate) fn render_builtin_family_artifact(
         svg,
         root_theme,
         preserves_typed_theme_evidence: !theme_css_applied,
+        family_theme_evidence,
+        #[cfg(feature = "diagram-packet")]
+        packet_theme_outcome,
+        #[cfg(all(
+            merman_internal_theme_acceptance,
+            feature = "diagram-architecture",
+            feature = "layout-cytoscape"
+        ))]
+        architecture_text_receipt: None,
     })
 }
 
@@ -1147,7 +1199,7 @@ pub(crate) fn render_architecture_family_artifact(
         &execution,
     );
     execution.finish_diagram_id_projection()?;
-    let rooted_svg = rooted_svg?;
+    let (rooted_svg, outcome) = rooted_svg?;
     let (rooted_svg, root_theme) =
         rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
@@ -1162,6 +1214,15 @@ pub(crate) fn render_architecture_family_artifact(
         svg,
         root_theme,
         preserves_typed_theme_evidence: !theme_css_applied,
+        family_theme_evidence: Some(outcome.evidence),
+        #[cfg(feature = "diagram-packet")]
+        packet_theme_outcome: None,
+        #[cfg(all(
+            merman_internal_theme_acceptance,
+            feature = "diagram-architecture",
+            feature = "layout-cytoscape"
+        ))]
+        architecture_text_receipt: outcome.text_receipt,
     })
 }
 
@@ -1174,6 +1235,10 @@ fn render_builtin_family_artifact_raw(
     metadata: &merman_core::ParseMetadata,
     options: &SvgExecution<'_>,
     edge_paint_geometry: Option<&mut Vec<crate::model::EdgePaintGeometry>>,
+    family_theme_evidence: &mut Option<crate::family::FamilyThemeEvidence>,
+    #[cfg(feature = "diagram-packet")] packet_theme_outcome: &mut Option<
+        crate::packet::PacketThemeOutcome,
+    >,
 ) -> Result<root_svg::RootedSvg> {
     use crate::family::BuiltinFamilyArtifact;
 
@@ -1197,6 +1262,10 @@ fn render_builtin_family_artifact_raw(
                 artifact.group_theme(),
                 options,
             )
+            .map(|(svg, outcome)| {
+                *family_theme_evidence = Some(outcome.evidence);
+                svg
+            })
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         BuiltinFamilyArtifact::Flowchart(artifact) => flowchart::render_flowchart_svg_artifact(
@@ -1318,14 +1387,18 @@ fn render_builtin_family_artifact_raw(
             options,
         ),
         #[cfg(feature = "diagram-packet")]
-        BuiltinFamilyArtifact::Packet(artifact) => packet::render_packet_diagram_svg_model(
-            artifact.pair().layout(),
-            artifact.pair().semantic(),
-            artifact.typography_theme(),
-            effective_config_value,
-            title,
-            options,
-        ),
+        BuiltinFamilyArtifact::Packet(artifact) => {
+            let (svg, outcome) = packet::render_packet_diagram_svg_model(
+                artifact.pair().layout(),
+                artifact.pair().semantic(),
+                artifact.typography_theme(),
+                effective_config_value,
+                title,
+                options,
+            )?;
+            *packet_theme_outcome = outcome;
+            Ok(svg)
+        }
         #[cfg(feature = "diagram-timeline")]
         BuiltinFamilyArtifact::Timeline(artifact) => timeline::render_timeline_diagram_svg_model(
             artifact.pair().layout(),

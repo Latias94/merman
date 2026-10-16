@@ -2782,11 +2782,7 @@ impl BuiltinFamilyArtifact {
         }
     }
 
-    fn merge_theme_evidence(
-        &self,
-        metadata: &ParseMetadata,
-        context: &mut FamilyRenderContext,
-    ) -> Result<()> {
+    fn merge_theme_evidence(&self, context: &mut FamilyRenderContext) -> Result<()> {
         let (family_id, evidence) = match self {
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow { .. } => return Ok(()),
@@ -2917,10 +2913,7 @@ impl BuiltinFamilyArtifact {
                 artifact.paint_theme().finish_evidence(),
             ),
             #[cfg(feature = "diagram-packet")]
-            Self::Packet(artifact) => (
-                DiagramFamilyId::PACKET,
-                artifact.typography_theme().finish_evidence(),
-            ),
+            Self::Packet(_) => return Ok(()),
             #[cfg(feature = "diagram-c4")]
             Self::C4(artifact) => {
                 let mut evidence = artifact.cluster_theme().finish_evidence();
@@ -2966,30 +2959,12 @@ impl BuiltinFamilyArtifact {
             ),
             #[cfg(feature = "layout-cytoscape")]
             #[cfg(feature = "diagram-architecture")]
-            Self::Architecture(artifact) => (
+            Self::Architecture(_) => (
                 DiagramFamilyId::ARCHITECTURE,
-                artifact.group_theme().finish_evidence(),
+                FamilyThemeEvidence::default(),
             ),
         };
         context.merge_accounted_terminal_evidence(family_id, evidence);
-        #[cfg(feature = "diagram-packet")]
-        if let Self::Packet(artifact) = self {
-            let evidence = merman_core::__private::theme_parse_evidence(metadata);
-            let consumptions = artifact
-                .typography_theme()
-                .terminal_mermaid_compatibility_consumptions(&evidence);
-            context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
-        }
-        #[cfg(all(
-            merman_internal_theme_acceptance,
-            feature = "layout-cytoscape",
-            feature = "diagram-architecture"
-        ))]
-        if let Self::Architecture(artifact) = self {
-            context.style_plan.record_architecture_text_receipt(
-                artifact.group_theme().architecture_text_receipt(),
-            );
-        }
         Ok(())
     }
 
@@ -3830,7 +3805,7 @@ impl FamilyRenderArtifact {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let rendered =
+        let mut rendered =
             render_family_artifact_svg(&self, options, render_debug, edge_paint_geometry)?;
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
@@ -3878,7 +3853,28 @@ impl FamilyRenderArtifact {
             required_capabilities,
             mut context,
         } = self;
-        family.merge_theme_evidence(&metadata, &mut context)?;
+        family.merge_theme_evidence(&mut context)?;
+        if let Some(evidence) = rendered.take_family_theme_evidence() {
+            context.merge_accounted_terminal_evidence(context.family_id(), evidence);
+        }
+        #[cfg(feature = "diagram-packet")]
+        if let Some(outcome) = rendered.take_packet_theme_outcome() {
+            let evidence = merman_core::__private::theme_parse_evidence(&metadata);
+            let consumptions = outcome.compatibility_consumptions(&evidence);
+            context.merge_accounted_terminal_evidence(DiagramFamilyId::PACKET, outcome.evidence);
+            context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
+        }
+        #[cfg(all(
+            merman_internal_theme_acceptance,
+            feature = "diagram-architecture",
+            feature = "layout-cytoscape"
+        ))]
+        if context.family_id() == DiagramFamilyId::ARCHITECTURE {
+            context
+                .style_plan
+                .record_architecture_text_receipt(rendered.take_architecture_text_receipt());
+        }
+
         #[cfg(feature = "diagram-state")]
         if context.family_id() == DiagramFamilyId::STATE {
             context.reconcile_state_terminal_evidence();

@@ -5,8 +5,6 @@ use super::super::SvgDiagramId;
 #[derive(Clone)]
 pub(super) struct ArchitectureRenderSettings {
     pub(super) css: String,
-    pub(super) font_family_css: String,
-    pub(super) typography_css_emission: crate::architecture::ArchitectureTypographyCssEmission,
     pub(super) icon_size_px: f64,
     pub(super) half_icon: f64,
     pub(super) padding_px: f64,
@@ -23,16 +21,10 @@ impl ArchitectureRenderSettings {
     ) -> Self {
         let binding = typography.css_binding();
         let mut css = String::new();
-        let base = binding
+        binding
             .common
             .write_prefix_with_font_emission(&mut css, diagram_id)
             .expect("String-backed Architecture base CSS emission cannot fail");
-        let base_fonts = (
-            base.diagram_root_font_family_css(),
-            base.nested_svg_font_family_css(),
-            base.diagram_root_font_size_css(),
-            base.nested_svg_font_size_css(),
-        );
         use std::fmt::Write;
         write!(css,
             r#"#{} .edge{{stroke-width:{};stroke:{};fill:none;}}#{} .arrow{{fill:{};}}#{} .node-bkg{{fill:none;stroke:{};stroke-width:{};stroke-dasharray:8;}}#{} .node-icon-text{{display:flex;align-items:center;}}#{} .node-icon-text>div{{color:#fff;margin:1px;height:fit-content;text-align:center;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;}}"#,
@@ -41,21 +33,12 @@ impl ArchitectureRenderSettings {
             diagram_id, binding.group_border_color, binding.group_border_width,
             diagram_id, diagram_id,
         ).expect("String-backed Architecture visual CSS emission cannot fail");
-        let root = binding
+        binding
             .common
             .write_root_with_font_emission(&mut css, diagram_id, diagram_id)
             .expect("String-backed Architecture root CSS emission cannot fail");
-        let typography_css_emission = crate::architecture::ArchitectureTypographyCssEmission::new(
-            base_fonts.0,
-            base_fonts.1,
-            base_fonts.2,
-            base_fonts.3,
-            root.font_family_css(),
-        );
         Self {
             css,
-            font_family_css: typography.font_family_css().to_owned(),
-            typography_css_emission,
             icon_size_px: binding.icon_size_px,
             half_icon: binding.icon_size_px / 2.0,
             padding_px: binding.padding_px,
@@ -80,11 +63,8 @@ mod tests {
 
     fn prepared_settings(id: &str, config: &serde_json::Value) -> ArchitectureRenderSettings {
         let config = merman_core::MermaidConfig::from_value(config.clone());
-        let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
-            None,
-            &config,
-            crate::architecture::ArchitectureTypographyTerminalInventory::new(0, 0).unwrap(),
-        );
+        let typography =
+            crate::architecture::ArchitectureTypographyThemePlan::resolve(None, &config);
         let request = crate::svg::SvgRenderOptions {
             diagram_id: Some(id.to_owned()),
             ..Default::default()

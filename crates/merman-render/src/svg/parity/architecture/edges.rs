@@ -28,13 +28,11 @@ pub(super) struct ArchitectureEdgeRenderContext<'a, M: ArchitectureModelAccess, 
     pub(super) text_measurer: &'a dyn TextMeasurer,
     pub(super) content_bounds: &'a mut Option<Bounds>,
     pub(super) junction_bounds: &'a rustc_hash::FxHashMap<&'a str, Bounds>,
-    pub(super) edge_stroke: Option<(usize, &'a str)>,
     pub(super) edge_inline_style: Option<&'a str>,
-    pub(super) terminal_receipt: Option<&'a mut crate::architecture::ArchitectureEdgeThemeReceipt>,
-    pub(super) surface_theme_receipt:
-        Option<&'a mut crate::architecture::ArchitectureSurfaceThemeReceipt>,
-    pub(super) typography_theme_receipt:
-        Option<&'a mut crate::architecture::ArchitectureTypographyThemeReceipt>,
+    pub(super) edge_style_emitted: &'a mut bool,
+    pub(super) surface_styles: Option<&'a mut crate::architecture::ArchitectureSurfaceRenderState>,
+    pub(super) typography_emission:
+        Option<&'a mut crate::architecture::ArchitectureTypographyEmission>,
     pub(super) checkpoints: ArchitectureEmitCheckpoints<'a>,
 }
 
@@ -438,11 +436,9 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
 ) -> crate::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
-    let edge_stroke = ctx.edge_stroke;
     let edge_inline_style = ctx.edge_inline_style;
-    let mut terminal_receipt = ctx.terminal_receipt.take();
-    let mut surface_theme_receipt = ctx.surface_theme_receipt.take();
-    let mut typography_theme_receipt = ctx.typography_theme_receipt.take();
+    let mut surface_styles = ctx.surface_styles.take();
+    let mut typography_emission = ctx.typography_emission.take();
     let out = &mut *ctx.out;
     let diagram_id = ctx.diagram_id;
     let layout = ctx.layout;
@@ -631,6 +627,7 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
 
             let label_plan = architecture_edge_label_plan(edge, points, settings, text_measurer);
             let has_label = label_plan.is_some();
+            #[cfg(merman_internal_theme_acceptance)]
             let label_bounds = label_plan.as_ref().map(|plan| plan.bounds.clone());
             if let Some(label_plan) = label_plan.as_ref() {
                 extend_bounds(content_bounds, label_plan.bounds.clone());
@@ -640,38 +637,22 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
             write_architecture_edge_path(out, diagram_id, edge, points, edge_inline_style);
             checkpoints.checkpoint()?;
 
-            let lhs_arrow_style = surface_theme_receipt.as_deref().and_then(|receipt| {
-                receipt
-                    .edge_arrow_style(
-                        edge_idx,
-                        edge.lhs_id,
-                        edge.rhs_id,
-                        crate::architecture::ArchitectureArrowSide::Lhs,
-                    )
-                    .map(ToOwned::to_owned)
+            let lhs_arrow_style = surface_styles.as_deref().and_then(|styles| {
+                styles.edge_arrow_style(edge_idx, crate::architecture::ArchitectureArrowSide::Lhs)
             });
-            let rhs_arrow_style = surface_theme_receipt.as_deref().and_then(|receipt| {
-                receipt
-                    .edge_arrow_style(
-                        edge_idx,
-                        edge.lhs_id,
-                        edge.rhs_id,
-                        crate::architecture::ArchitectureArrowSide::Rhs,
-                    )
-                    .map(ToOwned::to_owned)
+            let rhs_arrow_style = surface_styles.as_deref().and_then(|styles| {
+                styles.edge_arrow_style(edge_idx, crate::architecture::ArchitectureArrowSide::Rhs)
             });
-            let label_style = surface_theme_receipt.as_deref().and_then(|receipt| {
-                receipt
-                    .edge_label_style(edge_idx, edge.lhs_id, edge.rhs_id)
-                    .map(ToOwned::to_owned)
-            });
+            let label_style = surface_styles
+                .as_deref()
+                .and_then(|styles| styles.edge_label_style(edge_idx));
 
             if let Some(arrow) = lhs_arrow.as_ref() {
-                write_architecture_arrow_polygon(out, arrow, lhs_arrow_style.as_deref());
+                write_architecture_arrow_polygon(out, arrow, lhs_arrow_style);
             }
 
             if let Some(arrow) = rhs_arrow.as_ref() {
-                write_architecture_arrow_polygon(out, arrow, rhs_arrow_style.as_deref());
+                write_architecture_arrow_polygon(out, arrow, rhs_arrow_style);
             }
 
             #[cfg(merman_internal_theme_acceptance)]
@@ -686,15 +667,8 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                     transform = label_plan.transform.as_str()
                 );
                 out.push_str(r#"<g><rect class="background" style="stroke: none"/>"#);
-                let writer_facts =
-                    write_svg_text_lines(out, &label_plan.lines, label_style.as_deref());
+                let writer_facts = write_svg_text_lines(out, &label_plan.lines, label_style);
                 out.push_str("</g></g>");
-                if let Some(receipt) = typography_theme_receipt.as_deref_mut() {
-                    receipt.record_native_svg_text_terminal(
-                        settings.font_family_css.as_str(),
-                        settings.text_style.font_size,
-                    );
-                }
                 #[cfg(merman_internal_theme_acceptance)]
                 {
                     label_fragment_digest = Some(writer_facts.fragment_digest);
@@ -706,26 +680,22 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
 
             out.push_str("</g>");
             out.checkpoint()?;
-            if let Some(receipt) = terminal_receipt.as_deref_mut() {
-                receipt.record_checkpointed_edge(
-                    edge_idx,
-                    edge.lhs_id,
-                    edge.rhs_id,
-                    "edge",
-                    edge_stroke,
-                    edge_inline_style,
-                );
+            *ctx.edge_style_emitted |= edge_inline_style.is_some();
+            if has_label && let Some(emission) = typography_emission.as_deref_mut() {
+                emission.record_visible_text();
             }
-            if let Some(receipt) = surface_theme_receipt.as_deref_mut() {
-                receipt.record_checkpointed_edge(
+            if let Some(styles) = surface_styles.as_deref_mut() {
+                styles.record_checkpointed_edge(
                     crate::architecture::ArchitectureEdgeTerminalEmission {
                         index: edge_idx,
-                        lhs_id: edge.lhs_id,
-                        rhs_id: edge.rhs_id,
+                        #[cfg(merman_internal_theme_acceptance)]
+                        lhs_id: edge.lhs_id.into(),
+                        #[cfg(merman_internal_theme_acceptance)]
+                        rhs_id: edge.rhs_id.into(),
                         label: crate::architecture::ArchitectureTextTerminalEmission {
                             emitted: has_label,
-                            style: label_style.as_deref(),
-                            bounds: label_bounds.as_ref(),
+                            #[cfg(merman_internal_theme_acceptance)]
+                            bounds: label_bounds,
                             #[cfg(merman_internal_theme_acceptance)]
                             fragment_digest: label_fragment_digest,
                             #[cfg(merman_internal_theme_acceptance)]
@@ -733,18 +703,16 @@ pub(super) fn push_architecture_edges<M: ArchitectureModelAccess, O: SvgOutput>(
                         },
                         lhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
                             emitted: lhs_arrow.is_some(),
-                            style: lhs_arrow_style.as_deref(),
                         },
                         rhs_arrow: crate::architecture::ArchitecturePaintTerminalEmission {
                             emitted: rhs_arrow.is_some(),
-                            style: rhs_arrow_style.as_deref(),
                         },
                     },
                 );
             }
         }
     }
-    ctx.typography_theme_receipt = typography_theme_receipt;
+    ctx.typography_emission = typography_emission;
     Ok(())
 }
 
@@ -867,7 +835,6 @@ mod tests {
             let typography = crate::architecture::ArchitectureTypographyThemePlan::resolve(
                 None,
                 &merman_core::MermaidConfig::empty_object(),
-                crate::architecture::ArchitectureTypographyTerminalInventory::new(0, 0).unwrap(),
             );
             let settings = ArchitectureRenderSettings::from_prepared(diagram_id, &typography);
             let mut node_xy = rustc_hash::FxHashMap::default();
@@ -877,6 +844,7 @@ mod tests {
             let measurer = DeterministicTextMeasurer::default();
             let mut content_bounds = None;
             let mut out = RejectAtFirstCheckpoint::default();
+            let mut edge_style_emitted = false;
             let mut ctx = ArchitectureEdgeRenderContext {
                 out: &mut out,
                 diagram_id,
@@ -887,11 +855,10 @@ mod tests {
                 text_measurer: &measurer,
                 content_bounds: &mut content_bounds,
                 junction_bounds: &junction_bounds,
-                edge_stroke: None,
                 edge_inline_style: None,
-                terminal_receipt: None,
-                surface_theme_receipt: None,
-                typography_theme_receipt: None,
+                edge_style_emitted: &mut edge_style_emitted,
+                surface_styles: None,
+                typography_emission: None,
                 checkpoints: ArchitectureEmitCheckpoints::new(options.work_meter()),
             };
 
