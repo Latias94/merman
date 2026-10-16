@@ -140,3 +140,60 @@ from the rendering fix.
 All 7,598 tracked golden JSON files remained equivalent to the rendering-fix commit. Two fresh
 runs of both formal snapshot generators then produced byte-identical files across that entire
 set. The nine existing snapshot-owner tests passed; formatting and diff hygiene checks passed.
+
+## Independent Review Repairs (2026-10-16)
+
+A subsequent nine-lens review of `d159ec5ec` found four reproducible gaps. Independent public
+API probes confirmed each finding before implementation. The follow-up repairs cover:
+
+- HTML5 parser work: ancestor/identity queries now consume caller-owned work units. A thin
+  `TokenSink` adapter stops forwarding tokens after rejection without changing element names,
+  node identity, or recovery rules. The pinned parser's formatting-list admission also receives
+  a conservative live-handle/attribute comparison precharge through its public tracer. An
+  unfinished token receives a squared-byte work envelope before each bounded input feed, covering
+  attribute deduplication that precedes tree callbacks. No parallel HTML parser or stack is kept.
+- Error ownership: renderer sinks retain their configured work limits and typed resource errors.
+  Only the core string sink uses a source-proportional fallback ceiling, preserving its existing
+  fail-closed return contract. Rejected work cannot silently become a successful empty render label
+  through that core fallback. Cancellation remains cooperative: the current HTML5 token and at
+  most the current 256-byte tokenizer feed can finish before teardown.
+- Table policy: allowing `table` now removes `tbody` from `FORBID_TAGS`, matching the pinned
+  DOMPurify policy. Both explicit and parser-inserted containers retain their rows when
+  `KEEP_CONTENT=false`.
+- Flowchart measurement: the plain Markdown overflow compatibility rule excludes authored HTML
+  and raw blocks. A style-sensitive public measurement profile retains the 480px rich width of
+  an inline `<strong>` label instead of overwriting it with its 240px plain-text width. Ordinary
+  Markdown keeps its existing measurement rule; all measured text still comes from final XHTML.
+- Mindmap ownership: non-math HTML labels are prepared once during layout, retained by the private
+  family artifact, and borrowed during emission for every shape. Measurement keeps Mindmap's
+  existing rich-text rules. Restored structure, configured removal, image paragraph handling, and
+  entity normalization therefore agree before geometry is calculated. The sidecar uses the
+  existing retained-text reservation and releases it with the artifact. SVG and math labels retain
+  their existing paths.
+
+Regression evidence includes deep `div` and `span` inputs, distinct-attribute formatting tags,
+single tags with many attributes, layout/emit budget and cancellation errors, small-stack teardown
+after output rejection, custom text measurement, and Mindmap recovery/removal equivalence across
+tidy-tree, Dagre, Swimlane, and ELK. Post-fix independent correctness and reliability reviewers found
+no remaining blocking issue in these repaired seams.
+
+Validation on Windows with Rust 1.95.0:
+
+- Affected sanitizer, HTML controls, graph labels, Mindmap, and icon owner tests: 204 passed.
+- Flowchart SVG/measurement and Mindmap SVG/registered-layout integration tests: 232 passed.
+- Exact full SVG structure command above: 37 families, 3,756 selected, 3,729 rendered, and 27
+  intentional skips; the existing exact residual receipts remained applicable. No fixture,
+  comparator normalization, or upstream SVG was changed.
+- Production library Clippy with all diagrams, both optional layout backends, math, and
+  `-D warnings`: passed.
+- Rebuilt optimized native-memory probe with the registered `all-diagrams,svg` capability set:
+  `protocol_smoke_pass`, zero contract errors, and the zero-work boundary verifier passed.
+  This is compiled boundary smoke, not memory or latency candidate admission.
+- Optimized 64 KiB stack lifecycle canary: passed, including completed-tree output rejection
+  and cancellation-shaped errors. Formatting and diff hygiene checks also passed.
+
+The structural work ledger is retained under
+`target/bench/experiments/pr203-html5-work-bound/experiment.yaml`. This is a resource-bound repair,
+not a measured production latency improvement. Current-token residual work and host preemption
+remain distinct from the operation's cooperative budget. CI owns final Linux, cross-platform,
+Web, and browser evidence for the pushed revision.

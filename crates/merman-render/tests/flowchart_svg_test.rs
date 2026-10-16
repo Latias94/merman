@@ -5767,6 +5767,79 @@ A padded@-->|edge label padding| B
 }
 
 #[test]
+fn flowchart_markdown_raw_html_overflow_keeps_host_profile_style_widths() {
+    let measurer = DeterministicTextMeasurer::default().with_width_callback(|text, style| {
+        let advance = if style.font_weight.as_deref() == Some("700") {
+            20.0
+        } else {
+            10.0
+        };
+        text.chars().count() as f64 * advance
+    });
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.markdown-raw-html-widths").expect("valid profile id"),
+        "test",
+    )
+    .expect("valid profile identity");
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, measurer)),
+    );
+    let word = "abcdefghijklmnopqrstuvwx";
+    for (label, expected_width) in [
+        (word.to_string(), 240.0),
+        (format!("**{word}**"), 240.0),
+        (format!("<strong>{word}</strong>"), 480.0),
+    ] {
+        for wrapping_width in [40, 120] {
+            let engine =
+                Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                    "securityLevel": "strict",
+                    "flowchart": { "htmlLabels": true, "wrappingWidth": wrapping_width }
+                })));
+            let source = format!("flowchart TB\nA[\"`{label}`\"]\n");
+            let parsed =
+                block_on(engine.parse_diagram_for_render_model(&source, ParseOptions::default()))
+                    .expect("parse raw HTML Markdown")
+                    .expect("Flowchart diagram");
+            let svg = render_flowchart_artifact(
+                parsed,
+                &LayoutOptions::default(),
+                environment.begin_session().expect("measurement session"),
+                &SvgRenderOptions::default(),
+            )
+            .expect("render with host measurement profile");
+            let document = roxmltree::Document::parse(&svg).expect("valid Flowchart SVG");
+            let foreign_object = document
+                .descendants()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .expect("HTML label");
+            let width = foreign_object
+                .attribute("width")
+                .expect("HTML label width")
+                .parse::<f64>()
+                .expect("numeric HTML label width");
+            assert_eq!(width, expected_width, "{label}, {wrapping_width}");
+            let div_style = foreign_object
+                .descendants()
+                .find(|node| node.has_tag_name("div"))
+                .and_then(|node| node.attribute("style"))
+                .expect("HTML label style");
+            assert!(
+                div_style.contains(&format!("max-width: {wrapping_width}px")),
+                "{label}: {div_style}"
+            );
+            if label != word {
+                assert!(
+                    foreign_object
+                        .descendants()
+                        .any(|node| { node.has_tag_name("strong") && node.text() == Some(word) })
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn flowchart_html_layout_and_wrapping_ignore_policy_removed_markdown_content() {
     let config = MermaidConfig::from_value(serde_json::json!({
         "flowchart": { "htmlLabels": true, "wrappingWidth": 120 },

@@ -1278,6 +1278,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().semantic(),
                 effective_config,
                 artifact.node_palette(),
+                artifact.prepared_labels(),
                 options,
             )
         }

@@ -686,6 +686,7 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
 ) -> crate::text::TextMetrics {
     let FlowchartLabelMetricsRequest {
         measurer,
+        raw_label,
         label_type,
         style,
         max_width_px,
@@ -851,9 +852,13 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
         && !lower.contains("<i ")
         && let Some(max_width) = max_width_px.filter(|width| width.is_finite() && *width > 0.0)
         && metrics.width > max_width
+        && !crate::text::mermaid_markdown_contains_html_tags(raw_label)
+        && !crate::text::mermaid_markdown_contains_raw_blocks(raw_label)
     {
         // Markdown's min-content overflow keeps the host measurer's base width, rather than
-        // snapping it to the ordinary browser lattice. Extract only the sanitized final text.
+        // snapping it to the ordinary browser lattice. Authored HTML and raw blocks retain
+        // their rich-text widths. Source classification only selects this compatibility rule;
+        // the measured text still comes exclusively from the sanitized final fragment.
         let plain = flowchart_label_plain_text_for_layout(xhtml, "html", true);
         if !plain.contains('<') {
             metrics.width = measurer
@@ -1989,6 +1994,45 @@ mod tests {
         assert_eq!(metrics.width, expected.width);
         assert_eq!(metrics.height, expected.height);
         assert_eq!(metrics.line_count, expected.line_count);
+    }
+
+    #[test]
+    fn markdown_html_min_content_overflow_preserves_authored_html_styles() {
+        let measurer =
+            crate::text::DeterministicTextMeasurer::default().with_width_callback(|text, style| {
+                let advance = if style.font_weight.as_deref() == Some("700") {
+                    20.0
+                } else {
+                    10.0
+                };
+                text.chars().count() as f64 * advance
+            });
+        let style = TextStyle::default();
+        let config = MermaidConfig::from_value(serde_json::json!({
+            "securityLevel": "strict"
+        }));
+        let word = "abcdefghijklmnopqrstuvwx";
+        for (raw_label, expected_width) in [
+            (word.to_string(), 240.0),
+            (format!("**{word}**"), 240.0),
+            (format!("<strong>{word}</strong>"), 480.0),
+            (format!("<div><strong>{word}</strong></div>"), 480.0),
+        ] {
+            for max_width in [40.0, 120.0] {
+                let metrics = flowchart_label_metrics_for_layout(FlowchartLabelMetricsRequest {
+                    measurer: measurer.as_ref(),
+                    raw_label: &raw_label,
+                    label_type: "markdown",
+                    style: &style,
+                    max_width_px: Some(max_width),
+                    wrap_mode: WrapMode::HtmlLike,
+                    config: &config,
+                    math_renderer: None,
+                });
+                assert_eq!(metrics.width, expected_width, "{raw_label}, {max_width}");
+                assert_eq!(metrics.line_count, 1, "{raw_label}, {max_width}");
+            }
+        }
     }
 
     #[test]

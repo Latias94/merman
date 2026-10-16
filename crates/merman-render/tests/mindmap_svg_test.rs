@@ -41,6 +41,44 @@ fn render_mindmap_svg_from_text(text: &str, diagram_id: &str) -> String {
         .to_owned()
 }
 
+#[test]
+fn mindmap_html_recovery_and_policy_removal_share_layout_and_emitted_geometry() {
+    let mut layouts = vec!["tidy-tree", "dagre", "swimlane"];
+    if cfg!(feature = "layout-elk") {
+        layouts.push("elk");
+    }
+    for layout in layouts {
+        for (label, policy) in [
+            ("Alpha</div>Beta", ""),
+            (
+                "Alpha<strong>removed</strong>Beta",
+                "  dompurifyConfig:\n    FORBID_TAGS: [strong]\n    KEEP_CONTENT: false\n",
+            ),
+        ] {
+            let source = |label: &str| {
+                format!(
+                    "---\nconfig:\n  layout: {layout}\n  securityLevel: loose\n{policy}---\nmindmap\n  root[\"{label}\"]\n    child[Child]\n"
+                )
+            };
+            let recovered = render_mindmap_svg_from_text(&source(label), "recovered-mindmap");
+            let expected = render_mindmap_svg_from_text(&source("AlphaBeta"), "recovered-mindmap");
+            assert_eq!(
+                recovered, expected,
+                "layout and emission must both consume the final recovered label for {label:?}, {layout}"
+            );
+            let document = roxmltree::Document::parse(&recovered).expect("valid recovered XHTML");
+            assert!(document.descendants().any(|node| {
+                node.attribute("class") == Some("nodeLabel markdown-node-label")
+                    && node
+                        .descendants()
+                        .filter_map(|child| child.text().filter(|_| child.is_text()))
+                        .collect::<String>()
+                        == "AlphaBeta"
+            }));
+        }
+    }
+}
+
 fn mindmap_node_palette_theme(colors: &[&str]) -> DiagramTheme {
     let palette = OrdinalPalette::new(
         colors

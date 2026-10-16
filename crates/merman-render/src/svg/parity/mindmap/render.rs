@@ -113,33 +113,6 @@ fn include_mindmap_node_rect_bounds(bounds: &mut Option<Bounds>, n: &LayoutNode)
     );
 }
 
-fn single_image_paragraph_inner(fragment: &str) -> Option<&str> {
-    let fragment = fragment.trim();
-    let inner = fragment.strip_prefix("<p>")?.strip_suffix("</p>")?.trim();
-    let prefix = inner.get(..4)?;
-    if !prefix.eq_ignore_ascii_case("<img") {
-        return None;
-    }
-    if inner
-        .as_bytes()
-        .get(4)
-        .is_some_and(|byte| !byte.is_ascii_whitespace() && !matches!(byte, b'/' | b'>'))
-    {
-        return None;
-    }
-
-    let mut quote = None;
-    for (index, ch) in inner.char_indices().skip(4) {
-        match (quote, ch) {
-            (Some(active), candidate) if active == candidate => quote = None,
-            (None, '\'' | '"') => quote = Some(ch),
-            (None, '>') => return inner[index + 1..].trim().is_empty().then_some(inner),
-            _ => {}
-        }
-    }
-    None
-}
-
 fn include_mindmap_path_bounds(
     bounds: &mut Option<Bounds>,
     d: &str,
@@ -610,6 +583,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     model: &merman_core::diagrams::mindmap::MindmapDiagramRenderModel,
     config: &merman_core::MermaidConfig,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
+    prepared_labels: &crate::mindmap::MindmapPreparedLabels,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let timing = options.timing();
@@ -630,6 +604,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
 
     struct MindmapLabelSpec<'a> {
         text: &'a str,
+        prepared_xhtml: Option<&'a str>,
         label_bkg: bool,
         width: f64,
         height: f64,
@@ -648,6 +623,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     ) -> Result<()> {
         let MindmapLabelSpec {
             text,
+            prepared_xhtml,
             label_bkg,
             width,
             height,
@@ -758,26 +734,6 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             merman_core::OperationPhase::Emit,
         );
 
-        fn markdown_to_sanitized_xhtml(
-            text: &str,
-            config: &merman_core::MermaidConfig,
-            sink: &crate::html::HtmlSanitizeSink<'_>,
-            work_meter: &crate::resources::OperationWorkMeter,
-        ) -> Result<String> {
-            let html_out = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
-            let html_out = crate::text::replace_fontawesome_icons(&html_out);
-            let html_out = crate::html::resolve_svg_fragment(
-                merman_core::sanitize::sanitize_xhtml_with_sink(&html_out, config, sink),
-                work_meter,
-            )?;
-            // Mermaid inserts the sanitized fragment without trimming it. This is observable for
-            // indented-code labels once the 200px container switches to `break-spaces`: a trailing
-            // indentation-only source line still owns a browser line box.
-            Ok(single_image_paragraph_inner(&html_out)
-                .map(str::to_string)
-                .unwrap_or(html_out))
-        }
-
         fn escape_amp_preserving_entities(raw: &str) -> String {
             crate::xml::normalize_html_entities_for_xml(raw).into_owned()
         }
@@ -796,9 +752,10 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             )?;
             out.push_str(&escape_amp_preserving_entities(&html));
         } else {
-            let html = markdown_to_sanitized_xhtml(text, config, &sink, work_meter)?;
-            let html = decode_mermaid_entities_for_render_text(&html);
-            out.push_str(&escape_amp_preserving_entities(html.as_ref()));
+            let html = prepared_xhtml.ok_or_else(|| Error::InvalidModel {
+                message: "Mindmap HTML label is missing its prepared fragment".to_string(),
+            })?;
+            out.push_str(html);
         }
 
         out.push_str("</span></div></foreignObject></g>");
@@ -1251,6 +1208,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1282,6 +1240,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1313,6 +1272,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1340,6 +1300,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1372,6 +1333,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1414,6 +1376,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: label_width,
                         height: label_height,
@@ -1453,6 +1416,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: bbox_w,
                         height: bbox_h,
@@ -1479,6 +1443,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
                     &mut out,
                     MindmapLabelSpec {
                         text: &n.label,
+                        prepared_xhtml: prepared_labels.xhtml_for(&n.id),
                         label_bkg: n.icon.is_some(),
                         width: w.max(1.0),
                         height: h.max(1.0),
@@ -1690,12 +1655,15 @@ mod tests {
     #[test]
     fn single_image_paragraph_is_unwrapped_from_the_final_xhtml_shape() {
         assert_eq!(
-            single_image_paragraph_inner(r#"<p><img src="a>b" /></p>"#),
+            crate::mindmap::single_image_paragraph_inner(r#"<p><img src="a>b" /></p>"#),
             Some(r#"<img src="a>b" />"#)
         );
-        assert_eq!(single_image_paragraph_inner("<p>text</p>"), None);
         assert_eq!(
-            single_image_paragraph_inner("<p><img src=x><span>extra</span></p>"),
+            crate::mindmap::single_image_paragraph_inner("<p>text</p>"),
+            None
+        );
+        assert_eq!(
+            crate::mindmap::single_image_paragraph_inner("<p><img src=x><span>extra</span></p>"),
             None
         );
     }

@@ -2346,6 +2346,7 @@ pub(crate) struct TreeViewFamilyArtifact {
 pub(crate) struct MindmapFamilyArtifact {
     pair: FamilyPair<diagrams::mindmap::MindmapDiagramRenderModel, MindmapDiagramLayout>,
     node_palette: crate::mindmap::MindmapNodePalettePlan,
+    prepared_labels: crate::mindmap::MindmapPreparedLabels,
 }
 
 #[cfg(feature = "diagram-mindmap")]
@@ -2358,6 +2359,10 @@ impl MindmapFamilyArtifact {
 
     pub(crate) const fn node_palette(&self) -> &crate::mindmap::MindmapNodePalettePlan {
         &self.node_palette
+    }
+
+    pub(crate) const fn prepared_labels(&self) -> &crate::mindmap::MindmapPreparedLabels {
+        &self.prepared_labels
     }
 }
 
