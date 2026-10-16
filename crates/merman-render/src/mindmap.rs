@@ -18,7 +18,7 @@ mod theme;
 mod tidy_tree;
 
 pub(crate) use theme::{
-    MINDMAP_SECTION_COUNT, MindmapEdgeStrokeSource, MindmapNodeFillSource, MindmapNodePalettePlan,
+    MINDMAP_SECTION_COUNT, MindmapNodeFillSource, MindmapNodePalettePlan,
     MindmapNodePaletteTerminalDecision, MindmapWriterThemeToken,
 };
 

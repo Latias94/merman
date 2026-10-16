@@ -51,7 +51,7 @@ const MINDMAP_DEFAULT_COLOR_SCALE: [&str; MINDMAP_THEME_COLOR_LIMIT_DEFAULT] = [
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum MindmapEdgeStrokeSource {
+enum MindmapEdgeStrokeSource {
     ColorScale { section: usize },
     NodeBorder,
 }
@@ -185,15 +185,15 @@ fn mindmap_edge_stroke_source(
 
 /// Family-local projection of direct Mindmap theme routes.
 ///
-/// The plan stores the bounded Node palette plus the static Edge stroke winner, the real Mermaid
-/// source selected by each edge, and the outcomes of the actual node and edge writers.
+/// The plan stores the bounded Node palette, requested Edge stroke selections, and the outcomes
+/// of the actual node and edge writers. Inherited edge paint stays in the stylesheet.
 #[derive(Debug)]
 pub(crate) struct MindmapNodePalettePlan {
     fills_by_section: [Option<MindmapNodePaletteFill>; MINDMAP_SECTION_COUNT],
     node_fill: Option<DirectPaintExpectation>,
     node_stroke: Option<DirectPaintExpectation>,
     edge_stroke: Option<MindmapEdgeStroke>,
-    edge_styles: Vec<MindmapEdgeStyle>,
+    edge_stroke_winners: Vec<bool>,
     evidence: FamilyThemeEvidence,
     palette_key: Option<FamilyThemeMechanismKey>,
     pending_node_paint:
@@ -215,22 +215,8 @@ struct MindmapNodePaletteFill {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct MindmapEdgeStroke {
     rule_index: usize,
-    css: Box<str>,
+    style: Box<str>,
     capability: ThemeCapability,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct MindmapEdgeStyle {
-    source: Option<MindmapEdgeStrokeSource>,
-    terminal_style: Option<Box<str>>,
-    source_owned: bool,
-    winning_stroke_rule: Option<usize>,
-}
-
-pub(crate) struct MindmapEdgePaint<'a> {
-    pub(crate) source: Option<MindmapEdgeStrokeSource>,
-    pub(crate) stroke: Option<&'a str>,
-    pub(crate) style: Option<&'a str>,
 }
 
 #[derive(Debug, Default)]
@@ -308,14 +294,7 @@ impl MindmapNodePalettePlan {
         plan.evidence = FamilyThemeEvidence::from_theme(Some(theme));
         plan.resolve_node_paint(theme, config, work_meter)?;
         plan.resolve_node_palette(theme, visited, work_meter)?;
-        plan.resolve_edge_stroke(theme, work_meter)?;
-        if plan.pending_edge_stroke_key.is_some() {
-            for expected in &mut plan.edge_styles {
-                expected.source_owned = expected
-                    .source
-                    .is_some_and(|source| source.is_owned(config));
-            }
-        }
+        plan.resolve_edge_stroke(theme, config, model, work_meter)?;
         let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
         reconcile_unsupported_terminal_domains(
             theme,
@@ -572,9 +551,22 @@ impl MindmapNodePalettePlan {
     fn resolve_edge_stroke(
         &mut self,
         theme: &ResolvedDiagramTheme,
+        config: &MermaidConfig,
+        model: &MindmapDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
-        let edge_count = self.edge_styles.len();
+        if !theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Edge,
+                    ..
+                }
+            )
+        }) {
+            return Ok(());
+        }
+        let edge_count = model.edges.len();
         let static_style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,
@@ -592,7 +584,10 @@ impl MindmapNodePalettePlan {
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
         } else {
-            for (edge_index, expectation) in self.edge_styles.iter_mut().enumerate() {
+            if static_stroke_rule.is_some() {
+                self.edge_stroke_winners = Vec::with_capacity(edge_count);
+            }
+            for (edge_index, edge) in model.edges.iter().enumerate() {
                 let style = theme.style_with_work_meter(
                     ThemeTarget::Edge,
                     ThemeVariant::Default,
@@ -604,10 +599,16 @@ impl MindmapNodePalettePlan {
                         .winner_rule_properties()
                         .map(|(property, origin)| (origin.rule_index(), property)),
                 );
-                expectation.winning_stroke_rule = style
-                    .stroke_resolution()
-                    .winner()
-                    .map(|origin| origin.rule_index());
+                if let Some(rule_index) = static_stroke_rule {
+                    self.edge_stroke_winners.push(
+                        style
+                            .stroke_resolution()
+                            .winner()
+                            .is_some_and(|origin| origin.rule_index() == rule_index)
+                            && !mindmap_edge_stroke_source(config, edge)
+                                .is_some_and(|source| source.is_owned(config)),
+                    );
+                }
             }
         }
 
@@ -695,6 +696,8 @@ impl MindmapNodePalettePlan {
 
         if self.pending_edge_stroke_key.is_some() {
             self.edge_stroke = static_stroke;
+        } else {
+            self.edge_stroke_winners = Vec::new();
         }
         Ok(())
     }
@@ -705,26 +708,12 @@ impl MindmapNodePalettePlan {
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
-        let edge_styles = model
-            .edges
-            .iter()
-            .map(|edge| {
-                work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
-                let source = mindmap_edge_stroke_source(config, edge);
-                Ok(MindmapEdgeStyle {
-                    source,
-                    terminal_style: None,
-                    source_owned: false,
-                    winning_stroke_rule: None,
-                })
-            })
-            .collect::<Result<_, OperationWorkError>>()?;
         Ok(Self {
             fills_by_section: std::array::from_fn(|_| None),
             node_fill: None,
             node_stroke: None,
             edge_stroke: None,
-            edge_styles,
+            edge_stroke_winners: Vec::new(),
             evidence: FamilyThemeEvidence::default(),
             palette_key: None,
             pending_node_paint: BTreeMap::new(),
@@ -756,13 +745,6 @@ impl MindmapNodePalettePlan {
     ) -> Result<(), OperationWorkError> {
         work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
         let binding = super::css_binding::MindmapCssBinding::new(config, self);
-        for edge in &mut self.edge_styles {
-            work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
-            edge.terminal_style = self.edge_stroke.as_ref().and_then(|stroke| {
-                (edge.winning_stroke_rule == Some(stroke.rule_index) && !edge.source_owned)
-                    .then(|| format!("stroke:{} !important", stroke.css).into_boxed_str())
-            });
-        }
         work_meter.checkpoint(merman_core::OperationPhase::Layout)?;
         self.css_binding
             .set(binding)
@@ -852,32 +834,22 @@ impl MindmapNodePalettePlan {
         self.node_terminal_receipt.set(receipt).is_ok()
     }
 
-    pub(crate) fn terminal_edge_stroke(&self, edge_index: usize) -> Option<(usize, &str)> {
+    pub(crate) fn terminal_edge_style(&self, edge_index: usize) -> Option<&str> {
         let stroke = self.edge_stroke.as_ref()?;
-        let expectation = self.edge_styles.get(edge_index)?;
-        (expectation.winning_stroke_rule == Some(stroke.rule_index) && !expectation.source_owned)
-            .then_some((stroke.rule_index, stroke.css.as_ref()))
+        self.edge_stroke_winners
+            .get(edge_index)
+            .copied()
+            .unwrap_or(false)
+            .then_some(stroke.style.as_ref())
     }
 
-    fn edge_source_css(&self, source: Option<MindmapEdgeStrokeSource>) -> Option<&str> {
-        source.map(|source| match source {
-            MindmapEdgeStrokeSource::ColorScale { section } => {
-                self.css_binding().sections[section + 1].fill.as_str()
-            }
-            MindmapEdgeStrokeSource::NodeBorder => self.css_binding().tokens.node_border_css(),
-        })
-    }
-
-    pub(crate) fn terminal_edge_paint(&self, edge_index: usize) -> Option<MindmapEdgePaint<'_>> {
-        let expectation = self.edge_styles.get(edge_index)?;
-        Some(MindmapEdgePaint {
-            source: expectation.source,
-            stroke: self
-                .terminal_edge_stroke(edge_index)
-                .map(|(_, css)| css)
-                .or_else(|| self.edge_source_css(expectation.source)),
-            style: expectation.terminal_style.as_deref(),
-        })
+    pub(crate) fn edge_inherits_node_stroke(
+        &self,
+        config: &MermaidConfig,
+        edge: &MindmapDiagramRenderEdge,
+    ) -> bool {
+        self.node_stroke.is_some()
+            && mindmap_edge_stroke_source(config, edge) == Some(MindmapEdgeStrokeSource::NodeBorder)
     }
 
     pub(crate) fn begin_edge_terminal_receipt(&self) -> Option<MindmapEdgeStrokeReceipt> {
@@ -940,7 +912,7 @@ impl MindmapNodePalettePlan {
             self.edge_stroke.as_ref(),
         ) {
             match self.edge_terminal_receipt.get() {
-                Some(receipt) if receipt.applied_rule_indices.contains(&stroke.rule_index) => {
+                Some(receipt) if receipt.applied => {
                     evidence.mark_applied_with_capabilities(key, [stroke.capability]);
                 }
                 Some(_) => {
@@ -996,12 +968,12 @@ fn typed_static_edge_stroke(
     match style.stroke_resolution().specified() {
         Specified::Value(CanvasPaint::Transparent) => Some(MindmapEdgeStroke {
             rule_index: origin.rule_index(),
-            css: "transparent".into(),
+            style: "stroke:transparent !important".into(),
             capability: ThemeCapability::TransparentPaint,
         }),
         Specified::Value(CanvasPaint::Solid(color)) => Some(MindmapEdgeStroke {
             rule_index: origin.rule_index(),
-            css: color.as_css().into_boxed_str(),
+            style: format!("stroke:{} !important", color.as_css()).into_boxed_str(),
             capability: ThemeCapability::SolidPaint,
         }),
         Specified::Unspecified
@@ -1017,22 +989,12 @@ fn typed_static_edge_stroke(
 /// Actual direct edge paint outcomes, without copied semantic identities or CSS readback.
 #[derive(Debug, Default)]
 pub(crate) struct MindmapEdgeStrokeReceipt {
-    applied_rule_indices: BTreeSet<usize>,
+    applied: bool,
 }
 
 impl MindmapEdgeStrokeReceipt {
-    pub(crate) fn record_edge(
-        &mut self,
-        plan: &MindmapNodePalettePlan,
-        edge_index: usize,
-        _edge_id: &str,
-        _source: Option<MindmapEdgeStrokeSource>,
-        _final_stroke: Option<&str>,
-        _terminal_style: Option<&str>,
-    ) {
-        if let Some((rule_index, _)) = plan.terminal_edge_stroke(edge_index) {
-            self.applied_rule_indices.insert(rule_index);
-        }
+    pub(crate) fn record_edge(&mut self) {
+        self.applied = true;
     }
 }
 
@@ -1058,22 +1020,14 @@ pub(crate) struct MindmapNodePaletteReceipt {
 }
 
 impl MindmapNodePaletteReceipt {
-    pub(crate) fn record_node_paint_terminal(
-        &mut self,
-        token: MindmapWriterThemeToken,
-        _css: &str,
-    ) {
+    pub(crate) fn record_node_paint_terminal(&mut self, token: MindmapWriterThemeToken) {
         match token {
             MindmapWriterThemeToken::MainBackground => self.emitted_fill = self.fill_rule.is_some(),
             MindmapWriterThemeToken::NodeBorder => self.emitted_stroke = self.stroke_rule.is_some(),
         }
     }
 
-    pub(crate) fn record_checkpointed_node(
-        &mut self,
-        _node_index: usize,
-        decision: MindmapNodePaletteTerminalDecision,
-    ) {
+    pub(crate) fn record_node_palette(&mut self, decision: MindmapNodePaletteTerminalDecision) {
         match decision {
             MindmapNodePaletteTerminalDecision::Applied { capability, .. } => {
                 self.applied_capabilities.insert(capability);
@@ -1136,53 +1090,6 @@ mod tests {
             .collect::<Vec<_>>();
         serde_json::from_value(json!({ "nodes": nodes, "edges": [] }))
             .expect("Mindmap theme-plan fixture")
-    }
-
-    #[test]
-    fn prepared_edge_paints_share_css_slots_without_adding_inline_inherited_strokes() {
-        let model: MindmapDiagramRenderModel = serde_json::from_value(json!({
-            "nodes": [],
-            "edges": [
-                {"id": "edge-0", "start": "a", "end": "b", "section": 0},
-                {"id": "edge-1", "start": "b", "end": "c", "section": -1},
-                {"id": "edge-2", "start": "c", "end": "d", "section": 2}
-            ]
-        }))
-        .expect("Mindmap edge fixture");
-        for (theme, look, expected_source) in [
-            (
-                "default",
-                "classic",
-                MindmapEdgeStrokeSource::ColorScale { section: 0 },
-            ),
-            ("redux", "neo", MindmapEdgeStrokeSource::NodeBorder),
-        ] {
-            let config = MermaidConfig::from_value(json!({
-                "theme": theme, "look": look,
-                "themeVariables": {"THEME_COLOR_LIMIT": 3,
-                    "cScale1": "var(--section)", "nodeBorder": "currentColor"}
-            }));
-            let plan = MindmapNodePalettePlan::resolve(None, &config, &model, &work_meter())
-                .expect("prepare baseline edge paints");
-            let first = plan.terminal_edge_paint(0).expect("prepared first edge");
-            assert_eq!(first.source, Some(expected_source));
-            let expected_css = match expected_source {
-                MindmapEdgeStrokeSource::ColorScale { section } => {
-                    plan.css_binding().sections[section + 1].fill.as_str()
-                }
-                MindmapEdgeStrokeSource::NodeBorder => plan.css_binding().tokens.node_border_css(),
-            };
-            assert_eq!(first.stroke, Some(expected_css));
-            assert_eq!(first.style, None);
-            for index in [1, 2] {
-                let paint = plan
-                    .terminal_edge_paint(index)
-                    .expect("prepared uncolored edge");
-                assert_eq!(paint.source, None);
-                assert_eq!(paint.stroke, None);
-                assert_eq!(paint.style, None);
-            }
-        }
     }
 
     #[test]

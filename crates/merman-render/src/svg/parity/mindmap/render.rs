@@ -1027,17 +1027,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         let look = binding.model_look(&e.look);
         let data_look_attr = mindmap_data_look_attr(look);
         let edge_dom_id = mindmap_dom_id(diagram_id, &e.id);
-        let edge_paint = node_palette
-            .terminal_edge_paint(edge_index)
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: format!(
-                    "Mindmap has no prepared edge paint at ordinal {}",
-                    edge_index + 1
-                ),
-            })?;
-        let terminal_style = edge_paint.style;
-        let terminal_source = edge_paint.source;
-        let final_stroke = edge_paint.stroke;
+        let terminal_style = node_palette.terminal_edge_style(edge_index);
         let _ = write!(
             &mut out,
             r#"<path d="{d}" id="{dom_id}" class="{class}"{look_attr}"#,
@@ -1056,24 +1046,14 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             pts = escape_xml(&data_points),
         );
         out.checkpoint()?;
-        if let Some(receipt) = edge_stroke_receipt.as_mut() {
-            receipt.record_edge(
-                node_palette,
-                edge_index,
-                &e.id,
-                terminal_source,
-                final_stroke,
-                terminal_style,
-            );
-        }
-        if terminal_style.is_none()
-            && terminal_source == Some(crate::mindmap::MindmapEdgeStrokeSource::NodeBorder)
-            && let Some(stroke) = final_stroke
+        if terminal_style.is_some()
+            && let Some(receipt) = edge_stroke_receipt.as_mut()
         {
-            node_palette_receipt.record_node_paint_terminal(
-                crate::mindmap::MindmapWriterThemeToken::NodeBorder,
-                stroke,
-            );
+            receipt.record_edge();
+        }
+        if terminal_style.is_none() && node_palette.edge_inherits_node_stroke(config, e) {
+            node_palette_receipt
+                .record_node_paint_terminal(crate::mindmap::MindmapWriterThemeToken::NodeBorder);
         }
     }
     out.push_str("</g>");
@@ -1090,7 +1070,7 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
     let node_fill_ownership = &binding.node_fill_ownership;
-    for (node_index, n) in model.nodes.iter().enumerate() {
+    for n in &model.nodes {
         let (x, y, w, h, label_w, label_h) = node_by_id
             .get(&n.id)
             .map(|ln| {
@@ -1460,10 +1440,8 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             // Redux carries `nodeBorder` into the root XHTML label in every look. This is the
             // only Classic consumer of the historical Node.stroke bridge token. The explicit
             // Neo root overlay below is the corresponding non-Redux shape consumer.
-            node_palette_receipt.record_node_paint_terminal(
-                crate::mindmap::MindmapWriterThemeToken::NodeBorder,
-                writer_tokens.node_border_css(),
-            );
+            node_palette_receipt
+                .record_node_paint_terminal(crate::mindmap::MindmapWriterThemeToken::NodeBorder);
         }
         if look == "neo" {
             if (!is_root && neo_branch_uses_main_background)
@@ -1471,17 +1449,15 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
             {
                 node_palette_receipt.record_node_paint_terminal(
                     crate::mindmap::MindmapWriterThemeToken::MainBackground,
-                    writer_tokens.main_background_css(),
                 );
             }
             if !use_gradient && !is_root && neo_branch_uses_node_border {
                 node_palette_receipt.record_node_paint_terminal(
                     crate::mindmap::MindmapWriterThemeToken::NodeBorder,
-                    writer_tokens.node_border_css(),
                 );
             }
         }
-        node_palette_receipt.record_checkpointed_node(node_index, terminal_decision);
+        node_palette_receipt.record_node_palette(terminal_decision);
     }
     out.push_str("</g>");
 
