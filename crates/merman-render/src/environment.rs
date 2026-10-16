@@ -26,8 +26,8 @@ use std::fmt;
 use std::num::NonZeroU64;
 #[cfg(test)]
 use std::rc::Rc;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -1638,6 +1638,11 @@ fn default_math_backend() -> Option<ConfiguredMathBackend> {
     None
 }
 
+fn default_theme_resource_ceiling() -> Arc<ThemeResourcePolicy> {
+    static CEILING: OnceLock<Arc<ThemeResourcePolicy>> = OnceLock::new();
+    Arc::clone(CEILING.get_or_init(|| Arc::new(ThemeResourcePolicy::interactive())))
+}
+
 /// Immutable render services and the policy used to capture one operation context.
 #[derive(Clone)]
 pub struct RenderEnvironment {
@@ -1694,7 +1699,7 @@ impl RenderEnvironment {
             font_catalog: FontCatalog::system_fonts(),
             font_source_policy: FontSourcePolicy::default(),
             theme_admission_policy: ThemeAdmissionPolicy::default(),
-            theme_resource_ceiling: Arc::new(ThemeResourcePolicy::interactive()),
+            theme_resource_ceiling: default_theme_resource_ceiling(),
             theme_portability: ThemePortabilityRequirement::BestEffort,
         }
     }

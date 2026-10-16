@@ -2,12 +2,8 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::sync::Arc;
 
-use sha2::{Digest, Sha256};
-
 use super::admission::{FontEmbeddingRequirement, FontSource, ThemeAdmissionError};
 use super::resources::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
-
-const FONT_CATALOG_FINGERPRINT_DOMAIN: &[u8] = b"merman-font-catalog-v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[non_exhaustive]
@@ -210,11 +206,13 @@ impl FontCatalog {
     /// This does not enumerate or freeze fonts installed on the host. Its fingerprint identifies
     /// the system-font catalog mode, not the host's installed font set or output portability.
     pub fn system_fonts() -> Self {
-        let mut hasher = Sha256::new();
-        update_len_prefixed(&mut hasher, FONT_CATALOG_FINGERPRINT_DOMAIN);
-        // Preserve the established canonical identity of the asset-free system-font mode.
-        update_len_prefixed(&mut hasher, b"default-parity");
-        Self(FontCatalogFingerprint(hasher.finalize().into()))
+        // SHA-256 of the established length-prefixed catalog domain and "default-parity".
+        // This identifies one fixed mode, so constructing it does not require hashing.
+        Self(FontCatalogFingerprint([
+            0xc6, 0xaa, 0x7a, 0xf7, 0x33, 0x22, 0xaa, 0xc3, 0x5c, 0xe4, 0x54, 0x83, 0x69, 0x14,
+            0x08, 0x48, 0xc9, 0xa4, 0xd0, 0x93, 0x70, 0x0a, 0xbc, 0xcb, 0x06, 0x3e, 0xa4, 0x7a,
+            0x17, 0x97, 0xd0, 0xaa,
+        ]))
     }
 
     pub fn available_sources(&self) -> impl ExactSizeIterator<Item = FontSource> + '_ {
@@ -276,11 +274,6 @@ pub(super) fn detect_font_container(bytes: &[u8]) -> Option<FontContainer> {
         b"wOF2" => Some(FontContainer::Woff2),
         _ => None,
     }
-}
-
-fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
-    hasher.update((bytes.len() as u64).to_be_bytes());
-    hasher.update(bytes);
 }
 
 fn hex_bytes(bytes: &[u8]) -> String {
