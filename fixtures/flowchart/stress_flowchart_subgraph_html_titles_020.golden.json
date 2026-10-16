@@ -158,7 +158,7 @@
           "d",
           "c"
         ],
-        "title": "<i>Child</i><br/>cluster",
+        "title": "<i>Child</i><br>cluster",
         "classes": [],
         "styles": [],
         "dir": null,
@@ -171,7 +171,7 @@
           "a",
           "CHILD"
         ],
-        "title": "<b>Parent</b><br/>cluster",
+        "title": "<b>Parent</b><br>cluster",
         "classes": [],
         "styles": [],
         "dir": null,

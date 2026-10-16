@@ -117,7 +117,7 @@
         "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "Hello<br/>- l1<br/>- l2",
+        "label": "Hello<br>- l1<br>- l2",
         "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",

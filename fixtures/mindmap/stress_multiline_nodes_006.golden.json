@@ -100,7 +100,7 @@
       {
         "id": "5",
         "domId": "node_5",
-        "label": "Child B1<br/>two lines",
+        "label": "Child B1<br>two lines",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -264,7 +264,7 @@
               "id": 5,
               "nodeId": "child_b_1",
               "level": 4,
-              "descr": "Child B1<br/>two lines",
+              "descr": "Child B1<br>two lines",
               "type": 3,
               "children": [],
               "width": 200,

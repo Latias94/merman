@@ -24,7 +24,7 @@
     "nodes": [
       {
         "id": "A",
-        "label": "fa:fa-twitter<br/>for peace",
+        "label": "fa:fa-twitter<br>for peace",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -43,7 +43,7 @@
       },
       {
         "id": "B",
-        "label": "fa:fa-camera-retro<br/>capture<br/>moments",
+        "label": "fa:fa-camera-retro<br>capture<br>moments",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",
@@ -62,7 +62,7 @@
       },
       {
         "id": "C",
-        "label": "fa:fa-ban<br/>forbidden",
+        "label": "fa:fa-ban<br>forbidden",
         "labelType": "string",
         "shape": "square",
         "layoutShape": "squareRect",

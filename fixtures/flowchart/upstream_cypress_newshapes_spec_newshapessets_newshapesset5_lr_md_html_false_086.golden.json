@@ -54,7 +54,7 @@
       },
       {
         "id": "n00",
-        "label": "This is **bold** </br>and <strong>strong</strong> for lined-document shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for lined-document shape",
         "labelType": "markdown",
         "shape": "lined-document",
         "layoutShape": "lined-document",
@@ -92,7 +92,7 @@
       },
       {
         "id": "n11",
-        "label": "This is **bold** </br>and <strong>strong</strong> for tagged-document shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for tagged-document shape",
         "labelType": "markdown",
         "shape": "tagged-document",
         "layoutShape": "tagged-document",
@@ -130,7 +130,7 @@
       },
       {
         "id": "n22",
-        "label": "This is **bold** </br>and <strong>strong</strong> for brace-l shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for brace-l shape",
         "labelType": "markdown",
         "shape": "brace-l",
         "layoutShape": "brace-l",
@@ -168,7 +168,7 @@
       },
       {
         "id": "n33",
-        "label": "This is **bold** </br>and <strong>strong</strong> for comment shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for comment shape",
         "labelType": "markdown",
         "shape": "comment",
         "layoutShape": "comment",
@@ -206,7 +206,7 @@
       },
       {
         "id": "n44",
-        "label": "This is **bold** </br>and <strong>strong</strong> for braces shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for braces shape",
         "labelType": "markdown",
         "shape": "braces",
         "layoutShape": "braces",
@@ -244,7 +244,7 @@
       },
       {
         "id": "n55",
-        "label": "This is **bold** </br>and <strong>strong</strong> for brace-r shape",
+        "label": "This is **bold** <br>and <strong>strong</strong> for brace-r shape",
         "labelType": "markdown",
         "shape": "brace-r",
         "layoutShape": "brace-r",

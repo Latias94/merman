@@ -120,7 +120,7 @@
         "arrowTypeEnd": "arrow_barb_neo",
         "style": "fill:none",
         "labelStyle": "",
-        "label": "Label with & &lt; > and \"quotes\"",
+        "label": "Label with &amp; &lt; &gt; and \"quotes\"",
         "classes": "transition",
         "arrowheadStyle": "fill: #333",
         "labelpos": "c",

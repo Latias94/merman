@@ -52,7 +52,7 @@
         "id2": "Duck",
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "Hello<br/>- l1<br/>- l2",
+        "title": "Hello<br>- l1<br>- l2",
         "relation": {
           "type1": 1,
           "type2": -1,

@@ -72,7 +72,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "this is a short<br/>note",
+        "label": "this is a short<br>note",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -90,7 +90,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "this is a short<br/>note",
+        "label": "this is a short<br>note",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

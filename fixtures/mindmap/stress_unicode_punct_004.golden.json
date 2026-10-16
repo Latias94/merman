@@ -100,7 +100,7 @@
       {
         "id": "5",
         "domId": "node_5",
-        "label": "Spacing<br/>and&nbsp;entities",
+        "label": "Spacing<br>and&nbsp;entities",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -235,7 +235,7 @@
           "id": 5,
           "nodeId": "child5",
           "level": 2,
-          "descr": "Spacing<br/>and&nbsp;entities",
+          "descr": "Spacing<br>and&nbsp;entities",
           "type": 3,
           "children": [],
           "width": 200,

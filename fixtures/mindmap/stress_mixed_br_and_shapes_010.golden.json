@@ -6,7 +6,7 @@
       {
         "id": "0",
         "domId": "node_0",
-        "label": "Root<br/>Node",
+        "label": "Root<br>Node",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -43,7 +43,7 @@
       {
         "id": "2",
         "domId": "node_2",
-        "label": "Circle<br/>shape",
+        "label": "Circle<br>shape",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -81,7 +81,7 @@
       {
         "id": "4",
         "domId": "node_4",
-        "label": "Round<br/>rectangle",
+        "label": "Round<br>rectangle",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rounded",
@@ -100,7 +100,7 @@
       {
         "id": "5",
         "domId": "node_5",
-        "label": "Square<br/>label",
+        "label": "Square<br>label",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "rect",
@@ -215,7 +215,7 @@
       "id": 0,
       "nodeId": "root",
       "level": 0,
-      "descr": "Root<br/>Node",
+      "descr": "Root<br>Node",
       "type": 3,
       "children": [
         {
@@ -229,7 +229,7 @@
               "id": 2,
               "nodeId": "a1",
               "level": 4,
-              "descr": "Circle<br/>shape",
+              "descr": "Circle<br>shape",
               "type": 3,
               "children": [],
               "width": 200,
@@ -256,14 +256,14 @@
           "id": 4,
           "nodeId": "b",
           "level": 2,
-          "descr": "Round<br/>rectangle",
+          "descr": "Round<br>rectangle",
           "type": 1,
           "children": [
             {
               "id": 5,
               "nodeId": "b1",
               "level": 4,
-              "descr": "Square<br/>label",
+              "descr": "Square<br>label",
               "type": 2,
               "children": [],
               "width": 200,

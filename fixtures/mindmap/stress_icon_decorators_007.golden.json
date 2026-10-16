@@ -63,7 +63,7 @@
       {
         "id": "3",
         "domId": "node_3",
-        "label": "Leaf A2<br/>with icon",
+        "label": "Leaf A2<br>with icon",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -274,7 +274,7 @@
               "id": 3,
               "nodeId": "a2",
               "level": 4,
-              "descr": "Leaf A2<br/>with icon",
+              "descr": "Leaf A2<br>with icon",
               "type": 3,
               "children": [],
               "width": 200,

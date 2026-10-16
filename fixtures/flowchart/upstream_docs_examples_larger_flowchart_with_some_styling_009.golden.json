@@ -120,7 +120,7 @@
       },
       {
         "id": "di",
-        "label": "Diamond with <br/> line break",
+        "label": "Diamond with <br> line break",
         "labelType": "text",
         "shape": "diamond",
         "layoutShape": "diamond",
@@ -283,7 +283,7 @@
         "type": "arrow_point",
         "stroke": "normal",
         "length": 1,
-        "label": "Two line<br/>edge comment",
+        "label": "Two line<br>edge comment",
         "labelType": "text",
         "style": [],
         "classes": [],

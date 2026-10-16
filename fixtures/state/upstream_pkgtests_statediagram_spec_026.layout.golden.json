@@ -68,7 +68,7 @@
           "height": 291.0,
           "diff": 0.0,
           "offset_y": 0.0,
-          "title": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
+          "title": "Line1<br>Line2<br>Line3<br>Line4<br>Line5",
           "title_label": {
             "x": 111.0,
             "y": 151.5,

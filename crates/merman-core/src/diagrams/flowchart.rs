@@ -2772,7 +2772,7 @@ A -->|second &lt; owner| B
             .iter()
             .find(|node| node.id == "C")
             .expect("comparison node");
-        assert_eq!(comparison.label.as_deref(), Some("x &lt; y and y > z"));
+        assert_eq!(comparison.label.as_deref(), Some("x &lt; y and y &gt; z"));
         assert_eq!(
             render_context.node_label_for_render(comparison),
             Some("x &lt; y and y &gt; z")

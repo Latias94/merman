@@ -120,7 +120,7 @@
       {
         "id": "6",
         "domId": "node_6",
-        "label": "On effectiveness<br/>and features",
+        "label": "On effectiveness<br>and features",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "defaultMindmapNode",
@@ -132,7 +132,7 @@
         "centerLabel": true,
         "look": "classic",
         "level": 4,
-        "nodeId": "On effectiveness<br/>and features",
+        "nodeId": "On effectiveness<br>and features",
         "type": 0,
         "section": 1
       },
@@ -523,9 +523,9 @@
           "children": [
             {
               "id": 6,
-              "nodeId": "On effectiveness<br/>and features",
+              "nodeId": "On effectiveness<br>and features",
               "level": 4,
-              "descr": "On effectiveness<br/>and features",
+              "descr": "On effectiveness<br>and features",
               "type": 0,
               "children": [],
               "width": 200,

@@ -177,7 +177,7 @@
       {
         "id": "9",
         "domId": "node_9",
-        "label": "grand<br/>child 6",
+        "label": "grand<br>child 6",
         "labelType": "markdown",
         "isGroup": false,
         "shape": "mindmapCircle",
@@ -404,7 +404,7 @@
               "id": 9,
               "nodeId": "gc6",
               "level": 6,
-              "descr": "grand<br/>child 6",
+              "descr": "grand<br>child 6",
               "type": 3,
               "children": [],
               "width": 200,

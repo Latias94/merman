@@ -109,7 +109,7 @@
       {
         "labelStyle": "",
         "shape": "noteGroup",
-        "label": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
+        "label": "Line1<br>Line2<br>Line3<br>Line4<br>Line5",
         "cssClasses": "statediagram-state",
         "cssStyles": [],
         "cssCompiledStyles": [],
@@ -127,7 +127,7 @@
       {
         "labelStyle": "",
         "shape": "note",
-        "label": "Line1<br>Line2<br/>Line3<br />Line4<br\t/>Line5",
+        "label": "Line1<br>Line2<br>Line3<br>Line4<br>Line5",
         "cssClasses": "statediagram-note",
         "cssStyles": [],
         "cssCompiledStyles": [],

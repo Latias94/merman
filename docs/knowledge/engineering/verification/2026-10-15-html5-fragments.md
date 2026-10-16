@@ -91,3 +91,39 @@ Nine independent code-review lenses completed with no remaining actionable findi
 The review used Codex subagents only. No code was sent to an external model.
 A later three-agent deep-review attempt ended with platform policy errors and produced no reports; it is not counted as completed coverage.
 The delivery branch is `refactor/html5-fragments`. Git and the PR record track its submission; no release was performed. Complete cross-platform and browser parity checks remain owned by the selected PR workflows.
+
+
+## PR #203 Default-Workspace Follow-up (2026-10-16)
+
+The Linux default-workspace run exposed two label-measurement regressions and five stale
+serialization assertions/projections. HTML paragraphs now collapse ASCII whitespace while
+preserving non-breaking spaces. Ordinary Markdown paragraphs retain the browser's 1/64px width
+lattice, while unsupported raw blocks and min-content overflow retain the host measurer's
+precision. Paragraph gaps and image-only lines are derived from the final sanitized XHTML.
+
+Complete plain paragraphs still use the host's complete-label measurement request. This matters
+for profiles that supply a captured browser label box: replacing that request with per-word
+measurements changes terminal geometry even when the deterministic text profile passes. The
+controlled browser-terminal test passed against the submitted implementation, caught that
+follow-up regression, and passed again after restoring the complete-label request with the
+whitespace and Markdown width rules above.
+
+Six focused regressions cover whitespace/NBSP, Markdown quantization, raw blocks, min-content
+overflow, entity-only root text, and entities beside an image. Canonical HTML assertions now
+expect the selected sanitizer's serialization, including `<br>` and escaped angle text.
+
+Snapshot audit: 156 model files (544 string leaves) and 24 layout files (27 string leaves) changed.
+No numeric value, non-string value, array order, or object/array structure changed. All 571 old/new
+string pairs produced equivalent DOMs in the selected DOMPurify oracle's `text/html` body parsing
+context, with attribute order normalized. Template-fragment parsing was not used as an equivalent
+context. No layout coordinate was refreshed to hide a regression.
+
+Follow-up validation:
+
+- Focused label and controlled browser-terminal tests: 32 passed.
+- Default-workspace feature unification, core/renderer libraries, and the affected snapshot,
+  Flowchart, Usecase, Mindmap, Architecture, and Swimlane integration owners: 5,569 passed,
+  three intentional skips. Cargo build parallelism was limited to two jobs after an earlier
+  unconstrained local build exhausted Windows commit memory.
+- The exact full SVG structure gate above was repeated successfully after the follow-up: 37 families, 3,756 selected, 3,729 rendered, and 27 intentional skips. Existing exact diagnostic residual receipts remained applicable.
+- `cargo fmt --all -- --check` and `git diff --check`: passed.

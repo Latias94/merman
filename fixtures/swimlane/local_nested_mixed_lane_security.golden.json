@@ -20,7 +20,7 @@
     "nodes": [
       {
         "id": "A",
-        "label": "A & &lt; node",
+        "label": "A &amp; &lt; node",
         "labelType": "string",
         "layoutShape": "squareRect",
         "shape": "square",
@@ -41,7 +41,7 @@
       },
       {
         "id": "B",
-        "label": "B & &lt; node",
+        "label": "B &amp; &lt; node",
         "labelType": "string",
         "layoutShape": "squareRect",
         "shape": "square",
@@ -60,7 +60,7 @@
       },
       {
         "id": "C",
-        "label": "Loose & &lt; node",
+        "label": "Loose &amp; &lt; node",
         "labelType": "string",
         "layoutShape": "squareRect",
         "shape": "square",
