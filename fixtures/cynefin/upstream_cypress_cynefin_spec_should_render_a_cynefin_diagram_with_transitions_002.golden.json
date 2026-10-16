@@ -1,65 +1,65 @@
 {
   "diagramType": "cynefin",
   "model": {
-    "type": "cynefin",
-    "title": "Strategy Categorization",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "domains": [
       {
-        "name": "complex",
         "items": [
           {
             "label": "Market research"
           }
-        ]
+        ],
+        "name": "complex"
       },
       {
-        "name": "complicated",
         "items": [
           {
             "label": "Competitive analysis"
           }
-        ]
+        ],
+        "name": "complicated"
       },
       {
-        "name": "clear",
         "items": [
           {
             "label": "Standard pricing"
           }
-        ]
+        ],
+        "name": "clear"
       },
       {
-        "name": "chaotic",
         "items": [
           {
             "label": "Crisis management"
           }
-        ]
+        ],
+        "name": "chaotic"
       }
     ],
+    "title": "Strategy Categorization",
     "transitions": [
       {
         "from": "complex",
-        "to": "complicated",
-        "label": "Pattern identified"
+        "label": "Pattern identified",
+        "to": "complicated"
       },
       {
         "from": "complicated",
-        "to": "clear",
-        "label": "Best practice codified"
+        "label": "Best practice codified",
+        "to": "clear"
       },
       {
         "from": "clear",
-        "to": "chaotic",
-        "label": "Complacency"
+        "label": "Complacency",
+        "to": "chaotic"
       },
       {
         "from": "chaotic",
-        "to": "complex",
-        "label": "Stabilized"
+        "label": "Stabilized",
+        "to": "complex"
       }
-    ]
+    ],
+    "type": "cynefin"
   }
 }

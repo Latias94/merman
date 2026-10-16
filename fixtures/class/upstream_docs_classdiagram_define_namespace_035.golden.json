@@ -1,102 +1,102 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "Triangle": {
-        "id": "Triangle",
-        "type": "",
-        "label": "Triangle",
-        "text": "Triangle",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
+      "Rectangle": {
         "annotations": [],
-        "styles": [],
-        "domId": "classId-Triangle-0",
-        "parent": "BaseShapes",
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Rectangle-1",
+        "haveCallback": false,
+        "id": "Rectangle",
+        "label": "Rectangle",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Rectangle": {
-        "id": "Rectangle",
-        "type": "",
-        "label": "Rectangle",
-        "text": "Rectangle",
-        "cssClasses": "default",
-        "methods": [],
         "members": [
           {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "double width",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "double width",
+            "id": "double width",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "double width",
-            "cssStyle": ""
+            "visibility": ""
           },
           {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "double height",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "double height",
+            "id": "double height",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "double height",
-            "cssStyle": ""
+            "visibility": ""
           }
         ],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Rectangle-1",
+        "methods": [],
         "parent": "BaseShapes",
+        "styles": [],
+        "text": "Rectangle",
+        "tooltip": null,
+        "type": ""
+      },
+      "Triangle": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Triangle-0",
+        "haveCallback": false,
+        "id": "Triangle",
+        "label": "Triangle",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": "BaseShapes",
+        "styles": [],
+        "text": "Triangle",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      }
-    },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {
-      "BaseShapes": {
-        "id": "BaseShapes",
-        "label": "BaseShapes",
-        "domId": "classId-BaseShapes-0",
-        "classIds": [
-          "Triangle",
-          "Rectangle"
-        ],
-        "noteIds": [],
-        "parent": null,
-        "explicit": true
+        "type": ""
       }
     },
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "BaseShapes": {
+        "classIds": [
+          "Triangle",
+          "Rectangle"
+        ],
+        "domId": "classId-BaseShapes-0",
+        "explicit": true,
+        "id": "BaseShapes",
+        "label": "BaseShapes",
+        "noteIds": [],
+        "parent": null
+      }
+    },
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

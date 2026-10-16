@@ -7,19 +7,41 @@
         "title": "API"
       }
     ],
-    "direction": "LR",
     "diagnostics": [],
+    "direction": "LR",
+    "edges": [
+      {
+        "edgeSemantic": "sequence",
+        "end": "tool",
+        "id": "L_decision_tool_0",
+        "label": "yes",
+        "length": 1,
+        "start": "decision",
+        "stroke": "normal",
+        "type": "arrow_point"
+      },
+      {
+        "edgeSemantic": "sequence",
+        "end": "api",
+        "id": "L_tool_api_0",
+        "length": 1,
+        "start": "tool",
+        "stroke": "normal",
+        "type": "arrow_point"
+      }
+    ],
     "subGraphs": [
       {
         "id": "outer",
-        "title": "Outer",
         "nodes": [
           "decision",
           "tool"
         ],
+        "title": "Outer",
         "type": "flow"
       }
     ],
+    "type": "agentflow",
     "vertices": [
       {
         "id": "decision",
@@ -33,28 +55,6 @@
         "shape": "subroutine",
         "vertexKind": "tool"
       }
-    ],
-    "edges": [
-      {
-        "start": "decision",
-        "end": "tool",
-        "id": "L_decision_tool_0",
-        "label": "yes",
-        "edgeSemantic": "sequence",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1
-      },
-      {
-        "start": "tool",
-        "end": "api",
-        "id": "L_tool_api_0",
-        "edgeSemantic": "sequence",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1
-      }
-    ],
-    "type": "agentflow"
+    ]
   }
 }

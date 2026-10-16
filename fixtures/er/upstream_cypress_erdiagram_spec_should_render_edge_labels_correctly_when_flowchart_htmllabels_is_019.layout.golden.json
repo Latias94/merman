@@ -2,169 +2,140 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-ADDRESS-3",
-          "x": 280.968,
-          "y": 228.9,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-CUSTOMER-0",
-          "x": 231.408,
-          "y": 52.5,
-          "width": 107.2,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-INVOICE-4",
-          "x": 205.42,
-          "y": 405.3,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-LINE-ITEM-2",
-          "x": 63.71,
-          "y": 405.3,
-          "width": 103.42,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-ORDER-1",
-          "x": 134.565,
-          "y": 228.9,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 378.968,
+        "max_y": 445.8,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
+          "from": "entity-CUSTOMER-0",
+          "from_cluster": null,
           "id": "er-rel-0",
-          "from": "entity-CUSTOMER-0",
-          "to": "entity-ORDER-1",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 209.608,
-              "y": 93.0
-            },
-            {
-              "x": 209.608,
-              "y": 113.0
-            },
-            {
-              "x": 134.565,
-              "y": 113.0
-            },
-            {
-              "x": 134.565,
-              "y": 188.4
-            }
-          ],
           "label": {
-            "x": 134.075,
-            "y": 140.7,
+            "height": 15.4,
             "width": 34.02,
-            "height": 15.4
+            "x": 134.075,
+            "y": 140.7
           },
+          "points": [
+            {
+              "x": 209.608,
+              "y": 93.0
+            },
+            {
+              "x": 209.608,
+              "y": 113.0
+            },
+            {
+              "x": 134.565,
+              "y": 113.0
+            },
+            {
+              "x": 134.565,
+              "y": 188.4
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ORDER-1",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
+          "from": "entity-ORDER-1",
+          "from_cluster": null,
           "id": "er-rel-1",
-          "from": "entity-ORDER-1",
-          "to": "entity-LINE-ITEM-2",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 121.232,
-              "y": 269.4
-            },
-            {
-              "x": 121.232,
-              "y": 289.4
-            },
-            {
-              "x": 63.71,
-              "y": 289.4
-            },
-            {
-              "x": 63.71,
-              "y": 364.8
-            }
-          ],
           "label": {
-            "x": 63.24,
-            "y": 317.1,
+            "height": 15.4,
             "width": 46.06,
-            "height": 15.4
+            "x": 63.24,
+            "y": 317.1
           },
+          "points": [
+            {
+              "x": 121.232,
+              "y": 269.4
+            },
+            {
+              "x": 121.232,
+              "y": 289.4
+            },
+            {
+              "x": 63.71,
+              "y": 289.4
+            },
+            {
+              "x": 63.71,
+              "y": 364.8
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-LINE-ITEM-2",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
+          "from": "entity-CUSTOMER-0",
+          "from_cluster": null,
           "id": "er-rel-2",
-          "from": "entity-CUSTOMER-0",
-          "to": "entity-ADDRESS-3",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 231.408,
-              "y": 93.0
-            },
-            {
-              "x": 231.408,
-              "y": 168.4
-            },
-            {
-              "x": 267.635,
-              "y": 168.4
-            },
-            {
-              "x": 267.635,
-              "y": 188.4
-            }
-          ],
           "label": {
-            "x": 231.218,
-            "y": 140.7,
+            "height": 15.4,
             "width": 60.62,
-            "height": 15.4
+            "x": 231.218,
+            "y": 140.7
           },
+          "points": [
+            {
+              "x": 231.408,
+              "y": 93.0
+            },
+            {
+              "x": 231.408,
+              "y": 168.4
+            },
+            {
+              "x": 267.635,
+              "y": 168.4
+            },
+            {
+              "x": 267.635,
+              "y": 188.4
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ADDRESS-3",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-CUSTOMER-0",
-          "to": "entity-ADDRESS-3",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-3",
+          "label": {
+            "height": 15.4,
+            "width": 97.44,
+            "x": 330.248,
+            "y": 140.7
+          },
           "points": [
             {
               "x": 253.208,
@@ -191,26 +162,26 @@
               "y": 188.4
             }
           ],
-          "label": {
-            "x": 330.248,
-            "y": 140.7,
-            "width": 97.44,
-            "height": 15.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ADDRESS-3",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-4",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-ORDER-1",
-          "to": "entity-INVOICE-4",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-4",
+          "label": {
+            "height": 15.4,
+            "width": 52.5,
+            "x": 205.17,
+            "y": 317.1
+          },
           "points": [
             {
               "x": 147.898,
@@ -229,27 +200,56 @@
               "y": 364.8
             }
           ],
-          "label": {
-            "x": 205.17,
-            "y": 317.1,
-            "width": 52.5,
-            "height": 15.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-INVOICE-4",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 378.968,
-        "max_y": 445.8
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "entity-ADDRESS-3",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 280.968,
+          "y": 228.9
+        },
+        {
+          "height": 81.0,
+          "id": "entity-CUSTOMER-0",
+          "is_cluster": false,
+          "width": 107.2,
+          "x": 231.408,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-INVOICE-4",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 205.42,
+          "y": 405.3
+        },
+        {
+          "height": 81.0,
+          "id": "entity-LINE-ITEM-2",
+          "is_cluster": false,
+          "width": 103.42,
+          "x": 63.71,
+          "y": 405.3
+        },
+        {
+          "height": 81.0,
+          "id": "entity-ORDER-1",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 134.565,
+          "y": 228.9
+        }
+      ]
     }
   }
 }

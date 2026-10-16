@@ -2,153 +2,153 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 782.0,
-        "max_y": 421.896
-      },
-      "width": 832.0,
-      "height": 431.896,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Context",
-      "title": "Relationship override and style",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 632.0,
+          "descr": null,
           "height": 305.896,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 632.0,
+          "x": 100.0,
+          "y": 66.0
         }
       ],
-      "shapes": [
-        {
-          "alias": "a",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "A",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "b",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "B",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        }
-      ],
+      "bounds": {
+        "max_x": 782.0,
+        "max_y": 421.896,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Context",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 431.896,
       "rels": [
         {
-          "from": "a",
-          "to": "b",
-          "rel_type": "rel_b",
-          "start_point": {
-            "x": 298.658,
-            "y": 243.948
+          "descr": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "d2",
+            "width": 12.0,
+            "y": 0.0
           },
           "end_point": {
             "x": 533.342,
             "y": 243.948
           },
+          "from": "a",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "override",
+            "width": 39.0,
+            "y": 0.0
+          },
           "offset_x": 10.0,
           "offset_y": 20.0,
-          "label": {
-            "text": "override",
-            "y": 0.0,
-            "width": 39.0,
-            "height": 13.0,
-            "line_count": 1.0
+          "rel_type": "rel_b",
+          "start_point": {
+            "x": 298.658,
+            "y": 243.948
           },
           "techn": {
+            "height": 13.0,
+            "line_count": 1.0,
             "text": "tech2",
-            "y": 0.0,
             "width": 27.0,
-            "height": 13.0,
-            "line_count": 1.0
+            "y": 0.0
           },
-          "descr": {
-            "text": "d2",
-            "y": 0.0,
-            "width": 12.0,
-            "height": 13.0,
-            "line_count": 1.0
-          }
+          "to": "b"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "a",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "A",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "b",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "B",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
+        }
+      ],
+      "title": "Relationship override and style",
+      "use_max_width": true,
+      "width": 832.0
     }
   }
 }

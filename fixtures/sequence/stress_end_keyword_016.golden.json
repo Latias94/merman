@@ -1,7 +1,7 @@
 {
   "diagramType": "error",
   "model": {
-    "type": "error",
-    "errorMessage": "Diagram parse error (sequence): Unexpected character at 134"
+    "errorMessage": "Diagram parse error (sequence): Unexpected character at 134",
+    "type": "error"
   }
 }

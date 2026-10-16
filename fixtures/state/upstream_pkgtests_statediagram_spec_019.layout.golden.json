@@ -2,47 +2,44 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 196.0,
+        "max_y": 337.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Configuring",
-          "x": 104.0,
-          "y": 294.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Idle",
-          "x": 104.0,
-          "y": 116.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "NotShooting",
-          "x": 104.0,
-          "y": 174.5,
-          "width": 184.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 325.0,
-          "is_cluster": true
-        },
-        {
-          "id": "NotShooting_start",
+          "id": "NotShooting",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "Not Shooting State",
+          "title_label": {
+            "height": 21.0,
+            "width": 110.6,
+            "x": 104.0,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 184.0,
           "x": 104.0,
-          "y": 67.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
+          "y": 174.5
         }
       ],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NotShooting_start",
-          "to": "Idle",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 104.0,
@@ -53,67 +50,72 @@
               "y": 98.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge1",
-          "from": "Idle",
-          "to": "Configuring",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 123.067,
-              "y": 135.0
-            },
-            {
-              "x": 123.067,
-              "y": 165.0
-            },
-            {
-              "x": 139.41,
-              "y": 165.0
-            },
-            {
-              "x": 139.41,
-              "y": 246.0
-            },
-            {
-              "x": 123.067,
-              "y": 246.0
-            },
-            {
-              "x": 123.067,
-              "y": 276.0
-            }
-          ],
-          "label": {
-            "x": 139.32,
-            "y": 205.5,
-            "width": 50.82,
-            "height": 21.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge2",
-          "from": "Configuring",
+          "stroke_dasharray": null,
           "to": "Idle",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Idle",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 21.0,
+            "width": 50.82,
+            "x": 139.32,
+            "y": 205.5
+          },
+          "points": [
+            {
+              "x": 123.067,
+              "y": 135.0
+            },
+            {
+              "x": 123.067,
+              "y": 165.0
+            },
+            {
+              "x": 139.41,
+              "y": 165.0
+            },
+            {
+              "x": 139.41,
+              "y": 246.0
+            },
+            {
+              "x": 123.067,
+              "y": 246.0
+            },
+            {
+              "x": 123.067,
+              "y": 276.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Configuring",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Configuring",
+          "from_cluster": null,
+          "id": "edge2",
+          "label": {
+            "height": 21.0,
+            "width": 50.82,
+            "x": 68.5,
+            "y": 205.5
+          },
           "points": [
             {
               "x": 84.933,
@@ -140,50 +142,48 @@
               "y": 135.0
             }
           ],
-          "label": {
-            "x": 68.5,
-            "y": 205.5,
-            "width": 50.82,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Idle",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "NotShooting",
+          "height": 37.0,
+          "id": "Configuring",
+          "is_cluster": false,
+          "width": 136.0,
           "x": 104.0,
-          "y": 174.5,
-          "width": 184.0,
+          "y": 294.5
+        },
+        {
+          "height": 37.0,
+          "id": "Idle",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 104.0,
+          "y": 116.5
+        },
+        {
           "height": 325.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Not Shooting State",
-          "title_label": {
-            "x": 104.0,
-            "y": 22.5,
-            "width": 110.6,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "NotShooting",
+          "is_cluster": true,
+          "width": 184.0,
+          "x": 104.0,
+          "y": 174.5
+        },
+        {
+          "height": 14.0,
+          "id": "NotShooting_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 104.0,
+          "y": 67.0
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 196.0,
-        "max_y": 337.0
-      }
+      ]
     }
   }
 }

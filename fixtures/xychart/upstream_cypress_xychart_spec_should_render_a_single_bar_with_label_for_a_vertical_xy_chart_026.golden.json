@@ -1,38 +1,38 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": "Single Bar Chart",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "Categories",
-      "categories": [
-        "A"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "Value",
-      "min": 0.0,
-      "max": 100.0
-    },
+    "accTitle": null,
+    "orientation": "vertical",
     "plots": [
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          75.0
-        ],
         "data": [
           [
             "A",
             75.0
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          75.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Single Bar Chart",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "A"
+      ],
+      "title": "Categories",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 100.0,
+      "min": 0.0,
+      "title": "Value",
+      "type": "linear"
+    }
   }
 }

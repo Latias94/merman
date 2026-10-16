@@ -1,46 +1,46 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "id2",
-        "label": "In progress",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "id2",
-        "label": "In progress",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "In progress",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "docs",
-        "parentId": "id2",
-        "label": "Create Blog about the new diagram",
-        "isGroup": false,
-        "ticket": "MC-2037",
-        "priority": "Very Low",
         "assigned": "knsv",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "docs",
+        "isGroup": false,
+        "label": "Create Blog about the new diagram",
+        "level": 4,
+        "parentId": "id2",
+        "priority": "Very Low",
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": "MC-2037"
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "id2",
+        "isGroup": false,
+        "label": "In progress",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

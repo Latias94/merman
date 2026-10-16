@@ -2,213 +2,213 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [
+        {
+          "class_index": 0.0,
+          "d": "M 10 -2 L 60 -2",
+          "from": "1-abcdefg",
+          "to": "2-abcdefg"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 10 -2 L 10 68 A 20 20, 0, 0, 0, 30 88 L 110 88",
+          "from": "1-abcdefg",
+          "to": "3-abcdefg"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 60 -2 L 160 -2",
+          "from": "2-abcdefg",
+          "to": "3-<dynamic>"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 110 88 L 140 88 A 20 20, 0, 0, 0, 160 68 L 160 -2",
+          "from": "3-abcdefg",
+          "to": "3-<dynamic>"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 110 88 L 210 88",
+          "from": "3-abcdefg",
+          "to": "4-abcdefg"
+        },
+        {
+          "class_index": 2.0,
+          "d": "M 110 88 L 110 158 A 20 20, 0, 0, 0, 130 178 L 260 178",
+          "from": "3-abcdefg",
+          "to": "5-abcdefg"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 210 88 L 310 88",
+          "from": "4-abcdefg",
+          "to": "6-<dynamic>"
+        },
+        {
+          "class_index": 2.0,
+          "d": "M 260 178 L 290 178 A 20 20, 0, 0, 0, 310 158 L 310 88",
+          "from": "5-abcdefg",
+          "to": "6-<dynamic>"
+        }
+      ],
       "bounds": {
-        "min_x": -91.72,
-        "min_y": -20.0,
         "max_x": 358.0,
-        "max_y": 196.0
+        "max_y": 196.0,
+        "min_x": -91.72,
+        "min_y": -20.0
       },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 350.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         },
         {
-          "name": "x",
-          "index": 1.0,
-          "pos": 90.0,
+          "bbox_height": 17.6,
           "bbox_width": 6.88,
-          "bbox_height": 17.6
+          "index": 1.0,
+          "name": "x",
+          "pos": 90.0
         },
         {
-          "name": "y",
-          "index": 2.0,
-          "pos": 180.0,
+          "bbox_height": 17.6,
           "bbox_width": 8.8,
-          "bbox_height": 17.6
+          "index": 2.0,
+          "name": "y",
+          "pos": 180.0
         }
       ],
       "commits": [
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "1-abcdefg",
           "message": "",
-          "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [],
-          "branch": "main",
           "pos": 0.0,
           "pos_with_offset": 10.0,
+          "seq": 0.0,
+          "tags": [],
           "x": 10.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "2-abcdefg",
           "message": "",
-          "seq": 1.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "1-abcdefg"
           ],
-          "branch": "main",
           "pos": 50.0,
           "pos_with_offset": 60.0,
+          "seq": 1.0,
+          "tags": [],
           "x": 60.0,
           "y": -2.0
         },
         {
+          "branch": "x",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "3-abcdefg",
           "message": "",
-          "seq": 2.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "1-abcdefg"
           ],
-          "branch": "x",
           "pos": 100.0,
           "pos_with_offset": 110.0,
+          "seq": 2.0,
+          "tags": [],
           "x": 110.0,
           "y": 88.0
         },
         {
+          "branch": "main",
+          "commit_type": 3.0,
+          "custom_id": false,
+          "custom_type": null,
           "id": "3-<dynamic>",
           "message": "merged branch x into main",
-          "seq": 3.0,
-          "commit_type": 3.0,
-          "custom_type": null,
-          "custom_id": false,
-          "tags": [],
           "parents": [
             "2-abcdefg",
             "3-abcdefg"
           ],
-          "branch": "main",
           "pos": 150.0,
           "pos_with_offset": 160.0,
+          "seq": 3.0,
+          "tags": [],
           "x": 160.0,
           "y": -2.0
         },
         {
+          "branch": "x",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "4-abcdefg",
           "message": "",
-          "seq": 4.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "3-abcdefg"
           ],
-          "branch": "x",
           "pos": 200.0,
           "pos_with_offset": 210.0,
+          "seq": 4.0,
+          "tags": [],
           "x": 210.0,
           "y": 88.0
         },
         {
+          "branch": "y",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "5-abcdefg",
           "message": "",
-          "seq": 5.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "3-abcdefg"
           ],
-          "branch": "y",
           "pos": 250.0,
           "pos_with_offset": 260.0,
+          "seq": 5.0,
+          "tags": [],
           "x": 260.0,
           "y": 178.0
         },
         {
+          "branch": "x",
+          "commit_type": 3.0,
+          "custom_id": false,
+          "custom_type": null,
           "id": "6-<dynamic>",
           "message": "merged branch y into x",
-          "seq": 6.0,
-          "commit_type": 3.0,
-          "custom_type": null,
-          "custom_id": false,
-          "tags": [],
           "parents": [
             "4-abcdefg",
             "5-abcdefg"
           ],
-          "branch": "x",
           "pos": 300.0,
           "pos_with_offset": 310.0,
+          "seq": 6.0,
+          "tags": [],
           "x": 310.0,
           "y": 88.0
         }
       ],
-      "arrows": [
-        {
-          "from": "1-abcdefg",
-          "to": "2-abcdefg",
-          "class_index": 0.0,
-          "d": "M 10 -2 L 60 -2"
-        },
-        {
-          "from": "1-abcdefg",
-          "to": "3-abcdefg",
-          "class_index": 1.0,
-          "d": "M 10 -2 L 10 68 A 20 20, 0, 0, 0, 30 88 L 110 88"
-        },
-        {
-          "from": "2-abcdefg",
-          "to": "3-<dynamic>",
-          "class_index": 0.0,
-          "d": "M 60 -2 L 160 -2"
-        },
-        {
-          "from": "3-abcdefg",
-          "to": "3-<dynamic>",
-          "class_index": 1.0,
-          "d": "M 110 88 L 140 88 A 20 20, 0, 0, 0, 160 68 L 160 -2"
-        },
-        {
-          "from": "3-abcdefg",
-          "to": "4-abcdefg",
-          "class_index": 1.0,
-          "d": "M 110 88 L 210 88"
-        },
-        {
-          "from": "3-abcdefg",
-          "to": "5-abcdefg",
-          "class_index": 2.0,
-          "d": "M 110 88 L 110 158 A 20 20, 0, 0, 0, 130 178 L 260 178"
-        },
-        {
-          "from": "4-abcdefg",
-          "to": "6-<dynamic>",
-          "class_index": 1.0,
-          "d": "M 210 88 L 310 88"
-        },
-        {
-          "from": "5-abcdefg",
-          "to": "6-<dynamic>",
-          "class_index": 2.0,
-          "d": "M 260 178 L 290 178 A 20 20, 0, 0, 0, 310 158 L 310 88"
-        }
-      ]
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 350.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

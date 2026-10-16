@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "U",
       "WEB",
@@ -16,191 +14,193 @@
       "LOG"
     ],
     "actors": {
-      "U": {
-        "name": "U",
-        "description": "User",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
-      "WEB": {
-        "name": "WEB",
-        "description": "Web",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "API": {
-        "name": "API",
         "description": "API",
-        "wrap": false,
-        "type": "control",
         "links": {},
-        "properties": {}
+        "name": "API",
+        "properties": {},
+        "type": "control",
+        "wrap": false
       },
       "AUTH": {
-        "name": "AUTH",
         "description": "AUTH",
-        "wrap": false,
+        "links": {},
+        "name": "AUTH",
+        "properties": {},
         "type": "entity",
-        "links": {},
-        "properties": {}
-      },
-      "Q": {
-        "name": "Q",
-        "description": "Q",
-        "wrap": false,
-        "type": "queue",
-        "links": {},
-        "properties": {}
-      },
-      "W": {
-        "name": "W",
-        "description": "W",
-        "wrap": false,
-        "type": "boundary",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "DB": {
-        "name": "DB",
         "description": "DB",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "DB",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       },
       "LOG": {
-        "name": "LOG",
         "description": "LOG",
-        "wrap": false,
-        "type": "collections",
         "links": {},
-        "properties": {}
+        "name": "LOG",
+        "properties": {},
+        "type": "collections",
+        "wrap": false
+      },
+      "Q": {
+        "description": "Q",
+        "links": {},
+        "name": "Q",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
+      },
+      "U": {
+        "description": "User",
+        "links": {},
+        "name": "U",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "W": {
+        "description": "W",
+        "links": {},
+        "name": "W",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
+      },
+      "WEB": {
+        "description": "Web",
+        "links": {},
+        "name": "WEB",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "U",
-        "to": "WEB",
-        "message": "open",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "WEB",
-        "to": "API",
-        "message": "request",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "API",
-        "to": "AUTH",
-        "message": "verify",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "AUTH",
-        "to": "API",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "API",
-        "to": "Q",
-        "message": "enqueue",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Q",
-        "to": "W",
-        "message": "deliver",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "W",
-        "to": "DB",
-        "message": "write",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "DB",
-        "to": "W",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "W",
-        "to": "LOG",
-        "message": "record",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "LOG",
-        "to": "W",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "API",
-        "to": "WEB",
-        "message": "200",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "WEB",
-        "to": "U",
-        "message": "done",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "U",
+        "id": "0",
+        "message": "open",
+        "to": "WEB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "WEB",
+        "id": "1",
+        "message": "request",
+        "to": "API",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "2",
+        "message": "verify",
+        "to": "AUTH",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "AUTH",
+        "id": "3",
+        "message": "ok",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "4",
+        "message": "enqueue",
+        "to": "Q",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Q",
+        "id": "5",
+        "message": "deliver",
+        "to": "W",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "6",
+        "message": "write",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "7",
+        "message": "ok",
+        "to": "W",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "8",
+        "message": "record",
+        "to": "LOG",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "LOG",
+        "id": "9",
+        "message": "ok",
+        "to": "W",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "10",
+        "message": "200",
+        "to": "WEB",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "WEB",
+        "id": "11",
+        "message": "done",
+        "to": "U",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

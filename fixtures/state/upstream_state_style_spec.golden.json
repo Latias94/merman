@@ -1,12 +1,176 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "b",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "a",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "b_b",
+        "id": "edge1",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "a_a",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "b",
+        "id": "edge2",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "a",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "b",
+        "id": "edge3",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "b",
+        "id": "edge4",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "a",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "b",
+        "id": "edge5",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "a",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Moving",
+        "id": "edge6",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Still",
+        "id": "edge7",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Moving",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Crash",
+        "id": "edge8",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Moving",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "fast",
+        "id": "edge9",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "slow",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "a",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "exampleStyleClass exampleStyleClass exampleStyleClass exampleStyleClass statediagram-state",
         "cssCompiledStyles": [
           "background:#bbb",
@@ -19,25 +183,25 @@
           "border:1.5px solid red"
         ],
         "cssStyles": [],
-        "id": "a",
         "dir": null,
         "domId": "state-a-5",
-        "type": null,
+        "id": "a",
         "isGroup": false,
+        "label": "a",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "b",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "exampleStyleClass exampleStyleClass statediagram-state",
         "cssCompiledStyles": [
           "background:#bbb",
@@ -46,255 +210,255 @@
           "border:1.5px solid red"
         ],
         "cssStyles": [],
-        "id": "b",
         "dir": null,
         "domId": "state-b-5",
-        "type": null,
+        "id": "b",
         "isGroup": false,
+        "label": "b",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "a_a",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "exampleStyleClass statediagram-state",
         "cssCompiledStyles": [
           "background:#bbb",
           "border:1.5px solid red"
         ],
         "cssStyles": [],
-        "id": "a_a",
         "dir": null,
         "domId": "state-a_a-1",
-        "type": null,
+        "id": "a_a",
         "isGroup": false,
+        "label": "a_a",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "b_b",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "b_b",
         "dir": null,
         "domId": "state-b_b-1",
-        "type": null,
+        "id": "b_b",
         "isGroup": false,
+        "label": "b_b",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "exampleStyleClass statediagram-state",
         "cssCompiledStyles": [
           "background:#bbb",
           "border:1.5px solid red"
         ],
         "cssStyles": [],
-        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-6",
-        "type": null,
+        "id": "root_start",
         "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Moving",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Moving",
         "dir": "TB",
         "domId": "state-Moving-9",
-        "type": "group",
+        "id": "Moving",
         "isGroup": true,
+        "label": "Moving",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Still",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Still",
         "dir": null,
         "domId": "state-Still-7",
-        "type": null,
+        "id": "Still",
         "isGroup": false,
+        "label": "Still",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Crash",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Crash",
         "dir": null,
         "domId": "state-Crash-8",
-        "type": null,
+        "id": "Crash",
         "isGroup": false,
+        "label": "Crash",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "slow",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "slow",
         "dir": null,
         "domId": "state-slow-9",
-        "type": null,
+        "id": "slow",
         "isGroup": false,
+        "label": "slow",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Moving",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Moving",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "fast",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "fast",
         "dir": null,
         "domId": "state-fast-9",
-        "type": null,
+        "id": "fast",
         "isGroup": false,
+        "label": "fast",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Moving",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Moving",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "id1",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [
           "background:#bbb"
         ],
-        "id": "id1",
         "dir": null,
         "domId": "state-id1-10",
-        "type": null,
+        "id": "id1",
         "isGroup": false,
+        "label": "id1",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "id2",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [
           "background:#bbb"
         ],
-        "id": "id2",
         "dir": null,
         "domId": "state-id2-10",
-        "type": null,
+        "id": "id2",
         "isGroup": false,
+        "label": "id2",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "id3",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [
@@ -302,25 +466,25 @@
           "font-weight:bold",
           "font-style:italic"
         ],
-        "id": "id3",
         "dir": null,
         "domId": "state-id3-10",
-        "type": null,
+        "id": "id3",
         "isGroup": false,
+        "label": "id3",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "id4",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [
@@ -328,401 +492,24 @@
           "font-weight:bold",
           "font-style:italic"
         ],
-        "id": "id4",
         "dir": null,
         "domId": "state-id4-10",
-        "type": null,
+        "id": "id4",
         "isGroup": false,
+        "label": "id4",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "a",
-        "end": "b",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "a_a",
-        "end": "b_b",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "a",
-        "end": "b",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge3",
-        "start": "root_start",
-        "end": "b",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge4",
-        "start": "a",
-        "end": "b",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge5",
-        "start": "a",
-        "end": "b",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge6",
-        "start": "root_start",
-        "end": "Moving",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge7",
-        "start": "Moving",
-        "end": "Still",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge8",
-        "start": "Moving",
-        "end": "Crash",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge9",
-        "start": "slow",
-        "end": "fast",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "a": {
-        "id": "a",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "exampleStyleClass",
-          "exampleStyleClass",
-          "exampleStyleClass",
-          "exampleStyleClass"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "id1": {
-        "id": "id1",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [
-          "background:#bbb"
-        ],
-        "textStyles": [],
-        "start": null
-      },
-      "id4": {
-        "id": "id4",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [
-          "background:#bbb",
-          "font-weight:bold",
-          "font-style:italic"
-        ],
-        "textStyles": [],
-        "start": null
-      },
-      "d": {
-        "id": "d",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "exampleStyleClass"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "b": {
-        "id": "b",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "exampleStyleClass",
-          "exampleStyleClass"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "id3": {
-        "id": "id3",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [
-          "background:#bbb",
-          "font-weight:bold",
-          "font-style:italic"
-        ],
-        "textStyles": [],
-        "start": null
-      },
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "exampleStyleClass"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
-      "Moving": {
-        "id": "Moving",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "slow",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "fast",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Still": {
-        "id": "Still",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "id2": {
-        "id": "id2",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [
-          "background:#bbb"
-        ],
-        "textStyles": [],
-        "start": null
-      },
-      "Crash": {
-        "id": "Crash",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "c": {
-        "id": "c",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "exampleStyleClass"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "e": {
-        "id": "e",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "exampleStyleClass"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "b_b": {
-        "id": "b_b",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "a_a": {
-        "id": "a_a",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "exampleStyleClass"
-        ],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      }
-    },
     "relations": [
       {
         "id1": "a",
@@ -770,7 +557,235 @@
         "relationTitle": null
       }
     ],
+    "states": {
+      "Crash": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "Crash",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Moving": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "slow",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "fast",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "Moving",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Still": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "Still",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "a": {
+        "classes": [
+          "exampleStyleClass",
+          "exampleStyleClass",
+          "exampleStyleClass",
+          "exampleStyleClass"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "a",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "a_a": {
+        "classes": [
+          "exampleStyleClass"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "a_a",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "b": {
+        "classes": [
+          "exampleStyleClass",
+          "exampleStyleClass"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "b",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "b_b": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "b_b",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "c": {
+        "classes": [
+          "exampleStyleClass"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "c",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "d": {
+        "classes": [
+          "exampleStyleClass"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "d",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "e": {
+        "classes": [
+          "exampleStyleClass"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "e",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "id1": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "id1",
+        "note": null,
+        "start": null,
+        "styles": [
+          "background:#bbb"
+        ],
+        "textStyles": [],
+        "type": "default"
+      },
+      "id2": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "id2",
+        "note": null,
+        "start": null,
+        "styles": [
+          "background:#bbb"
+        ],
+        "textStyles": [],
+        "type": "default"
+      },
+      "id3": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "id3",
+        "note": null,
+        "start": null,
+        "styles": [
+          "background:#bbb",
+          "font-weight:bold",
+          "font-style:italic"
+        ],
+        "textStyles": [],
+        "type": "default"
+      },
+      "id4": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "id4",
+        "note": null,
+        "start": null,
+        "styles": [
+          "background:#bbb",
+          "font-weight:bold",
+          "font-style:italic"
+        ],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [
+          "exampleStyleClass"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
     "styleClasses": {
+      "__proto__": {
+        "id": "__proto__",
+        "styles": [
+          "background:#bbb",
+          "border:1.5px solid red"
+        ],
+        "textStyles": []
+      },
+      "constructor": {
+        "id": "constructor",
+        "styles": [
+          "background:#bbb",
+          "border:1.5px solid red"
+        ],
+        "textStyles": []
+      },
       "exampleClass": {
         "id": "exampleClass",
         "styles": [
@@ -802,23 +817,8 @@
           "border:1.5px solid red"
         ],
         "textStyles": []
-      },
-      "__proto__": {
-        "id": "__proto__",
-        "styles": [
-          "background:#bbb",
-          "border:1.5px solid red"
-        ],
-        "textStyles": []
-      },
-      "constructor": {
-        "id": "constructor",
-        "styles": [
-          "background:#bbb",
-          "border:1.5px solid red"
-        ],
-        "textStyles": []
       }
-    }
+    },
+    "type": "stateDiagram"
   }
 }

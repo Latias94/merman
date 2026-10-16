@@ -2,88 +2,88 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [],
       "bounds": {
-        "min_x": -205.48,
-        "min_y": -20.0,
         "max_x": 58.0,
-        "max_y": 546.0
+        "max_y": 546.0,
+        "min_x": -205.48,
+        "min_y": -20.0
       },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 50.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         },
         {
-          "name": "branch01",
-          "index": 1.0,
-          "pos": 90.0,
+          "bbox_height": 17.6,
           "bbox_width": 59.2,
-          "bbox_height": 17.6
+          "index": 1.0,
+          "name": "branch01",
+          "pos": 90.0
         },
         {
-          "name": "checkout02",
-          "index": 2.0,
-          "pos": 180.0,
+          "bbox_height": 17.6,
           "bbox_width": 74.88,
-          "bbox_height": 17.6
+          "index": 2.0,
+          "name": "checkout02",
+          "pos": 180.0
         },
         {
-          "name": "cherry-pick03",
-          "index": 3.0,
-          "pos": 270.0,
+          "bbox_height": 17.6,
           "bbox_width": 93.44,
-          "bbox_height": 17.6
+          "index": 3.0,
+          "name": "cherry-pick03",
+          "pos": 270.0
         },
         {
-          "name": "branch/example-branch",
-          "index": 4.0,
-          "pos": 360.0,
+          "bbox_height": 17.6,
           "bbox_width": 144.48,
-          "bbox_height": 17.6
+          "index": 4.0,
+          "name": "branch/example-branch",
+          "pos": 360.0
         },
         {
-          "name": "merge/test_merge",
-          "index": 5.0,
-          "pos": 450.0,
+          "bbox_height": 17.6,
           "bbox_width": 118.08,
-          "bbox_height": 17.6
+          "index": 5.0,
+          "name": "merge/test_merge",
+          "pos": 450.0
         },
         {
-          "name": "A",
-          "index": 6.0,
-          "pos": 540.0,
+          "bbox_height": 17.6,
           "bbox_width": 9.6,
-          "bbox_height": 17.6
+          "index": 6.0,
+          "name": "A",
+          "pos": 540.0
         }
       ],
       "commits": [
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "0-<dynamic>",
           "message": "",
-          "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [],
-          "branch": "main",
           "pos": 0.0,
           "pos_with_offset": 10.0,
+          "seq": 0.0,
+          "tags": [],
           "x": 10.0,
           "y": -2.0
         }
       ],
-      "arrows": []
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 50.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

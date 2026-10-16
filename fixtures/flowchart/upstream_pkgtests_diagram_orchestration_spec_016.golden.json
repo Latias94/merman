@@ -1,20 +1,20 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "flowchart",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
-    "vertexCalls": [],
-    "nodes": [],
     "edges": [],
-    "subgraphs": []
+    "keyword": "flowchart",
+    "nodes": [],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
+    "vertexCalls": []
   }
 }

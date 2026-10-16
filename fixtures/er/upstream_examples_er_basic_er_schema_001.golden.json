@@ -1,163 +1,163 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
-      "ORDER_ITEM": {
-        "id": "entity-ORDER_ITEM-2",
-        "label": "ORDER_ITEM",
-        "attributes": [
-          {
-            "type": "int",
-            "name": "quantity",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "float",
-            "name": "price",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
-      "ORDER": {
-        "id": "entity-ORDER-1",
-        "label": "ORDER",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "id",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "date",
-            "name": "orderDate",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "status",
-            "keys": [],
-            "comment": ""
-          }
-        ],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      },
       "CUSTOMER": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [],
+            "name": "id",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "email",
+            "type": "string"
+          }
+        ],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-CUSTOMER-0",
         "label": "CUSTOMER",
+        "shape": "erBox"
+      },
+      "ORDER": {
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "id",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "name",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "orderDate",
+            "type": "date"
           },
           {
-            "type": "string",
-            "name": "email",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "status",
+            "type": "string"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-ORDER-1",
+        "label": "ORDER",
+        "shape": "erBox"
+      },
+      "ORDER_ITEM": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [],
+            "name": "quantity",
+            "type": "int"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "price",
+            "type": "float"
+          }
+        ],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-ORDER_ITEM-2",
+        "label": "ORDER_ITEM",
+        "shape": "erBox"
       },
       "PRODUCT": {
-        "id": "entity-PRODUCT-3",
-        "label": "PRODUCT",
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "id",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "name",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "float",
-            "name": "price",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "price",
+            "type": "float"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-PRODUCT-3",
+        "label": "PRODUCT",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-CUSTOMER-0",
-        "roleA": "places",
         "entityB": "entity-ORDER-1",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "places"
       },
       {
         "entityA": "entity-ORDER-1",
-        "roleA": "contains",
         "entityB": "entity-ORDER_ITEM-2",
         "relSpec": {
           "cardA": "ONE_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "contains"
       },
       {
         "entityA": "entity-PRODUCT-3",
-        "roleA": "includes",
         "entityB": "entity-ORDER_ITEM-2",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "includes"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

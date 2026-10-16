@@ -1,49 +1,49 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "One",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "Two",
-        "message": "",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "One"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "Three",
-        "message": "",
-        "seq": 2,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "Two"
-        ],
-        "branch": "main"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "One",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "Two",
+        "message": "",
+        "parents": [
+          "One"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "Three",
+        "message": "",
+        "parents": [
+          "Two"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      }
+    ],
     "currentBranch": "main",
     "direction": "BT",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

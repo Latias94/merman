@@ -1,83 +1,83 @@
 {
   "diagramType": "requirement",
   "model": {
-    "type": "requirement",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
     "direction": "TB",
-    "requirements": [
-      {
-        "name": "test_req",
-        "type": "Requirement",
-        "requirementId": "1",
-        "text": "the test text.",
-        "risk": "High",
-        "verifyMethod": "Test",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      },
-      {
-        "name": "test_req2",
-        "type": "Functional Requirement",
-        "requirementId": "1.1",
-        "text": "the second test text.",
-        "risk": "Low",
-        "verifyMethod": "Inspection",
-        "cssStyles": [],
-        "classes": [
-          "default"
-        ]
-      }
-    ],
     "elements": [
       {
-        "name": "test_entity",
-        "type": "simulation",
-        "docRef": "",
-        "cssStyles": [],
         "classes": [
           "default"
-        ]
+        ],
+        "cssStyles": [],
+        "docRef": "",
+        "name": "test_entity",
+        "type": "simulation"
       },
       {
-        "name": "test_entity2",
-        "type": "word doc",
-        "docRef": "reqs/test_entity",
-        "cssStyles": [],
         "classes": [
           "default"
-        ]
+        ],
+        "cssStyles": [],
+        "docRef": "reqs/test_entity",
+        "name": "test_entity2",
+        "type": "word doc"
       }
     ],
     "relationships": [
       {
-        "type": "satisfies",
+        "dst": "test_req2",
         "src": "test_entity",
-        "dst": "test_req2"
+        "type": "satisfies"
       },
       {
-        "type": "traces",
+        "dst": "test_req2",
         "src": "test_req",
-        "dst": "test_req2"
+        "type": "traces"
       },
       {
-        "type": "contains",
+        "dst": "test_req2",
         "src": "test_req",
-        "dst": "test_req2"
+        "type": "contains"
       },
       {
-        "type": "verifies",
+        "dst": "test_req",
         "src": "test_entity2",
-        "dst": "test_req"
+        "type": "verifies"
       },
       {
-        "type": "copies",
+        "dst": "test_req",
         "src": "test_entity2",
-        "dst": "test_req"
+        "type": "copies"
       }
     ],
-    "classes": {}
+    "requirements": [
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req",
+        "requirementId": "1",
+        "risk": "High",
+        "text": "the test text.",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      },
+      {
+        "classes": [
+          "default"
+        ],
+        "cssStyles": [],
+        "name": "test_req2",
+        "requirementId": "1.1",
+        "risk": "Low",
+        "text": "the second test text.",
+        "type": "Functional Requirement",
+        "verifyMethod": "Inspection"
+      }
+    ],
+    "type": "requirement"
   }
 }

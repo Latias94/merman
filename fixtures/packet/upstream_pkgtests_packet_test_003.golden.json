@@ -1,10 +1,10 @@
 {
   "diagramType": "packet",
   "model": {
-    "type": "packet",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "packet": []
+    "accTitle": null,
+    "packet": [],
+    "title": null,
+    "type": "packet"
   }
 }

@@ -1,36 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": "Different Colors in xyChart",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "categoriesX",
-      "categories": [
-        "Category 1",
-        "Category 2",
-        "Category 3",
-        "Category 4"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "valuesY",
-      "min": 0.0,
-      "max": 50.0
-    },
+    "accTitle": null,
+    "orientation": "vertical",
     "plots": [
       {
-        "type": "line",
-        "title": "",
-        "values": [
-          10.0,
-          20.0,
-          30.0,
-          40.0
-        ],
         "data": [
           [
             "Category 1",
@@ -48,17 +23,17 @@
             "Category 4",
             40.0
           ]
+        ],
+        "title": "",
+        "type": "line",
+        "values": [
+          10.0,
+          20.0,
+          30.0,
+          40.0
         ]
       },
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          20.0,
-          30.0,
-          25.0,
-          35.0
-        ],
         "data": [
           [
             "Category 1",
@@ -76,17 +51,17 @@
             "Category 4",
             35.0
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          20.0,
+          30.0,
+          25.0,
+          35.0
         ]
       },
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          15.0,
-          25.0,
-          20.0,
-          30.0
-        ],
         "data": [
           [
             "Category 1",
@@ -104,17 +79,17 @@
             "Category 4",
             30.0
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          15.0,
+          25.0,
+          20.0,
+          30.0
         ]
       },
       {
-        "type": "line",
-        "title": "",
-        "values": [
-          5.0,
-          15.0,
-          25.0,
-          35.0
-        ],
         "data": [
           [
             "Category 1",
@@ -132,9 +107,34 @@
             "Category 4",
             35.0
           ]
+        ],
+        "title": "",
+        "type": "line",
+        "values": [
+          5.0,
+          15.0,
+          25.0,
+          35.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Different Colors in xyChart",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "Category 1",
+        "Category 2",
+        "Category 3",
+        "Category 4"
+      ],
+      "title": "categoriesX",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 50.0,
+      "min": 0.0,
+      "title": "valuesY",
+      "type": "linear"
+    }
   }
 }

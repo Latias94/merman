@@ -1,167 +1,167 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "Student": {
-        "id": "Student",
-        "type": "",
-        "label": "Student",
-        "text": "Student",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "idCard : IdCard",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-idCard : IdCard",
-            "cssStyle": ""
-          }
-        ],
+      "Bike": {
         "annotations": [],
-        "styles": [],
-        "domId": "classId-Student-0",
-        "parent": null,
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Bike-2",
+        "haveCallback": false,
+        "id": "Bike",
+        "label": "Bike",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-id : int",
+            "id": "id : int",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-name : string",
+            "id": "name : string",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          }
+        ],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Bike",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "IdCard": {
-        "id": "IdCard",
-        "type": "",
-        "label": "IdCard",
-        "text": "IdCard",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "id : int",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-id : int",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "name : string",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-name : string",
-            "cssStyle": ""
-          }
-        ],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-IdCard-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "IdCard",
+        "label": "IdCard",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Bike": {
-        "id": "Bike",
-        "type": "",
-        "label": "Bike",
-        "text": "Bike",
-        "cssClasses": "default",
-        "methods": [],
         "members": [
           {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "id : int",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "-id : int",
+            "id": "id : int",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "-id : int",
-            "cssStyle": ""
+            "visibility": "-"
           },
           {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "name : string",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "-name : string",
+            "id": "name : string",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "-name : string",
-            "cssStyle": ""
+            "visibility": "-"
           }
         ],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Bike-2",
+        "methods": [],
         "parent": null,
+        "styles": [],
+        "text": "IdCard",
+        "tooltip": null,
+        "type": ""
+      },
+      "Student": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Student-0",
+        "haveCallback": false,
+        "id": "Student",
+        "label": "Student",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-idCard : IdCard",
+            "id": "idCard : IdCard",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          }
+        ],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Student",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Student",
         "id2": "IdCard",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 0
+        },
         "relationTitle1": "1",
         "relationTitle2": "1",
-        "title": "carries",
-        "relation": {
-          "type1": -1,
-          "type2": 0,
-          "lineType": 0
-        }
+        "title": "carries"
       },
       {
         "id": "1",
         "id1": "Student",
         "id2": "Bike",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 0
+        },
         "relationTitle1": "1",
         "relationTitle2": "1",
-        "title": "rides",
-        "relation": {
-          "type1": -1,
-          "type2": 0,
-          "lineType": 0
-        }
+        "title": "rides"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

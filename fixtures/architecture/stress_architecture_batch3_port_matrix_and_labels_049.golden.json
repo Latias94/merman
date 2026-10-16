@@ -1,331 +1,331 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "left",
-        "icon": "cloud",
-        "title": "Left",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "l1",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "r1",
+        "rhsInto": true,
+        "title": "db"
       },
       {
-        "id": "right",
-        "icon": "cloud",
-        "title": "Right",
-        "in": null
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "l1",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "r2",
+        "rhsInto": true,
+        "title": "disk"
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "l2",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "r1",
+        "rhsInto": true,
+        "title": "replicas"
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "l2",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "r2",
+        "rhsInto": true,
+        "title": "sync"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "left",
+        "in": null,
+        "title": "Left"
+      },
+      {
+        "icon": "cloud",
+        "id": "right",
+        "in": null,
+        "title": "Right"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "l1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "db"
           },
           {
-            "lhsId": "l1",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "disk"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "l1",
+        "in": "left",
         "title": "L1",
-        "in": "left"
+        "type": "service"
       },
       {
-        "id": "l2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l2",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "replicas"
           },
           {
-            "lhsId": "l2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "sync"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "l2",
+        "in": "left",
         "title": "L2",
-        "in": "left"
+        "type": "service"
       },
       {
-        "id": "r1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "db"
           },
           {
-            "lhsId": "l2",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "replicas"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "r1",
+        "in": "right",
         "title": "R1",
-        "in": "right"
+        "type": "service"
       },
       {
-        "id": "r2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l1",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "disk"
           },
           {
-            "lhsId": "l2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "sync"
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "r2",
+        "in": "right",
         "title": "R2",
-        "in": "right"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "l1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "db"
           },
           {
-            "lhsId": "l1",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "disk"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "l1",
+        "in": "left",
         "title": "L1",
-        "in": "left"
+        "type": "service"
       },
       {
-        "id": "l2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l2",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "replicas"
           },
           {
-            "lhsId": "l2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "sync"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "l2",
+        "in": "left",
         "title": "L2",
-        "in": "left"
+        "type": "service"
       },
       {
-        "id": "r1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "db"
           },
           {
-            "lhsId": "l2",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r1",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r1",
+            "rhsInto": true,
             "title": "replicas"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "r1",
+        "in": "right",
         "title": "R1",
-        "in": "right"
+        "type": "service"
       },
       {
-        "id": "r2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "l1",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l1",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "disk"
           },
           {
-            "lhsId": "l2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "r2",
+            "lhsId": "l2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "r2",
+            "rhsInto": true,
             "title": "sync"
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "r2",
+        "in": "right",
         "title": "R2",
-        "in": "right"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "l1",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "r1",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "db"
-      },
-      {
-        "lhsId": "l1",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "r2",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "disk"
-      },
-      {
-        "lhsId": "l2",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "r1",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "replicas"
-      },
-      {
-        "lhsId": "l2",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "r2",
-        "rhsDir": "B",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "sync"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

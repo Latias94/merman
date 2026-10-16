@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Ordinal day (Do)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-Do",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-Do",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "section": "A",
-        "type": "A",
-        "task": "Task",
-        "id": "t1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2014-01-03T00:00:00.000",
+        "id": "t1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": t1, 2014-01-1st, 2d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2014-01-1st"
-          },
           "endTime": {
             "data": "2d"
+          },
+          "startTime": {
+            "startData": "2014-01-1st",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "A",
         "startTime": "2014-01-01T00:00:00.000",
-        "endTime": "2014-01-03T00:00:00.000"
+        "task": "Task",
+        "type": "A",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Ordinal day (Do)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

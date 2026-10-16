@@ -1,31 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "a"
-        },
-        {
-          "id": "b"
-        },
-        {
-          "id": "c"
-        },
-        {
-          "id": "d"
-        },
-        {
-          "id": "e"
-        },
-        {
-          "id": "x"
-        },
-        {
-          "id": "y"
-        }
-      ],
       "links": [
         {
           "source": "a",
@@ -57,7 +33,31 @@
           "target": "y",
           "value": 4
         }
+      ],
+      "nodes": [
+        {
+          "id": "a"
+        },
+        {
+          "id": "b"
+        },
+        {
+          "id": "c"
+        },
+        {
+          "id": "d"
+        },
+        {
+          "id": "e"
+        },
+        {
+          "id": "x"
+        },
+        {
+          "id": "y"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

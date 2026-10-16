@@ -1,68 +1,68 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Shape": {
-        "id": "Shape",
-        "type": "",
-        "label": "Shape",
-        "text": "Shape",
-        "cssClasses": "default clickable",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default clickable",
         "domId": "classId-Shape-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Shape",
+        "label": "Shape",
         "link": "https://www.github.com/",
         "linkTarget": "_blank",
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Shape",
         "tooltip": "This is a tooltip for a link",
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Shape2": {
-        "id": "Shape2",
-        "type": "",
-        "label": "Shape2",
-        "text": "Shape2",
-        "cssClasses": "default clickable",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default clickable",
         "domId": "classId-Shape2-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Shape2",
+        "label": "Shape2",
         "link": "https://www.github.com/",
         "linkTarget": "_blank",
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Shape2",
         "tooltip": "This is a tooltip for a link",
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

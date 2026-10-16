@@ -1,53 +1,29 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Budget",
-          "children": [
-            {
-              "name": "Critical",
-              "classSelector": "critical",
-              "cssCompiledStyles": [
-                "fill:#e74c3c;color:#fff;stroke:#c0392b;stroke-width:3px"
-              ],
-              "children": [
-                {
-                  "name": "Server Costs",
-                  "value": 50000
-                },
-                {
-                  "name": "Salaries",
-                  "value": 80000
-                }
-              ]
-            },
-            {
-              "name": "Normal",
-              "classSelector": "normal",
-              "cssCompiledStyles": [
-                "fill:#3498db;color:#fff;stroke:#2980b9;stroke-width:1px"
-              ],
-              "children": [
-                {
-                  "name": "Office Supplies",
-                  "value": 5000
-                },
-                {
-                  "name": "Marketing",
-                  "value": 15000
-                }
-              ]
-            }
-          ]
-        }
-      ]
+    "accTitle": null,
+    "classes": {
+      "critical": {
+        "id": "critical",
+        "styles": [
+          "fill:#e74c3c",
+          "color:#fff",
+          "stroke:#c0392b",
+          "stroke-width:3px"
+        ],
+        "textStyles": []
+      },
+      "normal": {
+        "id": "normal",
+        "styles": [
+          "fill:#3498db",
+          "color:#fff",
+          "stroke:#2980b9",
+          "stroke-width:1px"
+        ],
+        "textStyles": []
+      }
     },
     "nodes": [
       {
@@ -55,12 +31,12 @@
         "name": "Budget"
       },
       {
-        "level": 1,
-        "name": "Critical",
         "classSelector": "critical",
         "cssCompiledStyles": [
           "fill:#e74c3c;color:#fff;stroke:#c0392b;stroke-width:3px"
-        ]
+        ],
+        "level": 1,
+        "name": "Critical"
       },
       {
         "level": 2,
@@ -73,12 +49,12 @@
         "value": 80000
       },
       {
-        "level": 1,
-        "name": "Normal",
         "classSelector": "normal",
         "cssCompiledStyles": [
           "fill:#3498db;color:#fff;stroke:#2980b9;stroke-width:1px"
-        ]
+        ],
+        "level": 1,
+        "name": "Normal"
       },
       {
         "level": 2,
@@ -91,27 +67,51 @@
         "value": 15000
       }
     ],
-    "classes": {
-      "normal": {
-        "id": "normal",
-        "styles": [
-          "fill:#3498db",
-          "color:#fff",
-          "stroke:#2980b9",
-          "stroke-width:1px"
-        ],
-        "textStyles": []
-      },
-      "critical": {
-        "id": "critical",
-        "styles": [
-          "fill:#e74c3c",
-          "color:#fff",
-          "stroke:#c0392b",
-          "stroke-width:3px"
-        ],
-        "textStyles": []
-      }
-    }
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Server Costs",
+                  "value": 50000
+                },
+                {
+                  "name": "Salaries",
+                  "value": 80000
+                }
+              ],
+              "classSelector": "critical",
+              "cssCompiledStyles": [
+                "fill:#e74c3c;color:#fff;stroke:#c0392b;stroke-width:3px"
+              ],
+              "name": "Critical"
+            },
+            {
+              "children": [
+                {
+                  "name": "Office Supplies",
+                  "value": 5000
+                },
+                {
+                  "name": "Marketing",
+                  "value": 15000
+                }
+              ],
+              "classSelector": "normal",
+              "cssCompiledStyles": [
+                "fill:#3498db;color:#fff;stroke:#2980b9;stroke-width:1px"
+              ],
+              "name": "Normal"
+            }
+          ],
+          "name": "Budget"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

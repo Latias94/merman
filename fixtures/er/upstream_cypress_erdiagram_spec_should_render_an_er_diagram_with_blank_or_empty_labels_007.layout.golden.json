@@ -2,39 +2,21 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-AUTHOR-1",
-          "x": 62.0,
-          "y": 173.5,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-BOOK-0",
-          "x": 107.25,
-          "y": 52.5,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-GENRE-2",
-          "x": 107.25,
-          "y": 334.5,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 157.25,
+        "max_y": 375.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "er-rel-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-BOOK-0",
-          "to": "entity-AUTHOR-1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-0",
+          "label": null,
           "points": [
             {
               "x": 93.917,
@@ -53,21 +35,26 @@
               "y": 133.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONE_OR_MORE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": "8,8"
+          "stroke_dasharray": "8,8",
+          "to": "entity-AUTHOR-1",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-BOOK-0",
-          "to": "entity-GENRE-2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-1",
+          "label": {
+            "height": 0.0,
+            "width": 0.0,
+            "x": 152.5,
+            "y": 173.5
+          },
           "points": [
             {
               "x": 120.583,
@@ -98,26 +85,26 @@
               "y": 294.0
             }
           ],
-          "label": {
-            "x": 152.5,
-            "y": 173.5,
-            "width": 0.0,
-            "height": 0.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONE_OR_MORE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": "8,8"
+          "stroke_dasharray": "8,8",
+          "to": "entity-GENRE-2",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-AUTHOR-1",
-          "to": "entity-GENRE-2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-2",
+          "label": {
+            "height": 0.0,
+            "width": 0.0,
+            "x": 62.0,
+            "y": 254.0
+          },
           "points": [
             {
               "x": 62.0,
@@ -136,27 +123,40 @@
               "y": 294.0
             }
           ],
-          "label": {
-            "x": 62.0,
-            "y": 254.0,
-            "width": 0.0,
-            "height": 0.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONE_OR_MORE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": "8,8"
+          "stroke_dasharray": "8,8",
+          "to": "entity-GENRE-2",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 157.25,
-        "max_y": 375.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "entity-AUTHOR-1",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 62.0,
+          "y": 173.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-BOOK-0",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 107.25,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-GENRE-2",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 107.25,
+          "y": 334.5
+        }
+      ]
     }
   }
 }

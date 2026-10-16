@@ -1,79 +1,79 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Context",
-    "title": "C4Context sprite (positional) on Person_Ext",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "p1",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_person"
-        },
-        "label": {
-          "text": "External Customer"
-        },
-        "wrap": false,
-        "sprite": "users",
-        "tags": "external",
-        "link": "https://example.com/external-customer",
-        "descr": {
-          "text": "A customer of the bank."
-        }
-      },
-      {
-        "alias": "s1",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "Allows customers to view account data."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       }
     ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "p1",
-        "to": "s1",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
         "techn": {
           "text": "HTTPS"
         },
+        "to": "s1",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "p1",
         "descr": {
-          "text": ""
+          "text": "A customer of the bank."
+        },
+        "label": {
+          "text": "External Customer"
+        },
+        "link": "https://example.com/external-customer",
+        "parentBoundary": "global",
+        "sprite": "users",
+        "tags": "external",
+        "typeC4Shape": {
+          "text": "external_person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "s1",
+        "descr": {
+          "text": "Allows customers to view account data."
+        },
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "system"
         },
         "wrap": false
       }
-    ]
+    ],
+    "title": "C4Context sprite (positional) on Person_Ext",
+    "type": "c4",
+    "wrap": false
   }
 }

@@ -1,105 +1,105 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": "Declare participant (optional)",
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "Bob",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": true,
-        "isStarter": false,
         "declarationSpan": {
-          "start": 52,
-          "end": 55
+          "end": 55,
+          "start": 52
         },
+        "emoji": null,
+        "explicit": true,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "Bob",
         "occurrences": [
           {
-            "start": 52,
-            "end": 55
+            "end": 55,
+            "start": 52
           },
           {
-            "start": 77,
-            "end": 80
+            "end": 80,
+            "start": 77
           },
           {
-            "start": 93,
-            "end": 96
+            "end": 96,
+            "start": 93
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
-        "name": "Alice",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": true,
-        "isStarter": false,
         "declarationSpan": {
-          "start": 60,
-          "end": 65
+          "end": 65,
+          "start": 60
         },
+        "emoji": null,
+        "explicit": true,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "Alice",
         "occurrences": [
           {
-            "start": 60,
-            "end": 65
+            "end": 65,
+            "start": 60
           },
           {
-            "start": 70,
-            "end": 75
+            "end": 75,
+            "start": 70
           },
           {
-            "start": 98,
-            "end": 103
+            "end": 103,
+            "start": 98
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 70,
-          "end": 89
-        },
-        "kind": "message",
         "explicit_from": "Alice",
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "Hi Bob",
         "resolved_from": "Alice",
         "resolved_to": "Bob",
-        "label": "Hi Bob",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 89,
+          "start": 70
+        },
+        "style": "asynchronous"
       },
       {
-        "id": "zenuml-statement-1",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 93,
-          "end": 114
-        },
-        "kind": "message",
         "explicit_from": "Bob",
+        "id": "zenuml-statement-1",
+        "kind": "message",
+        "label": "Hi Alice",
         "resolved_from": "Bob",
         "resolved_to": "Alice",
-        "label": "Hi Alice",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 114,
+          "start": 93
+        },
+        "style": "asynchronous"
       }
     ],
+    "title": "Declare participant (optional)",
     "type": "zenuml"
   }
 }

@@ -1,126 +1,126 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Context",
-    "title": "C4Context link/tags (kv fields)",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "p1",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": "Customer"
-        },
-        "wrap": false,
-        "sprite": "",
-        "tags": "tag1,tag2",
-        "link": "https://example.com/customer",
-        "descr": {
-          "text": "A customer of the bank."
-        }
-      },
-      {
-        "alias": "s1",
-        "parentBoundary": "b0",
-        "typeC4Shape": {
-          "text": "system"
-        },
-        "label": {
-          "text": "Internet Banking System"
-        },
-        "wrap": false,
-        "sprite": "",
-        "tags": "internal",
-        "link": "https://example.com/system",
-        "descr": {
-          "text": "Allows customers to view account data."
-        }
-      },
-      {
-        "alias": "s2",
-        "parentBoundary": "b0",
-        "typeC4Shape": {
-          "text": "external_system"
-        },
-        "label": {
-          "text": "E-mail system"
-        },
-        "wrap": false,
-        "sprite": "",
-        "tags": "external",
-        "link": "https://example.com/email",
-        "descr": {
-          "text": "The internal Microsoft Exchange e-mail system."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "b0",
-        "parentBoundary": "global",
         "label": {
           "text": "BankBoundary0"
         },
+        "parentBoundary": "global",
+        "tags": "boundary_tag",
         "type": {
           "text": "ENTERPRISE"
         },
-        "wrap": false,
-        "tags": "boundary_tag"
+        "wrap": false
       }
     ],
+    "c4Type": "C4Context",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "p1",
-        "to": "s1",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
         "techn": {
           "text": "HTTPS"
         },
-        "descr": {
-          "text": ""
-        },
+        "to": "s1",
+        "type": "rel",
         "wrap": false
       },
       {
+        "descr": {
+          "text": ""
+        },
         "from": "s1",
-        "to": "s2",
-        "type": "rel",
         "label": {
           "text": "Sends e-mails"
         },
         "techn": {
           "text": "SMTP"
         },
+        "to": "s2",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "p1",
         "descr": {
-          "text": ""
+          "text": "A customer of the bank."
+        },
+        "label": {
+          "text": "Customer"
+        },
+        "link": "https://example.com/customer",
+        "parentBoundary": "global",
+        "sprite": "",
+        "tags": "tag1,tag2",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "s1",
+        "descr": {
+          "text": "Allows customers to view account data."
+        },
+        "label": {
+          "text": "Internet Banking System"
+        },
+        "link": "https://example.com/system",
+        "parentBoundary": "b0",
+        "sprite": "",
+        "tags": "internal",
+        "typeC4Shape": {
+          "text": "system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "s2",
+        "descr": {
+          "text": "The internal Microsoft Exchange e-mail system."
+        },
+        "label": {
+          "text": "E-mail system"
+        },
+        "link": "https://example.com/email",
+        "parentBoundary": "b0",
+        "sprite": "",
+        "tags": "external",
+        "typeC4Shape": {
+          "text": "external_system"
         },
         "wrap": false
       }
-    ]
+    ],
+    "title": "C4Context link/tags (kv fields)",
+    "type": "c4",
+    "wrap": false
   }
 }

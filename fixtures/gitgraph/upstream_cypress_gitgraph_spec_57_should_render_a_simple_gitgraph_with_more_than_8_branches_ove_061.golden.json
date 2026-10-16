@@ -1,18 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "1",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "branch1"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -45,10 +35,20 @@
         "name": "branch9"
       }
     ],
+    "commits": [
+      {
+        "branch": "branch1",
+        "id": "1",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      }
+    ],
     "currentBranch": "branch1",
     "direction": "BT",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

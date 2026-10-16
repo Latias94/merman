@@ -2,93 +2,57 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "nodes": [
-        {
-          "id": "actor-top-Site",
-          "x": 75.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-mermaid",
-          "x": 275.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-mermaidAPI",
-          "x": 475.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Site",
-          "x": 75.0,
-          "y": 269.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-mermaid",
-          "x": 275.0,
-          "y": 269.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-mermaidAPI",
-          "x": 475.0,
-          "y": 269.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 600.0,
+        "max_y": 317.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
       "edges": [
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Site",
+          "from_cluster": null,
           "id": "msg-0",
-          "from": "Site",
-          "to": "mermaid",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 120.0
-            },
-            {
-              "x": 268.0,
-              "y": 120.0
-            }
-          ],
           "label": {
-            "x": 172.0,
-            "y": 89.0,
+            "height": 17.6,
             "width": 56.8,
-            "height": 17.6
+            "x": 172.0,
+            "y": 89.0
           },
+          "points": [
+            {
+              "x": 76.0,
+              "y": 120.0
+            },
+            {
+              "x": 268.0,
+              "y": 120.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "mermaid",
+          "to_cluster": null
         },
         {
-          "id": "msg-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Site",
-          "to": "mermaid",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-1",
+          "label": {
+            "height": 17.6,
+            "width": 92.32,
+            "x": 172.0,
+            "y": 135.0
+          },
           "points": [
             {
               "x": 76.0,
@@ -99,26 +63,26 @@
               "y": 166.0
             }
           ],
-          "label": {
-            "x": 172.0,
-            "y": 135.0,
-            "width": 92.32,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "mermaid",
+          "to_cluster": null
         },
         {
-          "id": "msg-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "mermaid",
-          "to": "mermaidAPI",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-2",
+          "label": {
+            "height": 17.6,
+            "width": 22.72,
+            "x": 372.0,
+            "y": 181.0
+          },
           "points": [
             {
               "x": 276.0,
@@ -129,51 +93,46 @@
               "y": 212.0
             }
           ],
-          "label": {
-            "x": 372.0,
-            "y": 181.0,
-            "width": 22.72,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "mermaidAPI",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-Site",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-Site",
+          "from_cluster": null,
+          "id": "lifeline-Site",
+          "label": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 74.0
+            },
+            {
+              "x": 75.0,
+              "y": 232.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "actor-bottom-Site",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 74.0
-            },
-            {
-              "x": 75.0,
-              "y": 232.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "lifeline-mermaid",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-mermaid",
-          "to": "actor-bottom-mermaid",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-mermaid",
+          "label": null,
           "points": [
             {
               "x": 275.0,
@@ -184,21 +143,21 @@
               "y": 232.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-mermaid",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-mermaidAPI",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-mermaidAPI",
-          "to": "actor-bottom-mermaidAPI",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-mermaidAPI",
+          "label": null,
           "points": [
             {
               "x": 475.0,
@@ -209,23 +168,64 @@
               "y": 232.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-mermaidAPI",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 600.0,
-        "max_y": 317.0
-      }
+      "nodes": [
+        {
+          "height": 74.0,
+          "id": "actor-top-Site",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-mermaid",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-mermaidAPI",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-Site",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 269.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-mermaid",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 269.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-mermaidAPI",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 269.0
+        }
+      ]
     }
   }
 }

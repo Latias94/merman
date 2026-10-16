@@ -1,134 +1,134 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Class01": {
-        "id": "Class01",
-        "type": "T",
-        "label": "Class01",
-        "text": "Class01&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "#",
-            "id": "size",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "#size()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "int chimp",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-int chimp",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "int gorilla",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+int gorilla",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "abstractAttribute string",
-            "classifier": "*",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+abstractAttribute string",
-            "cssStyle": "font-style:italic;"
-          }
-        ],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Class01-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Class01",
+        "label": "Class01",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Class10": {
-        "id": "Class10",
-        "type": "T",
-        "label": "Class10",
-        "text": "Class10&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "size",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "size()",
-            "cssStyle": ""
-          }
-        ],
         "members": [
           {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "int id",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "-int chimp",
+            "id": "int chimp",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "int id",
-            "cssStyle": ""
+            "visibility": "-"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+int gorilla",
+            "id": "int gorilla",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "*",
+            "cssStyle": "font-style:italic;",
+            "displayText": "+abstractAttribute string",
+            "id": "abstractAttribute string",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
           }
         ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "#size()",
+            "id": "size",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "#"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Class01&lt;T&gt;",
+        "tooltip": null,
+        "type": "T"
+      },
+      "Class10": {
         "annotations": [
           "service"
         ],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Class10-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Class10",
+        "label": "Class10",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "int id",
+            "id": "int id",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "size()",
+            "id": "size",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Class10&lt;T&gt;",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": "T"
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

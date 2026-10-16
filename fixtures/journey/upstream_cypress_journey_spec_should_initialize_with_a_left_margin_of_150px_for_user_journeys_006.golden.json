@@ -1,59 +1,59 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "User Journey Example",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      ""
+    ],
     "sections": [
       "Onboarding",
       "Engagement"
     ],
     "tasks": [
       {
+        "people": [
+          ""
+        ],
         "score": 5,
+        "section": "Onboarding",
+        "task": "      Sign Up",
+        "type": "Onboarding"
+      },
+      {
         "people": [
           ""
         ],
-        "section": "Onboarding",
-        "type": "Onboarding",
-        "task": "      Sign Up"
-      },
-      {
         "score": 3,
+        "section": "Onboarding",
+        "task": "      Browse Features",
+        "type": "Onboarding"
+      },
+      {
         "people": [
           ""
         ],
-        "section": "Onboarding",
-        "type": "Onboarding",
-        "task": "      Browse Features"
-      },
-      {
         "score": 4,
-        "people": [
-          ""
-        ],
         "section": "Onboarding",
-        "type": "Onboarding",
-        "task": "      Use Core Functionality"
+        "task": "      Use Core Functionality",
+        "type": "Onboarding"
       },
       {
+        "people": [],
         "score": 3,
-        "people": [],
         "section": "Engagement",
-        "type": "Engagement",
-        "task": "      Browse Features"
+        "task": "      Browse Features",
+        "type": "Engagement"
       },
       {
-        "score": 4,
         "people": [],
+        "score": 4,
         "section": "Engagement",
-        "type": "Engagement",
-        "task": "      Use Core Functionality"
+        "task": "      Use Core Functionality",
+        "type": "Engagement"
       }
     ],
-    "actors": [
-      ""
-    ]
+    "title": "User Journey Example",
+    "type": "journey"
   }
 }

@@ -1,11 +1,9 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Medical Device Lifecycle",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Pre-Development",
       "Development",
@@ -13,55 +11,50 @@
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Pre-Development",
-        "type": "Pre-Development",
-        "task": "Quality Management System ",
-        "score": 0,
         "events": [
           "Regulatory Compliance ",
           "Risk Management"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Pre-Development",
+        "task": "Quality Management System ",
+        "type": "Pre-Development"
       },
       {
-        "id": 1,
-        "section": "Development",
-        "type": "Development",
-        "task": "Management Responsibility ",
-        "score": 0,
         "events": [
           "Planning Activities ",
           "Human Resources"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Development",
+        "task": "Management Responsibility ",
+        "type": "Development"
       },
       {
-        "id": 2,
-        "section": "Development",
-        "type": "Development",
-        "task": "Resource Management ",
-        "score": 0,
         "events": [
           "Management Reviews ",
           "Infrastructure"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "Development",
+        "task": "Resource Management ",
+        "type": "Development"
       },
       {
-        "id": 3,
-        "section": "Post-Development",
-        "type": "Post-Development",
-        "task": "Product Realization Activities ",
-        "score": 0,
         "events": [
           "Planning Activities ",
           "Customer-related Processes"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "Post-Development",
+        "task": "Product Realization Activities ",
+        "type": "Post-Development"
       },
       {
-        "id": 4,
-        "section": "Post-Development",
-        "type": "Post-Development",
-        "task": "Post-Production Activities ",
-        "score": 0,
         "events": [
           "Feedback ",
           "Complaints ",
@@ -72,8 +65,15 @@
           "Installation Activities",
           "Servicing Activities ",
           "Post-Market Surveillance"
-        ]
+        ],
+        "id": 4,
+        "score": 0,
+        "section": "Post-Development",
+        "task": "Post-Production Activities ",
+        "type": "Post-Development"
       }
-    ]
+    ],
+    "title": "Medical Device Lifecycle",
+    "type": "timeline"
   }
 }

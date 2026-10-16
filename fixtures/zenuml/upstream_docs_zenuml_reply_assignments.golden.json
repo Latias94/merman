@@ -1,82 +1,82 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "_STARTER_",
+        "color": null,
+        "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": true,
         "label": null,
+        "name": "_STARTER_",
+        "occurrences": [],
         "participantType": null,
         "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": true,
-        "declarationSpan": null,
-        "occurrences": [],
         "width": null
       },
       {
-        "name": "A",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "A",
         "occurrences": [
           {
-            "start": 64,
-            "end": 65
+            "end": 65,
+            "start": 64
           },
           {
-            "start": 146,
-            "end": 147
+            "end": 147,
+            "start": 146
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": "a",
+        "body": [],
         "comment": " 1. assign a variable from a sync message.",
-        "span": {
-          "start": 60,
-          "end": 79
-        },
-        "kind": "message",
         "explicit_from": null,
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "SyncMessage()",
         "resolved_from": null,
         "resolved_to": "A",
-        "label": "SyncMessage()",
-        "assignment": "a",
-        "style": "synchronous",
-        "body": []
+        "span": {
+          "end": 79,
+          "start": 60
+        },
+        "style": "synchronous"
       },
       {
-        "id": "zenuml-statement-1",
+        "assignment": "a",
+        "body": [],
         "comment": " 1.1. optionally give the variable a type",
-        "span": {
-          "start": 133,
-          "end": 161
-        },
-        "kind": "message",
         "explicit_from": null,
+        "id": "zenuml-statement-1",
+        "kind": "message",
+        "label": "SyncMessage()",
         "resolved_from": null,
         "resolved_to": "A",
-        "label": "SyncMessage()",
-        "assignment": "a",
-        "style": "synchronous",
-        "body": []
+        "span": {
+          "end": 161,
+          "start": 133
+        },
+        "style": "synchronous"
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -14,156 +12,158 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
-      },
-      "Polo": {
-        "name": "Polo",
-        "description": "Polo",
-        "wrap": false,
+        "name": "Bob",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "Ola1": {
-        "name": "Ola1",
         "description": "Ola",
-        "wrap": false,
-        "type": "actor",
         "links": {},
-        "properties": {}
+        "name": "Ola1",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       },
       "Ola2": {
-        "name": "Ola2",
         "description": "Ola",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Ola2",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Polo": {
+        "description": "Polo",
+        "links": {},
+        "name": "Polo",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hello Bob, how are you ?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Fine, thank you. And you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Alice",
-        "to": "Polo",
-        "message": "Hi Polo!",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Polo",
-        "to": "Ola1",
-        "message": "Hiii",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "Ola1",
-        "to": "Alice",
-        "message": "Hi too",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Alice",
-        "to": "Ola1",
-        "message": "Bye!",
-        "wrap": false,
-        "type": 4,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "And now?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "Alice",
-        "to": "Ola2",
-        "message": "Hello again",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "Alice",
-        "to": "Ola2",
-        "message": "Bye for me!",
-        "wrap": false,
-        "type": 4,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "Ola2",
-        "to": "Bob",
-        "message": "The end",
-        "wrap": false,
-        "type": 6,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {
-      "Ola2": 7,
-      "Polo": 2,
-      "Ola1": 3
-    },
-    "destroyedActors": {
-      "Ola1": 5,
-      "Alice": 8,
-      "Bob": 9
-    },
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {
+      "Ola1": 3,
+      "Ola2": 7,
+      "Polo": 2
+    },
+    "destroyedActors": {
+      "Alice": 8,
+      "Bob": 9,
+      "Ola1": 5
+    },
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you ?",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "1",
+        "message": "Fine, thank you. And you?",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "2",
+        "message": "Hi Polo!",
+        "to": "Polo",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Polo",
+        "id": "3",
+        "message": "Hiii",
+        "to": "Ola1",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Ola1",
+        "id": "4",
+        "message": "Hi too",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "5",
+        "message": "Bye!",
+        "to": "Ola1",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "6",
+        "message": "And now?",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "7",
+        "message": "Hello again",
+        "to": "Ola2",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "8",
+        "message": "Bye for me!",
+        "to": "Ola2",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Ola2",
+        "id": "9",
+        "message": "The end",
+        "to": "Bob",
+        "type": 6,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

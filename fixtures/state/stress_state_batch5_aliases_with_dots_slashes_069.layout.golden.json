@@ -2,47 +2,22 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
-        {
-          "id": "pkg_mod",
-          "x": 80.0,
-          "y": 84.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "pkg_mod2",
-          "x": 80.0,
-          "y": 222.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_end",
-          "x": 80.0,
-          "y": 288.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 80.0,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 148.0,
+        "max_y": 295.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "pkg_mod",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 80.0,
@@ -53,21 +28,26 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "pkg_mod",
+          "to_cluster": null
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "pkg_mod",
-          "to": "pkg_mod2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": {
+            "height": 21.0,
+            "width": 42.14,
+            "x": 79.57,
+            "y": 153.5
+          },
           "points": [
             {
               "x": 80.0,
@@ -78,26 +58,21 @@
               "y": 204.0
             }
           ],
-          "label": {
-            "x": 79.57,
-            "y": 153.5,
-            "width": 42.14,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "pkg_mod2",
+          "to_cluster": null
         },
         {
-          "id": "edge2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "pkg_mod2",
-          "to": "root_end",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge2",
+          "label": null,
           "points": [
             {
               "x": 80.0,
@@ -108,23 +83,48 @@
               "y": 281.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "root_end",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 148.0,
-        "max_y": 295.0
-      }
+      "nodes": [
+        {
+          "height": 37.0,
+          "id": "pkg_mod",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 80.0,
+          "y": 84.5
+        },
+        {
+          "height": 37.0,
+          "id": "pkg_mod2",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 80.0,
+          "y": 222.5
+        },
+        {
+          "height": 14.0,
+          "id": "root_end",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 80.0,
+          "y": 288.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 80.0,
+          "y": 19.0
+        }
+      ]
     }
   }
 }

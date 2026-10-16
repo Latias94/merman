@@ -1,94 +1,94 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Component",
-    "title": "Component diagram for Internet Banking System - API Application",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "spa",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Single Page Application"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "javascript and angular"
-        },
-        "descr": {
-          "text": "Provides all the internet banking functionality to customers via their web browser."
-        }
-      },
-      {
-        "alias": "sign",
-        "parentBoundary": "api",
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "label": {
-          "text": "Sign In Controller"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "MVC Rest Controller"
-        },
-        "descr": {
-          "text": "Allows users to sign in to the internet banking system"
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "api",
-        "parentBoundary": "global",
         "label": {
           "text": "API Application"
         },
+        "parentBoundary": "global",
         "type": {
           "text": "CONTAINER"
         },
         "wrap": false
       }
     ],
+    "c4Type": "C4Component",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
-        "from": "spa",
-        "to": "sign",
-        "type": "rel_b",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "JSON/HTTPS"
-        },
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -40
+        "from": "spa",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetY": -40,
+        "techn": {
+          "text": "JSON/HTTPS"
+        },
+        "to": "sign",
+        "type": "rel_b",
+        "wrap": false
       }
-    ]
+    ],
+    "shapes": [
+      {
+        "alias": "spa",
+        "descr": {
+          "text": "Provides all the internet banking functionality to customers via their web browser."
+        },
+        "label": {
+          "text": "Single Page Application"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "javascript and angular"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "sign",
+        "descr": {
+          "text": "Allows users to sign in to the internet banking system"
+        },
+        "label": {
+          "text": "Sign In Controller"
+        },
+        "parentBoundary": "api",
+        "techn": {
+          "text": "MVC Rest Controller"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Component diagram for Internet Banking System - API Application",
+    "type": "c4",
+    "wrap": false
   }
 }

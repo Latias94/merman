@@ -2,39 +2,39 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
+      "bounds": {
+        "max_x": 530.84,
+        "max_y": 171.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "edges": [],
       "nodes": [
         {
+          "height": 159.0,
           "id": "entity-CAR-0",
-          "x": 109.73,
-          "y": 91.5,
+          "is_cluster": false,
           "width": 195.46,
-          "height": 159.0,
-          "is_cluster": false
+          "x": 109.73,
+          "y": 91.5
         },
         {
-          "id": "entity-HOUSE-2",
-          "x": 480.84,
-          "y": 91.5,
-          "width": 100.0,
           "height": 81.0,
-          "is_cluster": false
+          "id": "entity-HOUSE-2",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 480.84,
+          "y": 91.5
         },
         {
-          "id": "entity-PERSON-1",
-          "x": 319.15,
-          "y": 91.5,
-          "width": 143.38,
           "height": 159.0,
-          "is_cluster": false
+          "id": "entity-PERSON-1",
+          "is_cluster": false,
+          "width": 143.38,
+          "x": 319.15,
+          "y": 91.5
         }
-      ],
-      "edges": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 530.84,
-        "max_y": 171.0
-      }
+      ]
     }
   }
 }

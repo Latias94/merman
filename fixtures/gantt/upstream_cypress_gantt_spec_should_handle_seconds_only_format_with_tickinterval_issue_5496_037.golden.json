@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "ss",
+    "accTitle": null,
     "axisFormat": "%s",
-    "tickInterval": "1second",
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "ss",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Network Request"
     ],
     "tasks": [
       {
-        "section": "Network Request",
-        "type": "Network Request",
-        "task": "RTT ",
-        "id": "rtt",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2026-02-15T00:00:20.000",
+        "id": "rtt",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": rtt, 0, 20",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "0"
-          },
           "endTime": {
             "data": "20"
+          },
+          "startTime": {
+            "startData": "0",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Network Request",
         "startTime": "2000-01-01T00:00:00.000",
-        "endTime": "2026-02-15T00:00:20.000"
+        "task": "RTT ",
+        "type": "Network Request",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": "1second",
+    "title": null,
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

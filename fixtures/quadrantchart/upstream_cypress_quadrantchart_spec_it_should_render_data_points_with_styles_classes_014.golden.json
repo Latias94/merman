@@ -1,109 +1,109 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "type": "quadrantChart",
-    "title": "Reach and engagement of campaigns",
-    "accTitle": null,
     "accDescr": null,
-    "quadrants": {
-      "quadrant1Text": "We should expand",
-      "quadrant2Text": "Need to promote",
-      "quadrant3Text": "Re-evaluate",
-      "quadrant4Text": "May be improved"
-    },
+    "accTitle": null,
     "axes": {
       "xAxisLeftText": "Reach ⟶",
       "xAxisRightText": "",
       "yAxisBottomText": "Engagement ⟶",
       "yAxisTopText": ""
     },
-    "points": [
-      {
-        "text": "Campaign F",
-        "x": 0.35,
-        "y": 0.78,
-        "className": "class1",
-        "styles": {
-          "radius": null,
-          "color": null,
-          "strokeColor": null,
-          "strokeWidth": null
-        }
-      },
-      {
-        "text": "Campaign E",
-        "x": 0.4,
-        "y": 0.34,
-        "className": "class2",
-        "styles": {
-          "radius": 20,
-          "color": "#ff0000",
-          "strokeColor": "#ff00ff",
-          "strokeWidth": "3px"
-        }
-      },
-      {
-        "text": "Campaign D",
-        "x": 0.78,
-        "y": 0.34,
-        "className": "class2",
-        "styles": {
-          "radius": null,
-          "color": null,
-          "strokeColor": null,
-          "strokeWidth": "3px"
-        }
-      },
-      {
-        "text": "Campaign C",
-        "x": 0.57,
-        "y": 0.69,
-        "className": null,
-        "styles": {
-          "radius": null,
-          "color": null,
-          "strokeColor": "#ff00ff",
-          "strokeWidth": null
-        }
-      },
-      {
-        "text": "Campaign B",
-        "x": 0.45,
-        "y": 0.23,
-        "className": null,
-        "styles": {
-          "radius": null,
-          "color": "#ff0000",
-          "strokeColor": null,
-          "strokeWidth": null
-        }
-      },
-      {
-        "text": "Campaign A",
-        "x": 0.3,
-        "y": 0.6,
-        "className": "class1",
-        "styles": {
-          "radius": 20,
-          "color": null,
-          "strokeColor": null,
-          "strokeWidth": null
-        }
-      }
-    ],
     "classes": {
-      "class2": {
-        "radius": 10,
-        "color": "#f00fff",
-        "strokeColor": null,
-        "strokeWidth": null
-      },
       "class1": {
-        "radius": 10,
         "color": "#908342",
+        "radius": 10,
         "strokeColor": "#310085",
         "strokeWidth": "10px"
+      },
+      "class2": {
+        "color": "#f00fff",
+        "radius": 10,
+        "strokeColor": null,
+        "strokeWidth": null
       }
-    }
+    },
+    "points": [
+      {
+        "className": "class1",
+        "styles": {
+          "color": null,
+          "radius": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        },
+        "text": "Campaign F",
+        "x": 0.35,
+        "y": 0.78
+      },
+      {
+        "className": "class2",
+        "styles": {
+          "color": "#ff0000",
+          "radius": 20,
+          "strokeColor": "#ff00ff",
+          "strokeWidth": "3px"
+        },
+        "text": "Campaign E",
+        "x": 0.4,
+        "y": 0.34
+      },
+      {
+        "className": "class2",
+        "styles": {
+          "color": null,
+          "radius": null,
+          "strokeColor": null,
+          "strokeWidth": "3px"
+        },
+        "text": "Campaign D",
+        "x": 0.78,
+        "y": 0.34
+      },
+      {
+        "className": null,
+        "styles": {
+          "color": null,
+          "radius": null,
+          "strokeColor": "#ff00ff",
+          "strokeWidth": null
+        },
+        "text": "Campaign C",
+        "x": 0.57,
+        "y": 0.69
+      },
+      {
+        "className": null,
+        "styles": {
+          "color": "#ff0000",
+          "radius": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        },
+        "text": "Campaign B",
+        "x": 0.45,
+        "y": 0.23
+      },
+      {
+        "className": "class1",
+        "styles": {
+          "color": null,
+          "radius": 20,
+          "strokeColor": null,
+          "strokeWidth": null
+        },
+        "text": "Campaign A",
+        "x": 0.3,
+        "y": 0.6
+      }
+    ],
+    "quadrants": {
+      "quadrant1Text": "We should expand",
+      "quadrant2Text": "Need to promote",
+      "quadrant3Text": "Re-evaluate",
+      "quadrant4Text": "May be improved"
+    },
+    "title": "Reach and engagement of campaigns",
+    "type": "quadrantChart"
   }
 }

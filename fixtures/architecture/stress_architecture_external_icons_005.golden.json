@@ -1,420 +1,420 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "cloud",
-        "icon": "cloud",
-        "title": "Cloud",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "lambda",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "lambda",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "ec2",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "ec2",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "s3",
+        "rhsInto": true,
+        "title": "stores"
+      },
+      {
+        "lhsDir": "L",
+        "lhsGroup": null,
+        "lhsId": "image",
+        "lhsInto": null,
+        "rhsDir": "R",
+        "rhsGroup": null,
+        "rhsId": "api",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "unknown",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "api",
+        "rhsInto": true,
+        "title": "fallback"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "cloud",
+        "in": null,
+        "title": "Cloud"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "s3",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "ec2",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "ec2",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           }
         ],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "s3",
+        "in": "cloud",
         "title": "S3",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "ec2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "ec2",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "ec2",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           }
         ],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "ec2",
+        "in": "cloud",
         "title": "EC2",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "lambda",
-            "rhsDir": "L",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "image",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "image",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "logos:aws-api-gateway",
         "iconText": null,
+        "id": "api",
+        "in": "cloud",
         "title": "API Gateway",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "lambda",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "lambda",
+        "in": "cloud",
         "title": "Lambda",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "image",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "image",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "image",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "fa:image",
         "iconText": null,
+        "id": "image",
+        "in": "cloud",
         "title": "Font Awesome",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "unknown",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "iconnamedoesntexist",
         "iconText": null,
+        "id": "unknown",
+        "in": "cloud",
         "title": "Unknown Icon",
-        "in": "cloud"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "s3",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "ec2",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "ec2",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           }
         ],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "s3",
+        "in": "cloud",
         "title": "S3",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "ec2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "ec2",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "ec2",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           }
         ],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "ec2",
+        "in": "cloud",
         "title": "EC2",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "lambda",
-            "rhsDir": "L",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "image",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "image",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "logos:aws-api-gateway",
         "iconText": null,
+        "id": "api",
+        "in": "cloud",
         "title": "API Gateway",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "lambda",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "ec2",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "ec2",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "lambda",
+        "in": "cloud",
         "title": "Lambda",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "image",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "image",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "image",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "fa:image",
         "iconText": null,
+        "id": "image",
+        "in": "cloud",
         "title": "Font Awesome",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "unknown",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "unknown",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "api",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "iconnamedoesntexist",
         "iconText": null,
+        "id": "unknown",
+        "in": "cloud",
         "title": "Unknown Icon",
-        "in": "cloud"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "api",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "lambda",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "lambda",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "ec2",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "ec2",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "s3",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "stores"
-      },
-      {
-        "lhsId": "image",
-        "lhsDir": "L",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "api",
-        "rhsDir": "R",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "unknown",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "api",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "fallback"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

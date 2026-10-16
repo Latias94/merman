@@ -1,120 +1,120 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": "Accessibility i18n batch4",
-    "accTitle": "可访问性标题",
     "accDescr": "包含中文、العربية、emoji 😀",
-    "groups": [
+    "accTitle": "可访问性标题",
+    "edges": [
       {
-        "id": "cloud",
-        "icon": "cloud",
-        "title": "Cloud",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": "read"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "cloud",
+        "in": null,
+        "title": "Cloud"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "cloud",
         "title": "API",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "cloud",
         "title": "DB",
-        "in": "cloud"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "cloud",
         "title": "API",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "cloud",
         "title": "DB",
-        "in": "cloud"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "api",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "read"
-      }
-    ],
-    "layoutHints": []
+    "title": "Accessibility i18n batch4",
+    "type": "architecture"
   }
 }

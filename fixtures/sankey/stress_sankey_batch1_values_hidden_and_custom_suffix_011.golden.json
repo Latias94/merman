@@ -1,25 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "Gen"
-        },
-        {
-          "id": "Grid"
-        },
-        {
-          "id": "Loss"
-        },
-        {
-          "id": "Load"
-        },
-        {
-          "id": "Export"
-        }
-      ],
       "links": [
         {
           "source": "Gen",
@@ -41,7 +23,25 @@
           "target": "Export",
           "value": 40
         }
+      ],
+      "nodes": [
+        {
+          "id": "Gen"
+        },
+        {
+          "id": "Grid"
+        },
+        {
+          "id": "Loss"
+        },
+        {
+          "id": "Load"
+        },
+        {
+          "id": "Export"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

@@ -1,36 +1,36 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "E-Commerce",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "Me"
+    ],
     "sections": [
       "Order from website",
       "Checkout from website"
     ],
     "tasks": [
       {
-        "score": 5,
         "people": [
           "Me"
         ],
+        "score": 5,
         "section": "Order from website",
-        "type": "Order from website",
-        "task": "  Add to cart"
+        "task": "  Add to cart",
+        "type": "Order from website"
       },
       {
-        "score": 5,
         "people": [
           "Me"
         ],
+        "score": 5,
         "section": "Checkout from website",
-        "type": "Checkout from website",
-        "task": "  Add payment details"
+        "task": "  Add payment details",
+        "type": "Checkout from website"
       }
     ],
-    "actors": [
-      "Me"
-    ]
+    "title": "E-Commerce",
+    "type": "journey"
   }
 }

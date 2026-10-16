@@ -1,73 +1,83 @@
 {
   "diagramType": "wardley",
   "model": {
-    "type": "wardley",
-    "title": "Custom Size Map",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "accelerators": [],
+    "annotations": [],
+    "annotationsBox": null,
+    "axes": {},
+    "deaccelerators": [],
+    "links": [
+      {
+        "dashed": false,
+        "source": "User",
+        "target": "App"
+      },
+      {
+        "dashed": false,
+        "source": "App",
+        "target": "API"
+      },
+      {
+        "dashed": false,
+        "source": "API",
+        "target": "Database"
+      },
+      {
+        "dashed": false,
+        "source": "Database",
+        "target": "Cloud"
+      }
+    ],
     "nodes": [
       {
+        "className": "anchor",
         "id": "User",
         "label": "User",
         "x": 90.0,
-        "y": 95.0,
-        "className": "anchor"
+        "y": 95.0
       },
       {
+        "className": "component",
         "id": "App",
+        "inertia": false,
         "label": "App",
         "x": 85.0,
-        "y": 75.0,
-        "className": "component",
-        "inertia": false
+        "y": 75.0
       },
       {
+        "className": "component",
         "id": "API",
+        "inertia": false,
         "label": "API",
         "x": 70.0,
-        "y": 50.0,
-        "className": "component",
-        "inertia": false
+        "y": 50.0
       },
       {
+        "className": "component",
         "id": "Database",
+        "inertia": false,
         "label": "Database",
         "x": 50.0,
-        "y": 30.0,
-        "className": "component",
-        "inertia": false
+        "y": 30.0
       },
       {
+        "className": "component",
         "id": "Cloud",
+        "inertia": false,
         "label": "Cloud",
         "x": 30.0,
-        "y": 15.0,
-        "className": "component",
-        "inertia": false
+        "y": 15.0
       }
     ],
-    "links": [
-      {
-        "source": "User",
-        "target": "App",
-        "dashed": false
-      },
-      {
-        "source": "App",
-        "target": "API",
-        "dashed": false
-      },
-      {
-        "source": "API",
-        "target": "Database",
-        "dashed": false
-      },
-      {
-        "source": "Database",
-        "target": "Cloud",
-        "dashed": false
-      }
-    ],
+    "notes": [],
+    "pipelines": [],
+    "size": {
+      "height": 800.0,
+      "width": 600.0
+    },
+    "title": "Custom Size Map",
     "trends": [
       {
         "nodeId": "Database",
@@ -75,16 +85,6 @@
         "targetY": 30.0
       }
     ],
-    "pipelines": [],
-    "annotations": [],
-    "notes": [],
-    "accelerators": [],
-    "deaccelerators": [],
-    "annotationsBox": null,
-    "axes": {},
-    "size": {
-      "width": 600.0,
-      "height": 800.0
-    }
+    "type": "wardley"
   }
 }

@@ -1,48 +1,48 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "type": "quadrantChart",
-    "title": "Config positions/padding (points force x-axis bottom)",
-    "accTitle": null,
     "accDescr": null,
-    "quadrants": {
-      "quadrant1Text": "Plan",
-      "quadrant2Text": "Do",
-      "quadrant3Text": "Delegate",
-      "quadrant4Text": "Delete"
-    },
+    "accTitle": null,
     "axes": {
       "xAxisLeftText": "Urgent",
       "xAxisRightText": "Not Urgent",
       "yAxisBottomText": "Not Important",
       "yAxisTopText": "Important ❤"
     },
+    "classes": {},
     "points": [
       {
+        "className": null,
+        "styles": {
+          "color": null,
+          "radius": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        },
         "text": "Task B",
         "x": 0.75,
-        "y": 0.25,
-        "className": null,
-        "styles": {
-          "radius": null,
-          "color": null,
-          "strokeColor": null,
-          "strokeWidth": null
-        }
+        "y": 0.25
       },
       {
-        "text": "Task A",
-        "x": 0.15,
-        "y": 0.85,
         "className": null,
         "styles": {
-          "radius": null,
           "color": null,
+          "radius": null,
           "strokeColor": null,
           "strokeWidth": null
-        }
+        },
+        "text": "Task A",
+        "x": 0.15,
+        "y": 0.85
       }
     ],
-    "classes": {}
+    "quadrants": {
+      "quadrant1Text": "Plan",
+      "quadrant2Text": "Do",
+      "quadrant3Text": "Delegate",
+      "quadrant4Text": "Delete"
+    },
+    "title": "Config positions/padding (points force x-axis bottom)",
+    "type": "quadrantChart"
   }
 }

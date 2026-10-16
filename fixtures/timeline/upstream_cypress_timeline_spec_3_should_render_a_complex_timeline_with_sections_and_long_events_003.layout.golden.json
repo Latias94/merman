@@ -2,110 +2,100 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
-      "direction": "LR",
-      "bounds": {
-        "min_x": 100.0,
-        "min_y": -61.0,
-        "max_x": 1290.0,
-        "max_y": 767.2
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "x2": 1240.0,
+        "y1": 285.6,
+        "y2": 285.6
       },
-      "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
+      "bounds": {
+        "max_x": 1290.0,
+        "max_y": 767.2,
+        "min_x": 100.0,
+        "min_y": -61.0
+      },
+      "direction": "LR",
+      "left_margin": 150.0,
+      "orphan_tasks": [],
       "pre_title_box_width": 790.0,
       "sections": [
         {
           "node": {
-            "x": 200.0,
-            "y": 50.0,
-            "width": 390.0,
-            "height": 67.8,
             "content_width": 350.0,
-            "padding": 20.0,
-            "section_class": "section--1",
+            "height": 67.8,
+            "kind": "section",
             "label": "Stone Age",
             "label_lines": [
               "Stone   Age"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section--1",
+            "width": 390.0,
+            "x": 200.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 200.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section--1",
-                "label": "7600 BC ",
-                "label_lines": [
-                  "7600   BC"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 295.0,
-                  "y1": 235.6,
                   "x2": 295.0,
+                  "y1": 235.6,
                   "y2": 717.2
                 }
               ],
               "events": [
                 {
-                  "x": 200.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 83.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 83.0,
+                  "kind": "event",
                   "label": "Britain's oldest known house was built in Orkney, Scotland",
                   "label_lines": [
                     "Britain's   oldest",
                     "known   house   was   built",
                     "in   Orkney,   Scotland"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 367.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 400.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "7600 BC ",
+                "label_lines": [
+                  "7600   BC"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "6000 BC ",
-                "label_lines": [
-                  "6000   BC"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 200.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 495.0,
-                  "y1": 235.6,
                   "x2": 495.0,
+                  "y1": 235.6,
                   "y2": 717.2
                 }
               ],
               "events": [
                 {
-                  "x": 400.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 135.8,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 135.8,
+                  "kind": "event",
                   "label": "Sea levels rise and Britain becomes an island.<br> The people who live here are hunter-gatherers.",
                   "label_lines": [
                     "Sea   levels   rise   and",
@@ -115,61 +105,61 @@
                     "here   are",
                     "hunter-gatherers."
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 367.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "6000 BC ",
+                "label_lines": [
+                  "6000   BC"
+                ],
+                "padding": 20.0,
+                "section_class": "section--1",
+                "width": 190.0,
+                "x": 400.0,
+                "y": 167.8
+              }
             }
           ]
         },
         {
           "node": {
-            "x": 600.0,
-            "y": 50.0,
-            "width": 390.0,
-            "height": 67.8,
             "content_width": 350.0,
-            "padding": 20.0,
-            "section_class": "section-0",
+            "height": 67.8,
+            "kind": "section",
             "label": "Bronze Age",
             "label_lines": [
               "Bronze   Age"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section-0",
+            "width": 390.0,
+            "x": 600.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 600.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section-0",
-                "label": "2300 BC ",
-                "label_lines": [
-                  "2300   BC"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 695.0,
-                  "y1": 235.6,
                   "x2": 695.0,
+                  "y1": 235.6,
                   "y2": 717.2
                 }
               ],
               "events": [
                 {
-                  "x": 600.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 118.2,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 118.2,
+                  "kind": "event",
                   "label": "People arrive from Europe and settle in Britain. <br>They bring farming and metalworking.",
                   "label_lines": [
                     "People   arrive   from",
@@ -178,59 +168,59 @@
                     "They   bring   farming",
                     "and   metalworking."
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 600.0,
-                  "y": 496.0,
-                  "width": 190.0,
-                  "height": 83.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 83.0,
+                  "kind": "event",
                   "label": "New styles of pottery and ways of burying the dead appear.",
                   "label_lines": [
                     "New   styles   of   pottery",
                     "and   ways   of   burying",
                     "the   dead   appear."
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 496.0
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 800.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2300 BC ",
+                "label_lines": [
+                  "2300   BC"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "2200 BC ",
-                "label_lines": [
-                  "2200   BC"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 600.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 895.0,
-                  "y1": 235.6,
                   "x2": 895.0,
+                  "y1": 235.6,
                   "y2": 717.2
                 }
               ],
               "events": [
                 {
-                  "x": 800.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 135.8,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 135.8,
+                  "kind": "event",
                   "label": "The last major building works are completed at Stonehenge.<br> People now bury their dead in stone circles.",
                   "label_lines": [
                     "The   last   major",
@@ -240,16 +230,16 @@
                     "People   now   bury   their",
                     "dead   in   stone   circles."
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 513.6,
-                  "width": 190.0,
-                  "height": 135.8,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 135.8,
+                  "kind": "event",
                   "label": "The first metal objects are made in Britain.Some other nice things happen. it is a good time to be alive.",
                   "label_lines": [
                     "The   first   metal",
@@ -259,21 +249,31 @@
                     "is   a   good   time   to   be",
                     "alive."
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 513.6
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2200 BC ",
+                "label_lines": [
+                  "2200   BC"
+                ],
+                "padding": 20.0,
+                "section_class": "section-0",
+                "width": 190.0,
+                "x": 800.0,
+                "y": 167.8
+              }
             }
           ]
         }
       ],
-      "orphan_tasks": [],
-      "activity_line": {
-        "kind": "activity",
-        "x1": 150.0,
-        "y1": 285.6,
-        "x2": 1240.0,
-        "y2": 285.6
-      },
       "title": "England's History Timeline",
       "title_x": 245.0,
       "title_y": 20.0,

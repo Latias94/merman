@@ -2,210 +2,210 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
-      "direction": "LR",
-      "bounds": {
-        "min_x": 100.0,
-        "min_y": 0.0,
-        "max_x": 1090.0,
-        "max_y": 706.8
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "x2": 1040.0,
+        "y1": 285.6,
+        "y2": 285.6
       },
-      "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
+      "bounds": {
+        "max_x": 1090.0,
+        "max_y": 706.8,
+        "min_x": 100.0,
+        "min_y": 0.0
+      },
+      "direction": "LR",
+      "left_margin": 150.0,
+      "orphan_tasks": [],
       "pre_title_box_width": 590.0,
       "sections": [
         {
           "node": {
-            "x": 200.0,
-            "y": 50.0,
-            "width": 590.0,
-            "height": 67.8,
             "content_width": 550.0,
-            "padding": 20.0,
-            "section_class": "section--1",
+            "height": 67.8,
+            "kind": "section",
             "label": "abc-123",
             "label_lines": [
               "abc-123"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section--1",
+            "width": 590.0,
+            "x": 200.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 200.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section--1",
-                "label": "task1",
-                "label_lines": [
-                  "task1"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 295.0,
-                  "y1": 235.6,
                   "x2": 295.0,
+                  "y1": 235.6,
                   "y2": 656.8
                 }
               ],
               "events": [
                 {
-                  "x": 200.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "event1",
                   "label_lines": [
                     "event1"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 367.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 400.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "task1",
+                "label_lines": [
+                  "task1"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "task2",
-                "label_lines": [
-                  "task2"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 200.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 495.0,
-                  "y1": 235.6,
                   "x2": 495.0,
+                  "y1": 235.6,
                   "y2": 656.8
                 }
               ],
               "events": [
                 {
-                  "x": 400.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "[event1](http://example.com)",
                   "label_lines": [
                     "[event1](http://example.com)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 367.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 600.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "task2",
+                "label_lines": [
+                  "task2"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "task3",
-                "label_lines": [
-                  "task3"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 400.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 695.0,
-                  "y1": 235.6,
                   "x2": 695.0,
+                  "y1": 235.6,
                   "y2": 656.8
                 }
               ],
               "events": [
                 {
-                  "x": 600.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "event2",
                   "label_lines": [
                     "event2"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 600.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "event3",
                   "label_lines": [
                     "event3"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 600.0,
-                  "y": 487.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 427.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "event4",
                   "label_lines": [
                     "event4"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 600.0,
-                  "y": 547.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 487.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "event5",
                   "label_lines": [
                     "event5"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 547.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "task3",
+                "label_lines": [
+                  "task3"
+                ],
+                "padding": 20.0,
+                "section_class": "section--1",
+                "width": 190.0,
+                "x": 600.0,
+                "y": 167.8
+              }
             }
           ]
         }
       ],
-      "orphan_tasks": [],
-      "activity_line": {
-        "kind": "activity",
-        "x1": 150.0,
-        "y1": 285.6,
-        "x2": 1040.0,
-        "y2": 285.6
-      },
       "title": null,
       "title_x": 145.0,
       "title_y": 20.0,

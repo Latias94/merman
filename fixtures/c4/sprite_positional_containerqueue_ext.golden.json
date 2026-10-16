@@ -1,85 +1,85 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Container",
-    "title": "C4Container sprite (positional) on ContainerQueue_Ext",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "web",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Web App"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "React"
-        },
-        "descr": {
-          "text": "Provides Internet banking functionality."
-        }
-      },
-      {
-        "alias": "q",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_container_queue"
-        },
-        "label": {
-          "text": "External Container Queue"
-        },
-        "wrap": false,
-        "sprite": "users",
-        "tags": "external",
-        "link": "https://example.com/external-container-queue",
-        "techn": {
-          "text": "RabbitMQ"
-        },
-        "descr": {
-          "text": "External queue container."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       }
     ],
+    "c4Type": "C4Container",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "web",
-        "to": "q",
-        "type": "rel",
         "label": {
           "text": "Publishes"
         },
         "techn": {
           "text": "AMQP"
         },
+        "to": "q",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "web",
         "descr": {
-          "text": ""
+          "text": "Provides Internet banking functionality."
+        },
+        "label": {
+          "text": "Web App"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "React"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "q",
+        "descr": {
+          "text": "External queue container."
+        },
+        "label": {
+          "text": "External Container Queue"
+        },
+        "link": "https://example.com/external-container-queue",
+        "parentBoundary": "global",
+        "sprite": "users",
+        "tags": "external",
+        "techn": {
+          "text": "RabbitMQ"
+        },
+        "typeC4Shape": {
+          "text": "external_container_queue"
         },
         "wrap": false
       }
-    ]
+    ],
+    "title": "C4Container sprite (positional) on ContainerQueue_Ext",
+    "type": "c4",
+    "wrap": false
   }
 }

@@ -2,31 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Data",
-          "x": 123.085,
-          "y": 271.0,
-          "width": 222.17,
-          "height": 198.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Parser",
-          "x": 123.085,
-          "y": 72.0,
-          "width": 193.61,
-          "height": 120.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 234.17,
+        "max_y": 370.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Parser",
-          "to": "Data",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 123.085,
@@ -37,23 +28,32 @@
               "y": 172.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Data",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 234.17,
-        "max_y": 370.0
-      }
+      "nodes": [
+        {
+          "height": 198.0,
+          "id": "Data",
+          "is_cluster": false,
+          "width": 222.17,
+          "x": 123.085,
+          "y": 271.0
+        },
+        {
+          "height": 120.0,
+          "id": "Parser",
+          "is_cluster": false,
+          "width": 193.61,
+          "x": 123.085,
+          "y": 72.0
+        }
+      ]
     }
   }
 }

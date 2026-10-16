@@ -1,115 +1,115 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Adding GANTT diagram to mermaid",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": " YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": " %d/%m",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
+    "clickEvents": {},
+    "dateFormat": " YYYY-MM-DD",
+    "displayMode": "",
     "excludes": [
       "weekdays",
       "2014-01-10"
     ],
+    "includes": [],
     "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
-    "displayMode": "",
+    "links": {},
     "sections": [],
     "tasks": [
       {
-        "section": "",
-        "type": "",
-        "task": "apple ",
-        "id": "a",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2017-07-27T00:00:00.000",
+        "id": "a",
         "manualEndTime": false,
-        "renderEndTime": "2017-07-27T00:00:00.000",
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":a, 2017-07-20, 1w",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2017-07-20"
-          },
           "endTime": {
             "data": "1w"
+          },
+          "startTime": {
+            "startData": "2017-07-20",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2017-07-27T00:00:00.000",
+        "section": "",
         "startTime": "2017-07-20T00:00:00.000",
-        "endTime": "2017-07-27T00:00:00.000"
+        "task": "apple ",
+        "type": "",
+        "vert": false
       },
       {
-        "section": "",
-        "type": "",
-        "task": "banana ",
-        "id": "b",
-        "prevTaskId": "a",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": true,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2017-07-24T00:00:00.000",
+        "id": "b",
         "manualEndTime": false,
-        "renderEndTime": "2017-07-24T00:00:00.000",
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "a",
+        "processed": true,
         "raw": {
           "data": ":crit, b, 2017-07-23, 1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2017-07-23"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "2017-07-23",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2017-07-24T00:00:00.000",
+        "section": "",
         "startTime": "2017-07-23T00:00:00.000",
-        "endTime": "2017-07-24T00:00:00.000"
+        "task": "banana ",
+        "type": "",
+        "vert": false
       },
       {
-        "section": "",
-        "type": "",
-        "task": "cherry ",
-        "id": "c",
-        "prevTaskId": "b",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": true,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2017-07-28T00:00:00.000",
+        "id": "c",
         "manualEndTime": false,
-        "renderEndTime": "2017-07-28T00:00:00.000",
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "b",
+        "processed": true,
         "raw": {
           "data": ":active, c, after b a, 1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after b a"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "after b a",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2017-07-28T00:00:00.000",
+        "section": "",
         "startTime": "2017-07-27T00:00:00.000",
-        "endTime": "2017-07-28T00:00:00.000"
+        "task": "cherry ",
+        "type": "",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Adding GANTT diagram to mermaid",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

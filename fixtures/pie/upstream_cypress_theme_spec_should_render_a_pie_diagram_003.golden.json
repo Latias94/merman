@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": false,
-    "title": "Sports in Sweden",
-    "accTitle": "This is a title",
     "accDescr": "This is a description",
+    "accTitle": "This is a title",
     "sections": [
       {
         "label": "Bandy",
@@ -19,6 +16,9 @@
         "label": "Football",
         "value": 90.0
       }
-    ]
+    ],
+    "showData": false,
+    "title": "Sports in Sweden",
+    "type": "pie"
   }
 }

@@ -2,71 +2,21 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
-      "nodes": [
-        {
-          "id": "db",
-          "x": 306.16,
-          "y": -128.0,
-          "width": 612.32,
-          "height": 56.0,
-          "is_cluster": false
-        },
-        {
-          "id": "blockArrowId6",
-          "x": 306.16,
-          "y": -64.0,
-          "width": 612.32,
-          "height": 56.0,
-          "is_cluster": false
-        },
-        {
-          "id": "ID",
-          "x": 306.16,
-          "y": 0.0,
-          "width": 612.32,
-          "height": 56.0,
-          "is_cluster": false
-        },
-        {
-          "id": "A",
-          "x": 104.72,
-          "y": 0.0,
-          "width": 193.44,
-          "height": 40.0,
-          "is_cluster": false
-        },
-        {
-          "id": "B",
-          "x": 306.16,
-          "y": 0.0,
-          "width": 193.44,
-          "height": 40.0,
-          "is_cluster": false
-        },
-        {
-          "id": "C",
-          "x": 507.6,
-          "y": 0.0,
-          "width": 193.44,
-          "height": 40.0,
-          "is_cluster": false
-        },
-        {
-          "id": "D",
-          "x": 306.16,
-          "y": 128.0,
-          "width": 612.32,
-          "height": 56.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 612.32,
+        "max_y": 156.0,
+        "min_x": 0.0,
+        "min_y": -156.0
+      },
       "edges": [
         {
-          "id": "1-ID-D",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "arrow_point",
           "from": "ID",
-          "to": "D",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1-ID-D",
+          "label": null,
           "points": [
             {
               "x": 306.16,
@@ -81,21 +31,21 @@
               "y": 128.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "arrow_open",
-          "end_marker": "arrow_point",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "D",
+          "to_cluster": null
         },
         {
-          "id": "1-C-D",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "arrow_point",
           "from": "C",
-          "to": "D",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1-C-D",
+          "label": null,
           "points": [
             {
               "x": 507.6,
@@ -110,42 +60,96 @@
               "y": 128.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "arrow_open",
-          "end_marker": "arrow_point",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "D",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 56.0,
+          "id": "db",
+          "is_cluster": false,
+          "width": 612.32,
+          "x": 306.16,
+          "y": -128.0
+        },
+        {
+          "height": 56.0,
+          "id": "blockArrowId6",
+          "is_cluster": false,
+          "width": 612.32,
+          "x": 306.16,
+          "y": -64.0
+        },
+        {
+          "height": 56.0,
+          "id": "ID",
+          "is_cluster": false,
+          "width": 612.32,
+          "x": 306.16,
+          "y": 0.0
+        },
+        {
+          "height": 40.0,
+          "id": "A",
+          "is_cluster": false,
+          "width": 193.44,
+          "x": 104.72,
+          "y": 0.0
+        },
+        {
+          "height": 40.0,
+          "id": "B",
+          "is_cluster": false,
+          "width": 193.44,
+          "x": 306.16,
+          "y": 0.0
+        },
+        {
+          "height": 40.0,
+          "id": "C",
+          "is_cluster": false,
+          "width": 193.44,
+          "x": 507.6,
+          "y": 0.0
+        },
+        {
+          "height": 56.0,
+          "id": "D",
+          "is_cluster": false,
+          "width": 612.32,
+          "x": 306.16,
+          "y": 128.0
         }
       ],
       "shapeGeometries": [
         {
-          "id": "db",
           "allocated": {
-            "x": 306.16,
-            "y": -128.0,
+            "height": 56.0,
             "width": 612.32,
-            "height": 56.0
+            "x": 306.16,
+            "y": -128.0
           },
           "boundary": {
-            "shape": "circle",
+            "height_attribute": 27.2,
             "radius": 13.6,
-            "width_attribute": 27.2,
-            "height_attribute": 27.2
-          }
+            "shape": "circle",
+            "width_attribute": 27.2
+          },
+          "id": "db"
         },
         {
-          "id": "blockArrowId6",
           "allocated": {
-            "x": 306.16,
-            "y": -64.0,
+            "height": 56.0,
             "width": 612.32,
-            "height": 56.0
+            "x": 306.16,
+            "y": -64.0
           },
           "boundary": {
-            "shape": "polygon",
             "points": [
               {
                 "x": 31.92,
@@ -176,99 +180,95 @@
                 "y": -4.0
               }
             ],
+            "shape": "polygon",
             "translation": {
               "x": -31.92,
               "y": 20.0
             }
-          }
+          },
+          "id": "blockArrowId6"
         },
         {
-          "id": "ID",
           "allocated": {
-            "x": 306.16,
-            "y": 0.0,
+            "height": 56.0,
             "width": 612.32,
-            "height": 56.0
+            "x": 306.16,
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 612.32,
             "height": 56.0,
+            "kind": "composite",
             "radius": 0.0,
-            "kind": "composite"
-          }
+            "shape": "rectangle",
+            "width": 612.32
+          },
+          "id": "ID"
         },
         {
-          "id": "A",
           "allocated": {
+            "height": 40.0,
+            "width": 193.44,
             "x": 104.72,
-            "y": 0.0,
-            "width": 193.44,
-            "height": 40.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 193.44,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 193.44
+          },
+          "id": "A"
         },
         {
-          "id": "B",
           "allocated": {
+            "height": 40.0,
+            "width": 193.44,
             "x": 306.16,
-            "y": 0.0,
-            "width": 193.44,
-            "height": 40.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 193.44,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 193.44
+          },
+          "id": "B"
         },
         {
-          "id": "C",
           "allocated": {
+            "height": 40.0,
+            "width": 193.44,
             "x": 507.6,
-            "y": 0.0,
-            "width": 193.44,
-            "height": 40.0
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 193.44,
             "height": 40.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 193.44
+          },
+          "id": "C"
         },
         {
-          "id": "D",
           "allocated": {
-            "x": 306.16,
-            "y": 128.0,
+            "height": 56.0,
             "width": 612.32,
-            "height": 56.0
+            "x": 306.16,
+            "y": 128.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 612.32,
             "height": 56.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 612.32
+          },
+          "id": "D"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -156.0,
-        "max_x": 612.32,
-        "max_y": 156.0
-      }
+      ]
     }
   }
 }

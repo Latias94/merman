@@ -1,103 +1,103 @@
 {
   "diagramType": "mindmap",
   "model": {
-    "type": "mindmap",
-    "nodes": [
-      {
-        "id": "0",
-        "domId": "node_0",
-        "label": "String containing []",
-        "labelType": "markdown",
-        "isGroup": false,
-        "shape": "rect",
-        "width": 200,
-        "height": 0,
-        "padding": 20,
-        "cssClasses": "mindmap-node section-root section--1",
-        "cssStyles": [],
-        "centerLabel": true,
-        "look": "classic",
-        "level": 0,
-        "nodeId": "root",
-        "type": 2
-      },
-      {
-        "id": "1",
-        "domId": "node_1",
-        "label": "String containing ()",
-        "labelType": "markdown",
-        "isGroup": false,
-        "shape": "rect",
-        "width": 200,
-        "height": 0,
-        "padding": 20,
-        "cssClasses": "mindmap-node section-0",
-        "cssStyles": [],
-        "centerLabel": true,
-        "look": "classic",
-        "level": 2,
-        "nodeId": "child1",
-        "type": 2,
-        "section": 0
-      }
-    ],
+    "diagramId": "<dynamic>",
+    "direction": "TB",
     "edges": [
       {
-        "id": "edge_0_1",
-        "start": "0",
-        "end": "1",
-        "type": "normal",
-        "curve": "basis",
-        "thickness": "normal",
-        "look": "classic",
         "classes": "edge section-edge-0 edge-depth-1",
+        "curve": "basis",
         "depth": 0,
-        "section": 0
+        "end": "1",
+        "id": "edge_0_1",
+        "look": "classic",
+        "section": 0,
+        "start": "0",
+        "thickness": "normal",
+        "type": "normal"
       }
     ],
-    "diagramId": "<dynamic>",
-    "rootNode": {
-      "id": 0,
-      "nodeId": "root",
-      "level": 0,
-      "descr": "String containing []",
-      "type": 2,
-      "children": [
-        {
-          "id": 1,
-          "nodeId": "child1",
-          "level": 2,
-          "descr": "String containing ()",
-          "type": 2,
-          "children": [],
-          "width": 200,
-          "padding": 20,
-          "section": 0
-        }
-      ],
-      "width": 200,
-      "padding": 20,
-      "isRoot": true
-    },
     "markers": [
       "point"
     ],
-    "direction": "TB",
     "nodeSpacing": 50,
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "domId": "node_0",
+        "height": 0,
+        "id": "0",
+        "isGroup": false,
+        "label": "String containing []",
+        "labelType": "markdown",
+        "level": 0,
+        "look": "classic",
+        "nodeId": "root",
+        "padding": 20,
+        "shape": "rect",
+        "type": 2,
+        "width": 200
+      },
+      {
+        "centerLabel": true,
+        "cssClasses": "mindmap-node section-0",
+        "cssStyles": [],
+        "domId": "node_1",
+        "height": 0,
+        "id": "1",
+        "isGroup": false,
+        "label": "String containing ()",
+        "labelType": "markdown",
+        "level": 2,
+        "look": "classic",
+        "nodeId": "child1",
+        "padding": 20,
+        "section": 0,
+        "shape": "rect",
+        "type": 2,
+        "width": 200
+      }
+    ],
     "rankSpacing": 50,
+    "rootNode": {
+      "children": [
+        {
+          "children": [],
+          "descr": "String containing ()",
+          "id": 1,
+          "level": 2,
+          "nodeId": "child1",
+          "padding": 20,
+          "section": 0,
+          "type": 2,
+          "width": 200
+        }
+      ],
+      "descr": "String containing []",
+      "id": 0,
+      "isRoot": true,
+      "level": 0,
+      "nodeId": "root",
+      "padding": 20,
+      "type": 2,
+      "width": 200
+    },
     "shapes": {
       "0": {
-        "shape": "rect",
-        "width": 200,
         "height": 0,
-        "padding": 20
+        "padding": 20,
+        "shape": "rect",
+        "width": 200
       },
       "1": {
-        "shape": "rect",
-        "width": 200,
         "height": 0,
-        "padding": 20
+        "padding": 20,
+        "shape": "rect",
+        "width": 200
       }
-    }
+    },
+    "type": "mindmap"
   }
 }

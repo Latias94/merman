@@ -2,393 +2,393 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
-      "direction": "LR",
-      "bounds": {
-        "min_x": 100.0,
-        "min_y": -61.0,
-        "max_x": 1690.0,
-        "max_y": 649.0
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "x2": 1640.0,
+        "y1": 285.6,
+        "y2": 285.6
       },
-      "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
+      "bounds": {
+        "max_x": 1690.0,
+        "max_y": 649.0,
+        "min_x": 100.0,
+        "min_y": -61.0
+      },
+      "direction": "LR",
+      "left_margin": 150.0,
+      "orphan_tasks": [],
       "pre_title_box_width": 1190.0,
       "sections": [
         {
           "node": {
-            "x": 200.0,
-            "y": 50.0,
-            "width": 590.0,
-            "height": 67.8,
             "content_width": 550.0,
-            "padding": 20.0,
-            "section_class": "section--1",
+            "height": 67.8,
+            "kind": "section",
             "label": "Releases",
             "label_lines": [
               "Releases"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section--1",
+            "width": 590.0,
+            "x": 200.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 200.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section--1",
-                "label": "Q1 2024 ",
-                "label_lines": [
-                  "Q1   2024"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 295.0,
-                  "y1": 235.6,
                   "x2": 295.0,
+                  "y1": 235.6,
                   "y2": 599.0
                 }
               ],
               "events": [
                 {
-                  "x": 200.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Alpha ",
                   "label_lines": [
                     "Alpha"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 200.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Beta",
                   "label_lines": [
                     "Beta"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 400.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "Q1 2024 ",
+                "label_lines": [
+                  "Q1   2024"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "Q2 2024 ",
-                "label_lines": [
-                  "Q2   2024"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 200.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 495.0,
-                  "y1": 235.6,
                   "x2": 495.0,
+                  "y1": 235.6,
                   "y2": 599.0
                 }
               ],
               "events": [
                 {
-                  "x": 400.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "RC1",
                   "label_lines": [
                     "RC1"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 400.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "RC2",
                   "label_lines": [
                     "RC2"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 600.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "Q2 2024 ",
+                "label_lines": [
+                  "Q2   2024"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "GA ",
-                "label_lines": [
-                  "GA"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 400.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 695.0,
-                  "y1": 235.6,
                   "x2": 695.0,
+                  "y1": 235.6,
                   "y2": 599.0
                 }
               ],
               "events": [
                 {
-                  "x": 600.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "1.0",
                   "label_lines": [
                     "1.0"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 600.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "1.0.1",
                   "label_lines": [
                     "1.0.1"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 600.0,
-                  "y": 487.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 427.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "1.1",
                   "label_lines": [
                     "1.1"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 487.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "GA ",
+                "label_lines": [
+                  "GA"
+                ],
+                "padding": 20.0,
+                "section_class": "section--1",
+                "width": 190.0,
+                "x": 600.0,
+                "y": 167.8
+              }
             }
           ]
         },
         {
           "node": {
-            "x": 800.0,
-            "y": 50.0,
-            "width": 590.0,
-            "height": 67.8,
             "content_width": 550.0,
-            "padding": 20.0,
-            "section_class": "section-0",
+            "height": 67.8,
+            "kind": "section",
             "label": "Phases",
             "label_lines": [
               "Phases"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section-0",
+            "width": 590.0,
+            "x": 800.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 800.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section-0",
-                "label": "Phase-A ",
-                "label_lines": [
-                  "Phase-A"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 895.0,
-                  "y1": 235.6,
                   "x2": 895.0,
+                  "y1": 235.6,
                   "y2": 599.0
                 }
               ],
               "events": [
                 {
-                  "x": 800.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Design ",
                   "label_lines": [
                     "Design"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Review",
                   "label_lines": [
                     "Review"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1000.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "Phase-A ",
+                "label_lines": [
+                  "Phase-A"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "Phase-B ",
-                "label_lines": [
-                  "Phase-B"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 800.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1095.0,
-                  "y1": 235.6,
                   "x2": 1095.0,
+                  "y1": 235.6,
                   "y2": 599.0
                 }
               ],
               "events": [
                 {
-                  "x": 1000.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Build",
                   "label_lines": [
                     "Build"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1000.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1000.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Integrate",
                   "label_lines": [
                     "Integrate"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1000.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1200.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "Phase-B ",
+                "label_lines": [
+                  "Phase-B"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "Phase-C ",
-                "label_lines": [
-                  "Phase-C"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1000.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1295.0,
-                  "y1": 235.6,
                   "x2": 1295.0,
+                  "y1": 235.6,
                   "y2": 599.0
                 }
               ],
               "events": [
                 {
-                  "x": 1200.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Ship",
                   "label_lines": [
                     "Ship"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1200.0,
+                  "y": 367.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "Phase-C ",
+                "label_lines": [
+                  "Phase-C"
+                ],
+                "padding": 20.0,
+                "section_class": "section-0",
+                "width": 190.0,
+                "x": 1200.0,
+                "y": 167.8
+              }
             }
           ]
         }
       ],
-      "orphan_tasks": [],
-      "activity_line": {
-        "kind": "activity",
-        "x1": 150.0,
-        "y1": 285.6,
-        "x2": 1640.0,
-        "y2": 285.6
-      },
       "title": "Textual periods + multi-event forms",
       "title_x": 445.0,
       "title_y": 20.0,

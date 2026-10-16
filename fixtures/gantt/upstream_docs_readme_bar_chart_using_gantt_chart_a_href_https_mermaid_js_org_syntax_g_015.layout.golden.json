@@ -2,30 +2,92 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 220.0
-      },
-      "width": 800.0,
-      "height": 220.0,
-      "left_padding": 75.0,
-      "right_padding": 75.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 4.0,
-      "display_mode": "",
-      "date_format": " X",
       "axis_format": "%s",
-      "tick_interval": null,
-      "top_axis": false,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": "0",
+          "time_ms": 0.0,
+          "x": 75.0
+        },
+        {
+          "label": "5",
+          "time_ms": 5000.0,
+          "x": 121.0
+        },
+        {
+          "label": "10",
+          "time_ms": 10000.0,
+          "x": 167.0
+        },
+        {
+          "label": "15",
+          "time_ms": 15000.0,
+          "x": 212.0
+        },
+        {
+          "label": "20",
+          "time_ms": 20000.0,
+          "x": 258.0
+        },
+        {
+          "label": "25",
+          "time_ms": 25000.0,
+          "x": 304.0
+        },
+        {
+          "label": "30",
+          "time_ms": 30000.0,
+          "x": 350.0
+        },
+        {
+          "label": "35",
+          "time_ms": 35000.0,
+          "x": 395.0
+        },
+        {
+          "label": "40",
+          "time_ms": 40000.0,
+          "x": 441.0
+        },
+        {
+          "label": "45",
+          "time_ms": 45000.0,
+          "x": 487.0
+        },
+        {
+          "label": "50",
+          "time_ms": 50000.0,
+          "x": 533.0
+        },
+        {
+          "label": "55",
+          "time_ms": 55000.0,
+          "x": 579.0
+        },
+        {
+          "label": "60",
+          "time_ms": 60000.0,
+          "x": 624.0
+        },
+        {
+          "label": "65",
+          "time_ms": 65000.0,
+          "x": 670.0
+        },
+        {
+          "label": "70",
+          "time_ms": 70000.0,
+          "x": 716.0
+        }
+      ],
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 220.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "Issue19062",
         "Issue19401",
@@ -33,345 +95,283 @@
         "Issue7441",
         "Issue1300"
       ],
+      "date_format": " X",
+      "display_mode": "",
+      "excludes": [],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": false,
+      "height": 220.0,
+      "left_padding": 75.0,
+      "number_section_styles": 4.0,
+      "right_padding": 75.0,
       "rows": [
         {
+          "class": "section section0",
+          "height": 24.0,
           "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "x": 0.0,
+          "y": 48.0
         },
         {
+          "class": "section section1",
+          "height": 24.0,
           "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section1"
+          "x": 0.0,
+          "y": 72.0
         },
         {
+          "class": "section section2",
+          "height": 24.0,
           "index": 2.0,
-          "x": 0.0,
-          "y": 96.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section2"
+          "x": 0.0,
+          "y": 96.0
         },
         {
+          "class": "section section3",
+          "height": 24.0,
           "index": 3.0,
-          "x": 0.0,
-          "y": 120.0,
           "width": 762.5,
-          "height": 24.0,
-          "class": "section section3"
+          "x": 0.0,
+          "y": 120.0
         },
         {
-          "index": 4.0,
-          "x": 0.0,
-          "y": 144.0,
-          "width": 762.5,
+          "class": "section section0",
           "height": 24.0,
-          "class": "section section0"
+          "index": 4.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 144.0
         }
       ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "Issue19062",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 62.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "Issue19062"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "Issue19062",
+          "x": 10.0,
+          "y": 62.0
         },
         {
-          "section": "Issue19401",
-          "index": 1.0,
-          "x": 10.0,
-          "y": 86.0,
+          "class": "sectionTitle sectionTitle1",
           "dy_em": -0.0,
+          "index": 1.0,
           "lines": [
             "Issue19401"
           ],
-          "class": "sectionTitle sectionTitle1"
+          "section": "Issue19401",
+          "x": 10.0,
+          "y": 86.0
         },
         {
-          "section": "Issue193",
-          "index": 2.0,
-          "x": 10.0,
-          "y": 110.0,
+          "class": "sectionTitle sectionTitle2",
           "dy_em": -0.0,
+          "index": 2.0,
           "lines": [
             "Issue193"
           ],
-          "class": "sectionTitle sectionTitle2"
+          "section": "Issue193",
+          "x": 10.0,
+          "y": 110.0
         },
         {
-          "section": "Issue7441",
-          "index": 3.0,
-          "x": 10.0,
-          "y": 134.0,
+          "class": "sectionTitle sectionTitle3",
           "dy_em": -0.0,
+          "index": 3.0,
           "lines": [
             "Issue7441"
           ],
-          "class": "sectionTitle sectionTitle3"
+          "section": "Issue7441",
+          "x": 10.0,
+          "y": 134.0
         },
         {
-          "section": "Issue1300",
-          "index": 4.0,
-          "x": 10.0,
-          "y": 158.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 4.0,
           "lines": [
             "Issue1300"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "Issue1300",
+          "x": 10.0,
+          "y": 158.0
         }
       ],
       "tasks": [
         {
-          "id": "task1",
-          "task": "71   ",
-          "section": "Issue19062",
-          "task_type": "Issue19062",
-          "order": 0.0,
-          "start_ms": 0.0,
-          "end_ms": 71000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task1",
-            "x": 75.0,
-            "y": 50.0,
-            "width": 650.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 650.0,
+            "x": 75.0,
+            "y": 50.0
           },
+          "end_ms": 71000.0,
+          "id": "task1",
           "label": {
+            "class": "taskText taskText0 width-12.32",
+            "font_size": 11.0,
             "id": "task1-text",
             "text": "71   ",
-            "font_size": 11.0,
             "width": 12.32,
             "x": 400.0,
-            "y": 63.5,
-            "class": "taskText taskText0 width-12.32"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "Issue19062",
+          "start_ms": 0.0,
+          "task": "71   ",
+          "task_type": "Issue19062",
+          "vert": false
         },
         {
-          "id": "task2",
-          "task": "36   ",
-          "section": "Issue19401",
-          "task_type": "Issue19401",
-          "order": 1.0,
-          "start_ms": 0.0,
-          "end_ms": 36000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task2",
-            "x": 75.0,
-            "y": 74.0,
-            "width": 330.0,
+            "class": "task task1",
             "height": 20.0,
+            "id": "task2",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task1"
+            "width": 330.0,
+            "x": 75.0,
+            "y": 74.0
           },
+          "end_ms": 36000.0,
+          "id": "task2",
           "label": {
+            "class": "taskText taskText1 width-12.32",
+            "font_size": 11.0,
             "id": "task2-text",
             "text": "36   ",
-            "font_size": 11.0,
             "width": 12.32,
             "x": 240.0,
-            "y": 87.5,
-            "class": "taskText taskText1 width-12.32"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "Issue19401",
+          "start_ms": 0.0,
+          "task": "36   ",
+          "task_type": "Issue19401",
+          "vert": false
         },
         {
-          "id": "task3",
-          "task": "34   ",
-          "section": "Issue193",
-          "task_type": "Issue193",
-          "order": 2.0,
-          "start_ms": 0.0,
-          "end_ms": 34000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task3",
-            "x": 75.0,
-            "y": 98.0,
-            "width": 311.0,
+            "class": "task task2",
             "height": 20.0,
+            "id": "task3",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task2"
+            "width": 311.0,
+            "x": 75.0,
+            "y": 98.0
           },
+          "end_ms": 34000.0,
+          "id": "task3",
           "label": {
+            "class": "taskText taskText2 width-12.32",
+            "font_size": 11.0,
             "id": "task3-text",
             "text": "34   ",
-            "font_size": 11.0,
             "width": 12.32,
             "x": 230.5,
-            "y": 111.5,
-            "class": "taskText taskText2 width-12.32"
-          }
+            "y": 111.5
+          },
+          "milestone": false,
+          "order": 2.0,
+          "render_end_ms": null,
+          "section": "Issue193",
+          "start_ms": 0.0,
+          "task": "34   ",
+          "task_type": "Issue193",
+          "vert": false
         },
         {
-          "id": "task4",
-          "task": "9    ",
-          "section": "Issue7441",
-          "task_type": "Issue7441",
-          "order": 3.0,
-          "start_ms": 0.0,
-          "end_ms": 9000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task4",
-            "x": 75.0,
-            "y": 122.0,
-            "width": 82.0,
+            "class": "task task3",
             "height": 20.0,
+            "id": "task4",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task3"
+            "width": 82.0,
+            "x": 75.0,
+            "y": 122.0
           },
+          "end_ms": 9000.0,
+          "id": "task4",
           "label": {
+            "class": "taskText taskText3 width-6.16",
+            "font_size": 11.0,
             "id": "task4-text",
             "text": "9    ",
-            "font_size": 11.0,
             "width": 6.16,
             "x": 116.0,
-            "y": 135.5,
-            "class": "taskText taskText3 width-6.16"
-          }
+            "y": 135.5
+          },
+          "milestone": false,
+          "order": 3.0,
+          "render_end_ms": null,
+          "section": "Issue7441",
+          "start_ms": 0.0,
+          "task": "9    ",
+          "task_type": "Issue7441",
+          "vert": false
         },
         {
-          "id": "task5",
-          "task": "5    ",
-          "section": "Issue1300",
-          "task_type": "Issue1300",
-          "order": 4.0,
-          "start_ms": 0.0,
-          "end_ms": 5000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "task5",
-            "x": 75.0,
-            "y": 146.0,
-            "width": 46.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "task5",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 46.0,
+            "x": 75.0,
+            "y": 146.0
           },
+          "end_ms": 5000.0,
+          "id": "task5",
           "label": {
+            "class": "taskText taskText0 width-6.16",
+            "font_size": 11.0,
             "id": "task5-text",
             "text": "5    ",
-            "font_size": 11.0,
             "width": 6.16,
             "x": 98.0,
-            "y": 159.5,
-            "class": "taskText taskText0 width-6.16"
-          }
+            "y": 159.5
+          },
+          "milestone": false,
+          "order": 4.0,
+          "render_end_ms": null,
+          "section": "Issue1300",
+          "start_ms": 0.0,
+          "task": "5    ",
+          "task_type": "Issue1300",
+          "vert": false
         }
       ],
-      "excludes": [],
-      "has_excludes_layer": false,
-      "bottom_ticks": [
-        {
-          "time_ms": 0.0,
-          "x": 75.0,
-          "label": "0"
-        },
-        {
-          "time_ms": 5000.0,
-          "x": 121.0,
-          "label": "5"
-        },
-        {
-          "time_ms": 10000.0,
-          "x": 167.0,
-          "label": "10"
-        },
-        {
-          "time_ms": 15000.0,
-          "x": 212.0,
-          "label": "15"
-        },
-        {
-          "time_ms": 20000.0,
-          "x": 258.0,
-          "label": "20"
-        },
-        {
-          "time_ms": 25000.0,
-          "x": 304.0,
-          "label": "25"
-        },
-        {
-          "time_ms": 30000.0,
-          "x": 350.0,
-          "label": "30"
-        },
-        {
-          "time_ms": 35000.0,
-          "x": 395.0,
-          "label": "35"
-        },
-        {
-          "time_ms": 40000.0,
-          "x": 441.0,
-          "label": "40"
-        },
-        {
-          "time_ms": 45000.0,
-          "x": 487.0,
-          "label": "45"
-        },
-        {
-          "time_ms": 50000.0,
-          "x": 533.0,
-          "label": "50"
-        },
-        {
-          "time_ms": 55000.0,
-          "x": 579.0,
-          "label": "55"
-        },
-        {
-          "time_ms": 60000.0,
-          "x": 624.0,
-          "label": "60"
-        },
-        {
-          "time_ms": 65000.0,
-          "x": 670.0,
-          "label": "65"
-        },
-        {
-          "time_ms": 70000.0,
-          "x": 716.0,
-          "label": "70"
-        }
-      ],
-      "top_ticks": [],
+      "tick_interval": null,
       "title": "Git Issues - days since last update",
+      "title_top_margin": 25.0,
       "title_x": 400.0,
-      "title_y": 25.0
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": false,
+      "top_padding": 50.0,
+      "top_ticks": [],
+      "width": 800.0
     }
   }
 }

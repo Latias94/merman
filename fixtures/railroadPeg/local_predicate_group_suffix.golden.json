@@ -1,28 +1,22 @@
 {
   "diagramType": "railroadPeg",
   "model": {
-    "type": "railroadPeg",
-    "title": "Predicates on grouped suffixes",
-    "accTitle": "PEG predicate precedence",
     "accDescr": "Predicates wrap suffixed groups while later rules preserve references.",
+    "accTitle": "PEG predicate precedence",
     "rules": [
       {
-        "name": "Token",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "special",
-              "text": "&(...)"
+              "text": "&(...)",
+              "type": "special"
             },
             {
-              "type": "special",
-              "text": "!(...)"
+              "text": "!(...)",
+              "type": "special"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "choice",
                 "alternatives": [
                   {
                     "type": "terminal",
@@ -32,25 +26,31 @@
                     "type": "terminal",
                     "value": "y"
                   }
-                ]
+                ],
+                "type": "choice"
               },
+              "max": null,
               "min": 0,
-              "max": null
+              "type": "repetition"
             },
             {
-              "type": "special",
-              "text": "."
+              "text": ".",
+              "type": "special"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "Token"
       },
       {
-        "name": "End",
         "definition": {
           "type": "terminal",
           "value": "!"
-        }
+        },
+        "name": "End"
       }
-    ]
+    ],
+    "title": "Predicates on grouped suffixes",
+    "type": "railroadPeg"
   }
 }

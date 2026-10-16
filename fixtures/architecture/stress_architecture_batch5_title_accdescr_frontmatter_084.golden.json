@@ -1,195 +1,195 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "app",
-        "icon": "cloud",
-        "title": "App",
-        "in": null
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "disk",
+        "rhsInto": true,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "app",
+        "in": null,
+        "title": "App"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "app",
         "title": "API",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "app",
         "title": "DB",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "disk",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "disk",
+        "in": "app",
         "title": "Disk",
-        "in": "app"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "app",
         "title": "API",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "app",
         "title": "DB",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "disk",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "disk",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "disk",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "disk",
+        "in": "app",
         "title": "Disk",
-        "in": "app"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "api",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "api",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "disk",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

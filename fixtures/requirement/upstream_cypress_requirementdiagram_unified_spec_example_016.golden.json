@@ -1,57 +1,9 @@
 {
   "diagramType": "requirement",
   "model": {
-    "type": "requirement",
-    "accTitle": null,
     "accDescr": null,
-    "direction": "TB",
-    "requirements": [
-      {
-        "name": "test_req",
-        "type": "Requirement",
-        "requirementId": "1",
-        "text": "the test text.",
-        "risk": "High",
-        "verifyMethod": "Test",
-        "cssStyles": [
-          "stroke:lightblue",
-          "color: #0000FF"
-        ],
-        "classes": [
-          "default",
-          "blue"
-        ]
-      }
-    ],
-    "elements": [
-      {
-        "name": "test_entity",
-        "type": "simulation",
-        "docRef": "",
-        "cssStyles": [
-          "font-weight: bold"
-        ],
-        "classes": [
-          "default",
-          "bold"
-        ]
-      }
-    ],
-    "relationships": [
-      {
-        "type": "satisfies",
-        "src": "test_entity",
-        "dst": "test_req"
-      }
-    ],
+    "accTitle": null,
     "classes": {
-      "bold": {
-        "id": "bold",
-        "styles": [
-          "font-weight: bold"
-        ],
-        "textStyles": []
-      },
       "blue": {
         "id": "blue",
         "styles": [
@@ -61,7 +13,55 @@
         "textStyles": [
           "color: #0000FF"
         ]
+      },
+      "bold": {
+        "id": "bold",
+        "styles": [
+          "font-weight: bold"
+        ],
+        "textStyles": []
       }
-    }
+    },
+    "direction": "TB",
+    "elements": [
+      {
+        "classes": [
+          "default",
+          "bold"
+        ],
+        "cssStyles": [
+          "font-weight: bold"
+        ],
+        "docRef": "",
+        "name": "test_entity",
+        "type": "simulation"
+      }
+    ],
+    "relationships": [
+      {
+        "dst": "test_req",
+        "src": "test_entity",
+        "type": "satisfies"
+      }
+    ],
+    "requirements": [
+      {
+        "classes": [
+          "default",
+          "blue"
+        ],
+        "cssStyles": [
+          "stroke:lightblue",
+          "color: #0000FF"
+        ],
+        "name": "test_req",
+        "requirementId": "1",
+        "risk": "High",
+        "text": "the test text.",
+        "type": "Requirement",
+        "verifyMethod": "Test"
+      }
+    ],
+    "type": "requirement"
   }
 }

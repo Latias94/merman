@@ -1,58 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "init",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "feat1",
-        "message": "Add feature",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "init"
-        ],
-        "branch": "feature"
-      },
-      {
-        "id": "2-<dynamic>",
-        "message": "merged branch feature into main",
-        "seq": 2,
-        "type": 3,
-        "tags": [
-          "v1.0"
-        ],
-        "parents": [
-          "init",
-          "feat1"
-        ],
-        "branch": "main",
-        "customId": false
-      },
-      {
-        "id": "3-<dynamic>",
-        "message": "cherry-picked Add feature into main",
-        "seq": 3,
-        "type": 4,
-        "tags": [
-          "critical fix"
-        ],
-        "parents": [
-          "2-<dynamic>",
-          "feat1"
-        ],
-        "branch": "main"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": "Complex Example",
     "branches": [
       {
         "name": "main"
@@ -61,10 +11,60 @@
         "name": "feature"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "init",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "feature",
+        "id": "feat1",
+        "message": "Add feature",
+        "parents": [
+          "init"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "2-<dynamic>",
+        "message": "merged branch feature into main",
+        "parents": [
+          "init",
+          "feat1"
+        ],
+        "seq": 2,
+        "tags": [
+          "v1.0"
+        ],
+        "type": 3
+      },
+      {
+        "branch": "main",
+        "id": "3-<dynamic>",
+        "message": "cherry-picked Add feature into main",
+        "parents": [
+          "2-<dynamic>",
+          "feat1"
+        ],
+        "seq": 3,
+        "tags": [
+          "critical fix"
+        ],
+        "type": 4
+      }
+    ],
     "currentBranch": "main",
     "direction": "TB",
-    "accTitle": "Complex Example",
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

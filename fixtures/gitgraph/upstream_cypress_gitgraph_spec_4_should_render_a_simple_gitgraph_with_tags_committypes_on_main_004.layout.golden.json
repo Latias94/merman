@@ -2,99 +2,99 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [
+        {
+          "class_index": 0.0,
+          "d": "M 10 -2 L 60 -2",
+          "from": "Normal Commit with tag",
+          "to": "Reverse Commit with tag"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 60 -2 L 110 -2",
+          "from": "Reverse Commit with tag",
+          "to": "Highlight Commit"
+        }
+      ],
       "bounds": {
-        "min_x": -91.72,
-        "min_y": -20.0,
         "max_x": 158.0,
-        "max_y": 16.0
+        "max_y": 16.0,
+        "min_x": -91.72,
+        "min_y": -20.0
       },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 150.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         }
       ],
       "commits": [
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Normal Commit with tag",
           "message": "",
+          "parents": [],
+          "pos": 0.0,
+          "pos_with_offset": 10.0,
           "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
           "tags": [
             "v1.0.0"
           ],
-          "parents": [],
-          "branch": "main",
-          "pos": 0.0,
-          "pos_with_offset": 10.0,
           "x": 10.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 1.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Reverse Commit with tag",
           "message": "",
-          "seq": 1.0,
-          "commit_type": 1.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [
-            "RC_1"
-          ],
           "parents": [
             "Normal Commit with tag"
           ],
-          "branch": "main",
           "pos": 50.0,
           "pos_with_offset": 60.0,
+          "seq": 1.0,
+          "tags": [
+            "RC_1"
+          ],
           "x": 60.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 2.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Highlight Commit",
           "message": "",
-          "seq": 2.0,
-          "commit_type": 2.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [
-            "8.8.4"
-          ],
           "parents": [
             "Reverse Commit with tag"
           ],
-          "branch": "main",
           "pos": 100.0,
           "pos_with_offset": 110.0,
+          "seq": 2.0,
+          "tags": [
+            "8.8.4"
+          ],
           "x": 110.0,
           "y": -2.0
         }
       ],
-      "arrows": [
-        {
-          "from": "Normal Commit with tag",
-          "to": "Reverse Commit with tag",
-          "class_index": 0.0,
-          "d": "M 10 -2 L 60 -2"
-        },
-        {
-          "from": "Reverse Commit with tag",
-          "to": "Highlight Commit",
-          "class_index": 0.0,
-          "d": "M 60 -2 L 110 -2"
-        }
-      ]
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 150.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

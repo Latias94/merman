@@ -2,47 +2,49 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 506.219,
+        "max_y": 224.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Cluster",
-          "x": 406.219,
-          "y": 118.0,
-          "width": 200.0,
+          "diff": -4.0,
+          "effective_dir": "LR",
           "height": 212.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Outside",
-          "x": 88.0,
-          "y": 130.0,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "X",
+          "id": "Cluster",
+          "offset_y": 15.0,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": "Cluster fa:fa-cubes",
+          "title_label": {
+            "height": 19.0,
+            "width": 64.547,
+            "x": 406.219,
+            "y": 21.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 200.0,
           "x": 406.219,
-          "y": 82.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Y",
-          "x": 406.219,
-          "y": 177.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 118.0
         }
       ],
       "edges": [
         {
-          "id": "L_Outside_X_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Outside",
-          "to": "X",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Outside_X_0",
+          "label": {
+            "height": 21.0,
+            "width": 52.219,
+            "x": 230.109,
+            "y": 82.5
+          },
           "points": [
             {
               "x": 164.0,
@@ -65,26 +67,26 @@
               "y": 82.5
             }
           ],
-          "label": {
-            "x": 230.109,
-            "y": 82.5,
-            "width": 52.219,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "X",
+          "to_cluster": null
         },
         {
-          "id": "L_Outside_Y_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Outside",
-          "to": "Y",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Outside_Y_0",
+          "label": {
+            "height": 21.0,
+            "width": 52.219,
+            "x": 230.109,
+            "y": 177.5
+          },
           "points": [
             {
               "x": 164.0,
@@ -107,50 +109,48 @@
               "y": 177.5
             }
           ],
-          "label": {
-            "x": 230.109,
-            "y": 177.5,
-            "width": 52.219,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Y",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Cluster",
-          "x": 406.219,
-          "y": 118.0,
-          "width": 200.0,
           "height": 212.0,
-          "diff": -4.0,
-          "offset_y": 15.0,
-          "title": "Cluster fa:fa-cubes",
-          "title_label": {
-            "x": 406.219,
-            "y": 21.5,
-            "width": 64.547,
-            "height": 19.0
-          },
-          "requested_dir": null,
-          "effective_dir": "LR",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Cluster",
+          "is_cluster": true,
+          "width": 200.0,
+          "x": 406.219,
+          "y": 118.0
+        },
+        {
+          "height": 45.0,
+          "id": "Outside",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 88.0,
+          "y": 130.0
+        },
+        {
+          "height": 45.0,
+          "id": "X",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 406.219,
+          "y": 82.5
+        },
+        {
+          "height": 45.0,
+          "id": "Y",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 406.219,
+          "y": 177.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 506.219,
-        "max_y": 224.0
-      }
+      ]
     }
   }
 }

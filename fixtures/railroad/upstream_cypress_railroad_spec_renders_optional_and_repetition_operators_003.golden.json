@@ -1,15 +1,11 @@
 {
   "diagramType": "railroad",
   "model": {
-    "type": "railroad",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "sign",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -19,83 +15,83 @@
               "type": "terminal",
               "value": "-"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "sign"
       },
       {
-        "name": "number",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "optional",
               "element": {
-                "type": "nonterminal",
-                "name": "sign"
-              }
+                "name": "sign",
+                "type": "nonterminal"
+              },
+              "type": "optional"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "nonterminal",
-                "name": "digit"
+                "name": "digit",
+                "type": "nonterminal"
               },
+              "max": null,
               "min": 1,
-              "max": null
+              "type": "repetition"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "number"
       },
       {
-        "name": "list",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
               "type": "terminal",
               "value": "["
             },
             {
-              "type": "optional",
               "element": {
-                "type": "sequence",
                 "elements": [
                   {
-                    "type": "nonterminal",
-                    "name": "number"
+                    "name": "number",
+                    "type": "nonterminal"
                   },
                   {
-                    "type": "repetition",
                     "element": {
-                      "type": "sequence",
                       "elements": [
                         {
                           "type": "terminal",
                           "value": ","
                         },
                         {
-                          "type": "nonterminal",
-                          "name": "number"
+                          "name": "number",
+                          "type": "nonterminal"
                         }
-                      ]
+                      ],
+                      "type": "sequence"
                     },
+                    "max": null,
                     "min": 0,
-                    "max": null
+                    "type": "repetition"
                   }
-                ]
-              }
+                ],
+                "type": "sequence"
+              },
+              "type": "optional"
             },
             {
               "type": "terminal",
               "value": "]"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "list"
       },
       {
-        "name": "digit",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -113,9 +109,13 @@
               "type": "terminal",
               "value": "3"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "digit"
       }
-    ]
+    ],
+    "title": null,
+    "type": "railroad"
   }
 }

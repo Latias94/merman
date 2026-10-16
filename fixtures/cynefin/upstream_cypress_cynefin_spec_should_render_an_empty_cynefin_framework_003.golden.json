@@ -1,28 +1,28 @@
 {
   "diagramType": "cynefin",
   "model": {
-    "type": "cynefin",
-    "title": "Empty Framework",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "domains": [
       {
-        "name": "complex",
-        "items": []
+        "items": [],
+        "name": "complex"
       },
       {
-        "name": "complicated",
-        "items": []
+        "items": [],
+        "name": "complicated"
       },
       {
-        "name": "clear",
-        "items": []
+        "items": [],
+        "name": "clear"
       },
       {
-        "name": "chaotic",
-        "items": []
+        "items": [],
+        "name": "chaotic"
       }
     ],
-    "transitions": []
+    "title": "Empty Framework",
+    "transitions": [],
+    "type": "cynefin"
   }
 }

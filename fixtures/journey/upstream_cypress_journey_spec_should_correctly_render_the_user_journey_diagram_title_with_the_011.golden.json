@@ -1,10 +1,12 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "User Journey Example",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "John",
+      "Shahir"
+    ],
     "sections": [
       "Onboarding",
       "Engagement",
@@ -12,72 +14,70 @@
     ],
     "tasks": [
       {
-        "score": 5,
         "people": [
           "John",
           "Shahir"
         ],
-        "section": "Onboarding",
-        "type": "Onboarding",
-        "task": "        Sign Up"
-      },
-      {
-        "score": 4,
-        "people": [
-          "John"
-        ],
-        "section": "Onboarding",
-        "type": "Onboarding",
-        "task": "        Complete Profile"
-      },
-      {
-        "score": 3,
-        "people": [
-          "John"
-        ],
-        "section": "Engagement",
-        "type": "Engagement",
-        "task": "        Browse Features"
-      },
-      {
-        "score": 4,
-        "people": [
-          "John"
-        ],
-        "section": "Engagement",
-        "type": "Engagement",
-        "task": "        Use Core Functionality"
-      },
-      {
         "score": 5,
+        "section": "Onboarding",
+        "task": "        Sign Up",
+        "type": "Onboarding"
+      },
+      {
         "people": [
           "John"
         ],
-        "section": "Retention",
-        "type": "Retention",
-        "task": "        Revisit Application"
+        "score": 4,
+        "section": "Onboarding",
+        "task": "        Complete Profile",
+        "type": "Onboarding"
       },
       {
+        "people": [
+          "John"
+        ],
         "score": 3,
+        "section": "Engagement",
+        "task": "        Browse Features",
+        "type": "Engagement"
+      },
+      {
         "people": [
           "John"
         ],
-        "section": "Retention",
-        "type": "Retention",
-        "task": "        Invite Friends"
+        "score": 4,
+        "section": "Engagement",
+        "task": "        Use Core Functionality",
+        "type": "Engagement"
       },
       {
+        "people": [
+          "John"
+        ],
+        "score": 5,
+        "section": "Retention",
+        "task": "        Revisit Application",
+        "type": "Retention"
+      },
+      {
+        "people": [
+          "John"
+        ],
+        "score": 3,
+        "section": "Retention",
+        "task": "        Invite Friends",
+        "type": "Retention"
+      },
+      {
+        "people": [],
         "score": 0,
         "scoreIsNaN": true,
-        "people": [],
         "section": "Retention",
-        "type": "Retention",
-        "task": "        size"
+        "task": "        size",
+        "type": "Retention"
       }
     ],
-    "actors": [
-      "John",
-      "Shahir"
-    ]
+    "title": "User Journey Example",
+    "type": "journey"
   }
 }

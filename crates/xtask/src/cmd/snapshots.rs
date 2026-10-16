@@ -309,6 +309,8 @@ pub(crate) fn update_layout_snapshots(args: Vec<String>) -> Result<(), XtaskErro
             "layout": layout_json,
         });
         normalize_layout_snapshot(&diagram_type, &mut out);
+        // Snapshot bytes must not depend on preserve_order or HashMap iteration order.
+        out.sort_all_objects();
 
         let pretty = match serde_json::to_string_pretty(&out) {
             Ok(v) => v,
@@ -856,10 +858,12 @@ pub(crate) fn update_snapshots(args: Vec<String>) -> Result<(), XtaskError> {
             walk_replace(&re_block_id, "id-<id>-$1", &mut model);
         }
 
-        let out = serde_json::json!({
+        let mut out = serde_json::json!({
             "diagramType": parsed.meta.diagram_type,
             "model": model,
         });
+        // Snapshot bytes must not depend on preserve_order or HashMap iteration order.
+        out.sort_all_objects();
 
         let pretty = match serde_json::to_string_pretty(&out) {
             Ok(v) => v,

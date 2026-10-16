@@ -2,95 +2,86 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 299.4,
+        "max_y": 893.0,
+        "min_x": 19.4,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Configuring",
-          "x": 159.4,
-          "y": 581.5,
-          "width": 232.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 575.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Configuring_start",
+          "id": "Configuring",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "Configuring",
+          "title_label": {
+            "height": 21.0,
+            "width": 64.4,
+            "x": 159.4,
+            "y": 304.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 232.0,
           "x": 159.4,
-          "y": 349.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
+          "y": 581.5
         },
         {
-          "id": "Idle",
-          "x": 171.0,
-          "y": 170.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "NewValuePreview",
-          "x": 159.4,
-          "y": 701.5,
-          "width": 184.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 287.0,
-          "is_cluster": true
+          "id": "NewValuePreview",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "NewValuePreview",
+          "title_label": {
+            "height": 21.0,
+            "width": 103.04,
+            "x": 159.4,
+            "y": 568.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 184.0,
+          "x": 159.4,
+          "y": 701.5
         },
         {
-          "id": "NewValueSelection",
-          "x": 159.4,
-          "y": 398.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "NotShooting",
-          "x": 159.4,
-          "y": 479.5,
-          "width": 280.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 827.0,
-          "is_cluster": true
-        },
-        {
-          "id": "NotShooting_start",
-          "x": 171.0,
-          "y": 121.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State1",
+          "id": "NotShooting",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "NotShooting",
+          "title_label": {
+            "height": 21.0,
+            "width": 68.88,
+            "x": 159.4,
+            "y": 76.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 280.0,
           "x": 159.4,
-          "y": 624.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "State2",
-          "x": 159.4,
-          "y": 802.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 171.0,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
+          "y": 479.5
         }
       ],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "NotShooting",
           "from_cluster": null,
-          "to_cluster": "NotShooting",
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 171.0,
@@ -101,21 +92,21 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NotShooting",
+          "to_cluster": "NotShooting"
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NotShooting_start",
-          "to": "Idle",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": null,
           "points": [
             {
               "x": 171.0,
@@ -126,59 +117,64 @@
               "y": 152.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge2",
-          "from": "Idle",
-          "to": "Configuring",
-          "from_cluster": null,
-          "to_cluster": "Configuring",
-          "points": [
-            {
-              "x": 190.067,
-              "y": 189.0
-            },
-            {
-              "x": 190.067,
-              "y": 219.0
-            },
-            {
-              "x": 212.4,
-              "y": 219.0
-            },
-            {
-              "x": 212.4,
-              "y": 294.0
-            }
-          ],
-          "label": {
-            "x": 212.31,
-            "y": 259.5,
-            "width": 50.82,
-            "height": 21.0
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "edge3",
-          "from": "Configuring",
+          "stroke_dasharray": null,
           "to": "Idle",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Idle",
+          "from_cluster": null,
+          "id": "edge2",
+          "label": {
+            "height": 21.0,
+            "width": 50.82,
+            "x": 212.31,
+            "y": 259.5
+          },
+          "points": [
+            {
+              "x": 190.067,
+              "y": 189.0
+            },
+            {
+              "x": 190.067,
+              "y": 219.0
+            },
+            {
+              "x": 212.4,
+              "y": 219.0
+            },
+            {
+              "x": 212.4,
+              "y": 294.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Configuring",
+          "to_cluster": "Configuring"
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Configuring",
           "from_cluster": "Configuring",
-          "to_cluster": null,
+          "id": "edge3",
+          "label": {
+            "height": 21.0,
+            "width": 50.82,
+            "x": 129.51,
+            "y": 259.5
+          },
           "points": [
             {
               "x": 129.6,
@@ -197,26 +193,21 @@
               "y": 189.0
             }
           ],
-          "label": {
-            "x": 129.51,
-            "y": 259.5,
-            "width": 50.82,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Idle",
+          "to_cluster": null
         },
         {
-          "id": "edge4",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Configuring_start",
-          "to": "NewValueSelection",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge4",
+          "label": null,
           "points": [
             {
               "x": 159.4,
@@ -227,97 +218,102 @@
               "y": 380.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NewValueSelection",
+          "to_cluster": null
         },
         {
-          "id": "edge5",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NewValueSelection",
-          "to": "NewValuePreview",
           "from_cluster": null,
-          "to_cluster": "NewValuePreview",
-          "points": [
-            {
-              "x": 188.0,
-              "y": 417.0
-            },
-            {
-              "x": 188.0,
-              "y": 447.0
-            },
-            {
-              "x": 247.36,
-              "y": 447.0
-            },
-            {
-              "x": 247.36,
-              "y": 528.0
-            },
-            {
-              "x": 200.0,
-              "y": 528.0
-            },
-            {
-              "x": 200.0,
-              "y": 558.0
-            }
-          ],
+          "id": "edge5",
           "label": {
-            "x": 246.93,
-            "y": 487.5,
+            "height": 21.0,
             "width": 70.14,
-            "height": 21.0
+            "x": 246.93,
+            "y": 487.5
           },
+          "points": [
+            {
+              "x": 188.0,
+              "y": 417.0
+            },
+            {
+              "x": 188.0,
+              "y": 447.0
+            },
+            {
+              "x": 247.36,
+              "y": 447.0
+            },
+            {
+              "x": 247.36,
+              "y": 528.0
+            },
+            {
+              "x": 200.0,
+              "y": 528.0
+            },
+            {
+              "x": 200.0,
+              "y": 558.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NewValuePreview",
+          "to_cluster": "NewValuePreview"
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "NewValuePreview",
+          "from_cluster": "NewValuePreview",
           "id": "edge6",
-          "from": "NewValuePreview",
-          "to": "NewValueSelection",
-          "from_cluster": "NewValuePreview",
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 159.4,
-              "y": 558.0
-            },
-            {
-              "x": 159.4,
-              "y": 417.0
-            }
-          ],
           "label": {
-            "x": 159.38,
-            "y": 487.5,
+            "height": 21.0,
             "width": 64.96,
-            "height": 21.0
+            "x": 159.38,
+            "y": 487.5
           },
+          "points": [
+            {
+              "x": 159.4,
+              "y": 558.0
+            },
+            {
+              "x": 159.4,
+              "y": 417.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NewValueSelection",
+          "to_cluster": null
         },
         {
-          "id": "edge7",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NewValuePreview",
-          "to": "NewValueSelection",
           "from_cluster": "NewValuePreview",
-          "to_cluster": null,
+          "id": "edge7",
+          "label": {
+            "height": 21.0,
+            "width": 46.9,
+            "x": 83.45,
+            "y": 487.5
+          },
           "points": [
             {
               "x": 118.8,
@@ -344,72 +340,72 @@
               "y": 417.0
             }
           ],
-          "label": {
-            "x": 83.45,
-            "y": 487.5,
-            "width": 46.9,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NewValueSelection",
+          "to_cluster": null
         },
         {
-          "id": "edge8",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "State1",
-          "to": "State2",
           "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 178.467,
-              "y": 643.0
-            },
-            {
-              "x": 178.467,
-              "y": 673.0
-            },
-            {
-              "x": 182.03,
-              "y": 673.0
-            },
-            {
-              "x": 182.03,
-              "y": 754.0
-            },
-            {
-              "x": 178.467,
-              "y": 754.0
-            },
-            {
-              "x": 178.467,
-              "y": 784.0
-            }
-          ],
+          "id": "edge8",
           "label": {
-            "x": 178.467,
-            "y": 713.5,
+            "height": 21.0,
             "width": 24.08,
-            "height": 21.0
+            "x": 178.467,
+            "y": 713.5
           },
+          "points": [
+            {
+              "x": 178.467,
+              "y": 643.0
+            },
+            {
+              "x": 178.467,
+              "y": 673.0
+            },
+            {
+              "x": 182.03,
+              "y": 673.0
+            },
+            {
+              "x": 182.03,
+              "y": 754.0
+            },
+            {
+              "x": 178.467,
+              "y": 754.0
+            },
+            {
+              "x": 178.467,
+              "y": 784.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "State2",
+          "to_cluster": null
         },
         {
-          "id": "edge9",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "State2",
-          "to": "State1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge9",
+          "label": {
+            "height": 21.0,
+            "width": 25.76,
+            "x": 140.333,
+            "y": 713.5
+          },
           "points": [
             {
               "x": 140.333,
@@ -436,92 +432,96 @@
               "y": 643.0
             }
           ],
-          "label": {
-            "x": 140.333,
-            "y": 713.5,
-            "width": 25.76,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "State1",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Configuring",
-          "x": 159.4,
-          "y": 581.5,
-          "width": 232.0,
           "height": 575.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "Configuring",
-          "title_label": {
-            "x": 159.4,
-            "y": 304.5,
-            "width": 64.4,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Configuring",
+          "is_cluster": true,
+          "width": 232.0,
+          "x": 159.4,
+          "y": 581.5
         },
         {
-          "id": "NewValuePreview",
+          "height": 14.0,
+          "id": "Configuring_start",
+          "is_cluster": false,
+          "width": 14.0,
           "x": 159.4,
-          "y": 701.5,
-          "width": 184.0,
+          "y": 349.0
+        },
+        {
+          "height": 37.0,
+          "id": "Idle",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 171.0,
+          "y": 170.5
+        },
+        {
           "height": 287.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "NewValuePreview",
-          "title_label": {
-            "x": 159.4,
-            "y": 568.5,
-            "width": 103.04,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "NewValuePreview",
+          "is_cluster": true,
+          "width": 184.0,
+          "x": 159.4,
+          "y": 701.5
         },
         {
-          "id": "NotShooting",
+          "height": 37.0,
+          "id": "NewValueSelection",
+          "is_cluster": false,
+          "width": 136.0,
           "x": 159.4,
-          "y": 479.5,
-          "width": 280.0,
+          "y": 398.5
+        },
+        {
           "height": 827.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "NotShooting",
-          "title_label": {
-            "x": 159.4,
-            "y": 76.5,
-            "width": 68.88,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "NotShooting",
+          "is_cluster": true,
+          "width": 280.0,
+          "x": 159.4,
+          "y": 479.5
+        },
+        {
+          "height": 14.0,
+          "id": "NotShooting_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 171.0,
+          "y": 121.0
+        },
+        {
+          "height": 37.0,
+          "id": "State1",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 159.4,
+          "y": 624.5
+        },
+        {
+          "height": 37.0,
+          "id": "State2",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 159.4,
+          "y": 802.5
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 171.0,
+          "y": 19.0
         }
-      ],
-      "bounds": {
-        "min_x": 19.4,
-        "min_y": 12.0,
-        "max_x": 299.4,
-        "max_y": 893.0
-      }
+      ]
     }
   }
 }

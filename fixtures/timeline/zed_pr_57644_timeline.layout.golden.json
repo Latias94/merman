@@ -2,595 +2,595 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
-      "direction": "LR",
-      "bounds": {
-        "min_x": 100.0,
-        "min_y": -61.0,
-        "max_x": 2490.0,
-        "max_y": 626.4
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "x2": 2440.0,
+        "y1": 285.6,
+        "y2": 285.6
       },
-      "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
+      "bounds": {
+        "max_x": 2490.0,
+        "max_y": 626.4,
+        "min_x": 100.0,
+        "min_y": -61.0
+      },
+      "direction": "LR",
+      "left_margin": 150.0,
+      "orphan_tasks": [],
       "pre_title_box_width": 1990.0,
       "sections": [
         {
           "node": {
-            "x": 200.0,
-            "y": 50.0,
-            "width": 590.0,
-            "height": 67.8,
             "content_width": 550.0,
-            "padding": 20.0,
-            "section_class": "section--1",
+            "height": 67.8,
+            "kind": "section",
             "label": "2000s",
             "label_lines": [
               "2000s"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section--1",
+            "width": 590.0,
+            "x": 200.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 200.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section--1",
-                "label": "2004 ",
-                "label_lines": [
-                  "2004"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 295.0,
-                  "y1": 235.6,
                   "x2": 295.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 200.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Ruby on Rails released",
                   "label_lines": [
                     "Ruby   on   Rails   released"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 200.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Catalyst (Perl)",
                   "label_lines": [
                     "Catalyst   (Perl)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 400.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2004 ",
+                "label_lines": [
+                  "2004"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "2005 ",
-                "label_lines": [
-                  "2005"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 200.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 495.0,
-                  "y1": 235.6,
                   "x2": 495.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 400.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Django (Python)",
                   "label_lines": [
                     "Django   (Python)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 400.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 65.4,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 65.4,
+                  "kind": "event",
                   "label": "Spring MVC gains traction",
                   "label_lines": [
                     "Spring   MVC   gains",
                     "traction"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 600.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2005 ",
+                "label_lines": [
+                  "2005"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "2006 ",
-                "label_lines": [
-                  "2006"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 400.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 695.0,
-                  "y1": 235.6,
                   "x2": 695.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 600.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 65.4,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 65.4,
+                  "kind": "event",
                   "label": "jQuery simplifies DOM",
                   "label_lines": [
                     "jQuery   simplifies",
                     "DOM"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 367.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2006 ",
+                "label_lines": [
+                  "2006"
+                ],
+                "padding": 20.0,
+                "section_class": "section--1",
+                "width": 190.0,
+                "x": 600.0,
+                "y": 167.8
+              }
             }
           ]
         },
         {
           "node": {
-            "x": 800.0,
-            "y": 50.0,
-            "width": 790.0,
-            "height": 67.8,
             "content_width": 750.0,
-            "padding": 20.0,
-            "section_class": "section-0",
+            "height": 67.8,
+            "kind": "section",
             "label": "2010s",
             "label_lines": [
               "2010s"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section-0",
+            "width": 790.0,
+            "x": 800.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 800.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section-0",
-                "label": "2010 ",
-                "label_lines": [
-                  "2010"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 895.0,
-                  "y1": 235.6,
                   "x2": 895.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 800.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "AngularJS by Google",
                   "label_lines": [
                     "AngularJS   by   Google"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Backbone.js",
                   "label_lines": [
                     "Backbone.js"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1000.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2010 ",
+                "label_lines": [
+                  "2010"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "2013 ",
-                "label_lines": [
-                  "2013"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 800.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1095.0,
-                  "y1": 235.6,
                   "x2": 1095.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 1000.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "React by Facebook",
                   "label_lines": [
                     "React   by   Facebook"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1000.0,
+                  "y": 367.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1200.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2013 ",
+                "label_lines": [
+                  "2013"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "2014 ",
-                "label_lines": [
-                  "2014"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1000.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1295.0,
-                  "y1": 235.6,
                   "x2": 1295.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 1200.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Vue.js by Evan You",
                   "label_lines": [
                     "Vue.js   by   Evan   You"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1200.0,
+                  "y": 367.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1400.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2014 ",
+                "label_lines": [
+                  "2014"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "2016 ",
-                "label_lines": [
-                  "2016"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1200.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1495.0,
-                  "y1": 235.6,
                   "x2": 1495.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 1400.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Angular 2 rewrite",
                   "label_lines": [
                     "Angular   2   rewrite"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1400.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 65.4,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1400.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 65.4,
+                  "kind": "event",
                   "label": "Next.js for SSR React",
                   "label_lines": [
                     "Next.js   for   SSR",
                     "React"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1400.0,
+                  "y": 427.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2016 ",
+                "label_lines": [
+                  "2016"
+                ],
+                "padding": 20.0,
+                "section_class": "section-0",
+                "width": 190.0,
+                "x": 1400.0,
+                "y": 167.8
+              }
             }
           ]
         },
         {
           "node": {
-            "x": 1600.0,
-            "y": 50.0,
-            "width": 590.0,
-            "height": 67.8,
             "content_width": 550.0,
-            "padding": 20.0,
-            "section_class": "section-1",
+            "height": 67.8,
+            "kind": "section",
             "label": "2020s",
             "label_lines": [
               "2020s"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section-1",
+            "width": 590.0,
+            "x": 1600.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 1600.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section-1",
-                "label": "2020 ",
-                "label_lines": [
-                  "2020"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1695.0,
-                  "y1": 235.6,
                   "x2": 1695.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 1600.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Svelte 3 momentum",
                   "label_lines": [
                     "Svelte   3   momentum"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1600.0,
-                  "y": 427.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 1600.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Tailwind CSS adoption",
                   "label_lines": [
                     "Tailwind   CSS   adoption"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 1600.0,
+                  "y": 427.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1800.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2020 ",
+                "label_lines": [
+                  "2020"
+                ],
                 "padding": 20.0,
                 "section_class": "section-1",
-                "label": "2022 ",
-                "label_lines": [
-                  "2022"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1600.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1895.0,
-                  "y1": 235.6,
                   "x2": 1895.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 1800.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 65.4,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-1",
+                  "height": 65.4,
+                  "kind": "event",
                   "label": "React Server Components",
                   "label_lines": [
                     "React   Server",
                     "Components"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1800.0,
-                  "y": 443.2,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 1800.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Astro 1.0",
                   "label_lines": [
                     "Astro   1.0"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 1800.0,
+                  "y": 443.2
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 2000.0,
-                "y": 167.8,
-                "width": 190.0,
-                "height": 67.8,
                 "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2022 ",
+                "label_lines": [
+                  "2022"
+                ],
                 "padding": 20.0,
                 "section_class": "section-1",
-                "label": "2024 ",
-                "label_lines": [
-                  "2024"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1800.0,
+                "y": 167.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 2095.0,
-                  "y1": 235.6,
                   "x2": 2095.0,
+                  "y1": 235.6,
                   "y2": 576.4
                 }
               ],
               "events": [
                 {
-                  "x": 2000.0,
-                  "y": 367.8,
-                  "width": 190.0,
-                  "height": 65.4,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-1",
+                  "height": 65.4,
+                  "kind": "event",
                   "label": "AI-assisted development",
                   "label_lines": [
                     "AI-assisted",
                     "development"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 2000.0,
-                  "y": 443.2,
-                  "width": 190.0,
-                  "height": 65.4,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 2000.0,
+                  "y": 367.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 65.4,
+                  "kind": "event",
                   "label": "Edge-first frameworks",
                   "label_lines": [
                     "Edge-first",
                     "frameworks"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 2000.0,
+                  "y": 443.2
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 67.8,
+                "kind": "task",
+                "label": "2024 ",
+                "label_lines": [
+                  "2024"
+                ],
+                "padding": 20.0,
+                "section_class": "section-1",
+                "width": 190.0,
+                "x": 2000.0,
+                "y": 167.8
+              }
             }
           ]
         }
       ],
-      "orphan_tasks": [],
-      "activity_line": {
-        "kind": "activity",
-        "x1": 150.0,
-        "y1": 285.6,
-        "x2": 2440.0,
-        "y2": 285.6
-      },
       "title": "History of Web Development Frameworks",
       "title_x": 845.0,
       "title_y": 20.0,

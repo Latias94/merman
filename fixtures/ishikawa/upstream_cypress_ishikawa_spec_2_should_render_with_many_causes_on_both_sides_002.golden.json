@@ -1,104 +1,104 @@
 {
   "diagramType": "ishikawa",
   "model": {
-    "type": "ishikawa",
-    "title": "Manufacturing Defect",
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "text": "Manufacturing Defect",
-      "children": [
-        {
-          "text": "Machine",
-          "children": [
-            {
-              "text": "Worn tooling",
-              "children": []
-            },
-            {
-              "text": "Calibration",
-              "children": []
-            }
-          ]
-        },
-        {
-          "text": "Method",
-          "children": [
-            {
-              "text": "Missing step",
-              "children": []
-            }
-          ]
-        },
-        {
-          "text": "Material",
-          "children": [
-            {
-              "text": "Contamination",
-              "children": []
-            },
-            {
-              "text": "Wrong grade",
-              "children": []
-            }
-          ]
-        },
-        {
-          "text": "Manpower",
-          "children": [
-            {
-              "text": "Insufficient training",
-              "children": []
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
-        "text": "Manufacturing Defect",
-        "depth": 0
+        "depth": 0,
+        "text": "Manufacturing Defect"
       },
       {
-        "text": "Machine",
-        "depth": 1
+        "depth": 1,
+        "text": "Machine"
       },
       {
-        "text": "Worn tooling",
-        "depth": 2
+        "depth": 2,
+        "text": "Worn tooling"
       },
       {
-        "text": "Calibration",
-        "depth": 2
+        "depth": 2,
+        "text": "Calibration"
       },
       {
-        "text": "Method",
-        "depth": 1
+        "depth": 1,
+        "text": "Method"
       },
       {
-        "text": "Missing step",
-        "depth": 2
+        "depth": 2,
+        "text": "Missing step"
       },
       {
-        "text": "Material",
-        "depth": 1
+        "depth": 1,
+        "text": "Material"
       },
       {
-        "text": "Contamination",
-        "depth": 2
+        "depth": 2,
+        "text": "Contamination"
       },
       {
-        "text": "Wrong grade",
-        "depth": 2
+        "depth": 2,
+        "text": "Wrong grade"
       },
       {
-        "text": "Manpower",
-        "depth": 1
+        "depth": 1,
+        "text": "Manpower"
       },
       {
-        "text": "Insufficient training",
-        "depth": 2
+        "depth": 2,
+        "text": "Insufficient training"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "text": "Worn tooling"
+            },
+            {
+              "children": [],
+              "text": "Calibration"
+            }
+          ],
+          "text": "Machine"
+        },
+        {
+          "children": [
+            {
+              "children": [],
+              "text": "Missing step"
+            }
+          ],
+          "text": "Method"
+        },
+        {
+          "children": [
+            {
+              "children": [],
+              "text": "Contamination"
+            },
+            {
+              "children": [],
+              "text": "Wrong grade"
+            }
+          ],
+          "text": "Material"
+        },
+        {
+          "children": [
+            {
+              "children": [],
+              "text": "Insufficient training"
+            }
+          ],
+          "text": "Manpower"
+        }
+      ],
+      "text": "Manufacturing Defect"
+    },
+    "title": "Manufacturing Defect",
+    "type": "ishikawa"
   }
 }

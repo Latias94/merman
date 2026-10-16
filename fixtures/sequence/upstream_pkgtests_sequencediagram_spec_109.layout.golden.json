@@ -2,31 +2,27 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "nodes": [
-        {
-          "id": "actor-top-P",
-          "x": 75.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-P",
-          "x": 75.0,
-          "y": 207.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 201.0,
+        "max_y": 255.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "msg-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "P",
-          "to": "P",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-0",
+          "label": {
+            "height": 17.6,
+            "width": 27.52,
+            "x": 76.0,
+            "y": 89.0
+          },
           "points": [
             {
               "x": 76.0,
@@ -37,26 +33,21 @@
               "y": 120.0
             }
           ],
-          "label": {
-            "x": 76.0,
-            "y": 89.0,
-            "width": 27.52,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "P",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-P",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-P",
-          "to": "actor-bottom-P",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-P",
+          "label": null,
           "points": [
             {
               "x": 75.0,
@@ -67,23 +58,32 @@
               "y": 170.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-P",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 201.0,
-        "max_y": 255.0
-      }
+      "nodes": [
+        {
+          "height": 74.0,
+          "id": "actor-top-P",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-P",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 207.0
+        }
+      ]
     }
   }
 }

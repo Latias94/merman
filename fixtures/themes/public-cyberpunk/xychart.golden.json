@@ -1,36 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": "Request Volume",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "Window",
-      "categories": [
-        "A",
-        "B",
-        "C",
-        "D"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "Requests",
-      "min": 0.0,
-      "max": 10.0
-    },
+    "accTitle": null,
+    "orientation": "vertical",
     "plots": [
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          3.0,
-          4.0,
-          3.0,
-          5.0
-        ],
         "data": [
           [
             "A",
@@ -48,17 +23,17 @@
             "D",
             5.0
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          3.0,
+          4.0,
+          3.0,
+          5.0
         ]
       },
       {
-        "type": "line",
-        "title": "",
-        "values": [
-          7.0,
-          6.0,
-          8.0,
-          7.0
-        ],
         "data": [
           [
             "A",
@@ -76,17 +51,17 @@
             "D",
             7.0
           ]
+        ],
+        "title": "",
+        "type": "line",
+        "values": [
+          7.0,
+          6.0,
+          8.0,
+          7.0
         ]
       },
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          1.0,
-          2.0,
-          1.0,
-          2.0
-        ],
         "data": [
           [
             "A",
@@ -104,17 +79,17 @@
             "D",
             2.0
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          1.0,
+          2.0,
+          1.0,
+          2.0
         ]
       },
       {
-        "type": "line",
-        "title": "",
-        "values": [
-          9.0,
-          8.0,
-          9.0,
-          10.0
-        ],
         "data": [
           [
             "A",
@@ -132,9 +107,34 @@
             "D",
             10.0
           ]
+        ],
+        "title": "",
+        "type": "line",
+        "values": [
+          9.0,
+          8.0,
+          9.0,
+          10.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Request Volume",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "A",
+        "B",
+        "C",
+        "D"
+      ],
+      "title": "Window",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 10.0,
+      "min": 0.0,
+      "title": "Requests",
+      "type": "linear"
+    }
   }
 }

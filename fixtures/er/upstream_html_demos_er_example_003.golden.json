@@ -1,79 +1,79 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
       "HOSPITAL": {
-        "id": "entity-HOSPITAL-0",
-        "label": "HOSPITAL",
+        "alias": "",
         "attributes": [
           {
-            "type": "int",
-            "name": "id",
+            "comment": "",
             "keys": [
               "PK"
             ],
-            "comment": ""
+            "name": "id",
+            "type": "int"
           },
           {
-            "type": "int",
-            "name": "doctor_id",
+            "comment": "",
             "keys": [
               "PK",
               "FK"
             ],
-            "comment": ""
+            "name": "doctor_id",
+            "type": "int"
           },
           {
-            "type": "string",
-            "name": "address",
+            "comment": "",
             "keys": [
               "UK"
             ],
-            "comment": ""
+            "name": "address",
+            "type": "string"
           },
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "name",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "phone_number",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "fax_number",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "fax_number",
+            "type": "string"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-HOSPITAL-0",
+        "label": "HOSPITAL",
+        "shape": "erBox"
       }
     },
     "relationships": [],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

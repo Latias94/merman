@@ -2,227 +2,227 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 782.0,
-        "max_y": 650.61
-      },
-      "width": 832.0,
-      "height": 660.61,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Container",
-      "title": "C4Container sprite (positional) on Container",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 632.0,
+          "descr": null,
           "height": 534.61,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 632.0,
+          "x": 100.0,
+          "y": 66.0
         }
       ],
-      "shapes": [
-        {
-          "alias": "p1",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 171.524,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Customer",
-            "y": 27.7,
-            "width": 55.44,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "A customer of the bank.",
-            "y": 59.264,
-            "width": 114.57,
-            "height": 12.628,
-            "line_count": 1.0
-          }
-        },
-        {
-          "alias": "c1",
-          "parent_boundary": "global",
-          "type_c4_shape": "container",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 98.206,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: JavaScript, Angular]",
-            "y": 44.175,
-            "width": 139.545,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Single-Page App",
-            "y": 27.7,
-            "width": 90.44,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides Internet banking functionality.",
-            "y": 65.578,
-            "width": 119.507,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        },
-        {
-          "alias": "db",
-          "parent_boundary": "global",
-          "type_c4_shape": "container_db",
-          "x": 150.0,
-          "y": 437.524,
-          "width": 216.0,
-          "height": 113.085,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: PostgreSQL]",
-            "y": 44.175,
-            "width": 106.47,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Database",
-            "y": 27.7,
-            "width": 50.54,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Stores account data.",
-            "y": 59.264,
-            "width": 96.662,
-            "height": 12.628,
-            "line_count": 1.0
-          }
-        }
-      ],
+      "bounds": {
+        "max_x": 782.0,
+        "max_y": 650.61,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Container",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 660.61,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 466.0,
+            "y": 227.632
+          },
           "from": "p1",
-          "to": "c1",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": null,
           "rel_type": "rel",
           "start_point": {
             "x": 295.671,
             "y": 247.392
           },
+          "techn": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "HTTPS",
+            "width": 36.0,
+            "y": 0.0
+          },
+          "to": "c1"
+        },
+        {
+          "descr": null,
           "end_point": {
-            "x": 466.0,
-            "y": 227.632
+            "x": 322.049,
+            "y": 440.61
+          },
+          "from": "c1",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Reads/Writes",
+            "width": 66.0,
+            "y": 0.0
           },
           "offset_x": null,
           "offset_y": null,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "techn": {
-            "text": "HTTPS",
-            "y": 0.0,
-            "width": 36.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "descr": null
-        },
-        {
-          "from": "c1",
-          "to": "db",
           "rel_type": "rel",
           "start_point": {
             "x": 518.378,
             "y": 264.206
           },
-          "end_point": {
-            "x": 322.049,
-            "y": 440.61
-          },
-          "offset_x": null,
-          "offset_y": null,
-          "label": {
-            "text": "Reads/Writes",
-            "y": 0.0,
-            "width": 66.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "JDBC",
-            "y": 0.0,
-            "width": 29.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "JDBC",
+            "width": 29.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "db"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "p1",
+          "descr": {
+            "height": 12.628,
+            "line_count": 1.0,
+            "text": "A customer of the bank.",
+            "width": 114.57,
+            "y": 59.264
+          },
+          "height": 171.524,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Customer",
+            "width": 55.44,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "c1",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Provides Internet banking functionality.",
+            "width": 119.507,
+            "y": 65.578
+          },
+          "height": 98.206,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Single-Page App",
+            "width": 90.44,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: JavaScript, Angular]",
+            "width": 139.545,
+            "y": 44.175
+          },
+          "type_c4_shape": "container",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
+        },
+        {
+          "alias": "db",
+          "descr": {
+            "height": 12.628,
+            "line_count": 1.0,
+            "text": "Stores account data.",
+            "width": 96.662,
+            "y": 59.264
+          },
+          "height": 113.085,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Database",
+            "width": 50.54,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: PostgreSQL]",
+            "width": 106.47,
+            "y": 44.175
+          },
+          "type_c4_shape": "container_db",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 437.524
+        }
+      ],
+      "title": "C4Container sprite (positional) on Container",
+      "use_max_width": true,
+      "width": 832.0
     }
   }
 }

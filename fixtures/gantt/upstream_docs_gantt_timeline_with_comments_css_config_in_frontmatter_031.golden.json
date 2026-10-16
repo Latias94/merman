@@ -1,21 +1,16 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Timeline - Gantt Sampler",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY",
+    "accTitle": null,
     "axisFormat": "%y",
-    "tickInterval": "1decade",
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY",
     "displayMode": "compact",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Issue19062",
       "Issue19401",
@@ -23,210 +18,215 @@
     ],
     "tasks": [
       {
-        "section": "Issue19062",
-        "type": "Issue19062",
-        "task": "71   ",
-        "id": "item71",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "1930-01-01T00:00:00.000",
+        "id": "item71",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":            item71, 1900, 1930",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1900"
-          },
           "endTime": {
             "data": "1930"
+          },
+          "startTime": {
+            "startData": "1900",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue19062",
         "startTime": "1900-01-01T00:00:00.000",
-        "endTime": "1930-01-01T00:00:00.000"
+        "task": "71   ",
+        "type": "Issue19062",
+        "vert": false
       },
       {
-        "section": "Issue19401",
-        "type": "Issue19401",
-        "task": "36   ",
-        "id": "item36",
-        "prevTaskId": "item71",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "1935-01-01T00:00:00.000",
+        "id": "item36",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "item71",
+        "processed": true,
         "raw": {
           "data": ":            item36, 1913, 1935",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1913"
-          },
           "endTime": {
             "data": "1935"
+          },
+          "startTime": {
+            "startData": "1913",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue19401",
         "startTime": "1913-01-01T00:00:00.000",
-        "endTime": "1935-01-01T00:00:00.000"
+        "task": "36   ",
+        "type": "Issue19401",
+        "vert": false
       },
       {
-        "section": "Issue1300",
-        "type": "Issue1300",
-        "task": "94   ",
-        "id": "item94",
-        "prevTaskId": "item36",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "1915-01-01T00:00:00.000",
+        "id": "item94",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "item36",
+        "processed": true,
         "raw": {
           "data": ":            item94, 1910, 1915",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1910"
-          },
           "endTime": {
             "data": "1915"
+          },
+          "startTime": {
+            "startData": "1910",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue1300",
         "startTime": "1910-01-01T00:00:00.000",
-        "endTime": "1915-01-01T00:00:00.000"
+        "task": "94   ",
+        "type": "Issue1300",
+        "vert": false
       },
       {
-        "section": "Issue1300",
-        "type": "Issue1300",
-        "task": "5    ",
-        "id": "item5",
-        "prevTaskId": "item94",
-        "order": 3,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "1925-01-01T00:00:00.000",
+        "id": "item5",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "item94",
+        "processed": true,
         "raw": {
           "data": ":            item5,  1920, 1925",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1920"
-          },
           "endTime": {
             "data": "1925"
+          },
+          "startTime": {
+            "startData": "1920",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue1300",
         "startTime": "1920-01-01T00:00:00.000",
-        "endTime": "1925-01-01T00:00:00.000"
+        "task": "5    ",
+        "type": "Issue1300",
+        "vert": false
       },
       {
-        "section": "Issue1300",
-        "type": "Issue1300",
-        "task": "0    ",
-        "id": "item0",
-        "prevTaskId": "item5",
-        "order": 4,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": true,
-        "vert": false,
+        "done": false,
+        "endTime": "1918-01-01T00:00:01.000",
+        "id": "item0",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": true,
+        "order": 4,
+        "prevTaskId": "item5",
+        "processed": true,
         "raw": {
           "data": ": milestone, item0,  1918, 1s",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1918"
-          },
           "endTime": {
             "data": "1s"
+          },
+          "startTime": {
+            "startData": "1918",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue1300",
         "startTime": "1918-01-01T00:00:00.000",
-        "endTime": "1918-01-01T00:00:01.000"
+        "task": "0    ",
+        "type": "Issue1300",
+        "vert": false
       },
       {
-        "section": "Issue1300",
-        "type": "Issue1300",
-        "task": "9    ",
-        "id": "task1",
-        "prevTaskId": "item0",
-        "order": -1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": true,
+        "done": false,
+        "endTime": "1906-01-01T00:00:00.000",
+        "id": "task1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": -1,
+        "prevTaskId": "item0",
+        "processed": true,
         "raw": {
           "data": ": vert,              1906, 1s   %% not yet official",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1906"
-          },
           "endTime": {
             "data": "1s   %% not yet official"
+          },
+          "startTime": {
+            "startData": "1906",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue1300",
         "startTime": "1906-01-01T00:00:00.000",
-        "endTime": "1906-01-01T00:00:00.000"
+        "task": "9    ",
+        "type": "Issue1300",
+        "vert": true
       },
       {
-        "section": "Issue1300",
-        "type": "Issue1300",
-        "task": "64   ",
-        "id": "workaround",
-        "prevTaskId": "task1",
-        "order": 5,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "1923-01-01T00:00:00.000",
+        "id": "workaround",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 5,
+        "prevTaskId": "task1",
+        "processed": true,
         "raw": {
           "data": ": workaround,        1923, 1s   %% custom CSS object https://github.com/mermaid-js/mermaid/issues/3250",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1923"
-          },
           "endTime": {
             "data": "1s   %% custom CSS object https://github.com/mermaid-js/mermaid/issues/3250"
+          },
+          "startTime": {
+            "startData": "1923",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Issue1300",
         "startTime": "1923-01-01T00:00:00.000",
-        "endTime": "1923-01-01T00:00:00.000"
+        "task": "64   ",
+        "type": "Issue1300",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": "1decade",
+    "title": "Timeline - Gantt Sampler",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

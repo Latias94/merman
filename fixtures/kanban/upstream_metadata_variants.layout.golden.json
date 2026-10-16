@@ -3,110 +3,110 @@
   "layout": {
     "KanbanDiagram": {
       "bounds": {
-        "min_x": 90.0,
-        "min_y": -310.0,
         "max_x": 1540.0,
-        "max_y": -240.0
+        "max_y": -240.0,
+        "min_x": 90.0,
+        "min_y": -310.0
       },
-      "section_width": 200.0,
-      "padding": 10.0,
+      "items": [],
       "max_label_height": 25.0,
-      "viewbox_padding": 10.0,
-      "use_max_width": true,
+      "padding": 10.0,
+      "section_width": 200.0,
       "sections": [
         {
-          "id": "rootPriority",
-          "label": "rootPriority",
-          "index": 1.0,
           "center_x": 200.0,
           "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
+          "id": "rootPriority",
+          "index": 1.0,
+          "label": "rootPriority",
+          "label_width": 82.4,
           "rect_height": 50.0,
+          "rect_y": -300.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 82.4
+          "width": 200.0
         },
         {
-          "id": "rootAssigned",
-          "label": "rootAssigned",
-          "index": 2.0,
           "center_x": 405.0,
           "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
+          "id": "rootAssigned",
+          "index": 2.0,
+          "label": "rootAssigned",
+          "label_width": 82.88,
           "rect_height": 50.0,
+          "rect_y": -300.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 82.88
+          "width": 200.0
         },
         {
-          "id": "rootIcon",
-          "label": "rootIcon",
-          "index": 3.0,
           "center_x": 610.0,
           "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
+          "id": "rootIcon",
+          "index": 3.0,
+          "label": "rootIcon",
+          "label_width": 52.96,
           "rect_height": 50.0,
+          "rect_y": -300.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 52.96
+          "width": 200.0
         },
         {
-          "id": "rootMulti",
-          "label": "rootMulti",
-          "index": 4.0,
           "center_x": 815.0,
           "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
+          "id": "rootMulti",
+          "index": 4.0,
+          "label": "rootMulti",
+          "label_width": 59.84,
           "rect_height": 50.0,
+          "rect_y": -300.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 59.84
+          "width": 200.0
         },
         {
-          "id": "rootOneLine",
-          "label": "rootOneLine",
-          "index": 5.0,
           "center_x": 1020.0,
           "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
+          "id": "rootOneLine",
+          "index": 5.0,
+          "label": "rootOneLine",
+          "label_width": 78.72,
           "rect_height": 50.0,
+          "rect_y": -300.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 78.72
+          "width": 200.0
         },
         {
-          "id": "rootLabel",
-          "label": "fix things",
-          "index": 6.0,
           "center_x": 1225.0,
           "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
+          "id": "rootLabel",
+          "index": 6.0,
+          "label": "fix things",
+          "label_width": 62.4,
           "rect_height": 50.0,
+          "rect_y": -300.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 62.4
+          "width": 200.0
         },
         {
-          "id": "rootTicket",
-          "label": "rootTicket",
-          "index": 7.0,
           "center_x": 1430.0,
           "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
+          "id": "rootTicket",
+          "index": 7.0,
+          "label": "rootTicket",
+          "label_width": 71.04,
           "rect_height": 50.0,
+          "rect_y": -300.0,
           "rx": 5.0,
           "ry": 5.0,
-          "label_width": 71.04
+          "width": 200.0
         }
       ],
-      "items": []
+      "use_max_width": true,
+      "viewbox_padding": 10.0
     }
   }
 }

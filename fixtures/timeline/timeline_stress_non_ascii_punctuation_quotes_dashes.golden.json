@@ -1,37 +1,37 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Non-ASCII punctuation “quotes” and dashes — test",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Punctuation"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Punctuation",
-        "type": "Punctuation",
-        "task": "2024 ",
-        "score": 0,
         "events": [
           "“Smart quotes”, apostrophes ’, and ellipsis … ",
           "em—dash and en–dash"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Punctuation",
+        "task": "2024 ",
+        "type": "Punctuation"
       },
       {
-        "id": 1,
-        "section": "Punctuation",
-        "type": "Punctuation",
-        "task": "2025 ",
-        "score": 0,
         "events": [
           "Brackets 【】 and parentheses （） ",
           "Fullwidth punctuation ：，。"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Punctuation",
+        "task": "2025 ",
+        "type": "Punctuation"
       }
-    ]
+    ],
+    "title": "Non-ASCII punctuation “quotes” and dashes — test",
+    "type": "timeline"
   }
 }

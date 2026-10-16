@@ -1,189 +1,189 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
+        "children": [],
         "id": "A1",
-        "type": "stadium",
         "label": "stadium",
-        "children": [],
+        "type": "stadium",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A2",
-        "type": "subroutine",
         "label": "subroutine",
-        "children": [],
+        "type": "subroutine",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B1",
-        "type": "cylinder",
         "label": "cylinder",
-        "children": [],
+        "type": "cylinder",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "C1",
-        "type": "rect_left_inv_arrow",
         "label": "surprise",
-        "children": [],
+        "type": "rect_left_inv_arrow",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A3",
-        "type": "lean_right",
         "label": "lean right",
-        "children": [],
+        "type": "lean_right",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B2",
-        "type": "lean_left",
         "label": "lean left",
-        "children": [],
+        "type": "lean_left",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "C2",
-        "type": "trapezoid",
         "label": "trapezoid",
-        "children": [],
+        "type": "trapezoid",
         "widthInColumns": 1
       },
       {
-        "id": "D2",
-        "type": "inv_trapezoid",
-        "label": "trapezoid",
         "children": [],
+        "id": "D2",
+        "label": "trapezoid",
+        "type": "inv_trapezoid",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "A1",
-            "type": "stadium",
             "label": "stadium",
-            "children": [],
+            "type": "stadium",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "A2",
-            "type": "subroutine",
             "label": "subroutine",
-            "children": [],
+            "type": "subroutine",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "B1",
-            "type": "cylinder",
             "label": "cylinder",
-            "children": [],
+            "type": "cylinder",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "C1",
-            "type": "rect_left_inv_arrow",
             "label": "surprise",
-            "children": [],
+            "type": "rect_left_inv_arrow",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "A3",
-            "type": "lean_right",
             "label": "lean right",
-            "children": [],
+            "type": "lean_right",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "B2",
-            "type": "lean_left",
             "label": "lean left",
-            "children": [],
+            "type": "lean_left",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "C2",
-            "type": "trapezoid",
             "label": "trapezoid",
-            "children": [],
+            "type": "trapezoid",
             "widthInColumns": 1
           },
           {
-            "id": "D2",
-            "type": "inv_trapezoid",
-            "label": "trapezoid",
             "children": [],
+            "id": "D2",
+            "label": "trapezoid",
+            "type": "inv_trapezoid",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "A1",
-        "type": "stadium",
         "label": "stadium",
-        "children": [],
+        "type": "stadium",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A2",
-        "type": "subroutine",
         "label": "subroutine",
-        "children": [],
+        "type": "subroutine",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B1",
-        "type": "cylinder",
         "label": "cylinder",
-        "children": [],
+        "type": "cylinder",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "C1",
-        "type": "rect_left_inv_arrow",
         "label": "surprise",
-        "children": [],
+        "type": "rect_left_inv_arrow",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "A3",
-        "type": "lean_right",
         "label": "lean right",
-        "children": [],
+        "type": "lean_right",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "B2",
-        "type": "lean_left",
         "label": "lean left",
-        "children": [],
+        "type": "lean_left",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "C2",
-        "type": "trapezoid",
         "label": "trapezoid",
-        "children": [],
+        "type": "trapezoid",
         "widthInColumns": 1
       },
       {
-        "id": "D2",
-        "type": "inv_trapezoid",
-        "label": "trapezoid",
         "children": [],
+        "id": "D2",
+        "label": "trapezoid",
+        "type": "inv_trapezoid",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

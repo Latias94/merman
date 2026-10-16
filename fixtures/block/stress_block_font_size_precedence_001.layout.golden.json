@@ -2,31 +2,26 @@
   "diagramType": "block",
   "layout": {
     "BlockDiagram": {
-      "nodes": [
-        {
-          "id": "ingress",
-          "x": 234.52,
-          "y": 0.0,
-          "width": 469.04,
-          "height": 52.0,
-          "is_cluster": false
-        },
-        {
-          "id": "dispatch",
-          "x": 711.56,
-          "y": 0.0,
-          "width": 469.04,
-          "height": 52.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 946.08,
+        "max_y": 26.0,
+        "min_x": 0.0,
+        "min_y": -26.0
+      },
       "edges": [
         {
-          "id": "1-ingress-dispatch",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "arrow_point",
           "from": "ingress",
-          "to": "dispatch",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1-ingress-dispatch",
+          "label": {
+            "height": 36.0,
+            "width": 149.28,
+            "x": 473.04,
+            "y": 0.0
+          },
           "points": [
             {
               "x": 234.52,
@@ -41,61 +36,66 @@
               "y": 0.0
             }
           ],
-          "label": {
-            "x": 473.04,
-            "y": 0.0,
-            "width": 149.28,
-            "height": 36.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "arrow_open",
-          "end_marker": "arrow_point",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "dispatch",
+          "to_cluster": null
+        }
+      ],
+      "nodes": [
+        {
+          "height": 52.0,
+          "id": "ingress",
+          "is_cluster": false,
+          "width": 469.04,
+          "x": 234.52,
+          "y": 0.0
+        },
+        {
+          "height": 52.0,
+          "id": "dispatch",
+          "is_cluster": false,
+          "width": 469.04,
+          "x": 711.56,
+          "y": 0.0
         }
       ],
       "shapeGeometries": [
         {
-          "id": "ingress",
           "allocated": {
-            "x": 234.52,
-            "y": 0.0,
+            "height": 52.0,
             "width": 469.04,
-            "height": 52.0
+            "x": 234.52,
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 469.04,
             "height": 52.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 469.04
+          },
+          "id": "ingress"
         },
         {
-          "id": "dispatch",
           "allocated": {
-            "x": 711.56,
-            "y": 0.0,
+            "height": 52.0,
             "width": 469.04,
-            "height": 52.0
+            "x": 711.56,
+            "y": 0.0
           },
           "boundary": {
-            "shape": "rectangle",
-            "width": 469.04,
             "height": 52.0,
+            "kind": "basic",
             "radius": 0.0,
-            "kind": "basic"
-          }
+            "shape": "rectangle",
+            "width": 469.04
+          },
+          "id": "dispatch"
         }
-      ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -26.0,
-        "max_x": 946.08,
-        "max_y": 26.0
-      }
+      ]
     }
   }
 }

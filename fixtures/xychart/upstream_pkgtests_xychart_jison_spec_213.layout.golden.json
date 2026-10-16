@@ -2,622 +2,622 @@
   "diagramType": "xychart",
   "layout": {
     "XyChartDiagram": {
-      "width": 700.0,
-      "height": 500.0,
-      "chartOrientation": "vertical",
-      "showDataLabel": false,
-      "showDataLabelOutsideBar": false,
       "backgroundColor": "white",
-      "labelData": [],
+      "chartOrientation": "vertical",
       "drawables": [
         {
-          "type": "rect",
+          "data": [
+            {
+              "fill": "#ECECFF",
+              "height": 65.6,
+              "strokeFill": "#ECECFF",
+              "strokeWidth": 0.0,
+              "width": 30.4,
+              "x": 61.08,
+              "y": 374.4
+            },
+            {
+              "fill": "#ECECFF",
+              "height": 171.75,
+              "strokeFill": "#ECECFF",
+              "strokeWidth": 0.0,
+              "width": 30.4,
+              "x": 319.24,
+              "y": 268.25
+            },
+            {
+              "fill": "#ECECFF",
+              "height": 227.72,
+              "strokeFill": "#ECECFF",
+              "strokeWidth": 0.0,
+              "width": 30.4,
+              "x": 577.4,
+              "y": 212.28
+            }
+          ],
           "groupTexts": [
             "plot",
             "bar-plot-0"
           ],
-          "data": [
-            {
-              "x": 61.08,
-              "y": 374.4,
-              "width": 30.4,
-              "height": 65.6,
-              "fill": "#ECECFF",
-              "strokeFill": "#ECECFF",
-              "strokeWidth": 0.0
-            },
-            {
-              "x": 319.24,
-              "y": 268.25,
-              "width": 30.4,
-              "height": 171.75,
-              "fill": "#ECECFF",
-              "strokeFill": "#ECECFF",
-              "strokeWidth": 0.0
-            },
-            {
-              "x": 577.4,
-              "y": 212.28,
-              "width": 30.4,
-              "height": 227.72,
-              "fill": "#ECECFF",
-              "strokeFill": "#ECECFF",
-              "strokeWidth": 0.0
-            }
-          ]
+          "type": "rect"
         },
         {
-          "type": "path",
+          "data": [
+            {
+              "fill": null,
+              "path": "M76.28000000000003,432.3L248.38666666666663,265.8375L420.4933333333332,162.1L592.5999999999999,374.40000000000003",
+              "strokeFill": "#8493A6",
+              "strokeWidth": 2.0
+            }
+          ],
           "groupTexts": [
             "plot",
             "line-plot-1"
           ],
-          "data": [
-            {
-              "path": "M76.28000000000003,432.3L248.38666666666663,265.8375L420.4933333333332,162.1L592.5999999999999,374.40000000000003",
-              "fill": null,
-              "strokeFill": "#8493A6",
-              "strokeWidth": 2.0
-            }
-          ]
+          "type": "path"
         },
         {
-          "type": "rect",
+          "data": [
+            {
+              "fill": "#FFC3A0",
+              "height": 17.35,
+              "strokeFill": "#FFC3A0",
+              "strokeWidth": 0.0,
+              "width": 30.4,
+              "x": 61.08,
+              "y": 422.65
+            },
+            {
+              "fill": "#FFC3A0",
+              "height": 157.275,
+              "strokeFill": "#FFC3A0",
+              "strokeWidth": 0.0,
+              "width": 30.4,
+              "x": 319.24,
+              "y": 282.725
+            },
+            {
+              "fill": "#FFC3A0",
+              "height": 229.119,
+              "strokeFill": "#FFC3A0",
+              "strokeWidth": 0.0,
+              "width": 30.4,
+              "x": 577.4,
+              "y": 210.881
+            }
+          ],
           "groupTexts": [
             "plot",
             "bar-plot-2"
           ],
-          "data": [
-            {
-              "x": 61.08,
-              "y": 422.65,
-              "width": 30.4,
-              "height": 17.35,
-              "fill": "#FFC3A0",
-              "strokeFill": "#FFC3A0",
-              "strokeWidth": 0.0
-            },
-            {
-              "x": 319.24,
-              "y": 282.725,
-              "width": 30.4,
-              "height": 157.275,
-              "fill": "#FFC3A0",
-              "strokeFill": "#FFC3A0",
-              "strokeWidth": 0.0
-            },
-            {
-              "x": 577.4,
-              "y": 210.881,
-              "width": 30.4,
-              "height": 229.119,
-              "fill": "#FFC3A0",
-              "strokeFill": "#FFC3A0",
-              "strokeWidth": 0.0
-            }
-          ]
+          "type": "rect"
         },
         {
-          "type": "path",
+          "data": [
+            {
+              "fill": null,
+              "path": "M76.28000000000003,268.25L334.44,7.700000000000001L592.5999999999999,427.475",
+              "strokeFill": "#DCDDE1",
+              "strokeWidth": 2.0
+            }
+          ],
           "groupTexts": [
             "plot",
             "line-plot-3"
           ],
-          "data": [
-            {
-              "path": "M76.28000000000003,268.25L334.44,7.700000000000001L592.5999999999999,427.475",
-              "fill": null,
-              "strokeFill": "#DCDDE1",
-              "strokeWidth": 2.0
-            }
-          ]
+          "type": "path"
         },
         {
-          "type": "rect",
-          "groupTexts": [
-            "legend",
-            "markers"
-          ],
           "data": [
             {
-              "x": 618.6,
-              "y": 181.5,
-              "width": 10.5,
-              "height": 10.5,
               "fill": "#ECECFF",
+              "height": 10.5,
               "strokeFill": "#ECECFF",
-              "strokeWidth": 0.0
+              "strokeWidth": 0.0,
+              "width": 10.5,
+              "x": 618.6,
+              "y": 181.5
             },
             {
-              "x": 618.6,
-              "y": 223.5,
-              "width": 10.5,
-              "height": 10.5,
               "fill": "#FFC3A0",
+              "height": 10.5,
               "strokeFill": "#FFC3A0",
-              "strokeWidth": 0.0
+              "strokeWidth": 0.0,
+              "width": 10.5,
+              "x": 618.6,
+              "y": 223.5
             }
-          ]
-        },
-        {
-          "type": "path",
+          ],
           "groupTexts": [
             "legend",
             "markers"
           ],
+          "type": "rect"
+        },
+        {
           "data": [
             {
-              "path": "M 618.5999999999999,207.75 L 629.0999999999999,207.75",
               "fill": null,
+              "path": "M 618.5999999999999,207.75 L 629.0999999999999,207.75",
               "strokeFill": "#8493A6",
               "strokeWidth": 2.0
             },
             {
-              "path": "M 618.5999999999999,249.75 L 629.0999999999999,249.75",
               "fill": null,
+              "path": "M 618.5999999999999,249.75 L 629.0999999999999,249.75",
               "strokeFill": "#DCDDE1",
               "strokeWidth": 2.0
             }
-          ]
+          ],
+          "groupTexts": [
+            "legend",
+            "markers"
+          ],
+          "type": "path"
         },
         {
-          "type": "text",
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "left",
+              "rotation": 0.0,
+              "text": "barTitle1",
+              "verticalPos": "middle",
+              "x": 634.0,
+              "y": 186.75
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "left",
+              "rotation": 0.0,
+              "text": "lineTitle1",
+              "verticalPos": "middle",
+              "x": 634.0,
+              "y": 207.75
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "left",
+              "rotation": 0.0,
+              "text": "barTitle2",
+              "verticalPos": "middle",
+              "x": 634.0,
+              "y": 228.75
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "left",
+              "rotation": 0.0,
+              "text": "lineTitle2",
+              "verticalPos": "middle",
+              "x": 634.0,
+              "y": 249.75
+            }
+          ],
           "groupTexts": [
             "legend",
             "label"
           ],
-          "data": [
-            {
-              "text": "barTitle1",
-              "x": 634.0,
-              "y": 186.75,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "left"
-            },
-            {
-              "text": "lineTitle1",
-              "x": 634.0,
-              "y": 207.75,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "left"
-            },
-            {
-              "text": "barTitle2",
-              "x": 634.0,
-              "y": 228.75,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "left"
-            },
-            {
-              "text": "lineTitle2",
-              "x": 634.0,
-              "y": 249.75,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "left"
-            }
-          ]
+          "type": "text"
         },
         {
-          "type": "path",
+          "data": [
+            {
+              "fill": null,
+              "path": "M 60.28000000000003,441 L 608.5999999999999,441",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
           "groupTexts": [
             "bottom-axis",
             "axis-line"
           ],
-          "data": [
-            {
-              "path": "M 60.28000000000003,441 L 608.5999999999999,441",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
+          "type": "path"
         },
         {
-          "type": "text",
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "1",
+              "verticalPos": "top",
+              "x": 76.28,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "1.2",
+              "verticalPos": "top",
+              "x": 127.912,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "1.4",
+              "verticalPos": "top",
+              "x": 179.544,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "1.6",
+              "verticalPos": "top",
+              "x": 231.176,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "1.8",
+              "verticalPos": "top",
+              "x": 282.808,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "2",
+              "verticalPos": "top",
+              "x": 334.44,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "2.2",
+              "verticalPos": "top",
+              "x": 386.072,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "2.4",
+              "verticalPos": "top",
+              "x": 437.704,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "2.6",
+              "verticalPos": "top",
+              "x": 489.336,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "2.8",
+              "verticalPos": "top",
+              "x": 540.968,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "3",
+              "verticalPos": "top",
+              "x": 592.6,
+              "y": 452.0
+            }
+          ],
           "groupTexts": [
             "bottom-axis",
             "label"
           ],
-          "data": [
-            {
-              "text": "1",
-              "x": 76.28,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "1.2",
-              "x": 127.912,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "1.4",
-              "x": 179.544,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "1.6",
-              "x": 231.176,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "1.8",
-              "x": 282.808,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "2",
-              "x": 334.44,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "2.2",
-              "x": 386.072,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "2.4",
-              "x": 437.704,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "2.6",
-              "x": 489.336,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "2.8",
-              "x": 540.968,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "3",
-              "x": 592.6,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            }
-          ]
+          "type": "text"
         },
         {
-          "type": "path",
+          "data": [
+            {
+              "fill": null,
+              "path": "M 76.28000000000003,442 L 76.28000000000003,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 127.912,442 L 127.912,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 179.54399999999998,442 L 179.54399999999998,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 231.17600000000004,442 L 231.17600000000004,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 282.808,442 L 282.808,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 334.44,442 L 334.44,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 386.07200000000006,442 L 386.07200000000006,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 437.70399999999995,442 L 437.70399999999995,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 489.336,442 L 489.336,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 540.9679999999998,442 L 540.9679999999998,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 592.5999999999999,442 L 592.5999999999999,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
           "groupTexts": [
             "bottom-axis",
             "ticks"
           ],
-          "data": [
-            {
-              "path": "M 76.28000000000003,442 L 76.28000000000003,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 127.912,442 L 127.912,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 179.54399999999998,442 L 179.54399999999998,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 231.17600000000004,442 L 231.17600000000004,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 282.808,442 L 282.808,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 334.44,442 L 334.44,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 386.07200000000006,442 L 386.07200000000006,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 437.70399999999995,442 L 437.70399999999995,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 489.336,442 L 489.336,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 540.9679999999998,442 L 540.9679999999998,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 592.5999999999999,442 L 592.5999999999999,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
+          "type": "path"
         },
         {
-          "type": "text",
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 16.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "xAxisName",
+              "verticalPos": "top",
+              "x": 334.44,
+              "y": 477.4
+            }
+          ],
           "groupTexts": [
             "bottom-axis",
             "title"
           ],
-          "data": [
-            {
-              "text": "xAxisName",
-              "x": 334.44,
-              "y": 477.4,
-              "fill": "#131300",
-              "fontSize": 16.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            }
-          ]
+          "type": "text"
         },
         {
-          "type": "path",
+          "data": [
+            {
+              "fill": null,
+              "path": "M 59.28000000000003,0 L 59.28000000000003,440 ",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
           "groupTexts": [
             "left-axis",
             "axisl-line"
           ],
-          "data": [
-            {
-              "path": "M 59.28000000000003,0 L 59.28000000000003,440 ",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
+          "type": "path"
         },
         {
-          "type": "text",
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "90",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 51.125
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "80",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 99.375
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "70",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 147.625
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "60",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 195.875
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "50",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 244.125
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "40",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 292.375
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "30",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 340.625
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "20",
+              "verticalPos": "middle",
+              "x": 48.28,
+              "y": 388.875
+            }
+          ],
           "groupTexts": [
             "left-axis",
             "label"
           ],
-          "data": [
-            {
-              "text": "90",
-              "x": 48.28,
-              "y": 51.125,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "80",
-              "x": 48.28,
-              "y": 99.375,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "70",
-              "x": 48.28,
-              "y": 147.625,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "60",
-              "x": 48.28,
-              "y": 195.875,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "50",
-              "x": 48.28,
-              "y": 244.125,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "40",
-              "x": 48.28,
-              "y": 292.375,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "30",
-              "x": 48.28,
-              "y": 340.625,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "20",
-              "x": 48.28,
-              "y": 388.875,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            }
-          ]
+          "type": "text"
         },
         {
-          "type": "path",
+          "data": [
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,51.12500000000001 L 53.28000000000003,51.12500000000001",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,99.37500000000001 L 53.28000000000003,99.37500000000001",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,147.625 L 53.28000000000003,147.625",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,195.875 L 53.28000000000003,195.875",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,244.12499999999997 L 53.28000000000003,244.12499999999997",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,292.375 L 53.28000000000003,292.375",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,340.625 L 53.28000000000003,340.625",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 58.28000000000003,388.875 L 53.28000000000003,388.875",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
           "groupTexts": [
             "left-axis",
             "ticks"
           ],
-          "data": [
-            {
-              "path": "M 58.28000000000003,51.12500000000001 L 53.28000000000003,51.12500000000001",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 58.28000000000003,99.37500000000001 L 53.28000000000003,99.37500000000001",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 58.28000000000003,147.625 L 53.28000000000003,147.625",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 58.28000000000003,195.875 L 53.28000000000003,195.875",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 58.28000000000003,244.12499999999997 L 53.28000000000003,244.12499999999997",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 58.28000000000003,292.375 L 53.28000000000003,292.375",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 58.28000000000003,340.625 L 53.28000000000003,340.625",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 58.28000000000003,388.875 L 53.28000000000003,388.875",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
+          "type": "path"
         },
         {
-          "type": "text",
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 16.0,
+              "horizontalPos": "center",
+              "rotation": 270.0,
+              "text": "yAxisName",
+              "verticalPos": "top",
+              "x": 5.0,
+              "y": 220.0
+            }
+          ],
           "groupTexts": [
             "left-axis",
             "title"
           ],
-          "data": [
-            {
-              "text": "yAxisName",
-              "x": 5.0,
-              "y": 220.0,
-              "fill": "#131300",
-              "fontSize": 16.0,
-              "rotation": 270.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            }
-          ]
+          "type": "text"
         }
-      ]
+      ],
+      "height": 500.0,
+      "labelData": [],
+      "showDataLabel": false,
+      "showDataLabelOutsideBar": false,
+      "width": 700.0
     }
   }
 }

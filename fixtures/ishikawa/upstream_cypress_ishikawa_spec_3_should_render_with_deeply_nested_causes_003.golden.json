@@ -1,97 +1,97 @@
 {
   "diagramType": "ishikawa",
   "model": {
-    "type": "ishikawa",
-    "title": "Server Outage",
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "text": "Server Outage",
-      "children": [
-        {
-          "text": "Hardware",
-          "children": [
-            {
-              "text": "Disk",
-              "children": [
-                {
-                  "text": "Bad sectors",
-                  "children": []
-                },
-                {
-                  "text": "Full capacity",
-                  "children": []
-                }
-              ]
-            },
-            {
-              "text": "Memory",
-              "children": [
-                {
-                  "text": "Leak detected",
-                  "children": []
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "text": "Software",
-          "children": [
-            {
-              "text": "Bug",
-              "children": [
-                {
-                  "text": "Race condition",
-                  "children": []
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
-        "text": "Server Outage",
-        "depth": 0
+        "depth": 0,
+        "text": "Server Outage"
       },
       {
-        "text": "Hardware",
-        "depth": 1
+        "depth": 1,
+        "text": "Hardware"
       },
       {
-        "text": "Disk",
-        "depth": 2
+        "depth": 2,
+        "text": "Disk"
       },
       {
-        "text": "Bad sectors",
-        "depth": 3
+        "depth": 3,
+        "text": "Bad sectors"
       },
       {
-        "text": "Full capacity",
-        "depth": 3
+        "depth": 3,
+        "text": "Full capacity"
       },
       {
-        "text": "Memory",
-        "depth": 2
+        "depth": 2,
+        "text": "Memory"
       },
       {
-        "text": "Leak detected",
-        "depth": 3
+        "depth": 3,
+        "text": "Leak detected"
       },
       {
-        "text": "Software",
-        "depth": 1
+        "depth": 1,
+        "text": "Software"
       },
       {
-        "text": "Bug",
-        "depth": 2
+        "depth": 2,
+        "text": "Bug"
       },
       {
-        "text": "Race condition",
-        "depth": 3
+        "depth": 3,
+        "text": "Race condition"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "text": "Bad sectors"
+                },
+                {
+                  "children": [],
+                  "text": "Full capacity"
+                }
+              ],
+              "text": "Disk"
+            },
+            {
+              "children": [
+                {
+                  "children": [],
+                  "text": "Leak detected"
+                }
+              ],
+              "text": "Memory"
+            }
+          ],
+          "text": "Hardware"
+        },
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "children": [],
+                  "text": "Race condition"
+                }
+              ],
+              "text": "Bug"
+            }
+          ],
+          "text": "Software"
+        }
+      ],
+      "text": "Server Outage"
+    },
+    "title": "Server Outage",
+    "type": "ishikawa"
   }
 }

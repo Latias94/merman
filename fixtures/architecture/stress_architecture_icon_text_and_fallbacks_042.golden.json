@@ -1,276 +1,276 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "cloud",
-        "icon": "cloud",
-        "title": "Cloud",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "lambda",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "s3",
+        "rhsInto": true,
+        "title": "stores"
       },
       {
-        "id": "ops",
-        "icon": "cloud",
-        "title": "Ops",
-        "in": null
+        "lhsDir": "L",
+        "lhsGroup": null,
+        "lhsId": "alarm",
+        "lhsInto": null,
+        "rhsDir": "R",
+        "rhsGroup": null,
+        "rhsId": "lambda",
+        "rhsInto": true,
+        "title": "notify"
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "unknown",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "alarm",
+        "rhsInto": true,
+        "title": "fallback"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "cloud",
+        "in": null,
+        "title": "Cloud"
+      },
+      {
+        "icon": "cloud",
+        "id": "ops",
+        "in": null,
+        "title": "Ops"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "s3",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           }
         ],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "s3",
+        "in": "cloud",
         "title": "S3",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "lambda",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           },
           {
-            "lhsId": "alarm",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "alarm",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "notify"
           }
         ],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "lambda",
+        "in": "cloud",
         "title": "Lambda",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "alarm",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "alarm",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "alarm",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "notify"
           },
           {
-            "lhsId": "unknown",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "alarm",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "alarm",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "fa:bell",
         "iconText": null,
+        "id": "alarm",
+        "in": "ops",
         "title": "Alarm",
-        "in": "ops"
+        "type": "service"
       },
       {
-        "id": "unknown",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "unknown",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "alarm",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "alarm",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "iconpack:does-not-exist",
         "iconText": null,
+        "id": "unknown",
+        "in": "ops",
         "title": "Unknown",
-        "in": "ops"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "s3",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           }
         ],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "s3",
+        "in": "cloud",
         "title": "S3",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "lambda",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "lambda",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s3",
+            "lhsId": "lambda",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s3",
+            "rhsInto": true,
             "title": "stores"
           },
           {
-            "lhsId": "alarm",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "alarm",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "notify"
           }
         ],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "lambda",
+        "in": "cloud",
         "title": "Lambda",
-        "in": "cloud"
+        "type": "service"
       },
       {
-        "id": "alarm",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "alarm",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "lambda",
+            "lhsId": "alarm",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "lambda",
+            "rhsInto": true,
             "title": "notify"
           },
           {
-            "lhsId": "unknown",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "alarm",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "alarm",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "fa:bell",
         "iconText": null,
+        "id": "alarm",
+        "in": "ops",
         "title": "Alarm",
-        "in": "ops"
+        "type": "service"
       },
       {
-        "id": "unknown",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "unknown",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "alarm",
+            "lhsId": "unknown",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "alarm",
+            "rhsInto": true,
             "title": "fallback"
           }
         ],
         "icon": "iconpack:does-not-exist",
         "iconText": null,
+        "id": "unknown",
+        "in": "ops",
         "title": "Unknown",
-        "in": "ops"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "lambda",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "s3",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "stores"
-      },
-      {
-        "lhsId": "alarm",
-        "lhsDir": "L",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "lambda",
-        "rhsDir": "R",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "notify"
-      },
-      {
-        "lhsId": "unknown",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "alarm",
-        "rhsDir": "B",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "fallback"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

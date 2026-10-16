@@ -1,77 +1,77 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "_STARTER_",
+        "color": null,
+        "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": true,
         "label": null,
+        "name": "_STARTER_",
+        "occurrences": [],
         "participantType": null,
         "stereotype": null,
-        "emoji": null,
-        "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": true,
-        "declarationSpan": null,
-        "occurrences": [],
         "width": null
       },
       {
-        "name": "A",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "A",
         "occurrences": [
           {
-            "start": 11,
-            "end": 12
+            "end": 12,
+            "start": 11
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
-        "comment": null,
-        "span": {
-          "start": 11,
-          "end": 52
-        },
-        "kind": "message",
-        "explicit_from": null,
-        "resolved_from": null,
-        "resolved_to": "A",
-        "label": "SyncMessage()",
         "assignment": null,
-        "style": "synchronous",
         "body": [
           {
-            "id": "zenuml-statement-1",
             "comment": null,
-            "span": {
-              "start": 33,
-              "end": 46
-            },
-            "kind": "return",
             "explicit_from": null,
-            "resolved_from": "A",
             "explicit_to": null,
+            "id": "zenuml-statement-1",
+            "kind": "return",
+            "label": "result",
+            "resolved_from": "A",
             "resolved_to": null,
-            "label": "result"
+            "span": {
+              "end": 46,
+              "start": 33
+            }
           }
-        ]
+        ],
+        "comment": null,
+        "explicit_from": null,
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "SyncMessage()",
+        "resolved_from": null,
+        "resolved_to": "A",
+        "span": {
+          "end": 52,
+          "start": 11
+        },
+        "style": "synchronous"
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

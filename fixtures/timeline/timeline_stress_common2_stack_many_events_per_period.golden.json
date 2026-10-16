@@ -1,43 +1,43 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Many stacked events per period",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Stack"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Stack",
-        "type": "Stack",
-        "task": "Period 1 ",
-        "score": 0,
         "events": [
           "Event A1 ",
           "Event A2 ",
           "Event A3",
           "Event A4",
           "Event A5"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Stack",
+        "task": "Period 1 ",
+        "type": "Stack"
       },
       {
-        "id": 1,
-        "section": "Stack",
-        "type": "Stack",
-        "task": "Period 2 ",
-        "score": 0,
         "events": [
           "Event B1",
           "Event B2",
           "Event B3",
           "Event B4",
           "Event B5"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Stack",
+        "task": "Period 2 ",
+        "type": "Stack"
       }
-    ]
+    ],
+    "title": "Many stacked events per period",
+    "type": "timeline"
   }
 }

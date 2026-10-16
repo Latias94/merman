@@ -1,18 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "1",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -24,10 +14,20 @@
         "name": "fun"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "1",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      }
+    ],
     "currentBranch": "develop",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

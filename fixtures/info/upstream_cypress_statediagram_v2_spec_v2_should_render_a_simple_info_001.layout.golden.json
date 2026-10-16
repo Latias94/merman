@@ -3,10 +3,10 @@
   "layout": {
     "InfoDiagram": {
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
         "max_x": 400.0,
-        "max_y": 100.0
+        "max_y": 100.0,
+        "min_x": 0.0,
+        "min_y": 0.0
       },
       "version": "v12.2.0"
     }

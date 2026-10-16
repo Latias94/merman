@@ -3,146 +3,146 @@
   "layout": {
     "EventModelingDiagram": {
       "bounds": {
-        "min_x": -30.0,
-        "min_y": -30.0,
         "max_x": 856.0,
-        "max_y": 440.0
+        "max_y": 440.0,
+        "min_x": -30.0,
+        "min_y": -30.0
       },
-      "total_width": 886.0,
-      "total_height": 470.0,
-      "viewbox_x": -30.0,
-      "viewbox_y": -30.0,
-      "padding": 30.0,
-      "use_max_width": true,
-      "swimlanes": [
-        {
-          "index": 0.0,
-          "label": "UI/Automation",
-          "namespace": null,
-          "x": 0.0,
-          "y": 0.0,
-          "width": 826.0,
-          "height": 130.0
-        },
-        {
-          "index": 100.0,
-          "label": "Command/Read Model",
-          "namespace": null,
-          "x": 0.0,
-          "y": 140.0,
-          "width": 826.0,
-          "height": 130.0
-        },
-        {
-          "index": 200.0,
-          "label": "Events",
-          "namespace": null,
-          "x": 0.0,
-          "y": 280.0,
-          "width": 826.0,
-          "height": 130.0
-        }
-      ],
       "boxes": [
         {
-          "index": 0.0,
-          "frame_name": "01",
-          "frame_kind": "timeframe",
-          "model_entity_type": "ui",
           "entity_identifier": "CartScreen",
-          "text": "CartScreen",
-          "x": 250.0,
-          "y": 15.0,
-          "width": 172.0,
-          "height": 100.0,
           "fill": "white",
+          "frame_kind": "timeframe",
+          "frame_name": "01",
+          "height": 100.0,
+          "index": 0.0,
+          "model_entity_type": "ui",
           "stroke": "#dbdada",
-          "swimlane_index": 0.0
+          "swimlane_index": 0.0,
+          "text": "CartScreen",
+          "width": 172.0,
+          "x": 250.0,
+          "y": 15.0
         },
         {
-          "index": 1.0,
-          "frame_name": "02",
-          "frame_kind": "timeframe",
-          "model_entity_type": "cmd",
           "entity_identifier": "AddItem",
-          "text": "AddItem",
-          "x": 352.0,
-          "y": 155.0,
-          "width": 152.0,
-          "height": 100.0,
           "fill": "#bcd6fe",
-          "stroke": "#679ac3",
-          "swimlane_index": 100.0
-        },
-        {
-          "index": 2.0,
-          "frame_name": "03",
           "frame_kind": "timeframe",
+          "frame_name": "02",
+          "height": 100.0,
+          "index": 1.0,
           "model_entity_type": "cmd",
-          "entity_identifier": "RemoveItem",
-          "text": "RemoveItem",
-          "x": 514.0,
-          "y": 155.0,
-          "width": 178.0,
-          "height": 100.0,
-          "fill": "#bcd6fe",
           "stroke": "#679ac3",
-          "swimlane_index": 100.0
+          "swimlane_index": 100.0,
+          "text": "AddItem",
+          "width": 152.0,
+          "x": 352.0,
+          "y": 155.0
         },
         {
-          "index": 3.0,
-          "frame_name": "04",
+          "entity_identifier": "RemoveItem",
+          "fill": "#bcd6fe",
           "frame_kind": "timeframe",
-          "model_entity_type": "evt",
-          "entity_identifier": "ItemChanged",
-          "text": "ItemChanged",
-          "x": 622.0,
-          "y": 295.0,
-          "width": 179.0,
+          "frame_name": "03",
           "height": 100.0,
+          "index": 2.0,
+          "model_entity_type": "cmd",
+          "stroke": "#679ac3",
+          "swimlane_index": 100.0,
+          "text": "RemoveItem",
+          "width": 178.0,
+          "x": 514.0,
+          "y": 155.0
+        },
+        {
+          "entity_identifier": "ItemChanged",
           "fill": "#ffb778",
+          "frame_kind": "timeframe",
+          "frame_name": "04",
+          "height": 100.0,
+          "index": 3.0,
+          "model_entity_type": "evt",
           "stroke": "#c19a0f",
-          "swimlane_index": 200.0
+          "swimlane_index": 200.0,
+          "text": "ItemChanged",
+          "width": 179.0,
+          "x": 622.0,
+          "y": 295.0
         }
       ],
+      "padding": 30.0,
       "relations": [
         {
           "source_frame": "01",
+          "stroke": "#333333",
           "target_frame": "02",
           "x1": 364.667,
-          "y1": 115.0,
           "x2": 402.667,
-          "y2": 155.0,
-          "stroke": "#333333"
+          "y1": 115.0,
+          "y2": 155.0
         },
         {
           "source_frame": "01",
+          "stroke": "#333333",
           "target_frame": "03",
           "x1": 364.667,
-          "y1": 115.0,
           "x2": 573.333,
-          "y2": 155.0,
-          "stroke": "#333333"
+          "y1": 115.0,
+          "y2": 155.0
         },
         {
           "source_frame": "02",
+          "stroke": "#333333",
           "target_frame": "04",
           "x1": 453.333,
-          "y1": 255.0,
           "x2": 681.667,
-          "y2": 295.0,
-          "stroke": "#333333"
+          "y1": 255.0,
+          "y2": 295.0
         },
         {
           "source_frame": "03",
+          "stroke": "#333333",
           "target_frame": "04",
           "x1": 632.667,
-          "y1": 255.0,
           "x2": 681.667,
-          "y2": 295.0,
-          "stroke": "#333333"
+          "y1": 255.0,
+          "y2": 295.0
         }
-      ]
+      ],
+      "swimlanes": [
+        {
+          "height": 130.0,
+          "index": 0.0,
+          "label": "UI/Automation",
+          "namespace": null,
+          "width": 826.0,
+          "x": 0.0,
+          "y": 0.0
+        },
+        {
+          "height": 130.0,
+          "index": 100.0,
+          "label": "Command/Read Model",
+          "namespace": null,
+          "width": 826.0,
+          "x": 0.0,
+          "y": 140.0
+        },
+        {
+          "height": 130.0,
+          "index": 200.0,
+          "label": "Events",
+          "namespace": null,
+          "width": 826.0,
+          "x": 0.0,
+          "y": 280.0
+        }
+      ],
+      "total_height": 470.0,
+      "total_width": 886.0,
+      "use_max_width": true,
+      "viewbox_x": -30.0,
+      "viewbox_y": -30.0
     }
   }
 }

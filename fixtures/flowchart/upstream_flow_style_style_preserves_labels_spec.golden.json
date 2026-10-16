@@ -1,17 +1,101 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [],
+    "keyword": "graph",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "A",
+        "img": null,
+        "label": "",
+        "labelType": "text",
+        "layoutShape": "circle",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "circle",
+        "styles": [
+          "background:#fff"
+        ]
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "B",
+        "img": null,
+        "label": "Test",
+        "labelType": "text",
+        "layoutShape": "circle",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "circle",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "C",
+        "img": null,
+        "label": "C",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "D",
+        "img": null,
+        "label": "D",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": [
+          "border:1px solid red"
+        ]
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
     "vertexCalls": [
       "A",
       "B",
@@ -19,97 +103,13 @@
       "A",
       "D"
     ],
-    "nodes": [
-      {
-        "id": "A",
-        "label": "",
-        "labelType": "text",
-        "shape": "circle",
-        "layoutShape": "circle",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [
-          "background:#fff"
-        ],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "B",
-        "label": "Test",
-        "labelType": "text",
-        "shape": "circle",
-        "layoutShape": "circle",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "C",
-        "label": "C",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "D",
-        "label": "D",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [
-          "border:1px solid red"
-        ],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [],
-    "subgraphs": [],
     "warningFacts": [
       {
-        "ruleId": "merman.semantic.flowchart.unknown_style_target",
         "message": "Style applied to unknown node \"D\". This may indicate a typo. The node will be created automatically.",
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
         "span": {
-          "start": 63,
-          "end": 64
+          "end": 64,
+          "start": 63
         }
       }
     ],

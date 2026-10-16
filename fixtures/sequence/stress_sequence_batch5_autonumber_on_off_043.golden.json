@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B",
@@ -12,178 +10,180 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "0",
         "message": {
           "start": 1,
           "step": 3,
           "visible": true
         },
-        "wrap": false,
-        "type": 26,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "B",
-        "message": "one",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "B",
-        "to": "A",
-        "message": "four",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": null,
         "to": null,
+        "type": 26,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "one",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "2",
+        "message": "four",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "3",
         "message": {
           "visible": false
         },
-        "wrap": false,
+        "to": null,
         "type": 26,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "4",
-        "from": null,
-        "to": null,
         "message": "unnumbered block",
-        "wrap": false,
+        "to": null,
         "type": 12,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "5",
+        "activate": false,
         "from": "A",
-        "to": "C",
+        "id": "5",
         "message": "unnumbered",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "C",
-        "to": "A",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "still unnumbered",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "B",
         "to": "C",
-        "message": "ping",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "9",
+        "activate": false,
         "from": "C",
-        "to": "B",
-        "message": "pong",
-        "wrap": false,
+        "id": "6",
+        "message": "ok",
+        "to": "A",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "still unnumbered",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "8",
+        "message": "ping",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "9",
+        "message": "pong",
+        "to": "B",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
         "id": "10",
-        "from": null,
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 14,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "11",
+        "activate": false,
         "from": null,
-        "to": null,
+        "id": "11",
         "message": {
           "start": 10,
           "step": 2,
           "visible": true
         },
-        "wrap": false,
+        "to": null,
         "type": 26,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "12",
+        "activate": false,
         "from": "A",
-        "to": "B",
+        "id": "12",
         "message": "ten",
-        "wrap": false,
+        "to": "B",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "13",
+        "activate": false,
         "from": "B",
-        "to": "A",
+        "id": "13",
         "message": "twelve",
-        "wrap": false,
+        "to": "A",
         "type": 1,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

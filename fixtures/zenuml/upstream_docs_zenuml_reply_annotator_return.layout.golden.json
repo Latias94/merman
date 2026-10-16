@@ -2,86 +2,86 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 200.0,
-      "height": 132.0,
+      "bounds": {
+        "max_x": 200.0,
+        "max_y": 132.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
+      "creations": [],
+      "dividers": [],
+      "fragments": [],
       "frameBorderLeft": 0.0,
       "frameBorderRight": 0.0,
-      "participants": [
-        {
-          "name": "A",
-          "label": "A",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 9.6,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "B",
-          "label": "B",
-          "x": 150.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 9.6,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        }
-      ],
+      "groups": [],
+      "height": 132.0,
       "lifelines": [
         {
+          "bottomY": 144.0,
           "participantName": "A",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 144.0
+          "x": 50.0
         },
         {
+          "bottomY": 144.0,
           "participantName": "B",
-          "x": 150.0,
           "topY": 68.0,
-          "bottomY": 144.0
+          "x": 150.0
         }
       ],
       "messages": [],
-      "selfCalls": [],
-      "creations": [],
-      "returns": [
+      "occurrences": [],
+      "participants": [
         {
-          "statementId": "zenuml-statement-0",
-          "number": "1",
-          "from": "A",
-          "to": "B",
-          "fromX": 51.0,
-          "toX": 150.0,
-          "y": 87.5,
-          "label": "result",
-          "isReverse": false,
-          "isSelf": false
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "A",
+          "labelWidth": 9.6,
+          "name": "A",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "B",
+          "labelWidth": 9.6,
+          "name": "B",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 150.0,
+          "y": 28.0
         }
       ],
-      "occurrences": [],
-      "fragments": [],
-      "dividers": [],
-      "comments": [],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 200.0,
-        "max_y": 132.0
-      }
+      "returns": [
+        {
+          "from": "A",
+          "fromX": 51.0,
+          "isReverse": false,
+          "isSelf": false,
+          "label": "result",
+          "number": "1",
+          "statementId": "zenuml-statement-0",
+          "to": "B",
+          "toX": 150.0,
+          "y": 87.5
+        }
+      ],
+      "selfCalls": [],
+      "width": 200.0
     }
   }
 }

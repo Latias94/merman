@@ -1,12 +1,15 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "AState",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [
@@ -14,46 +17,43 @@
           "border:1px solid red",
           "color:white"
         ],
-        "id": "AState",
         "dir": null,
         "domId": "state-AState-0",
-        "type": null,
+        "id": "AState",
         "isGroup": false,
+        "label": "AState",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
-    "edges": [],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "relations": [],
     "states": {
       "AState": {
-        "id": "AState",
-        "type": "default",
+        "classes": [],
         "descriptions": [],
         "doc": null,
+        "id": "AState",
         "note": null,
-        "classes": [],
+        "start": null,
         "styles": [
           "fill:#636",
           "border:1px solid red",
           "color:white"
         ],
         "textStyles": [],
-        "start": null
+        "type": "default"
       }
     },
-    "relations": [],
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

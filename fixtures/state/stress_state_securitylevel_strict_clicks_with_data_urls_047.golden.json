@@ -1,213 +1,166 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
-    "nodes": [
-      {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "root_start",
-        "dir": null,
-        "domId": "state-root_start-0",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Safe",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Safe",
-        "dir": null,
-        "domId": "state-Safe-1",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Bad",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "Bad",
-        "dir": null,
-        "domId": "state-Bad-2",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "root_end",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "root_end",
-        "dir": null,
-        "domId": "state-root_end-2",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
     "edges": [
       {
-        "id": "edge0",
-        "start": "root_start",
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
         "end": "Safe",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
+        "id": "edge0",
         "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
       },
       {
-        "id": "edge1",
-        "start": "Safe",
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
         "end": "Bad",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
+        "id": "edge1",
         "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Safe",
+        "style": "fill:none",
+        "thickness": "normal"
       },
       {
-        "id": "edge2",
-        "start": "Bad",
-        "end": "root_end",
-        "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
+        "arrowhead": "normal",
         "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "classes": "transition",
+        "end": "root_end",
+        "id": "edge2",
+        "label": "",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Bad",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {
+      "Bad": [
+        {
+          "tooltip": "js tooltip",
+          "url": "javascript:alert(1)"
+        },
+        {
+          "tooltip": "data tooltip",
+          "url": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==;x=y"
+        }
+      ],
+      "Safe": {
+        "tooltip": "safe tooltip",
+        "url": "https://example.com/path;params?x=1#frag"
+      }
+    },
+    "nodes": [
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-root_start-0",
+        "id": "root_start",
+        "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-Safe-1",
+        "id": "Safe",
+        "isGroup": false,
+        "label": "Safe",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-Bad-2",
+        "id": "Bad",
+        "isGroup": false,
+        "label": "Bad",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-root_end-2",
+        "id": "root_end",
+        "isGroup": false,
+        "label": "root_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {
-      "Safe": {
-        "url": "https://example.com/path;params?x=1#frag",
-        "tooltip": "safe tooltip"
-      },
-      "Bad": [
-        {
-          "url": "javascript:alert(1)",
-          "tooltip": "js tooltip"
-        },
-        {
-          "url": "data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==;x=y",
-          "tooltip": "data tooltip"
-        }
-      ]
-    },
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
-      "Safe": {
-        "id": "Safe",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Bad": {
-        "id": "Bad",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_end": {
-        "id": "root_end",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": false
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -225,6 +178,53 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "Bad": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "Bad",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Safe": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "Safe",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_end": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_end",
+        "note": null,
+        "start": false,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

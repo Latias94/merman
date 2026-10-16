@@ -1,35 +1,35 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": null,
+        "id": "db",
+        "in": null,
         "title": null,
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": null,
+        "id": "db",
+        "in": null,
         "title": null,
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

@@ -1,109 +1,109 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "fit",
-        "type": "na",
-        "label": "fit",
         "children": [],
+        "id": "fit",
+        "label": "fit",
+        "type": "na",
         "widthInColumns": 2
       },
       {
-        "id": "overflow",
-        "type": "na",
-        "label": "overflow",
         "children": [],
+        "id": "overflow",
+        "label": "overflow",
+        "type": "na",
         "widthInColumns": 3
       },
       {
-        "id": "short",
-        "type": "na",
-        "label": "short",
         "children": [],
+        "id": "short",
+        "label": "short",
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "also_overflow",
-        "type": "na",
-        "label": "also_overflow",
         "children": [],
+        "id": "also_overflow",
+        "label": "also_overflow",
+        "type": "na",
         "widthInColumns": 2
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "fit",
-            "type": "na",
-            "label": "fit",
             "children": [],
+            "id": "fit",
+            "label": "fit",
+            "type": "na",
             "widthInColumns": 2
           },
           {
-            "id": "overflow",
-            "type": "na",
-            "label": "overflow",
             "children": [],
+            "id": "overflow",
+            "label": "overflow",
+            "type": "na",
             "widthInColumns": 3
           },
           {
-            "id": "short",
-            "type": "na",
-            "label": "short",
             "children": [],
+            "id": "short",
+            "label": "short",
+            "type": "na",
             "widthInColumns": 1
           },
           {
-            "id": "also_overflow",
-            "type": "na",
-            "label": "also_overflow",
             "children": [],
+            "id": "also_overflow",
+            "label": "also_overflow",
+            "type": "na",
             "widthInColumns": 2
           }
         ],
-        "columns": 2
+        "columns": 2,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "fit",
-        "type": "na",
-        "label": "fit",
         "children": [],
+        "id": "fit",
+        "label": "fit",
+        "type": "na",
         "widthInColumns": 2
       },
       {
-        "id": "overflow",
-        "type": "na",
-        "label": "overflow",
         "children": [],
+        "id": "overflow",
+        "label": "overflow",
+        "type": "na",
         "widthInColumns": 3
       },
       {
-        "id": "short",
-        "type": "na",
-        "label": "short",
         "children": [],
+        "id": "short",
+        "label": "short",
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "also_overflow",
-        "type": "na",
-        "label": "also_overflow",
         "children": [],
+        "id": "also_overflow",
+        "label": "also_overflow",
+        "type": "na",
         "widthInColumns": 2
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [
       {
-        "ruleId": "merman.block.width_exceeds_columns",
-        "message": "Block overflow width 3 exceeds configured column width 2"
+        "message": "Block overflow width 3 exceeds configured column width 2",
+        "ruleId": "merman.block.width_exceeds_columns"
       }
     ],
     "warnings": [

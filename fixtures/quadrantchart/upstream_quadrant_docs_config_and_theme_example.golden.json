@@ -1,23 +1,23 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "type": "quadrantChart",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "quadrants": {
-      "quadrant1Text": "Plan",
-      "quadrant2Text": "Do",
-      "quadrant3Text": "Delegate",
-      "quadrant4Text": "Delete"
-    },
+    "accTitle": null,
     "axes": {
       "xAxisLeftText": "Urgent",
       "xAxisRightText": "Not Urgent",
       "yAxisBottomText": "Not Important",
       "yAxisTopText": "Important ❤"
     },
+    "classes": {},
     "points": [],
-    "classes": {}
+    "quadrants": {
+      "quadrant1Text": "Plan",
+      "quadrant2Text": "Do",
+      "quadrant3Text": "Delegate",
+      "quadrant4Text": "Delete"
+    },
+    "title": null,
+    "type": "quadrantChart"
   }
 }

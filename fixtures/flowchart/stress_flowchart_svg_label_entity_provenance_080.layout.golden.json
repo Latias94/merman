@@ -2,231 +2,70 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 553.53,
+        "max_y": 2336.48,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
+          "diff": -4.0,
+          "effective_dir": "TB",
+          "height": 105.8,
           "id": "NelGroup",
-          "x": 131.67,
-          "y": 2283.58,
+          "offset_y": 9.4,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": "Group",
+          "title_label": {
+            "height": 13.4,
+            "width": 49.28,
+            "x": 131.67,
+            "y": 2237.38
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
           "width": 200.0,
-          "height": 105.8,
-          "is_cluster": true
+          "x": 131.67,
+          "y": 2283.58
         },
         {
+          "diff": -4.0,
+          "effective_dir": "TB",
+          "height": 105.8,
           "id": "SG",
-          "x": 131.67,
-          "y": 2103.3,
+          "offset_y": 9.4,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": " Group ",
+          "title_label": {
+            "height": 13.4,
+            "width": 105.28,
+            "x": 131.67,
+            "y": 2057.1
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
           "width": 200.0,
-          "height": 105.8,
-          "is_cluster": true
-        },
-        {
-          "id": "Text",
           "x": 131.67,
-          "y": 31.7,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "String",
-          "x": 131.67,
-          "y": 170.5,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Markdown",
-          "x": 131.67,
-          "y": 309.3,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "DirectOnly",
-          "x": 131.67,
-          "y": 519.8,
-          "width": 32.0,
-          "height": 24.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Entity",
-          "x": 131.67,
-          "y": 448.1,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "EntityOnly",
-          "x": 131.67,
-          "y": 650.9,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Hash",
-          "x": 131.67,
-          "y": 730.3,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Numeric",
-          "x": 131.67,
-          "y": 809.7,
-          "width": 167.8,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Amp",
-          "x": 131.67,
-          "y": 889.1,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Less",
-          "x": 131.67,
-          "y": 968.5,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "NestedLess",
-          "x": 131.67,
-          "y": 1047.9,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "NestedAmp",
-          "x": 131.67,
-          "y": 1127.3,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Unknown",
-          "x": 131.67,
-          "y": 1206.7,
-          "width": 239.34,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "NelOnly",
-          "x": 131.67,
-          "y": 1345.5,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "NelBound",
-          "x": 131.67,
-          "y": 1424.9,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "NelMultiline",
-          "x": 131.67,
-          "y": 1512.0,
-          "width": 152.0,
-          "height": 54.8,
-          "is_cluster": false
-        },
-        {
-          "id": "ShapeText",
-          "x": 131.67,
-          "y": 1599.1,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "ShapeString",
-          "x": 131.67,
-          "y": 1678.5,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "ShapeMarkdown",
-          "x": 131.67,
-          "y": 1757.9,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "ShapeEntity",
-          "x": 131.67,
-          "y": 1837.3,
-          "width": 177.6,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "ShapeTextOnly",
-          "x": 131.67,
-          "y": 1909.0,
-          "width": 152.0,
-          "height": 24.0,
-          "is_cluster": false
-        },
-        {
-          "id": "ShapeMarkdownOnly",
-          "x": 131.67,
-          "y": 1980.7,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Self",
-          "x": 477.53,
-          "y": 31.7,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "NelChild",
-          "x": 131.67,
-          "y": 2292.78,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
-        },
-        {
-          "id": "Child",
-          "x": 131.67,
-          "y": 2112.5,
-          "width": 152.0,
-          "height": 39.4,
-          "is_cluster": false
+          "y": 2103.3
         }
       ],
       "edges": [
         {
-          "id": "L_Text_String_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Text",
-          "to": "String",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Text_String_0",
+          "label": {
+            "height": 19.4,
+            "width": 131.96,
+            "x": 131.65,
+            "y": 101.1
+          },
           "points": [
             {
               "x": 131.67,
@@ -237,26 +76,26 @@
               "y": 150.8
             }
           ],
-          "label": {
-            "x": 131.65,
-            "y": 101.1,
-            "width": 131.96,
-            "height": 19.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "String",
+          "to_cluster": null
         },
         {
-          "id": "L_String_Markdown_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "String",
-          "to": "Markdown",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_String_Markdown_0",
+          "label": {
+            "height": 19.4,
+            "width": 141.9,
+            "x": 131.62,
+            "y": 239.9
+          },
           "points": [
             {
               "x": 131.67,
@@ -267,26 +106,26 @@
               "y": 289.6
             }
           ],
-          "label": {
-            "x": 131.62,
-            "y": 239.9,
-            "width": 141.9,
-            "height": 19.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Markdown",
+          "to_cluster": null
         },
         {
-          "id": "L_Markdown_Entity_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Markdown",
-          "to": "Entity",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Markdown_Entity_0",
+          "label": {
+            "height": 19.4,
+            "width": 167.516,
+            "x": 131.428,
+            "y": 378.7
+          },
           "points": [
             {
               "x": 131.67,
@@ -297,26 +136,21 @@
               "y": 428.4
             }
           ],
-          "label": {
-            "x": 131.428,
-            "y": 378.7,
-            "width": 167.516,
-            "height": 19.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Entity",
+          "to_cluster": null
         },
         {
-          "id": "L_Entity_DirectOnly_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Entity",
-          "to": "DirectOnly",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Entity_DirectOnly_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -327,21 +161,26 @@
               "y": 507.8
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "DirectOnly",
+          "to_cluster": null
         },
         {
-          "id": "L_DirectOnly_EntityOnly_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "DirectOnly",
-          "to": "EntityOnly",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_DirectOnly_EntityOnly_0",
+          "label": {
+            "height": 19.4,
+            "width": 40.4,
+            "x": 131.37,
+            "y": 581.5
+          },
           "points": [
             {
               "x": 131.67,
@@ -352,26 +191,21 @@
               "y": 631.2
             }
           ],
-          "label": {
-            "x": 131.37,
-            "y": 581.5,
-            "width": 40.4,
-            "height": 19.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "EntityOnly",
+          "to_cluster": null
         },
         {
-          "id": "L_EntityOnly_Hash_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "EntityOnly",
-          "to": "Hash",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_EntityOnly_Hash_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -382,21 +216,21 @@
               "y": 710.6
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Hash",
+          "to_cluster": null
         },
         {
-          "id": "L_Hash_Numeric_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Hash",
-          "to": "Numeric",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Hash_Numeric_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -407,21 +241,21 @@
               "y": 790.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Numeric",
+          "to_cluster": null
         },
         {
-          "id": "L_Numeric_Amp_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Numeric",
-          "to": "Amp",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Numeric_Amp_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -432,21 +266,21 @@
               "y": 869.4
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Amp",
+          "to_cluster": null
         },
         {
-          "id": "L_Amp_Less_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Amp",
-          "to": "Less",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Amp_Less_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -457,21 +291,21 @@
               "y": 948.8
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Less",
+          "to_cluster": null
         },
         {
-          "id": "L_Less_NestedLess_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Less",
-          "to": "NestedLess",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Less_NestedLess_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -482,21 +316,21 @@
               "y": 1028.2
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NestedLess",
+          "to_cluster": null
         },
         {
-          "id": "L_NestedLess_NestedAmp_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NestedLess",
-          "to": "NestedAmp",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_NestedLess_NestedAmp_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -507,21 +341,21 @@
               "y": 1107.6
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NestedAmp",
+          "to_cluster": null
         },
         {
-          "id": "L_NestedAmp_Unknown_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NestedAmp",
-          "to": "Unknown",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_NestedAmp_Unknown_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -532,21 +366,26 @@
               "y": 1187.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Unknown",
+          "to_cluster": null
         },
         {
-          "id": "L_Unknown_NelOnly_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Unknown",
-          "to": "NelOnly",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Unknown_NelOnly_0",
+          "label": {
+            "height": 19.4,
+            "width": 47.26,
+            "x": 131.3,
+            "y": 1276.1
+          },
           "points": [
             {
               "x": 131.67,
@@ -557,26 +396,21 @@
               "y": 1325.8
             }
           ],
-          "label": {
-            "x": 131.3,
-            "y": 1276.1,
-            "width": 47.26,
-            "height": 19.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NelOnly",
+          "to_cluster": null
         },
         {
-          "id": "L_NelOnly_NelBound_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NelOnly",
-          "to": "NelBound",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_NelOnly_NelBound_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -587,21 +421,21 @@
               "y": 1405.2
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NelBound",
+          "to_cluster": null
         },
         {
-          "id": "L_NelBound_NelMultiline_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NelBound",
-          "to": "NelMultiline",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_NelBound_NelMultiline_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -612,21 +446,21 @@
               "y": 1484.6
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NelMultiline",
+          "to_cluster": null
         },
         {
-          "id": "L_NelMultiline_ShapeText_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "NelMultiline",
-          "to": "ShapeText",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_NelMultiline_ShapeText_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -637,21 +471,21 @@
               "y": 1579.4
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "ShapeText",
+          "to_cluster": null
         },
         {
-          "id": "L_ShapeText_ShapeString_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "ShapeText",
-          "to": "ShapeString",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_ShapeText_ShapeString_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -662,21 +496,21 @@
               "y": 1658.8
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "ShapeString",
+          "to_cluster": null
         },
         {
-          "id": "L_ShapeString_ShapeMarkdown_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "ShapeString",
-          "to": "ShapeMarkdown",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_ShapeString_ShapeMarkdown_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -687,21 +521,21 @@
               "y": 1738.2
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "ShapeMarkdown",
+          "to_cluster": null
         },
         {
-          "id": "L_ShapeMarkdown_ShapeEntity_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "ShapeMarkdown",
-          "to": "ShapeEntity",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_ShapeMarkdown_ShapeEntity_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -712,21 +546,21 @@
               "y": 1817.6
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "ShapeEntity",
+          "to_cluster": null
         },
         {
-          "id": "L_ShapeEntity_ShapeTextOnly_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "ShapeEntity",
-          "to": "ShapeTextOnly",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_ShapeEntity_ShapeTextOnly_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -737,21 +571,21 @@
               "y": 1897.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "ShapeTextOnly",
+          "to_cluster": null
         },
         {
-          "id": "L_ShapeTextOnly_ShapeMarkdownOnly_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "ShapeTextOnly",
-          "to": "ShapeMarkdownOnly",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_ShapeTextOnly_ShapeMarkdownOnly_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -762,21 +596,26 @@
               "y": 1961.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "ShapeMarkdownOnly",
+          "to_cluster": null
         },
         {
-          "id": "L_Self_Self_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Self",
-          "to": "Self",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Self_Self_0",
+          "label": {
+            "height": 19.4,
+            "width": 129.86,
+            "x": 312.6,
+            "y": 31.7
+          },
           "points": [
             {
               "x": 401.53,
@@ -795,26 +634,21 @@
               "y": 34.267
             }
           ],
-          "label": {
-            "x": 312.6,
-            "y": 31.7,
-            "width": 129.86,
-            "height": 19.4
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Self",
+          "to_cluster": null
         },
         {
-          "id": "L_ShapeMarkdownOnly_Child_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "ShapeMarkdownOnly",
-          "to": "Child",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_ShapeMarkdownOnly_Child_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -829,21 +663,21 @@
               "y": 2092.8
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Child",
+          "to_cluster": null
         },
         {
-          "id": "L_Child_NelChild_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Child",
-          "to": "NelChild",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_Child_NelChild_0",
+          "label": null,
           "points": [
             {
               "x": 131.67,
@@ -862,66 +696,232 @@
               "y": 2273.08
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "NelChild",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "NelGroup",
-          "x": 131.67,
-          "y": 2283.58,
-          "width": 200.0,
           "height": 105.8,
-          "diff": -4.0,
-          "offset_y": 9.4,
-          "title": "Group",
-          "title_label": {
-            "x": 131.67,
-            "y": 2237.38,
-            "width": 49.28,
-            "height": 13.4
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "NelGroup",
+          "is_cluster": true,
+          "width": 200.0,
+          "x": 131.67,
+          "y": 2283.58
         },
         {
-          "id": "SG",
-          "x": 131.67,
-          "y": 2103.3,
-          "width": 200.0,
           "height": 105.8,
-          "diff": -4.0,
-          "offset_y": 9.4,
-          "title": " Group ",
-          "title_label": {
-            "x": 131.67,
-            "y": 2057.1,
-            "width": 105.28,
-            "height": 13.4
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "SG",
+          "is_cluster": true,
+          "width": 200.0,
+          "x": 131.67,
+          "y": 2103.3
+        },
+        {
+          "height": 39.4,
+          "id": "Text",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 31.7
+        },
+        {
+          "height": 39.4,
+          "id": "String",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 170.5
+        },
+        {
+          "height": 39.4,
+          "id": "Markdown",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 309.3
+        },
+        {
+          "height": 24.0,
+          "id": "DirectOnly",
+          "is_cluster": false,
+          "width": 32.0,
+          "x": 131.67,
+          "y": 519.8
+        },
+        {
+          "height": 39.4,
+          "id": "Entity",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 448.1
+        },
+        {
+          "height": 39.4,
+          "id": "EntityOnly",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 650.9
+        },
+        {
+          "height": 39.4,
+          "id": "Hash",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 730.3
+        },
+        {
+          "height": 39.4,
+          "id": "Numeric",
+          "is_cluster": false,
+          "width": 167.8,
+          "x": 131.67,
+          "y": 809.7
+        },
+        {
+          "height": 39.4,
+          "id": "Amp",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 889.1
+        },
+        {
+          "height": 39.4,
+          "id": "Less",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 968.5
+        },
+        {
+          "height": 39.4,
+          "id": "NestedLess",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1047.9
+        },
+        {
+          "height": 39.4,
+          "id": "NestedAmp",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1127.3
+        },
+        {
+          "height": 39.4,
+          "id": "Unknown",
+          "is_cluster": false,
+          "width": 239.34,
+          "x": 131.67,
+          "y": 1206.7
+        },
+        {
+          "height": 39.4,
+          "id": "NelOnly",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1345.5
+        },
+        {
+          "height": 39.4,
+          "id": "NelBound",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1424.9
+        },
+        {
+          "height": 54.8,
+          "id": "NelMultiline",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1512.0
+        },
+        {
+          "height": 39.4,
+          "id": "ShapeText",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1599.1
+        },
+        {
+          "height": 39.4,
+          "id": "ShapeString",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1678.5
+        },
+        {
+          "height": 39.4,
+          "id": "ShapeMarkdown",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1757.9
+        },
+        {
+          "height": 39.4,
+          "id": "ShapeEntity",
+          "is_cluster": false,
+          "width": 177.6,
+          "x": 131.67,
+          "y": 1837.3
+        },
+        {
+          "height": 24.0,
+          "id": "ShapeTextOnly",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1909.0
+        },
+        {
+          "height": 39.4,
+          "id": "ShapeMarkdownOnly",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 1980.7
+        },
+        {
+          "height": 39.4,
+          "id": "Self",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 477.53,
+          "y": 31.7
+        },
+        {
+          "height": 39.4,
+          "id": "NelChild",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 2292.78
+        },
+        {
+          "height": 39.4,
+          "id": "Child",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 131.67,
+          "y": 2112.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 553.53,
-        "max_y": 2336.48
-      }
+      ]
     }
   }
 }

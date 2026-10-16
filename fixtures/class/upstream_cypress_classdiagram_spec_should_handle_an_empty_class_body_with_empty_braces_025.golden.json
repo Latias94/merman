@@ -1,123 +1,123 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "FooBase": {
-        "id": "FooBase",
-        "type": "T",
-        "label": "FooBase",
-        "text": "FooBase&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
+      "Ba": {
         "annotations": [],
-        "styles": [],
-        "domId": "classId-FooBase-0",
-        "parent": null,
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Ba-2",
+        "haveCallback": false,
+        "id": "Ba",
+        "label": "Ba",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Ba",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Bar": {
-        "id": "Bar",
-        "type": "",
-        "label": "Bar",
-        "text": "Bar",
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
         "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "Zap",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "+Zap()",
-            "cssStyle": ""
-          }
-        ],
+        "domId": "classId-Bar-1",
+        "haveCallback": false,
+        "id": "Bar",
+        "label": "Bar",
+        "link": null,
+        "linkTarget": null,
         "members": [
           {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "Zip",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+Zip",
+            "id": "Zip",
+            "memberType": "attribute",
             "parameters": "",
             "returnType": "",
-            "displayText": "+Zip",
-            "cssStyle": ""
+            "visibility": "+"
           }
         ],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Bar-1",
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+Zap()",
+            "id": "Zap",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
         "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "styles": [],
+        "text": "Bar",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
-      "Ba": {
-        "id": "Ba",
-        "type": "",
-        "label": "Ba",
-        "text": "Ba",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
+      "FooBase": {
         "annotations": [],
-        "styles": [],
-        "domId": "classId-Ba-2",
-        "parent": null,
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-FooBase-0",
+        "haveCallback": false,
+        "id": "FooBase",
+        "label": "FooBase",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "FooBase&lt;T&gt;",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": "T"
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "FooBase",
         "id2": "Ba",
+        "relation": {
+          "lineType": 0,
+          "type1": 1,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": 1,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": ""
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

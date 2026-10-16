@@ -1,49 +1,49 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "Normal Commit",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "Reverse Commit",
-        "message": "",
-        "seq": 1,
-        "type": 1,
-        "tags": [],
-        "parents": [
-          "Normal Commit"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "Highlight Commit",
-        "message": "",
-        "seq": 2,
-        "type": 2,
-        "tags": [],
-        "parents": [
-          "Reverse Commit"
-        ],
-        "branch": "main"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "Normal Commit",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "Reverse Commit",
+        "message": "",
+        "parents": [
+          "Normal Commit"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 1
+      },
+      {
+        "branch": "main",
+        "id": "Highlight Commit",
+        "message": "",
+        "parents": [
+          "Reverse Commit"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 2
+      }
+    ],
     "currentBranch": "main",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

@@ -1,40 +1,36 @@
 {
   "diagramType": "radar",
   "model": {
-    "type": "radar",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "axes": [
       {
-        "name": "m",
-        "label": "Math"
+        "label": "Math",
+        "name": "m"
       },
       {
-        "name": "s",
-        "label": "Science"
+        "label": "Science",
+        "name": "s"
       },
       {
-        "name": "e",
-        "label": "English"
+        "label": "English",
+        "name": "e"
       },
       {
-        "name": "h",
-        "label": "History"
+        "label": "History",
+        "name": "h"
       },
       {
-        "name": "g",
-        "label": "Geography"
+        "label": "Geography",
+        "name": "g"
       },
       {
-        "name": "a",
-        "label": "Art"
+        "label": "Art",
+        "name": "a"
       }
     ],
     "curves": [
       {
-        "name": "a",
-        "label": "Alice",
         "entries": [
           85,
           90,
@@ -42,11 +38,11 @@
           70,
           75,
           90
-        ]
+        ],
+        "label": "Alice",
+        "name": "a"
       },
       {
-        "name": "b",
-        "label": "Bob",
         "entries": [
           70,
           75,
@@ -54,15 +50,19 @@
           80,
           90,
           85
-        ]
+        ],
+        "label": "Bob",
+        "name": "b"
       }
     ],
     "options": {
-      "showLegend": true,
-      "ticks": 5,
+      "graticule": "circle",
       "max": 100,
       "min": 0,
-      "graticule": "circle"
-    }
+      "showLegend": true,
+      "ticks": 5
+    },
+    "title": null,
+    "type": "radar"
   }
 }

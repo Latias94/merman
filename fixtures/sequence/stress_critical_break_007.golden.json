@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B",
@@ -12,150 +10,152 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "Carol",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": "Reserve seats",
-        "wrap": false,
-        "type": 27,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "B",
-        "message": "lock()",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "lock ok",
-        "wrap": false,
-        "type": 28,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "B",
-        "to": "A",
-        "message": "locked",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "lock failed",
-        "wrap": false,
-        "type": 28,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "B",
-        "to": "A",
-        "message": "error",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 29,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "invalid payment",
-        "wrap": false,
-        "type": 30,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "A",
-        "to": "C",
-        "message": "charge()",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "C",
-        "to": "A",
-        "message": "declined",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 31,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "A",
-        "to": "B",
-        "message": "done",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": "Reserve seats",
+        "to": null,
+        "type": 27,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "lock()",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "lock ok",
+        "to": null,
+        "type": 28,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "3",
+        "message": "locked",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "lock failed",
+        "to": null,
+        "type": 28,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "5",
+        "message": "error",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 29,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "invalid payment",
+        "to": null,
+        "type": 30,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "8",
+        "message": "charge()",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "9",
+        "message": "declined",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "",
+        "to": null,
+        "type": 31,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "11",
+        "message": "done",
+        "to": "B",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

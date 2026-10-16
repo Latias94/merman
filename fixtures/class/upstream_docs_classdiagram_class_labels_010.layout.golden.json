@@ -2,31 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Animal Class!",
-          "x": 65.297,
-          "y": 52.5,
-          "width": 106.594,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Car Class",
-          "x": 65.297,
-          "y": 173.5,
-          "width": 79.438,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 118.594,
+        "max_y": 214.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Animal Class!",
-          "to": "Car Class",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 65.297,
@@ -37,23 +28,32 @@
               "y": 133.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Car Class",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 118.594,
-        "max_y": 214.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "Animal Class!",
+          "is_cluster": false,
+          "width": 106.594,
+          "x": 65.297,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "Car Class",
+          "is_cluster": false,
+          "width": 79.438,
+          "x": 65.297,
+          "y": 173.5
+        }
+      ]
     }
   }
 }

@@ -1,31 +1,27 @@
 {
   "diagramType": "railroad",
   "model": {
-    "type": "railroad",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "value",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
-              "type": "nonterminal",
-              "name": "string"
+              "name": "string",
+              "type": "nonterminal"
             },
             {
-              "type": "nonterminal",
-              "name": "number"
+              "name": "number",
+              "type": "nonterminal"
             },
             {
-              "type": "nonterminal",
-              "name": "object"
+              "name": "object",
+              "type": "nonterminal"
             },
             {
-              "type": "nonterminal",
-              "name": "array"
+              "name": "array",
+              "type": "nonterminal"
             },
             {
               "type": "terminal",
@@ -39,25 +35,25 @@
               "type": "terminal",
               "value": "null"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "value"
       },
       {
-        "name": "number",
         "definition": {
-          "type": "repetition",
           "element": {
-            "type": "nonterminal",
-            "name": "digit"
+            "name": "digit",
+            "type": "nonterminal"
           },
+          "max": null,
           "min": 1,
-          "max": null
-        }
+          "type": "repetition"
+        },
+        "name": "number"
       },
       {
-        "name": "digit",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -75,9 +71,13 @@
               "type": "terminal",
               "value": "3"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "digit"
       }
-    ]
+    ],
+    "title": null,
+    "type": "railroad"
   }
 }

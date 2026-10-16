@@ -2,71 +2,65 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 443.524,
+        "max_y": 676.5,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
+          "diff": -12.0,
+          "effective_dir": "LR",
+          "height": 209.0,
           "id": "Core",
-          "x": 101.934,
-          "y": 116.5,
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "Core",
+          "title_label": {
+            "height": 21.0,
+            "width": 26.46,
+            "x": 101.934,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
           "width": 179.868,
-          "height": 209.0,
-          "is_cluster": true
+          "x": 101.934,
+          "y": 116.5
         },
         {
+          "diff": -12.0,
+          "effective_dir": "LR",
+          "height": 209.0,
           "id": "支付",
-          "x": 101.934,
-          "y": 365.5,
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "支付",
+          "title_label": {
+            "height": 21.0,
+            "width": 28.0,
+            "x": 101.934,
+            "y": 271.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
           "width": 161.32,
-          "height": 209.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Core.Alpha",
-          "x": 149.485,
-          "y": 550.5,
-          "width": 84.766,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "支付.订单",
-          "x": 401.563,
-          "y": 594.75,
-          "width": 83.922,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note0",
-          "x": 275.735,
-          "y": 639.0,
-          "width": 87.734,
-          "height": 75.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Alpha",
           "x": 101.934,
-          "y": 129.5,
-          "width": 131.868,
-          "height": 135.0,
-          "is_cluster": false
-        },
-        {
-          "id": "订单",
-          "x": 101.934,
-          "y": 378.5,
-          "width": 113.32,
-          "height": 135.0,
-          "is_cluster": false
+          "y": 365.5
         }
       ],
       "edges": [
         {
-          "id": "edgeNote0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "note0",
-          "to": "支付.订单",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edgeNote0",
+          "label": null,
           "points": [
             {
               "x": 319.602,
@@ -85,21 +79,26 @@
               "y": 604.917
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "支付.订单",
+          "to_cluster": null
         },
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Core.Alpha",
-          "to": "支付.订单",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": {
+            "height": 21.0,
+            "width": 24.08,
+            "x": 275.735,
+            "y": 550.0
+          },
           "points": [
             {
               "x": 191.868,
@@ -118,71 +117,72 @@
               "y": 584.583
             }
           ],
-          "label": {
-            "x": 275.735,
-            "y": 550.0,
-            "width": 24.08,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "支付.订单",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Core",
-          "x": 101.934,
-          "y": 116.5,
-          "width": 179.868,
           "height": 209.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "Core",
-          "title_label": {
-            "x": 101.934,
-            "y": 22.5,
-            "width": 26.46,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "LR",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Core",
+          "is_cluster": true,
+          "width": 179.868,
+          "x": 101.934,
+          "y": 116.5
         },
         {
-          "id": "支付",
-          "x": 101.934,
-          "y": 365.5,
-          "width": 161.32,
           "height": 209.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "支付",
-          "title_label": {
-            "x": 101.934,
-            "y": 271.5,
-            "width": 28.0,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "LR",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "支付",
+          "is_cluster": true,
+          "width": 161.32,
+          "x": 101.934,
+          "y": 365.5
+        },
+        {
+          "height": 81.0,
+          "id": "Core.Alpha",
+          "is_cluster": false,
+          "width": 84.766,
+          "x": 149.485,
+          "y": 550.5
+        },
+        {
+          "height": 81.0,
+          "id": "支付.订单",
+          "is_cluster": false,
+          "width": 83.922,
+          "x": 401.563,
+          "y": 594.75
+        },
+        {
+          "height": 75.0,
+          "id": "note0",
+          "is_cluster": false,
+          "width": 87.734,
+          "x": 275.735,
+          "y": 639.0
+        },
+        {
+          "height": 135.0,
+          "id": "Alpha",
+          "is_cluster": false,
+          "width": 131.868,
+          "x": 101.934,
+          "y": 129.5
+        },
+        {
+          "height": 135.0,
+          "id": "订单",
+          "is_cluster": false,
+          "width": 113.32,
+          "x": 101.934,
+          "y": 378.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 443.524,
-        "max_y": 676.5
-      }
+      ]
     }
   }
 }

@@ -2,71 +2,71 @@
   "diagramType": "packet",
   "layout": {
     "PacketDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 1026.0,
-        "max_y": 109.0
-      },
-      "width": 1026.0,
-      "height": 109.0,
-      "row_height": 32.0,
-      "padding_x": 5.0,
-      "padding_y": 15.0,
       "bit_width": 32.0,
       "bits_per_row": 32.0,
+      "bounds": {
+        "max_x": 1026.0,
+        "max_y": 109.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "height": 109.0,
+      "padding_x": 5.0,
+      "padding_y": 15.0,
+      "row_height": 32.0,
       "show_bits": true,
+      "width": 1026.0,
       "words": [
         {
           "blocks": [
             {
-              "start": 0.0,
               "end": 0.0,
+              "height": 32.0,
               "label": "Flag",
-              "x": 1.0,
-              "y": 15.0,
+              "start": 0.0,
               "width": 27.0,
-              "height": 32.0
+              "x": 1.0,
+              "y": 15.0
             },
             {
-              "start": 1.0,
               "end": 8.0,
+              "height": 32.0,
               "label": "Byte",
-              "x": 33.0,
-              "y": 15.0,
+              "start": 1.0,
               "width": 251.0,
-              "height": 32.0
+              "x": 33.0,
+              "y": 15.0
             },
             {
-              "start": 9.0,
               "end": 15.0,
+              "height": 32.0,
               "label": "Manual Range",
-              "x": 289.0,
-              "y": 15.0,
+              "start": 9.0,
               "width": 219.0,
-              "height": 32.0
+              "x": 289.0,
+              "y": 15.0
             },
             {
-              "start": 16.0,
               "end": 31.0,
+              "height": 32.0,
               "label": "Word",
-              "x": 513.0,
-              "y": 15.0,
+              "start": 16.0,
               "width": 507.0,
-              "height": 32.0
+              "x": 513.0,
+              "y": 15.0
             }
           ]
         },
         {
           "blocks": [
             {
-              "start": 32.0,
               "end": 47.0,
+              "height": 32.0,
               "label": "Manual 2",
-              "x": 1.0,
-              "y": 62.0,
+              "start": 32.0,
               "width": 507.0,
-              "height": 32.0
+              "x": 1.0,
+              "y": 62.0
             }
           ]
         }

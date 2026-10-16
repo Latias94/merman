@@ -1,113 +1,113 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Deployment",
-    "title": "Deployment Diagram",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": true,
-    "layout": {
-      "c4ShapeInRow": 1,
-      "c4BoundaryInRow": 1
-    },
-    "shapes": [
-      {
-        "alias": "p1",
-        "parentBoundary": "b1",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": {
-            "sprite": "users"
-          }
-        },
-        "wrap": true,
-        "descr": {
-          "text": ""
-        }
-      },
-      {
-        "alias": "p2",
-        "parentBoundary": "n1",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": "P2"
-        },
-        "wrap": true,
-        "sprite": "user",
-        "tags": "t1",
-        "link": "https://example.com",
-        "descr": {
-          "text": "D2"
-        },
-        "bgColor": "red",
-        "shape": "rounded"
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "n1",
-        "parentBoundary": "global",
-        "label": {
-          "text": "Node 1"
-        },
-        "type": {
-          "text": "node"
-        },
         "descr": {
           "text": ""
         },
-        "wrap": true,
-        "nodeType": "node"
+        "label": {
+          "text": "Node 1"
+        },
+        "nodeType": "node",
+        "parentBoundary": "global",
+        "type": {
+          "text": "node"
+        },
+        "wrap": true
       },
       {
         "alias": "b1",
-        "parentBoundary": "n1",
         "label": {
           "text": "Boundary 1"
         },
+        "parentBoundary": "n1",
         "type": {
           "text": "system"
         },
         "wrap": true
       }
     ],
+    "c4Type": "C4Deployment",
+    "layout": {
+      "c4BoundaryInRow": 1,
+      "c4ShapeInRow": 1
+    },
     "rels": [
       {
-        "from": "p1",
-        "to": "p2",
-        "type": "rel_b",
-        "label": {
-          "text": "override"
-        },
-        "techn": {
-          "text": ""
-        },
         "descr": {
           "text": ""
         },
-        "wrap": true,
+        "from": "p1",
+        "label": {
+          "text": "override"
+        },
+        "lineColor": "blue",
         "offsetX": 10,
         "offsetY": 20,
-        "lineColor": "blue",
-        "textColor": "red"
+        "techn": {
+          "text": ""
+        },
+        "textColor": "red",
+        "to": "p2",
+        "type": "rel_b",
+        "wrap": true
       }
-    ]
+    ],
+    "shapes": [
+      {
+        "alias": "p1",
+        "descr": {
+          "text": ""
+        },
+        "label": {
+          "text": {
+            "sprite": "users"
+          }
+        },
+        "parentBoundary": "b1",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": true
+      },
+      {
+        "alias": "p2",
+        "bgColor": "red",
+        "descr": {
+          "text": "D2"
+        },
+        "label": {
+          "text": "P2"
+        },
+        "link": "https://example.com",
+        "parentBoundary": "n1",
+        "shape": "rounded",
+        "sprite": "user",
+        "tags": "t1",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": true
+      }
+    ],
+    "title": "Deployment Diagram",
+    "type": "c4",
+    "wrap": true
   }
 }

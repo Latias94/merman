@@ -2,109 +2,109 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [],
       "bounds": {
-        "min_x": -111.24,
-        "min_y": -10.0,
         "max_x": 58.0,
-        "max_y": 816.0
+        "max_y": 816.0,
+        "min_x": -111.24,
+        "min_y": -10.0
       },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 50.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         },
         {
-          "name": "branch1",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 1.0,
-          "pos": 90.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch1",
+          "pos": 90.0
         },
         {
-          "name": "branch2",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 2.0,
-          "pos": 180.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch2",
+          "pos": 180.0
         },
         {
-          "name": "branch3",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 3.0,
-          "pos": 270.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch3",
+          "pos": 270.0
         },
         {
-          "name": "branch4",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 4.0,
-          "pos": 360.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch4",
+          "pos": 360.0
         },
         {
-          "name": "branch5",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 5.0,
-          "pos": 450.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch5",
+          "pos": 450.0
         },
         {
-          "name": "branch6",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 6.0,
-          "pos": 540.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch6",
+          "pos": 540.0
         },
         {
-          "name": "branch7",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 7.0,
-          "pos": 630.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch7",
+          "pos": 630.0
         },
         {
-          "name": "branch8",
+          "bbox_height": 17.6,
+          "bbox_width": 50.24,
           "index": 8.0,
-          "pos": 720.0,
-          "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "name": "branch8",
+          "pos": 720.0
         },
         {
-          "name": "branch9",
-          "index": 9.0,
-          "pos": 810.0,
+          "bbox_height": 17.6,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "index": 9.0,
+          "name": "branch9",
+          "pos": 810.0
         }
       ],
       "commits": [
         {
+          "branch": "branch1",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "1",
           "message": "",
-          "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [],
-          "branch": "branch1",
           "pos": 0.0,
           "pos_with_offset": 10.0,
+          "seq": 0.0,
+          "tags": [],
           "x": 10.0,
           "y": 88.0
         }
       ],
-      "arrows": []
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 50.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

@@ -2,667 +2,667 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 882.0,
-        "max_y": 1491.875
-      },
-      "width": 932.0,
-      "height": 1501.875,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Container",
-      "title": "Container diagram for Internet Banking System",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 732.0,
+          "descr": null,
           "height": 1375.875,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 732.0,
+          "x": 100.0,
+          "y": 66.0
         },
         {
           "alias": "c1",
-          "parent_boundary": "global",
-          "x": 150.0,
-          "y": 666.986,
-          "width": 632.0,
+          "descr": null,
           "height": 724.889,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "Internet Banking",
-            "y": 8.0,
-            "width": 109.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "Internet Banking",
+            "width": 109.0,
+            "y": 8.0
           },
+          "parent_boundary": "global",
           "ty": {
-            "text": "[CONTAINER]",
-            "y": 31.0,
-            "width": 81.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[CONTAINER]",
+            "width": 81.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 632.0,
+          "x": 150.0,
+          "y": 666.986
         }
       ],
-      "shapes": [
-        {
-          "alias": "email_system",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_system",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 98.206,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Software System]",
-            "y": 44.175,
-            "width": 85.785,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "E-Mail System",
-            "y": 27.7,
-            "width": 84.98,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "The internal Microsoft Exchange system",
-            "y": 65.578,
-            "width": 150.273,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        },
-        {
-          "alias": "customer",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 184.152,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Customer",
-            "y": 27.7,
-            "width": 55.44,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "A customer of the bank, with personal bank accounts",
-            "y": 65.578,
-            "width": 140.4,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        },
-        {
-          "alias": "spa",
-          "parent_boundary": "c1",
-          "type_c4_shape": "container",
-          "x": 200.0,
-          "y": 766.986,
-          "width": 216.0,
-          "height": 110.834,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: JavaScript, Angular]",
-            "y": 44.175,
-            "width": 139.545,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Single-Page App",
-            "y": 27.7,
-            "width": 90.44,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides all the Internet banking functionality to customers via their web browser",
-            "y": 71.892,
-            "width": 169.904,
-            "height": 37.884,
-            "line_count": 3.0
-          }
-        },
-        {
-          "alias": "mobile_app",
-          "parent_boundary": "c1",
-          "type_c4_shape": "external_container",
-          "x": 516.0,
-          "y": 766.986,
-          "width": 216.0,
-          "height": 110.834,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: C#, Xamarin]",
-            "y": 44.175,
-            "width": 108.675,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Mobile App",
-            "y": 27.7,
-            "width": 59.36,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides a limited subset of the Internet banking functionality to customers via their mobile device",
-            "y": 71.892,
-            "width": 157.735,
-            "height": 37.884,
-            "line_count": 3.0
-          }
-        },
-        {
-          "alias": "web_app",
-          "parent_boundary": "c1",
-          "type_c4_shape": "container",
-          "x": 200.0,
-          "y": 977.82,
-          "width": 216.0,
-          "height": 98.206,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: Java, Spring MVC]",
-            "y": 44.175,
-            "width": 130.095,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Web Application",
-            "y": 27.7,
-            "width": 90.86,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Delivers the static content and the Internet banking SPA",
-            "y": 65.578,
-            "width": 163.82,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        },
-        {
-          "alias": "database",
-          "parent_boundary": "c1",
-          "type_c4_shape": "container_db",
-          "x": 516.0,
-          "y": 977.82,
-          "width": 216.0,
-          "height": 138.341,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: SQL Database]",
-            "y": 44.175,
-            "width": 114.45,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Database",
-            "y": 27.7,
-            "width": 50.54,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Stores user registration information, hashed auth credentials, access logs, etc.",
-            "y": 71.892,
-            "width": 134.316,
-            "height": 37.884,
-            "line_count": 3.0
-          }
-        },
-        {
-          "alias": "backend_api",
-          "parent_boundary": "c1",
-          "type_c4_shape": "external_container_db",
-          "x": 200.0,
-          "y": 1216.162,
-          "width": 216.0,
-          "height": 125.713,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Container: Java, Docker Container]",
-            "y": 44.175,
-            "width": 154.875,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "API Application",
-            "y": 27.7,
-            "width": 87.92,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Provides Internet banking functionality via API",
-            "y": 65.578,
-            "width": 119.507,
-            "height": 25.256,
-            "line_count": 2.0
-          }
-        },
-        {
-          "alias": "banking_system",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_system",
-          "x": 150.0,
-          "y": 450.152,
-          "width": 216.0,
-          "height": 110.834,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Software System]",
-            "y": 44.175,
-            "width": 85.785,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "Mainframe Banking System",
-            "y": 27.7,
-            "width": 157.78,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Stores all of the core banking information about customers, accounts, transactions, etc.",
-            "y": 71.892,
-            "width": 140.515,
-            "height": 37.884,
-            "line_count": 3.0
-          }
-        }
-      ],
+      "bounds": {
+        "max_x": 882.0,
+        "max_y": 1491.875,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Container",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 1501.875,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 324.988,
+            "y": 977.82
+          },
           "from": "customer",
-          "to": "web_app",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": 90.0,
+          "offset_y": 60.0,
           "rel_type": "rel",
           "start_point": {
             "x": 542.237,
             "y": 349.885
           },
-          "end_point": {
-            "x": 324.988,
-            "y": 977.82
-          },
-          "offset_x": 90.0,
-          "offset_y": 60.0,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "HTTPS",
-            "y": 0.0,
-            "width": 36.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "HTTPS",
+            "width": 36.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "web_app"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 334.121,
+            "y": 766.986
+          },
           "from": "customer",
-          "to": "spa",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": -40.0,
           "rel_type": "rel",
           "start_point": {
             "x": 530.725,
             "y": 349.885
           },
-          "end_point": {
-            "x": 334.121,
-            "y": 766.986
-          },
-          "offset_x": null,
-          "offset_y": -40.0,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "HTTPS",
-            "y": 0.0,
-            "width": 36.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "HTTPS",
+            "width": 36.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "spa"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 619.09,
+            "y": 766.986
+          },
           "from": "customer",
-          "to": "mobile_app",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": -30.0,
           "rel_type": "rel",
           "start_point": {
             "x": 582.134,
             "y": 349.885
           },
-          "end_point": {
-            "x": 619.09,
-            "y": 766.986
-          },
-          "offset_x": null,
-          "offset_y": -30.0,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": null,
-          "descr": null
+          "to": "mobile_app"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 308.0,
+            "y": 877.82
+          },
           "from": "web_app",
-          "to": "spa",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Delivers",
+            "width": 40.0,
+            "y": 0.0
+          },
+          "offset_x": 130.0,
+          "offset_y": null,
           "rel_type": "rel",
           "start_point": {
             "x": 308.0,
             "y": 977.82
           },
-          "end_point": {
-            "x": 308.0,
-            "y": 877.82
-          },
-          "offset_x": 130.0,
-          "offset_y": null,
-          "label": {
-            "text": "Delivers",
-            "y": 0.0,
-            "width": 40.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": null,
-          "descr": null
+          "to": "spa"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 308.0,
+            "y": 1216.162
+          },
           "from": "spa",
-          "to": "backend_api",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": null,
           "rel_type": "rel",
           "start_point": {
             "x": 308.0,
             "y": 877.82
           },
+          "techn": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "async, JSON/HTTPS",
+            "width": 103.0,
+            "y": 0.0
+          },
+          "to": "backend_api"
+        },
+        {
+          "descr": null,
           "end_point": {
-            "x": 308.0,
-            "y": 1216.162
+            "x": 351.5,
+            "y": 1217.503
+          },
+          "from": "mobile_app",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
           },
           "offset_x": null,
           "offset_y": null,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "techn": {
-            "text": "async, JSON/HTTPS",
-            "y": 0.0,
-            "width": 103.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "descr": null
-        },
-        {
-          "from": "mobile_app",
-          "to": "backend_api",
           "rel_type": "rel",
           "start_point": {
             "x": 585.649,
             "y": 877.82
           },
+          "techn": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "async, JSON/HTTPS",
+            "width": 103.0,
+            "y": 0.0
+          },
+          "to": "backend_api"
+        },
+        {
+          "descr": null,
           "end_point": {
-            "x": 351.5,
-            "y": 1217.503
+            "x": 393.605,
+            "y": 1222.343
+          },
+          "from": "database",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Reads from and writes to",
+            "width": 128.0,
+            "y": 0.0
           },
           "offset_x": null,
           "offset_y": null,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "techn": {
-            "text": "async, JSON/HTTPS",
-            "y": 0.0,
-            "width": 103.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "descr": null
-        },
-        {
-          "from": "database",
-          "to": "backend_api",
           "rel_type": "rel_b",
           "start_point": {
             "x": 529.796,
             "y": 1108.07
           },
-          "end_point": {
-            "x": 393.605,
-            "y": 1222.343
-          },
-          "offset_x": null,
-          "offset_y": null,
-          "label": {
-            "text": "Reads from and writes to",
-            "y": 0.0,
-            "width": 128.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "sync, JDBC",
-            "y": 0.0,
-            "width": 58.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "sync, JDBC",
+            "width": 58.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "backend_api"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 526.956,
+            "y": 251.679
+          },
           "from": "email_system",
-          "to": "customer",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Sends e-mails to",
+            "width": 82.0,
+            "y": 0.0
+          },
+          "offset_x": -45.0,
+          "offset_y": null,
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
             "y": 229.79
           },
-          "end_point": {
-            "x": 526.956,
-            "y": 251.679
-          },
-          "offset_x": -45.0,
-          "offset_y": null,
-          "label": {
-            "text": "Sends e-mails to",
-            "y": 0.0,
-            "width": 82.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": null,
-          "descr": null
+          "to": "customer"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 260.308,
+            "y": 264.206
+          },
           "from": "backend_api",
-          "to": "email_system",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Sends e-mails using",
+            "width": 95.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": -60.0,
           "rel_type": "rel",
           "start_point": {
             "x": 305.046,
             "y": 1216.168
           },
-          "end_point": {
-            "x": 260.308,
-            "y": 264.206
-          },
-          "offset_x": null,
-          "offset_y": -60.0,
-          "label": {
-            "text": "Sends e-mails using",
-            "y": 0.0,
-            "width": 95.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "sync, SMTP",
-            "y": 0.0,
-            "width": 58.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "sync, SMTP",
+            "width": 58.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "email_system"
         },
         {
+          "descr": null,
+          "end_point": {
+            "x": 261.582,
+            "y": 560.986
+          },
           "from": "backend_api",
-          "to": "banking_system",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Uses",
+            "width": 23.0,
+            "y": 0.0
+          },
+          "offset_x": -140.0,
+          "offset_y": -50.0,
           "rel_type": "rel",
           "start_point": {
             "x": 303.937,
             "y": 1216.173
           },
-          "end_point": {
-            "x": 261.582,
-            "y": 560.986
-          },
-          "offset_x": -140.0,
-          "offset_y": -50.0,
-          "label": {
-            "text": "Uses",
-            "y": 0.0,
-            "width": 23.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "sync/async, XML/HTTPS",
-            "y": 0.0,
-            "width": 122.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "sync/async, XML/HTTPS",
+            "width": 122.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "banking_system"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "email_system",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "The internal Microsoft Exchange system",
+            "width": 150.273,
+            "y": 65.578
+          },
+          "height": 98.206,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "E-Mail System",
+            "width": 84.98,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Software System]",
+            "width": 85.785,
+            "y": 44.175
+          },
+          "type_c4_shape": "external_system",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "customer",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "A customer of the bank, with personal bank accounts",
+            "width": 140.4,
+            "y": 65.578
+          },
+          "height": 184.152,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Customer",
+            "width": 55.44,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
+        },
+        {
+          "alias": "spa",
+          "descr": {
+            "height": 37.884,
+            "line_count": 3.0,
+            "text": "Provides all the Internet banking functionality to customers via their web browser",
+            "width": 169.904,
+            "y": 71.892
+          },
+          "height": 110.834,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Single-Page App",
+            "width": 90.44,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "c1",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: JavaScript, Angular]",
+            "width": 139.545,
+            "y": 44.175
+          },
+          "type_c4_shape": "container",
+          "width": 216.0,
+          "x": 200.0,
+          "y": 766.986
+        },
+        {
+          "alias": "mobile_app",
+          "descr": {
+            "height": 37.884,
+            "line_count": 3.0,
+            "text": "Provides a limited subset of the Internet banking functionality to customers via their mobile device",
+            "width": 157.735,
+            "y": 71.892
+          },
+          "height": 110.834,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Mobile App",
+            "width": 59.36,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "c1",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: C#, Xamarin]",
+            "width": 108.675,
+            "y": 44.175
+          },
+          "type_c4_shape": "external_container",
+          "width": 216.0,
+          "x": 516.0,
+          "y": 766.986
+        },
+        {
+          "alias": "web_app",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Delivers the static content and the Internet banking SPA",
+            "width": 163.82,
+            "y": 65.578
+          },
+          "height": 98.206,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Web Application",
+            "width": 90.86,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "c1",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: Java, Spring MVC]",
+            "width": 130.095,
+            "y": 44.175
+          },
+          "type_c4_shape": "container",
+          "width": 216.0,
+          "x": 200.0,
+          "y": 977.82
+        },
+        {
+          "alias": "database",
+          "descr": {
+            "height": 37.884,
+            "line_count": 3.0,
+            "text": "Stores user registration information, hashed auth credentials, access logs, etc.",
+            "width": 134.316,
+            "y": 71.892
+          },
+          "height": 138.341,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Database",
+            "width": 50.54,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "c1",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: SQL Database]",
+            "width": 114.45,
+            "y": 44.175
+          },
+          "type_c4_shape": "container_db",
+          "width": 216.0,
+          "x": 516.0,
+          "y": 977.82
+        },
+        {
+          "alias": "backend_api",
+          "descr": {
+            "height": 25.256,
+            "line_count": 2.0,
+            "text": "Provides Internet banking functionality via API",
+            "width": 119.507,
+            "y": 65.578
+          },
+          "height": 125.713,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "API Application",
+            "width": 87.92,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "c1",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: Java, Docker Container]",
+            "width": 154.875,
+            "y": 44.175
+          },
+          "type_c4_shape": "external_container_db",
+          "width": 216.0,
+          "x": 200.0,
+          "y": 1216.162
+        },
+        {
+          "alias": "banking_system",
+          "descr": {
+            "height": 37.884,
+            "line_count": 3.0,
+            "text": "Stores all of the core banking information about customers, accounts, transactions, etc.",
+            "width": 140.515,
+            "y": 71.892
+          },
+          "height": 110.834,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "Mainframe Banking System",
+            "width": 157.78,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Software System]",
+            "width": 85.785,
+            "y": 44.175
+          },
+          "type_c4_shape": "external_system",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 450.152
+        }
+      ],
+      "title": "Container diagram for Internet Banking System",
+      "use_max_width": true,
+      "width": 932.0
     }
   }
 }

@@ -1,142 +1,150 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "C",
       "S"
     ],
     "actors": {
       "C": {
-        "name": "C",
         "description": "Client",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "S": {
-        "name": "S",
         "description": "Server",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "S",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": "C",
         "id": "0",
-        "from": "C",
-        "to": "S",
         "message": "request",
-        "wrap": false,
+        "to": "S",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "1",
-        "from": null,
-        "to": null,
         "message": "acquire lock",
-        "wrap": false,
+        "to": null,
         "type": 27,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "2",
-        "from": null,
-        "to": null,
         "message": "granted",
-        "wrap": false,
+        "to": null,
         "type": 28,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "S",
         "id": "3",
-        "from": "S",
-        "to": "C",
         "message": "200 OK",
-        "wrap": false,
+        "to": "C",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "C",
         "id": "4",
-        "from": "C",
-        "to": "S",
         "message": "fast path",
-        "wrap": false,
+        "placement": 2,
+        "to": "S",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "5",
-        "from": null,
-        "to": null,
         "message": "denied",
-        "wrap": false,
+        "to": null,
         "type": 28,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "6",
-        "from": "S",
-        "to": "C",
-        "message": "423 Locked",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "S",
-        "to": "S",
-        "message": "backoff",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "8",
-        "from": null,
-        "to": null,
-        "message": "unknown",
-        "wrap": false,
-        "type": 28,
-        "activate": false
-      },
-      {
-        "id": "9",
         "from": "S",
+        "id": "6",
+        "message": "423 Locked",
         "to": "C",
-        "message": "500",
-        "wrap": false,
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "10",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 29,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "C",
+        "activate": false,
+        "from": "S",
+        "id": "7",
+        "message": "backoff",
+        "placement": 1,
         "to": "S",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "8",
+        "message": "unknown",
+        "to": null,
+        "type": 28,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "9",
+        "message": "500",
+        "to": "C",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "",
+        "to": null,
+        "type": 29,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "11",
         "message": "next",
-        "wrap": false,
+        "to": "S",
         "type": 0,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -145,26 +153,18 @@
           "C",
           "S"
         ],
-        "placement": 2,
         "message": "fast path",
+        "placement": 2,
         "wrap": false
       },
       {
         "actor": "S",
-        "placement": 1,
         "message": "backoff",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

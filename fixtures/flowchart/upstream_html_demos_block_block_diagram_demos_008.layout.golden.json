@@ -2,31 +2,27 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
-        {
-          "id": "X",
-          "x": 88.0,
-          "y": 34.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "z",
-          "x": 356.54,
-          "y": 34.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 432.54,
+        "max_y": 57.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "L_X_z_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "X",
-          "to": "z",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_X_z_0",
+          "label": {
+            "height": 21.0,
+            "width": 36.54,
+            "x": 222.27,
+            "y": 34.0
+          },
           "points": [
             {
               "x": 164.0,
@@ -37,28 +33,32 @@
               "y": 34.5
             }
           ],
-          "label": {
-            "x": 222.27,
-            "y": 34.0,
-            "width": 36.54,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "z",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 432.54,
-        "max_y": 57.0
-      }
+      "nodes": [
+        {
+          "height": 45.0,
+          "id": "X",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 88.0,
+          "y": 34.5
+        },
+        {
+          "height": 45.0,
+          "id": "z",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 356.54,
+          "y": 34.5
+        }
+      ]
     }
   }
 }

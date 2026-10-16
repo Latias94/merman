@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "S",
@@ -12,162 +10,164 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "S": {
-        "name": "S",
         "description": "Service",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "S",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "W": {
-        "name": "W",
         "description": "Worker",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
-      }
-    },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "S",
-        "message": "start",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": null,
-        "to": null,
-        "message": "spawn worker",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "S",
-        "to": "W",
-        "message": "spawn",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "W",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "W",
-        "to": "S",
-        "message": "ready",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "W",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "S",
-        "to": "W",
-        "message": "terminate",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "reuse",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "S",
-        "to": "S",
-        "message": "reuse existing worker",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "S",
-        "to": "S",
-        "message": "no new participants",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "10",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "S",
-        "to": "A",
-        "message": "done",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [
-      {
-        "actor": "S",
-        "placement": 1,
-        "message": "no new participants",
+        "name": "W",
+        "properties": {},
+        "type": "participant",
         "wrap": false
       }
-    ],
+    },
     "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
     "createdActors": {
       "W": 2
     },
     "destroyedActors": {
       "W": 6
     },
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "start",
+        "to": "S",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "1",
+        "message": "spawn worker",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "2",
+        "message": "spawn",
+        "to": "W",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "4",
+        "message": "ready",
+        "to": "S",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "5",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "6",
+        "message": "terminate",
+        "to": "W",
+        "type": 3,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "reuse",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "8",
+        "message": "reuse existing worker",
+        "to": "S",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "9",
+        "message": "no new participants",
+        "placement": 1,
+        "to": "S",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "11",
+        "message": "done",
+        "to": "A",
+        "type": 1,
+        "wrap": false
       }
-    }
+    ],
+    "notes": [
+      {
+        "actor": "S",
+        "message": "no new participants",
+        "placement": 1,
+        "wrap": false
+      }
+    ],
+    "title": null,
+    "type": "sequence"
   }
 }

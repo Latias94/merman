@@ -1,165 +1,165 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Dynamic",
-    "title": "Dynamic diagram for Internet Banking System - API Application",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "c4",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container_db"
-        },
-        "label": {
-          "text": "Database"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Relational Database Schema"
-        },
-        "descr": {
-          "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
-        }
-      },
-      {
-        "alias": "c1",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Single-Page Application"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "JavaScript and Angular"
-        },
-        "descr": {
-          "text": "Provides all of the Internet banking functionality to customers via their web browser."
-        }
-      },
-      {
-        "alias": "c3",
-        "parentBoundary": "b",
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "label": {
-          "text": "Security Component"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Spring Bean"
-        },
-        "descr": {
-          "text": "Provides functionality Related to signing in, changing passwords, etc."
-        }
-      },
-      {
-        "alias": "c2",
-        "parentBoundary": "b",
-        "typeC4Shape": {
-          "text": "component"
-        },
-        "label": {
-          "text": "Sign In Controller"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Spring MVC Rest Controller"
-        },
-        "descr": {
-          "text": "Allows users to sign in to the Internet Banking System."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "b",
-        "parentBoundary": "global",
         "label": {
           "text": "API Application"
         },
+        "parentBoundary": "global",
         "type": {
           "text": "CONTAINER"
         },
         "wrap": false
       }
     ],
+    "c4Type": "C4Dynamic",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "c1",
-        "to": "c2",
-        "type": "rel",
         "label": {
           "text": "Submits credentials to"
         },
+        "offsetY": -40,
         "techn": {
           "text": "JSON/HTTPS"
         },
+        "textColor": "red",
+        "to": "c2",
+        "type": "rel",
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -40,
-        "textColor": "red"
-      },
-      {
         "from": "c2",
-        "to": "c3",
-        "type": "rel",
         "label": {
           "text": "Calls isAuthenticated() on"
         },
+        "offsetX": -40,
+        "offsetY": 60,
         "techn": {
           "text": ""
         },
+        "textColor": "red",
+        "to": "c3",
+        "type": "rel",
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetX": -40,
-        "offsetY": 60,
-        "textColor": "red"
-      },
-      {
         "from": "c3",
-        "to": "c4",
-        "type": "rel",
         "label": {
           "text": "select * from users where username = ?"
         },
+        "offsetX": 10,
+        "offsetY": -40,
         "techn": {
           "text": "JDBC"
         },
-        "descr": {
-          "text": ""
-        },
-        "wrap": false,
-        "offsetX": 10,
-        "offsetY": -40,
-        "textColor": "red"
+        "textColor": "red",
+        "to": "c4",
+        "type": "rel",
+        "wrap": false
       }
-    ]
+    ],
+    "shapes": [
+      {
+        "alias": "c4",
+        "descr": {
+          "text": "Stores user registration information, hashed authentication credentials, access logs, etc."
+        },
+        "label": {
+          "text": "Database"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "Relational Database Schema"
+        },
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "c1",
+        "descr": {
+          "text": "Provides all of the Internet banking functionality to customers via their web browser."
+        },
+        "label": {
+          "text": "Single-Page Application"
+        },
+        "parentBoundary": "global",
+        "techn": {
+          "text": "JavaScript and Angular"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "c3",
+        "descr": {
+          "text": "Provides functionality Related to signing in, changing passwords, etc."
+        },
+        "label": {
+          "text": "Security Component"
+        },
+        "parentBoundary": "b",
+        "techn": {
+          "text": "Spring Bean"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "c2",
+        "descr": {
+          "text": "Allows users to sign in to the Internet Banking System."
+        },
+        "label": {
+          "text": "Sign In Controller"
+        },
+        "parentBoundary": "b",
+        "techn": {
+          "text": "Spring MVC Rest Controller"
+        },
+        "typeC4Shape": {
+          "text": "component"
+        },
+        "wrap": false
+      }
+    ],
+    "title": "Dynamic diagram for Internet Banking System - API Application",
+    "type": "c4",
+    "wrap": false
   }
 }

@@ -2,31 +2,22 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
-        {
-          "id": "Yswsii",
-          "x": 80.0,
-          "y": 95.0,
-          "width": 136.0,
-          "height": 58.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 80.0,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 148.0,
+        "max_y": 124.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "Yswsii",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 80.0,
@@ -37,23 +28,32 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Yswsii",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 148.0,
-        "max_y": 124.0
-      }
+      "nodes": [
+        {
+          "height": 58.0,
+          "id": "Yswsii",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 80.0,
+          "y": 95.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 80.0,
+          "y": 19.0
+        }
+      ]
     }
   }
 }

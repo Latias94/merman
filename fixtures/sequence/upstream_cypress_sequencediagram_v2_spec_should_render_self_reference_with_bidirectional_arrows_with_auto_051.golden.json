@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,89 +10,91 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Charlie": {
-        "name": "Charlie",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Charlie",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": {
-          "visible": true
-        },
-        "wrap": false,
-        "type": 26,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "Alice",
-        "message": "Bidirectional solid self-reference",
-        "wrap": false,
-        "type": 33,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Bob",
-        "to": "Bob",
-        "message": "Bidirectional dotted self-reference",
-        "wrap": false,
-        "type": 34,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Charlie",
-        "to": "Charlie",
-        "message": "Another bidirectional solid",
-        "wrap": false,
-        "type": 33,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "Alice",
-        "to": "Alice",
-        "message": "Another bidirectional dotted",
-        "wrap": false,
-        "type": 34,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": {
+          "visible": true
+        },
+        "to": null,
+        "type": 26,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "Bidirectional solid self-reference",
+        "to": "Alice",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "Bidirectional dotted self-reference",
+        "to": "Bob",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Charlie",
+        "id": "3",
+        "message": "Another bidirectional solid",
+        "to": "Charlie",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "4",
+        "message": "Another bidirectional dotted",
+        "to": "Alice",
+        "type": 34,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

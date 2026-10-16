@@ -1,87 +1,95 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": "label contains end",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "B",
-        "message": "message with \"end\" and \"else\" and \"opt\"",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "label contains and/par",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "A",
-        "to": "B",
-        "message": "words: and par critical rect loop",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "A",
-        "to": "B",
-        "message": "text mentions end/else/and/par without affecting parsing",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": null,
+        "id": "0",
+        "message": "label contains end",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "message with \"end\" and \"else\" and \"opt\"",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "label contains and/par",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "3",
+        "message": "words: and par critical rect loop",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "5",
+        "message": "text mentions end/else/and/par without affecting parsing",
+        "placement": 2,
+        "to": "B",
+        "type": 2,
+        "wrap": false
       }
     ],
     "notes": [
@@ -90,20 +98,12 @@
           "A",
           "B"
         ],
-        "placement": 2,
         "message": "text mentions end/else/and/par without affecting parsing",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

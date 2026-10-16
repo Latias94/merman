@@ -2,31 +2,27 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Animal",
-          "x": 43.602,
-          "y": 52.5,
-          "width": 63.203,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Duck",
-          "x": 43.602,
-          "y": 255.5,
-          "width": 52.141,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 75.203,
+        "max_y": 296.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Animal",
-          "to": "Duck",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": {
+            "height": 42.0,
+            "width": 46.625,
+            "x": 43.414,
+            "y": 154.0
+          },
           "points": [
             {
               "x": 43.602,
@@ -37,28 +33,32 @@
               "y": 215.0
             }
           ],
-          "label": {
-            "x": 43.414,
-            "y": 154.0,
-            "width": 46.625,
-            "height": 42.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Duck",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 75.203,
-        "max_y": 296.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "Animal",
+          "is_cluster": false,
+          "width": 63.203,
+          "x": 43.602,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "Duck",
+          "is_cluster": false,
+          "width": 52.141,
+          "x": 43.602,
+          "y": 255.5
+        }
+      ]
     }
   }
 }

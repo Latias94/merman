@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "User",
       "FE",
@@ -13,139 +11,149 @@
       "FS"
     ],
     "actors": {
-      "User": {
-        "name": "User",
-        "description": "User",
-        "wrap": false,
-        "type": "actor",
-        "links": {},
-        "properties": {}
-      },
-      "FE": {
-        "name": "FE",
-        "description": "Frontend",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "AS": {
-        "name": "AS",
         "description": "AppService",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "AS",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "DB": {
-        "name": "DB",
         "description": "Store",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "DB",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "FE": {
+        "description": "Frontend",
+        "links": {},
+        "name": "FE",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "FS": {
-        "name": "FS",
         "description": "Filesystem",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "FS",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "User": {
+        "description": "User",
+        "links": {},
+        "name": "User",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": "User",
         "id": "0",
-        "from": "User",
-        "to": "FS",
         "message": "Phase 1 - Startup (pgA, pgB exist on disk)",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "1",
-        "from": "User",
-        "to": "FE",
-        "message": "launch foo",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "FE",
-        "to": "AS",
-        "message": "new(store, parser, serializer)",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "FE",
-        "to": "AS",
-        "message": "startup_reconcile()",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "AS",
+        "placement": 2,
         "to": "FS",
-        "message": "Reconciliation Step 1 - Inventory",
-        "wrap": false,
         "type": 2,
+        "wrap": false
+      },
+      {
         "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "5",
-        "from": null,
-        "to": null,
-        "message": "rgb(240, 245, 255)",
-        "wrap": false,
-        "type": 22,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "FS",
-        "to": "AS",
-        "message": "[pgA.md, pgB.md] + filesystem timestamps",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "AS",
-        "to": "DB",
-        "message": "get recorded file timestamps",
-        "wrap": false,
+        "from": "User",
+        "id": "1",
+        "message": "launch foo",
+        "to": "FE",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "8",
-        "from": "DB",
+        "activate": false,
+        "from": "FE",
+        "id": "2",
+        "message": "new(store, parser, serializer)",
         "to": "AS",
-        "message": "[pgA: ts1, pgB: ts2]",
-        "wrap": false,
-        "type": 1,
-        "activate": false
+        "type": 0,
+        "wrap": false
       },
       {
-        "id": "9",
+        "activate": false,
+        "from": "FE",
+        "id": "3",
+        "message": "startup_reconcile()",
+        "to": "AS",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "AS",
+        "id": "4",
+        "message": "Reconciliation Step 1 - Inventory",
+        "placement": 2,
+        "to": "FS",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
         "from": null,
+        "id": "5",
+        "message": "rgb(240, 245, 255)",
         "to": null,
+        "type": 22,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "FS",
+        "id": "6",
+        "message": "[pgA.md, pgB.md] + filesystem timestamps",
+        "to": "AS",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "AS",
+        "id": "7",
+        "message": "get recorded file timestamps",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "8",
+        "message": "[pgA: ts1, pgB: ts2]",
+        "to": "AS",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "9",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 23,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -154,8 +162,8 @@
           "User",
           "FS"
         ],
-        "placement": 2,
         "message": "Phase 1 - Startup (pgA, pgB exist on disk)",
+        "placement": 2,
         "wrap": false
       },
       {
@@ -163,20 +171,12 @@
           "AS",
           "FS"
         ],
-        "placement": 2,
         "message": "Reconciliation Step 1 - Inventory",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

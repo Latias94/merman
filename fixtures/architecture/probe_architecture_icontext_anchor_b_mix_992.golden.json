@@ -1,35 +1,35 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "worker",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": "<a href='https://example.com'>x<b>y</b>z</a>",
+        "id": "worker",
+        "in": null,
         "title": "Worker",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "worker",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": "<a href='https://example.com'>x<b>y</b>z</a>",
+        "id": "worker",
+        "in": null,
         "title": "Worker",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

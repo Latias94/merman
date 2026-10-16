@@ -1,137 +1,137 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Data": {
-        "id": "Data",
-        "type": "",
-        "label": "Data",
-        "text": "Data",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "fromCode",
-            "classifier": "",
-            "parameters": "int code",
-            "returnType": "Data",
-            "displayText": "+fromCode(int code) : Data",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "OK",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "OK",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "ERROR",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "ERROR",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "-",
-            "id": "-",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "--",
-            "cssStyle": ""
-          }
-        ],
         "annotations": [
           "enumeration"
         ],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Data-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Data",
+        "label": "Data",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Parser": {
-        "id": "Parser",
-        "type": "",
-        "label": "Parser",
-        "text": "Parser",
-        "cssClasses": "default",
-        "methods": [
+        "members": [
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "parse",
             "classifier": "",
-            "parameters": "String text",
-            "returnType": "Data",
-            "displayText": "+parse(String text) : Data",
-            "cssStyle": ""
+            "cssStyle": "",
+            "displayText": "OK",
+            "id": "OK",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "ERROR",
+            "id": "ERROR",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "--",
+            "id": "-",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
           }
         ],
-        "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Parser-1",
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+fromCode(int code) : Data",
+            "id": "fromCode",
+            "memberType": "method",
+            "parameters": "int code",
+            "returnType": "Data",
+            "visibility": "+"
+          }
+        ],
         "parent": null,
+        "styles": [],
+        "text": "Data",
+        "tooltip": null,
+        "type": ""
+      },
+      "Parser": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Parser-1",
+        "haveCallback": false,
+        "id": "Parser",
+        "label": "Parser",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+parse(String text) : Data",
+            "id": "parse",
+            "memberType": "method",
+            "parameters": "String text",
+            "returnType": "Data",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Parser",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Parser",
         "id2": "Data",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": ""
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

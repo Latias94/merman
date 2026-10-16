@@ -1,87 +1,87 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {
-      "URLTest1": "Visit <strong>mermaid docs</strong>",
-      "FunctionTest1": "Add a div"
-    },
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "FunctionTest1",
+        "id": "L_FunctionTest1_URLTest1_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "URLTest1",
+        "type": "arrow_point"
+      }
+    ],
+    "keyword": "graph",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "clickable"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "FunctionTest1",
+        "img": null,
+        "label": "FunctionTest1",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "clickable"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "URLTest1",
+        "img": null,
+        "label": "URLTest1",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": "http://localhost:9000/empty.html",
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {
+      "FunctionTest1": "Add a div",
+      "URLTest1": "Visit <strong>mermaid docs</strong>"
+    },
+    "type": "flowchart-v2",
     "vertexCalls": [
       "FunctionTest1",
       "URLTest1"
-    ],
-    "nodes": [
-      {
-        "id": "FunctionTest1",
-        "label": "FunctionTest1",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "URLTest1",
-        "label": "URLTest1",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "clickable"
-        ],
-        "link": "http://localhost:9000/empty.html",
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [
-      {
-        "from": "FunctionTest1",
-        "to": "URLTest1",
-        "id": "L_FunctionTest1_URLTest1_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      }
-    ],
-    "subgraphs": []
+    ]
   }
 }

@@ -1,282 +1,282 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "vpc",
-        "icon": "cloud",
-        "title": "VPC",
-        "in": null
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "lb",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "web",
+        "rhsInto": true,
+        "title": null
       },
       {
-        "id": "public",
-        "icon": "cloud",
-        "title": "Public",
-        "in": "vpc"
+        "lhsDir": "B",
+        "lhsGroup": true,
+        "lhsId": "web",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": true,
+        "rhsId": "app",
+        "rhsInto": true,
+        "title": null
       },
       {
-        "id": "private",
-        "icon": "cloud",
-        "title": "Private",
-        "in": "vpc"
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "app",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "vpc",
+        "in": null,
+        "title": "VPC"
+      },
+      {
+        "icon": "cloud",
+        "id": "public",
+        "in": "vpc",
+        "title": "Public"
+      },
+      {
+        "icon": "cloud",
+        "id": "private",
+        "in": "vpc",
+        "title": "Private"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
+        "edges": [
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "lb",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "web",
+            "rhsInto": true,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "lb",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "lb",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "web",
-            "rhsDir": "T",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": "public",
         "title": "Load Balancer",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "web",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "lb",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "web",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "web",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "app",
+            "lhsId": "web",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "app",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "web",
+        "in": "public",
         "title": "Web",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "app",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "web",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "app",
+            "lhsId": "web",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "app",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "app",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "app",
+        "in": "private",
         "title": "App",
-        "in": "private"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "app",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "private",
         "title": "DB",
-        "in": "private"
+        "type": "service"
       }
     ],
     "services": [
       {
+        "edges": [
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "lb",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "web",
+            "rhsInto": true,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "lb",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "lb",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "web",
-            "rhsDir": "T",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": "public",
         "title": "Load Balancer",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "web",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "lb",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "web",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "web",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "app",
+            "lhsId": "web",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "app",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "web",
+        "in": "public",
         "title": "Web",
-        "in": "public"
+        "type": "service"
       },
       {
-        "id": "app",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "web",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "app",
+            "lhsId": "web",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "app",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "app",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "app",
+        "in": "private",
         "title": "App",
-        "in": "private"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "app",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "app",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "private",
         "title": "DB",
-        "in": "private"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "lb",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "web",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "web",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": true,
-        "rhsId": "app",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": true,
-        "title": null
-      },
-      {
-        "lhsId": "app",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

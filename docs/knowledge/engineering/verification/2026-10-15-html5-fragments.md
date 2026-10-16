@@ -127,3 +127,16 @@ Follow-up validation:
   unconstrained local build exhausted Windows commit memory.
 - The exact full SVG structure gate above was repeated successfully after the follow-up: 37 families, 3,756 selected, 3,729 rendered, and 27 intentional skips. Existing exact diagnostic residual receipts remained applicable.
 - `cargo fmt --all -- --check` and `git diff --check`: passed.
+
+
+## Snapshot Ordering Follow-up (2026-10-16)
+
+With `serde_json/preserve_order`, the first two generator runs differed in object-key order in
+219 files despite identical JSON values. Both snapshot serialization boundaries now recursively
+sort object keys before writing. Arrays, numbers, strings, and model/layout values are unchanged.
+The one-time canonical ordering update covers 7,541 generated files and is committed separately
+from the rendering fix.
+
+All 7,598 tracked golden JSON files remained equivalent to the rendering-fix commit. Two fresh
+runs of both formal snapshot generators then produced byte-identical files across that entire
+set. The nine existing snapshot-owner tests passed; formatting and diff hygiene checks passed.

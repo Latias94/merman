@@ -1,103 +1,76 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
-    "nodes": [
-      {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "root_start",
-        "dir": null,
-        "domId": "state-root_start-0",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Some long name",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "S1",
-        "dir": null,
-        "domId": "state-S1-1",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
     "edges": [
       {
-        "id": "edge0",
-        "start": "root_start",
-        "end": "S1",
-        "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
+        "arrowhead": "normal",
         "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "classes": "transition",
+        "end": "S1",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-root_start-0",
+        "id": "root_start",
+        "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "description": [],
+        "dir": null,
+        "domId": "state-S1-1",
+        "id": "S1",
+        "isGroup": false,
+        "label": "Some long name",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "S1": {
-        "id": "S1",
-        "type": "default",
-        "descriptions": [
-          "Some long name"
-        ],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -105,6 +78,33 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "S1": {
+        "classes": [],
+        "descriptions": [
+          "Some long name"
+        ],
+        "doc": null,
+        "id": "S1",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

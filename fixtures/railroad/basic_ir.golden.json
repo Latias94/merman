@@ -1,43 +1,43 @@
 {
   "diagramType": "railroad",
   "model": {
-    "type": "railroad",
-    "title": "Simple Grammar",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "rule",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
               "type": "terminal",
               "value": "a"
             },
             {
-              "type": "nonterminal",
-              "name": "other"
+              "name": "other",
+              "type": "nonterminal"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "special",
-                "text": "anything"
+                "text": "anything",
+                "type": "special"
               },
+              "max": null,
               "min": 0,
-              "max": null
+              "type": "repetition"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "rule"
       },
       {
-        "name": "other",
         "definition": {
           "type": "terminal",
           "value": "b"
-        }
+        },
+        "name": "other"
       }
-    ]
+    ],
+    "title": "Simple Grammar",
+    "type": "railroad"
   }
 }

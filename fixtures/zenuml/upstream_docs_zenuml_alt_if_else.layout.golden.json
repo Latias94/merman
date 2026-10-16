@@ -2,155 +2,155 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 292.04,
-      "height": 330.0,
-      "frameBorderLeft": 10.0,
-      "frameBorderRight": 10.0,
-      "participants": [
+      "bounds": {
+        "max_x": 292.04,
+        "max_y": 330.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
+      "creations": [],
+      "dividers": [],
+      "fragments": [
         {
-          "name": "Alice",
-          "label": "Alice",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 32.32,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "Bob",
-          "label": "Bob",
-          "x": 242.04,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 23.36,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
+          "depth": 0.0,
+          "headerY": 105.0,
+          "height": 182.0,
+          "kind": "alternative",
+          "label": "is_sick",
+          "labelWidth": 38.22,
+          "number": "2",
+          "sections": [
+            {
+              "contentInsetLeft": null,
+              "detail": null,
+              "detailWidth": null,
+              "height": 0.0,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "label": "Alt",
+              "labelWidth": 18.34,
+              "y": 130.0
+            },
+            {
+              "contentInsetLeft": null,
+              "detail": null,
+              "detailWidth": null,
+              "height": 0.0,
+              "innerLabel": null,
+              "innerLabelWidth": null,
+              "keyword": null,
+              "keywordWidth": null,
+              "label": "[else]",
+              "labelWidth": 31.22,
+              "y": 198.0
+            }
+          ],
+          "statementId": "zenuml-statement-1",
+          "width": 312.04,
+          "x": -10.0,
+          "y": 104.0
         }
       ],
+      "frameBorderLeft": 10.0,
+      "frameBorderRight": 10.0,
+      "groups": [],
+      "height": 330.0,
       "lifelines": [
         {
+          "bottomY": 342.0,
           "participantName": "Alice",
-          "x": 50.0,
           "topY": 68.0,
-          "bottomY": 342.0
+          "x": 50.0
         },
         {
+          "bottomY": 342.0,
           "participantName": "Bob",
-          "x": 242.04,
           "topY": 68.0,
-          "bottomY": 342.0
+          "x": 242.04
         }
       ],
       "messages": [
         {
-          "statementId": "zenuml-statement-0",
-          "number": "1",
+          "arrowStyle": "open",
           "from": "Alice",
-          "to": "Bob",
           "fromX": 50.0,
-          "toX": 242.04,
-          "y": 87.5,
-          "label": "Hello Bob, how are you?",
-          "arrowStyle": "open",
           "isReverse": false,
-          "style": {}
+          "label": "Hello Bob, how are you?",
+          "number": "1",
+          "statementId": "zenuml-statement-0",
+          "style": {},
+          "to": "Bob",
+          "toX": 242.04,
+          "y": 87.5
         },
         {
-          "statementId": "zenuml-statement-2",
-          "number": "2.1",
+          "arrowStyle": "open",
           "from": "Bob",
-          "to": "Alice",
           "fromX": 242.04,
-          "toX": 50.0,
-          "y": 181.5,
+          "isReverse": true,
           "label": "Not so good :(",
-          "arrowStyle": "open",
-          "isReverse": true,
-          "style": {}
+          "number": "2.1",
+          "statementId": "zenuml-statement-2",
+          "style": {},
+          "to": "Alice",
+          "toX": 50.0,
+          "y": 181.5
         },
         {
-          "statementId": "zenuml-statement-3",
-          "number": "2.2",
-          "from": "Bob",
-          "to": "Alice",
-          "fromX": 242.04,
-          "toX": 50.0,
-          "y": 258.5,
-          "label": "Feeling fresh like a daisy",
           "arrowStyle": "open",
+          "from": "Bob",
+          "fromX": 242.04,
           "isReverse": true,
-          "style": {}
+          "label": "Feeling fresh like a daisy",
+          "number": "2.2",
+          "statementId": "zenuml-statement-3",
+          "style": {},
+          "to": "Alice",
+          "toX": 50.0,
+          "y": 258.5
         }
       ],
-      "selfCalls": [],
-      "creations": [],
-      "returns": [],
       "occurrences": [],
-      "fragments": [
+      "participants": [
         {
-          "statementId": "zenuml-statement-1",
-          "kind": "alternative",
-          "label": "is_sick",
-          "labelWidth": 38.22,
-          "x": -10.0,
-          "y": 104.0,
-          "width": 312.04,
-          "height": 182.0,
-          "headerY": 105.0,
-          "sections": [
-            {
-              "label": "Alt",
-              "y": 130.0,
-              "height": 0.0,
-              "labelWidth": 18.34,
-              "innerLabel": null,
-              "innerLabelWidth": null,
-              "keyword": null,
-              "keywordWidth": null,
-              "detail": null,
-              "detailWidth": null,
-              "contentInsetLeft": null
-            },
-            {
-              "label": "[else]",
-              "y": 198.0,
-              "height": 0.0,
-              "labelWidth": 31.22,
-              "innerLabel": null,
-              "innerLabelWidth": null,
-              "keyword": null,
-              "keywordWidth": null,
-              "detail": null,
-              "detailWidth": null,
-              "contentInsetLeft": null
-            }
-          ],
-          "number": "2",
-          "depth": 0.0
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Alice",
+          "labelWidth": 32.32,
+          "name": "Alice",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Bob",
+          "labelWidth": 23.36,
+          "name": "Bob",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 242.04,
+          "y": 28.0
         }
       ],
-      "dividers": [],
-      "comments": [],
-      "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 292.04,
-        "max_y": 330.0
-      }
+      "returns": [],
+      "selfCalls": [],
+      "width": 292.04
     }
   }
 }

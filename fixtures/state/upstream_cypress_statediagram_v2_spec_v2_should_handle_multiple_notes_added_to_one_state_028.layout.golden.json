@@ -2,47 +2,44 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 410.0,
+        "max_y": 222.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "MyState",
-          "x": 211.0,
-          "y": 203.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "MyState----note-0",
-          "x": 111.0,
-          "y": 85.5,
-          "width": 150.0,
-          "height": 51.0,
-          "is_cluster": false
-        },
-        {
-          "id": "MyState----note-1",
-          "x": 311.0,
-          "y": 85.5,
-          "width": 150.0,
-          "height": 51.0,
-          "is_cluster": false
-        },
-        {
-          "id": "MyState----parent-1",
-          "x": 211.0,
-          "y": 73.5,
-          "width": 398.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 123.0,
-          "is_cluster": true
+          "id": "MyState----parent-1",
+          "offset_y": 0.0,
+          "padding": 16.0,
+          "requested_dir": null,
+          "title": "I am a righty",
+          "title_label": {
+            "height": 21.0,
+            "width": 76.72,
+            "x": 211.0,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 398.0,
+          "x": 211.0,
+          "y": 73.5
         }
       ],
       "edges": [
         {
-          "id": "MyState----note-0-MyState",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "MyState----note-0",
-          "to": "MyState",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "MyState----note-0-MyState",
+          "label": null,
           "points": [
             {
               "x": 111.0,
@@ -65,21 +62,21 @@
               "y": 185.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "MyState",
+          "to_cluster": null
         },
         {
-          "id": "MyState-MyState----note-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "MyState",
-          "to": "MyState----note-1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "MyState-MyState----note-1",
+          "label": null,
           "points": [
             {
               "x": 230.333,
@@ -102,45 +99,48 @@
               "y": 111.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "MyState----note-1",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "MyState----parent-1",
+          "height": 37.0,
+          "id": "MyState",
+          "is_cluster": false,
+          "width": 136.0,
           "x": 211.0,
-          "y": 73.5,
-          "width": 398.0,
+          "y": 203.5
+        },
+        {
+          "height": 51.0,
+          "id": "MyState----note-0",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 111.0,
+          "y": 85.5
+        },
+        {
+          "height": 51.0,
+          "id": "MyState----note-1",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 311.0,
+          "y": 85.5
+        },
+        {
           "height": 123.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "I am a righty",
-          "title_label": {
-            "x": 211.0,
-            "y": 22.5,
-            "width": 76.72,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 16.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "MyState----parent-1",
+          "is_cluster": true,
+          "width": 398.0,
+          "x": 211.0,
+          "y": 73.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 410.0,
-        "max_y": 222.0
-      }
+      ]
     }
   }
 }

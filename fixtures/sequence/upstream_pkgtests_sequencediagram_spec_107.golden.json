@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -15,102 +13,104 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       },
       "Carl": {
-        "name": "Carl",
         "description": "Carl",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "Carl",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       },
       "David": {
-        "name": "David",
         "description": "David",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "David",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       },
       "Eve": {
-        "name": "Eve",
         "description": "Eve",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "Eve",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       },
       "Favela": {
-        "name": "Favela",
         "description": "Favela",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "Favela",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Hi Alice",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hi Bob",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "3",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": true,
+        "from": "Bob",
+        "id": "0",
+        "message": "Hi Alice",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "Alice",
+        "id": "2",
+        "message": "Hi Bob",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

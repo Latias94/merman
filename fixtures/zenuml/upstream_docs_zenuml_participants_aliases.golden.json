@@ -1,105 +1,105 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": "Aliases",
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "A",
-        "label": "Alice",
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": true,
-        "isStarter": false,
         "declarationSpan": {
-          "start": 29,
-          "end": 39
+          "end": 39,
+          "start": 29
         },
+        "emoji": null,
+        "explicit": true,
+        "groupId": null,
+        "isStarter": false,
+        "label": "Alice",
+        "name": "A",
         "occurrences": [
           {
-            "start": 29,
-            "end": 30
+            "end": 30,
+            "start": 29
           },
           {
-            "start": 58,
-            "end": 59
+            "end": 59,
+            "start": 58
           },
           {
-            "start": 96,
-            "end": 97
+            "end": 97,
+            "start": 96
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
-        "name": "J",
-        "label": "John",
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": true,
-        "isStarter": false,
         "declarationSpan": {
-          "start": 44,
-          "end": 53
+          "end": 53,
+          "start": 44
         },
+        "emoji": null,
+        "explicit": true,
+        "groupId": null,
+        "isStarter": false,
+        "label": "John",
+        "name": "J",
         "occurrences": [
           {
-            "start": 44,
-            "end": 45
+            "end": 45,
+            "start": 44
           },
           {
-            "start": 61,
-            "end": 62
+            "end": 62,
+            "start": 61
           },
           {
-            "start": 93,
-            "end": 94
+            "end": 94,
+            "start": 93
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 58,
-          "end": 89
-        },
-        "kind": "message",
         "explicit_from": "A",
+        "id": "zenuml-statement-0",
+        "kind": "message",
+        "label": "Hello John, how are you?",
         "resolved_from": "A",
         "resolved_to": "J",
-        "label": "Hello John, how are you?",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 89,
+          "start": 58
+        },
+        "style": "asynchronous"
       },
       {
-        "id": "zenuml-statement-1",
+        "assignment": null,
+        "body": [],
         "comment": null,
-        "span": {
-          "start": 93,
-          "end": 106
-        },
-        "kind": "message",
         "explicit_from": "J",
+        "id": "zenuml-statement-1",
+        "kind": "message",
+        "label": "Great!",
         "resolved_from": "J",
         "resolved_to": "A",
-        "label": "Great!",
-        "assignment": null,
-        "style": "asynchronous",
-        "body": []
+        "span": {
+          "end": 106,
+          "start": 93
+        },
+        "style": "asynchronous"
       }
     ],
+    "title": "Aliases",
     "type": "zenuml"
   }
 }

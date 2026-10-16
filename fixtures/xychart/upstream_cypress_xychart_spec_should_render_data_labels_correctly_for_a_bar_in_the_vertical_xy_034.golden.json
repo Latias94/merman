@@ -1,38 +1,38 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": "Sales Revenue",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "Months",
-      "categories": [
-        "jan"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "Revenue (in $)",
-      "min": 3000.0,
-      "max": 12000.0
-    },
+    "accTitle": null,
+    "orientation": "vertical",
     "plots": [
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          4000.0
-        ],
         "data": [
           [
             "jan",
             4000.0
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          4000.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Sales Revenue",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "jan"
+      ],
+      "title": "Months",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 12000.0,
+      "min": 3000.0,
+      "title": "Revenue (in $)",
+      "type": "linear"
+    }
   }
 }

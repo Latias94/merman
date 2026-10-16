@@ -1,84 +1,84 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
+        "children": [],
         "id": "a",
-        "type": "na",
         "label": "a",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "b",
-        "type": "na",
         "label": "b",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "c",
-        "type": "na",
-        "label": "c",
         "children": [],
+        "id": "c",
+        "label": "c",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "a",
-            "type": "na",
             "label": "a",
-            "children": [],
+            "type": "na",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "b",
-            "type": "na",
             "label": "b",
-            "children": [],
+            "type": "na",
             "widthInColumns": 1
           },
           {
-            "id": "c",
-            "type": "na",
-            "label": "c",
             "children": [],
+            "id": "c",
+            "label": "c",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "a",
-        "type": "na",
         "label": "a",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "b",
-        "type": "na",
         "label": "b",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "c",
-        "type": "na",
-        "label": "c",
         "children": [],
+        "id": "c",
+        "label": "c",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

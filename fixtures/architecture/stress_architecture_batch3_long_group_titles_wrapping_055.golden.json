@@ -1,120 +1,120 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "very_long_group_title",
-        "icon": "cloud",
-        "title": "VeryLongGroupTitle",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "s1",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "s2",
+        "rhsInto": true,
+        "title": "talks"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "very_long_group_title",
+        "in": null,
+        "title": "VeryLongGroupTitle"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "s1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "s1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s2",
+            "lhsId": "s1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s2",
+            "rhsInto": true,
             "title": "talks"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "s1",
+        "in": "very_long_group_title",
         "title": "ServiceOneLongId",
-        "in": "very_long_group_title"
+        "type": "service"
       },
       {
-        "id": "s2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "s1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s2",
+            "lhsId": "s1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s2",
+            "rhsInto": true,
             "title": "talks"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "s2",
+        "in": "very_long_group_title",
         "title": "Service Two",
-        "in": "very_long_group_title"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "s1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "s1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s2",
+            "lhsId": "s1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s2",
+            "rhsInto": true,
             "title": "talks"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "s1",
+        "in": "very_long_group_title",
         "title": "ServiceOneLongId",
-        "in": "very_long_group_title"
+        "type": "service"
       },
       {
-        "id": "s2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "s1",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "s2",
+            "lhsId": "s1",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "s2",
+            "rhsInto": true,
             "title": "talks"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "s2",
+        "in": "very_long_group_title",
         "title": "Service Two",
-        "in": "very_long_group_title"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "s1",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "s2",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "talks"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

@@ -1,25 +1,25 @@
 {
   "diagramType": "packet",
   "model": {
-    "type": "packet",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "packet": [
       [
         {
-          "start": 0,
-          "end": 10,
           "bits": 11,
-          "label": "test"
+          "end": 10,
+          "label": "test",
+          "start": 0
         },
         {
-          "start": 11,
-          "end": 11,
           "bits": 1,
-          "label": "single"
+          "end": 11,
+          "label": "single",
+          "start": 11
         }
       ]
-    ]
+    ],
+    "title": null,
+    "type": "packet"
   }
 }

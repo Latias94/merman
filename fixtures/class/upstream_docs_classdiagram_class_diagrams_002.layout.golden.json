@@ -2,63 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Animal",
-          "x": 163.531,
-          "y": 100.5,
-          "width": 127.042,
-          "height": 177.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Duck",
-          "x": 574.577,
-          "y": 327.0,
-          "width": 141.53,
-          "height": 156.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Fish",
-          "x": 72.02,
-          "y": 316.5,
-          "width": 120.04,
-          "height": 135.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Zebra",
-          "x": 228.281,
-          "y": 316.5,
-          "width": 112.482,
-          "height": 135.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note0",
-          "x": 334.864,
-          "y": 100.5,
-          "width": 135.625,
-          "height": 33.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note1",
-          "x": 594.833,
-          "y": 172.5,
-          "width": 304.313,
-          "height": 33.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 746.989,
+        "max_y": 405.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edgeNote1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "note1",
-          "to": "Duck",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edgeNote1",
+          "label": null,
           "points": [
             {
               "x": 594.833,
@@ -69,54 +28,54 @@
               "y": 249.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Duck",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Animal",
+          "from_cluster": null,
           "id": "0",
-          "from": "Animal",
+          "label": null,
+          "points": [
+            {
+              "x": 190.291,
+              "y": 189.0
+            },
+            {
+              "x": 190.291,
+              "y": 209.0
+            },
+            {
+              "x": 554.322,
+              "y": 209.0
+            },
+            {
+              "x": 554.322,
+              "y": 249.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "Duck",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 190.291,
-              "y": 189.0
-            },
-            {
-              "x": 190.291,
-              "y": 209.0
-            },
-            {
-              "x": 554.322,
-              "y": 209.0
-            },
-            {
-              "x": 554.322,
-              "y": 249.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Animal",
+          "from_cluster": null,
           "id": "1",
-          "from": "Animal",
-          "to": "Fish",
-          "from_cluster": null,
-          "to_cluster": null,
+          "label": null,
           "points": [
             {
               "x": 136.77,
@@ -135,21 +94,21 @@
               "y": 249.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Fish",
+          "to_cluster": null
         },
         {
-          "id": "2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Animal",
-          "to": "Zebra",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "2",
+          "label": null,
           "points": [
             {
               "x": 163.531,
@@ -168,23 +127,64 @@
               "y": 249.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Zebra",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 746.989,
-        "max_y": 405.0
-      }
+      "nodes": [
+        {
+          "height": 177.0,
+          "id": "Animal",
+          "is_cluster": false,
+          "width": 127.042,
+          "x": 163.531,
+          "y": 100.5
+        },
+        {
+          "height": 156.0,
+          "id": "Duck",
+          "is_cluster": false,
+          "width": 141.53,
+          "x": 574.577,
+          "y": 327.0
+        },
+        {
+          "height": 135.0,
+          "id": "Fish",
+          "is_cluster": false,
+          "width": 120.04,
+          "x": 72.02,
+          "y": 316.5
+        },
+        {
+          "height": 135.0,
+          "id": "Zebra",
+          "is_cluster": false,
+          "width": 112.482,
+          "x": 228.281,
+          "y": 316.5
+        },
+        {
+          "height": 33.0,
+          "id": "note0",
+          "is_cluster": false,
+          "width": 135.625,
+          "x": 334.864,
+          "y": 100.5
+        },
+        {
+          "height": 33.0,
+          "id": "note1",
+          "is_cluster": false,
+          "width": 304.313,
+          "x": 594.833,
+          "y": 172.5
+        }
+      ]
     }
   }
 }

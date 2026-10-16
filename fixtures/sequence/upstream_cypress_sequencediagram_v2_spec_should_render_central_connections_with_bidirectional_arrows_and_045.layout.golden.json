@@ -2,63 +2,27 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "nodes": [
-        {
-          "id": "actor-top-Alice",
-          "x": 75.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-Bob",
-          "x": 426.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-Charlie",
-          "x": 626.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Alice",
-          "x": 75.0,
-          "y": 407.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Bob",
-          "x": 426.0,
-          "y": 407.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Charlie",
-          "x": 626.0,
-          "y": 407.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 751.0,
+        "max_y": 455.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
       "edges": [
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Alice",
+          "from_cluster": null,
           "id": "msg-1",
-          "from": "Alice",
-          "to": "Bob",
-          "from_cluster": null,
-          "to_cluster": null,
+          "label": {
+            "height": 17.6,
+            "width": 268.96,
+            "x": 251.0,
+            "y": 89.0
+          },
           "points": [
             {
               "x": 86.0,
@@ -69,116 +33,116 @@
               "y": 120.0
             }
           ],
-          "label": {
-            "x": 251.0,
-            "y": 89.0,
-            "width": 268.96,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Bob",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Bob",
+          "from_cluster": null,
           "id": "msg-4",
-          "from": "Bob",
-          "to": "Alice",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 417.0,
-              "y": 166.0
-            },
-            {
-              "x": 86.0,
-              "y": 166.0
-            }
-          ],
           "label": {
-            "x": 252.0,
-            "y": 135.0,
+            "height": 17.6,
             "width": 268.96,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "msg-7",
-          "from": "Alice",
-          "to": "Bob",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 86.0,
-              "y": 212.0
-            },
-            {
-              "x": 415.0,
-              "y": 212.0
-            }
-          ],
-          "label": {
-            "x": 251.0,
-            "y": 181.0,
-            "width": 280.64,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "msg-10",
-          "from": "Bob",
-          "to": "Alice",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 417.0,
-              "y": 258.0
-            },
-            {
-              "x": 86.0,
-              "y": 258.0
-            }
-          ],
-          "label": {
             "x": 252.0,
-            "y": 227.0,
-            "width": 280.64,
-            "height": 17.6
+            "y": 135.0
           },
+          "points": [
+            {
+              "x": 417.0,
+              "y": 166.0
+            },
+            {
+              "x": 86.0,
+              "y": 166.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Alice",
+          "to_cluster": null
         },
         {
-          "id": "msg-13",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Alice",
-          "to": "Bob",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-7",
+          "label": {
+            "height": 17.6,
+            "width": 280.64,
+            "x": 251.0,
+            "y": 181.0
+          },
+          "points": [
+            {
+              "x": 86.0,
+              "y": 212.0
+            },
+            {
+              "x": 415.0,
+              "y": 212.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Bob",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Bob",
+          "from_cluster": null,
+          "id": "msg-10",
+          "label": {
+            "height": 17.6,
+            "width": 280.64,
+            "x": 252.0,
+            "y": 227.0
+          },
+          "points": [
+            {
+              "x": 417.0,
+              "y": 258.0
+            },
+            {
+              "x": 86.0,
+              "y": 258.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Alice",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Alice",
+          "from_cluster": null,
+          "id": "msg-13",
+          "label": {
+            "height": 17.6,
+            "width": 248.64,
+            "x": 249.0,
+            "y": 273.0
+          },
           "points": [
             {
               "x": 82.0,
@@ -189,26 +153,26 @@
               "y": 304.0
             }
           ],
-          "label": {
-            "x": 249.0,
-            "y": 273.0,
-            "width": 248.64,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Bob",
+          "to_cluster": null
         },
         {
-          "id": "msg-15",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Bob",
-          "to": "Alice",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-15",
+          "label": {
+            "height": 17.6,
+            "width": 262.4,
+            "x": 250.0,
+            "y": 319.0
+          },
           "points": [
             {
               "x": 417.0,
@@ -219,51 +183,46 @@
               "y": 350.0
             }
           ],
-          "label": {
-            "x": 250.0,
-            "y": 319.0,
-            "width": 262.4,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Alice",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-Alice",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-Alice",
+          "from_cluster": null,
+          "id": "lifeline-Alice",
+          "label": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 74.0
+            },
+            {
+              "x": 75.0,
+              "y": 370.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "actor-bottom-Alice",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 74.0
-            },
-            {
-              "x": 75.0,
-              "y": 370.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "lifeline-Bob",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-Bob",
-          "to": "actor-bottom-Bob",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-Bob",
+          "label": null,
           "points": [
             {
               "x": 426.0,
@@ -274,21 +233,21 @@
               "y": 370.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Bob",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-Charlie",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-Charlie",
-          "to": "actor-bottom-Charlie",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-Charlie",
+          "label": null,
           "points": [
             {
               "x": 626.0,
@@ -299,23 +258,64 @@
               "y": 370.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Charlie",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 751.0,
-        "max_y": 455.0
-      }
+      "nodes": [
+        {
+          "height": 74.0,
+          "id": "actor-top-Alice",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-Bob",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 426.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-Charlie",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 626.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-Alice",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 407.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-Bob",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 426.0,
+          "y": 407.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-Charlie",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 626.0,
+          "y": 407.0
+        }
+      ]
     }
   }
 }

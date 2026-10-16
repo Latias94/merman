@@ -3,188 +3,188 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -169.477,
-        "min_y": -41.38,
         "max_x": 92.0,
-        "max_y": 538.755
+        "max_y": 538.755,
+        "min_x": -169.477,
+        "min_y": -41.38
       },
-      "total_width": 261.477,
-      "total_height": 580.134,
-      "viewbox_x": -169.477,
-      "viewbox_y": -41.38,
-      "padding": 20.0,
-      "use_max_width": true,
       "font_size": 16.0,
       "head": {
-        "x": 0.0,
-        "y": 250.0,
-        "width": 60.0,
         "height": 105.6,
-        "path_d": "M 0 -52.8 L 0 52.8 Q 144 0 0 -52.8 Z",
         "label": {
-          "text": "Blurry\nPhoto",
+          "anchor": "start",
+          "bbox": {
+            "max_x": 52.04,
+            "max_y": 266.4,
+            "min_x": 13.96,
+            "min_y": 233.6
+          },
+          "class_name": "ishikawa-head-label",
+          "font_size": 16.0,
+          "line_height": 16.8,
           "lines": [
             "Blurry",
             "Photo"
           ],
-          "class_name": "ishikawa-head-label",
+          "text": "Blurry\nPhoto",
           "x": 33.0,
-          "y": 250.0,
-          "anchor": "start",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": 13.96,
-            "min_y": 233.6,
-            "max_x": 52.04,
-            "max_y": 266.4
-          }
-        }
+          "y": 250.0
+        },
+        "path_d": "M 0 -52.8 L 0 52.8 Q 144 0 0 -52.8 Z",
+        "width": 60.0,
+        "x": 0.0,
+        "y": 250.0
       },
-      "spine": {
-        "x1": -149.477,
-        "y1": 250.0,
-        "x2": 0.0,
-        "y2": 250.0,
-        "class_name": "ishikawa-spine",
-        "marker_start": false
-      },
+      "padding": 20.0,
       "pairs": [
         {
-          "upper": {
-            "line": {
-              "x1": -20.0,
-              "y1": 250.0,
-              "x2": -54.793,
-              "y2": 2.433,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
+          "lower": {
             "label_group": {
-              "label_box": {
-                "x": -100.233,
-                "y": -21.38,
-                "width": 90.88,
-                "height": 23.0
-              },
               "label": {
-                "text": "Process",
-                "lines": [
-                  "Process"
-                ],
-                "class_name": "ishikawa-label cause",
-                "x": -54.793,
-                "y": -8.567,
                 "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
                 "bbox": {
-                  "min_x": -80.233,
-                  "min_y": -19.38,
-                  "max_x": -29.353,
-                  "max_y": -0.38
-                }
+                  "max_x": -39.673,
+                  "max_y": 516.755,
+                  "min_x": -69.913,
+                  "min_y": 497.755
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
+                "lines": [
+                  "User"
+                ],
+                "text": "User",
+                "x": -54.793,
+                "y": 508.567
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 70.24,
+                "x": -89.913,
+                "y": 495.755
               }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -20.0,
+              "x2": -54.793,
+              "y1": 250.0,
+              "y2": 497.567
             },
             "sub_groups": [
               {
-                "line": {
-                  "x1": -37.397,
-                  "y1": 126.216,
-                  "x2": -67.397,
-                  "y2": 126.216,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Out of focus",
-                  "lines": [
-                    "Out of focus"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -67.397,
-                  "y": 126.216,
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -149.477,
-                    "min_y": 115.404,
                     "max_x": -67.397,
-                    "max_y": 134.404
-                  }
+                    "max_y": 381.971,
+                    "min_x": -148.037,
+                    "min_y": 362.971
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Shaky hands"
+                  ],
+                  "text": "Shaky hands",
+                  "x": -67.397,
+                  "y": 373.784
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -37.397,
+                  "x2": -67.397,
+                  "y1": 373.784,
+                  "y2": 373.784
                 }
               }
             ]
           },
-          "lower": {
-            "line": {
-              "x1": -20.0,
-              "y1": 250.0,
-              "x2": -54.793,
-              "y2": 497.567,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
+          "upper": {
             "label_group": {
-              "label_box": {
-                "x": -89.913,
-                "y": 495.755,
-                "width": 70.24,
-                "height": 23.0
-              },
               "label": {
-                "text": "User",
-                "lines": [
-                  "User"
-                ],
-                "class_name": "ishikawa-label cause",
-                "x": -54.793,
-                "y": 508.567,
                 "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
                 "bbox": {
-                  "min_x": -69.913,
-                  "min_y": 497.755,
-                  "max_x": -39.673,
-                  "max_y": 516.755
-                }
+                  "max_x": -29.353,
+                  "max_y": -0.38,
+                  "min_x": -80.233,
+                  "min_y": -19.38
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
+                "lines": [
+                  "Process"
+                ],
+                "text": "Process",
+                "x": -54.793,
+                "y": -8.567
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 90.88,
+                "x": -100.233,
+                "y": -21.38
               }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -20.0,
+              "x2": -54.793,
+              "y1": 250.0,
+              "y2": 2.433
             },
             "sub_groups": [
               {
-                "line": {
-                  "x1": -37.397,
-                  "y1": 373.784,
-                  "x2": -67.397,
-                  "y2": 373.784,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Shaky hands",
-                  "lines": [
-                    "Shaky hands"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -67.397,
-                  "y": 373.784,
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -148.037,
-                    "min_y": 362.971,
                     "max_x": -67.397,
-                    "max_y": 381.971
-                  }
+                    "max_y": 134.404,
+                    "min_x": -149.477,
+                    "min_y": 115.404
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Out of focus"
+                  ],
+                  "text": "Out of focus",
+                  "x": -67.397,
+                  "y": 126.216
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -37.397,
+                  "x2": -67.397,
+                  "y1": 126.216,
+                  "y2": 126.216
                 }
               }
             ]
           }
         }
-      ]
+      ],
+      "spine": {
+        "class_name": "ishikawa-spine",
+        "marker_start": false,
+        "x1": -149.477,
+        "x2": 0.0,
+        "y1": 250.0,
+        "y2": 250.0
+      },
+      "total_height": 580.134,
+      "total_width": 261.477,
+      "use_max_width": true,
+      "viewbox_x": -169.477,
+      "viewbox_y": -41.38
     }
   }
 }

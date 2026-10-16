@@ -1,63 +1,63 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "New",
-        "label": "New",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false
-      },
-      {
-        "id": "In progress",
-        "label": "In progress",
-        "level": 2,
-        "width": 200,
-        "padding": 10,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "New",
-        "label": "New",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "New",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "Sometimes wrong Shape type is highlighted",
-        "parentId": "New",
-        "label": "Sometimes wrong Shape type is highlighted",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "Sometimes wrong Shape type is highlighted",
+        "isGroup": false,
+        "label": "Sometimes wrong Shape type is highlighted",
+        "level": 4,
+        "parentId": "New",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "In progress",
-        "label": "In progress",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "In progress",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "New",
+        "isGroup": false,
+        "label": "New",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      },
+      {
+        "id": "In progress",
+        "isGroup": false,
+        "label": "In progress",
+        "level": 2,
+        "padding": 10,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

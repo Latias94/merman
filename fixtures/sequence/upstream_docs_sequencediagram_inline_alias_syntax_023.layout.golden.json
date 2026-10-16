@@ -2,63 +2,27 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "nodes": [
-        {
-          "id": "actor-top-API",
-          "x": 75.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-Auth",
-          "x": 275.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-DB",
-          "x": 475.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-API",
-          "x": 75.0,
-          "y": 315.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Auth",
-          "x": 275.0,
-          "y": 315.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-DB",
-          "x": 475.0,
-          "y": 315.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 600.0,
+        "max_y": 363.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "msg-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "API",
-          "to": "Auth",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-0",
+          "label": {
+            "height": 17.6,
+            "width": 88.16,
+            "x": 172.0,
+            "y": 89.0
+          },
           "points": [
             {
               "x": 76.0,
@@ -69,26 +33,26 @@
               "y": 120.0
             }
           ],
-          "label": {
-            "x": 172.0,
-            "y": 89.0,
-            "width": 88.16,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Auth",
+          "to_cluster": null
         },
         {
-          "id": "msg-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Auth",
-          "to": "DB",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-1",
+          "label": {
+            "height": 17.6,
+            "width": 71.84,
+            "x": 372.0,
+            "y": 135.0
+          },
           "points": [
             {
               "x": 276.0,
@@ -99,26 +63,26 @@
               "y": 166.0
             }
           ],
-          "label": {
-            "x": 372.0,
-            "y": 135.0,
-            "width": 71.84,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "DB",
+          "to_cluster": null
         },
         {
-          "id": "msg-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "DB",
-          "to": "Auth",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-2",
+          "label": {
+            "height": 17.6,
+            "width": 63.04,
+            "x": 378.0,
+            "y": 181.0
+          },
           "points": [
             {
               "x": 474.0,
@@ -129,26 +93,26 @@
               "y": 212.0
             }
           ],
-          "label": {
-            "x": 378.0,
-            "y": 181.0,
-            "width": 63.04,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Auth",
+          "to_cluster": null
         },
         {
-          "id": "msg-3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Auth",
-          "to": "API",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-3",
+          "label": {
+            "height": 17.6,
+            "width": 85.6,
+            "x": 178.0,
+            "y": 227.0
+          },
           "points": [
             {
               "x": 274.0,
@@ -159,51 +123,46 @@
               "y": 258.0
             }
           ],
-          "label": {
-            "x": 178.0,
-            "y": 227.0,
-            "width": 85.6,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "API",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-API",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-API",
+          "from_cluster": null,
+          "id": "lifeline-API",
+          "label": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 74.0
+            },
+            {
+              "x": 75.0,
+              "y": 278.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "actor-bottom-API",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 74.0
-            },
-            {
-              "x": 75.0,
-              "y": 278.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "lifeline-Auth",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-Auth",
-          "to": "actor-bottom-Auth",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-Auth",
+          "label": null,
           "points": [
             {
               "x": 275.0,
@@ -214,21 +173,21 @@
               "y": 278.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Auth",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-DB",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-DB",
-          "to": "actor-bottom-DB",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-DB",
+          "label": null,
           "points": [
             {
               "x": 475.0,
@@ -239,23 +198,64 @@
               "y": 278.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-DB",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 600.0,
-        "max_y": 363.0
-      }
+      "nodes": [
+        {
+          "height": 74.0,
+          "id": "actor-top-API",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-Auth",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-DB",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-API",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 315.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-Auth",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 315.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-DB",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 315.0
+        }
+      ]
     }
   }
 }

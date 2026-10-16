@@ -1,230 +1,230 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Idle",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "NotShooting_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Configuring",
+        "id": "edge1",
+        "label": "EvConfig",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Idle",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Idle",
+        "id": "edge2",
+        "label": "EvConfig",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Configuring",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Not Shooting State",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "NotShooting",
+        "description": [],
         "dir": "TB",
         "domId": "state-NotShooting-0",
-        "type": "group",
+        "id": "NotShooting",
         "isGroup": true,
+        "label": "Not Shooting State",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true,
-        "description": []
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Idle mode",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Idle",
+        "description": [],
         "dir": null,
         "domId": "state-Idle-2",
-        "type": null,
+        "id": "Idle",
         "isGroup": false,
+        "label": "Idle mode",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "NotShooting",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "NotShooting",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Configuring mode",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Configuring",
+        "description": [],
         "dir": null,
         "domId": "state-Configuring-2",
-        "type": null,
+        "id": "Configuring",
         "isGroup": false,
+        "label": "Configuring mode",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "NotShooting",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "NotShooting",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "NotShooting_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "NotShooting_start",
         "dir": null,
         "domId": "state-NotShooting_start-0",
-        "type": null,
+        "id": "NotShooting_start",
         "isGroup": false,
+        "label": "NotShooting_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "NotShooting",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "NotShooting",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "NotShooting_start",
-        "end": "Idle",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "Idle",
-        "end": "Configuring",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvConfig",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "Configuring",
-        "end": "Idle",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvConfig",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "relations": [],
     "states": {
       "NotShooting": {
-        "id": "NotShooting",
-        "type": "default",
+        "classes": [],
         "descriptions": [
           "Not Shooting State"
         ],
         "doc": [
           {
-            "stmt": "state",
-            "id": "Idle",
-            "type": "default",
+            "classes": [],
             "description": "Idle mode",
             "doc": null,
-            "classes": []
+            "id": "Idle",
+            "stmt": "state",
+            "type": "default"
           },
           {
-            "stmt": "state",
-            "id": "Configuring",
-            "type": "default",
+            "classes": [],
             "description": "Configuring mode",
             "doc": null,
-            "classes": []
+            "id": "Configuring",
+            "stmt": "state",
+            "type": "default"
           },
           {
-            "stmt": "relation",
+            "description": null,
             "state1": {
+              "classes": [],
               "id": "NotShooting_start",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "Idle",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": null
+            "stmt": "relation"
           },
           {
-            "stmt": "relation",
+            "description": "EvConfig",
             "state1": {
+              "classes": [],
               "id": "Idle",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "Configuring",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": "EvConfig"
+            "stmt": "relation"
           },
           {
-            "stmt": "relation",
+            "description": "EvConfig",
             "state1": {
+              "classes": [],
               "id": "Configuring",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
             "state2": {
+              "classes": [],
               "id": "Idle",
-              "type": "default",
-              "classes": []
+              "type": "default"
             },
-            "description": "EvConfig"
+            "stmt": "relation"
           }
         ],
+        "id": "NotShooting",
         "note": null,
-        "classes": [],
+        "start": null,
         "styles": [],
         "textStyles": [],
-        "start": null
+        "type": "default"
       }
     },
-    "relations": [],
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

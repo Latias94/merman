@@ -2,79 +2,65 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 212.0,
+        "max_y": 688.297,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Q",
-          "x": 112.0,
-          "y": 460.149,
-          "width": 192.0,
-          "height": 266.297,
-          "is_cluster": true
-        },
-        {
-          "id": "P",
-          "x": 112.0,
-          "y": 139.5,
-          "width": 200.0,
+          "diff": -4.0,
+          "effective_dir": "LR",
           "height": 255.0,
-          "is_cluster": true
+          "id": "P",
+          "offset_y": 15.0,
+          "padding": 8.0,
+          "requested_dir": "LR",
+          "title": "Pipeline (LR)",
+          "title_label": {
+            "height": 19.0,
+            "width": 74.9,
+            "x": 112.0,
+            "y": 21.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 200.0,
+          "x": 112.0,
+          "y": 139.5
         },
         {
-          "id": "done",
+          "diff": -4.0,
+          "effective_dir": "BT",
+          "height": 266.297,
+          "id": "Q",
+          "offset_y": 15.0,
+          "padding": 8.0,
+          "requested_dir": "BT",
+          "title": "Queue (BT)",
+          "title_label": {
+            "height": 19.0,
+            "width": 63.14,
+            "x": 112.0,
+            "y": 336.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 192.0,
           "x": 112.0,
-          "y": 665.797,
-          "width": 171.25,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "q1",
-          "x": 112.0,
-          "y": 417.574,
-          "width": 144.0,
-          "height": 85.149,
-          "is_cluster": false
-        },
-        {
-          "id": "q2",
-          "x": 112.0,
-          "y": 526.723,
-          "width": 144.0,
-          "height": 85.149,
-          "is_cluster": false
-        },
-        {
-          "id": "p1",
-          "x": 112.0,
-          "y": 82.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "p2",
-          "x": 112.0,
-          "y": 151.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "p3",
-          "x": 112.0,
-          "y": 220.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 460.149
         }
       ],
       "edges": [
         {
-          "id": "L_p3_q1_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "p3",
-          "to": "q1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_p3_q1_0",
+          "label": null,
           "points": [
             {
               "x": 112.0,
@@ -93,21 +79,21 @@
               "y": 375.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "q1",
+          "to_cluster": null
         },
         {
-          "id": "L_q2_done_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "q2",
-          "to": "done",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_q2_done_0",
+          "label": null,
           "points": [
             {
               "x": 112.0,
@@ -122,21 +108,21 @@
               "y": 643.297
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "done",
+          "to_cluster": null
         },
         {
-          "id": "L_q1_q2_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "q1",
-          "to": "q2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_q1_q2_0",
+          "label": null,
           "points": [
             {
               "x": 112.0,
@@ -147,21 +133,21 @@
               "y": 484.149
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "q2",
+          "to_cluster": null
         },
         {
-          "id": "L_p1_p2_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "p1",
-          "to": "p2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_p1_p2_0",
+          "label": null,
           "points": [
             {
               "x": 112.0,
@@ -172,21 +158,21 @@
               "y": 129.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "p2",
+          "to_cluster": null
         },
         {
-          "id": "L_p2_p3_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "p2",
-          "to": "p3",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_p2_p3_0",
+          "label": null,
           "points": [
             {
               "x": 112.0,
@@ -197,66 +183,80 @@
               "y": 198.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "p3",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "P",
+          "height": 266.297,
+          "id": "Q",
+          "is_cluster": true,
+          "width": 192.0,
           "x": 112.0,
-          "y": 139.5,
-          "width": 200.0,
-          "height": 255.0,
-          "diff": -4.0,
-          "offset_y": 15.0,
-          "title": "Pipeline (LR)",
-          "title_label": {
-            "x": 112.0,
-            "y": 21.5,
-            "width": 74.9,
-            "height": 19.0
-          },
-          "requested_dir": "LR",
-          "effective_dir": "LR",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "y": 460.149
         },
         {
-          "id": "Q",
+          "height": 255.0,
+          "id": "P",
+          "is_cluster": true,
+          "width": 200.0,
           "x": 112.0,
-          "y": 460.149,
-          "width": 192.0,
-          "height": 266.297,
-          "diff": -4.0,
-          "offset_y": 15.0,
-          "title": "Queue (BT)",
-          "title_label": {
-            "x": 112.0,
-            "y": 336.5,
-            "width": 63.14,
-            "height": 19.0
-          },
-          "requested_dir": "BT",
-          "effective_dir": "BT",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "y": 139.5
+        },
+        {
+          "height": 45.0,
+          "id": "done",
+          "is_cluster": false,
+          "width": 171.25,
+          "x": 112.0,
+          "y": 665.797
+        },
+        {
+          "height": 85.149,
+          "id": "q1",
+          "is_cluster": false,
+          "width": 144.0,
+          "x": 112.0,
+          "y": 417.574
+        },
+        {
+          "height": 85.149,
+          "id": "q2",
+          "is_cluster": false,
+          "width": 144.0,
+          "x": 112.0,
+          "y": 526.723
+        },
+        {
+          "height": 45.0,
+          "id": "p1",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 112.0,
+          "y": 82.5
+        },
+        {
+          "height": 45.0,
+          "id": "p2",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 112.0,
+          "y": 151.5
+        },
+        {
+          "height": 45.0,
+          "id": "p3",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 112.0,
+          "y": 220.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 212.0,
-        "max_y": 688.297
-      }
+      ]
     }
   }
 }

@@ -2,10 +2,10 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [],
-      "edges": [],
+      "bounds": null,
       "clusters": [],
-      "bounds": null
+      "edges": [],
+      "nodes": []
     }
   }
 }

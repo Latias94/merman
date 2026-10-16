@@ -1,47 +1,47 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Textual periods with dashes/underscores",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Versions"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Versions",
-        "type": "Versions",
-        "task": "v0-1 ",
-        "score": 0,
         "events": [
           "alpha ",
           "beta"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Versions",
+        "task": "v0-1 ",
+        "type": "Versions"
       },
       {
-        "id": 1,
-        "section": "Versions",
-        "type": "Versions",
-        "task": "v0-2 ",
-        "score": 0,
         "events": [
           "rc_1",
           "rc_2"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Versions",
+        "task": "v0-2 ",
+        "type": "Versions"
       },
       {
-        "id": 2,
-        "section": "Versions",
-        "type": "Versions",
-        "task": "v1-0 ",
-        "score": 0,
         "events": [
           "ga"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "Versions",
+        "task": "v1-0 ",
+        "type": "Versions"
       }
-    ]
+    ],
+    "title": "Textual periods with dashes/underscores",
+    "type": "timeline"
   }
 }

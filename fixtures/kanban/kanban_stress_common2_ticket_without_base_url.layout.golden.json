@@ -3,91 +3,91 @@
   "layout": {
     "KanbanDiagram": {
       "bounds": {
-        "min_x": 90.0,
-        "min_y": -310.0,
         "max_x": 515.0,
-        "max_y": -138.0
+        "max_y": -138.0,
+        "min_x": 90.0,
+        "min_y": -310.0
       },
-      "section_width": 200.0,
-      "padding": 10.0,
-      "max_label_height": 25.0,
-      "viewbox_padding": 10.0,
-      "use_max_width": true,
-      "sections": [
-        {
-          "id": "todo",
-          "label": "Todo",
-          "index": 1.0,
-          "center_x": 200.0,
-          "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
-          "rect_height": 152.0,
-          "rx": 5.0,
-          "ry": 5.0,
-          "label_width": 30.24
-        },
-        {
-          "id": "done",
-          "label": "Done",
-          "index": 2.0,
-          "center_x": 405.0,
-          "center_y": 0.0,
-          "width": 200.0,
-          "rect_y": -300.0,
-          "rect_height": 79.0,
-          "rx": 5.0,
-          "ry": 5.0,
-          "label_width": 30.24
-        }
-      ],
       "items": [
         {
+          "assigned": "alice",
+          "center_x": 200.0,
+          "center_y": -247.0,
+          "height": 56.0,
+          "icon": null,
           "id": "t1",
           "label": "Ticket without base url",
           "parent_id": "todo",
-          "center_x": 200.0,
-          "center_y": -247.0,
-          "width": 185.0,
-          "height": 56.0,
+          "priority": null,
           "rx": 5.0,
           "ry": 5.0,
           "ticket": "MC-1",
-          "assigned": "alice",
-          "priority": null,
-          "icon": null
+          "width": 185.0
         },
         {
+          "assigned": null,
+          "center_x": 200.0,
+          "center_y": -186.0,
+          "height": 56.0,
+          "icon": null,
           "id": "t2",
           "label": "Another ticket",
           "parent_id": "todo",
-          "center_x": 200.0,
-          "center_y": -186.0,
-          "width": 185.0,
-          "height": 56.0,
+          "priority": null,
           "rx": 5.0,
           "ry": 5.0,
           "ticket": "MC-2",
-          "assigned": null,
-          "priority": null,
-          "icon": null
+          "width": 185.0
         },
         {
+          "assigned": null,
+          "center_x": 405.0,
+          "center_y": -253.0,
+          "height": 44.0,
+          "icon": null,
           "id": "t3",
           "label": "No metadata",
           "parent_id": "done",
-          "center_x": 405.0,
-          "center_y": -253.0,
-          "width": 185.0,
-          "height": 44.0,
+          "priority": null,
           "rx": 5.0,
           "ry": 5.0,
           "ticket": null,
-          "assigned": null,
-          "priority": null,
-          "icon": null
+          "width": 185.0
         }
-      ]
+      ],
+      "max_label_height": 25.0,
+      "padding": 10.0,
+      "section_width": 200.0,
+      "sections": [
+        {
+          "center_x": 200.0,
+          "center_y": 0.0,
+          "id": "todo",
+          "index": 1.0,
+          "label": "Todo",
+          "label_width": 30.24,
+          "rect_height": 152.0,
+          "rect_y": -300.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "width": 200.0
+        },
+        {
+          "center_x": 405.0,
+          "center_y": 0.0,
+          "id": "done",
+          "index": 2.0,
+          "label": "Done",
+          "label_width": 30.24,
+          "rect_height": 79.0,
+          "rect_y": -300.0,
+          "rx": 5.0,
+          "ry": 5.0,
+          "width": 200.0
+        }
+      ],
+      "use_max_width": true,
+      "viewbox_padding": 10.0
     }
   }
 }

@@ -1,17 +1,14 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {
-      "plain": [
-        "fill:#ddd",
-        "stroke:#fff",
-        "stroke-width:4px",
-        "color:#000"
+      "cluster": [
+        "fill:#fff",
+        "stroke:#bbb",
+        "stroke-width:2px",
+        "color:#326ce5"
       ],
       "k8s": [
         "fill:#326ce5",
@@ -19,18 +16,216 @@
         "stroke-width:4px",
         "color:#fff"
       ],
-      "cluster": [
-        "fill:#fff",
-        "stroke:#bbb",
-        "stroke-width:2px",
-        "color:#326ce5"
+      "plain": [
+        "fill:#ddd",
+        "stroke:#fff",
+        "stroke-width:4px",
+        "color:#000"
       ]
     },
-    "tooltips": {},
+    "direction": "LR",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": ".->",
+        "classes": [],
+        "from": "client",
+        "id": "L_client_ingress_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": "Ingress-managed <br> load balancer",
+        "labelType": "text",
+        "length": 1,
+        "stroke": "dotted",
+        "style": [],
+        "to": "ingress",
+        "type": "arrow_point"
+      },
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "ingress",
+        "id": "L_ingress_service_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": "routing rule",
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "service",
+        "type": "arrow_point"
+      },
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "service",
+        "id": "L_service_pod1_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "pod1",
+        "type": "arrow_point"
+      },
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "service",
+        "id": "L_service_pod2_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "pod2",
+        "type": "arrow_point"
+      }
+    ],
+    "keyword": "graph",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "plain"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "client",
+        "img": null,
+        "label": "client",
+        "labelType": "text",
+        "layoutShape": "stadium",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "stadium",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "k8s"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "ingress",
+        "img": null,
+        "label": "Ingress",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "k8s"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "service",
+        "img": null,
+        "label": "Service",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "k8s"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "pod1",
+        "img": null,
+        "label": "Pod",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [
+          "k8s"
+        ],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "pod2",
+        "img": null,
+        "label": "Pod",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      }
+    ],
+    "subgraphs": [
+      {
+        "classes": [
+          "cluster"
+        ],
+        "dir": null,
+        "id": "cluster",
+        "labelType": "text",
+        "nodes": [
+          "ingress",
+          "pod1",
+          "service",
+          "pod2"
+        ],
+        "styles": [],
+        "title": "cluster"
+      }
+    ],
+    "tooltips": {},
+    "type": "flowchart-v2",
     "vertexCalls": [
       "client",
       "ingress",
@@ -41,201 +236,6 @@
       "pod1",
       "service",
       "pod2"
-    ],
-    "nodes": [
-      {
-        "id": "client",
-        "label": "client",
-        "labelType": "text",
-        "shape": "stadium",
-        "layoutShape": "stadium",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "plain"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "ingress",
-        "label": "Ingress",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "k8s"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "service",
-        "label": "Service",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "k8s"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "pod1",
-        "label": "Pod",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "k8s"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "pod2",
-        "label": "Pod",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [
-          "k8s"
-        ],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [
-      {
-        "from": "client",
-        "to": "ingress",
-        "id": "L_client_ingress_0",
-        "isUserDefinedId": false,
-        "arrow": ".->",
-        "type": "arrow_point",
-        "stroke": "dotted",
-        "length": 1,
-        "label": "Ingress-managed <br> load balancer",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "ingress",
-        "to": "service",
-        "id": "L_ingress_service_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": "routing rule",
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "service",
-        "to": "pod1",
-        "id": "L_service_pod1_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "service",
-        "to": "pod2",
-        "id": "L_service_pod2_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      }
-    ],
-    "subgraphs": [
-      {
-        "id": "cluster",
-        "nodes": [
-          "ingress",
-          "pod1",
-          "service",
-          "pod2"
-        ],
-        "title": "cluster",
-        "classes": [
-          "cluster"
-        ],
-        "styles": [],
-        "dir": null,
-        "labelType": "text"
-      }
     ]
   }
 }

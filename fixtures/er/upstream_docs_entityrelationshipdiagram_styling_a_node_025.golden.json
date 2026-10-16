@@ -1,17 +1,40 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
-      "id2": {
-        "id": "entity-id2-1",
-        "label": "id2",
-        "attributes": [],
+      "id1": {
         "alias": "",
-        "shape": "erBox",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [
+          "fill:#f9f",
+          "stroke:#333",
+          "stroke-width:4px"
+        ],
+        "id": "entity-id1-0",
+        "label": "id1",
+        "shape": "erBox"
+      },
+      "id2": {
+        "alias": "",
+        "attributes": [],
         "cssClasses": "default",
         "cssStyles": [
           "fill:#bbf",
@@ -19,47 +42,24 @@
           "stroke-width:2px",
           "color:#fff",
           "stroke-dasharray:55"
-        ]
-      },
-      "id1": {
-        "id": "entity-id1-0",
-        "label": "id1",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": [
-          "fill:#f9f",
-          "stroke:#333",
-          "stroke-width:4px"
-        ]
+        ],
+        "id": "entity-id2-1",
+        "label": "id2",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-id1-0",
-        "roleA": "label",
         "entityB": "entity-id2-1",
         "relSpec": {
           "cardA": "ONLY_ONE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "label"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

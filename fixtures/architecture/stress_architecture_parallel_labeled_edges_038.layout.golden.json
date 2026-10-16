@@ -2,63 +2,73 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
+      "bounds": {
+        "max_x": 302.0,
+        "max_y": 283.72,
+        "min_x": -138.0,
+        "min_y": -120.72
+      },
+      "cytoscape_service_bounds": [
         {
+          "body_bounds": {
+            "max_x": 182.0,
+            "max_y": 121.5,
+            "min_x": 102.0,
+            "min_y": 41.5
+          },
           "id": "api",
-          "x": 102.0,
-          "y": 41.5,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "label_bounds": {
+            "max_x": 156.0,
+            "max_y": 139.5,
+            "min_x": 128.0,
+            "min_y": 41.5
+          },
+          "label_metrics": {
+            "half_width": 12.0,
+            "text_width": 24.0
+          },
+          "union_bounds": {
+            "max_x": 183.0,
+            "max_y": 139.5,
+            "min_x": 101.0,
+            "min_y": 40.5
+          }
         },
         {
+          "body_bounds": {
+            "max_x": -58.0,
+            "max_y": 121.5,
+            "min_x": -138.0,
+            "min_y": 41.5
+          },
           "id": "db",
-          "x": -138.0,
-          "y": 41.5,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "j_read",
-          "x": 222.0,
-          "y": 41.5,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "j_write",
-          "x": 102.0,
-          "y": 203.72,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "j_health",
-          "x": 102.0,
-          "y": -120.72,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        },
-        {
-          "id": "j_metrics",
-          "x": -18.0,
-          "y": 41.5,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "label_bounds": {
+            "max_x": -86.0,
+            "max_y": 139.5,
+            "min_x": -110.0,
+            "min_y": 41.5
+          },
+          "label_metrics": {
+            "half_width": 10.0,
+            "text_width": 20.0
+          },
+          "union_bounds": {
+            "max_x": -57.0,
+            "max_y": 139.5,
+            "min_x": -139.0,
+            "min_y": 40.5
+          }
         }
       ],
       "edges": [
         {
-          "id": "edge-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "api",
-          "to": "j_read",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-0",
+          "label": null,
           "points": [
             {
               "x": 182.0,
@@ -73,21 +83,21 @@
               "y": 81.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "j_read",
+          "to_cluster": null
         },
         {
-          "id": "edge-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "j_read",
-          "to": "db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-1",
+          "label": null,
           "points": [
             {
               "x": 302.0,
@@ -102,21 +112,21 @@
               "y": 81.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "db",
+          "to_cluster": null
         },
         {
-          "id": "edge-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "api",
-          "to": "j_write",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-2",
+          "label": null,
           "points": [
             {
               "x": 142.0,
@@ -131,21 +141,21 @@
               "y": 203.72
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "j_write",
+          "to_cluster": null
         },
         {
-          "id": "edge-3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "j_write",
-          "to": "db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-3",
+          "label": null,
           "points": [
             {
               "x": 142.0,
@@ -160,21 +170,21 @@
               "y": 41.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "db",
+          "to_cluster": null
         },
         {
-          "id": "edge-4",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "api",
-          "to": "j_health",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-4",
+          "label": null,
           "points": [
             {
               "x": 142.0,
@@ -189,21 +199,21 @@
               "y": -40.72
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "j_health",
+          "to_cluster": null
         },
         {
-          "id": "edge-5",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "j_health",
-          "to": "db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-5",
+          "label": null,
           "points": [
             {
               "x": 142.0,
@@ -218,21 +228,21 @@
               "y": 121.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "db",
+          "to_cluster": null
         },
         {
-          "id": "edge-6",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "api",
-          "to": "j_metrics",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-6",
+          "label": null,
           "points": [
             {
               "x": 102.0,
@@ -247,21 +257,21 @@
               "y": 81.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "j_metrics",
+          "to_cluster": null
         },
         {
-          "id": "edge-7",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "j_metrics",
-          "to": "db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-7",
+          "label": null,
           "points": [
             {
               "x": -18.0,
@@ -276,74 +286,64 @@
               "y": 81.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "db",
+          "to_cluster": null
         }
       ],
-      "cytoscape_service_bounds": [
+      "nodes": [
         {
+          "height": 80.0,
           "id": "api",
-          "body_bounds": {
-            "min_x": 102.0,
-            "min_y": 41.5,
-            "max_x": 182.0,
-            "max_y": 121.5
-          },
-          "label_bounds": {
-            "min_x": 128.0,
-            "min_y": 41.5,
-            "max_x": 156.0,
-            "max_y": 139.5
-          },
-          "label_metrics": {
-            "text_width": 24.0,
-            "half_width": 12.0
-          },
-          "union_bounds": {
-            "min_x": 101.0,
-            "min_y": 40.5,
-            "max_x": 183.0,
-            "max_y": 139.5
-          }
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 102.0,
+          "y": 41.5
         },
         {
+          "height": 80.0,
           "id": "db",
-          "body_bounds": {
-            "min_x": -138.0,
-            "min_y": 41.5,
-            "max_x": -58.0,
-            "max_y": 121.5
-          },
-          "label_bounds": {
-            "min_x": -110.0,
-            "min_y": 41.5,
-            "max_x": -86.0,
-            "max_y": 139.5
-          },
-          "label_metrics": {
-            "text_width": 20.0,
-            "half_width": 10.0
-          },
-          "union_bounds": {
-            "min_x": -139.0,
-            "min_y": 40.5,
-            "max_x": -57.0,
-            "max_y": 139.5
-          }
+          "is_cluster": false,
+          "width": 80.0,
+          "x": -138.0,
+          "y": 41.5
+        },
+        {
+          "height": 80.0,
+          "id": "j_read",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 222.0,
+          "y": 41.5
+        },
+        {
+          "height": 80.0,
+          "id": "j_write",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 102.0,
+          "y": 203.72
+        },
+        {
+          "height": 80.0,
+          "id": "j_health",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 102.0,
+          "y": -120.72
+        },
+        {
+          "height": 80.0,
+          "id": "j_metrics",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": -18.0,
+          "y": 41.5
         }
-      ],
-      "bounds": {
-        "min_x": -138.0,
-        "min_y": -120.72,
-        "max_x": 302.0,
-        "max_y": 283.72
-      }
+      ]
     }
   }
 }

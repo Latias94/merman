@@ -1,256 +1,256 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "prod_env",
-        "icon": "cloud",
-        "title": "Prod Env",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api_gw",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "auth_svc",
+        "rhsInto": true,
+        "title": "JWT"
       },
       {
-        "id": "private_net",
-        "icon": "cloud",
-        "title": "Private Net",
-        "in": "prod_env"
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "auth_svc",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "orders_db",
+        "rhsInto": true,
+        "title": "RW"
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "orders_db",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "api_gw",
+        "rhsInto": null,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "prod_env",
+        "in": null,
+        "title": "Prod Env"
+      },
+      {
+        "icon": "cloud",
+        "id": "private_net",
+        "in": "prod_env",
+        "title": "Private Net"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "api_gw",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api_gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth_svc",
+            "lhsId": "api_gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth_svc",
+            "rhsInto": true,
             "title": "JWT"
           },
           {
-            "lhsId": "orders_db",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api_gw",
+            "lhsId": "orders_db",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api_gw",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api_gw",
+        "in": "private_net",
         "title": "API GW",
-        "in": "private_net"
+        "type": "service"
       },
       {
-        "id": "auth_svc",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api_gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth_svc",
+            "lhsId": "api_gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth_svc",
+            "rhsInto": true,
             "title": "JWT"
           },
           {
-            "lhsId": "auth_svc",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "orders_db",
+            "lhsId": "auth_svc",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "orders_db",
+            "rhsInto": true,
             "title": "RW"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "auth_svc",
+        "in": "private_net",
         "title": "Auth",
-        "in": "private_net"
+        "type": "service"
       },
       {
-        "id": "orders_db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth_svc",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "orders_db",
+            "lhsId": "auth_svc",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "orders_db",
+            "rhsInto": true,
             "title": "RW"
           },
           {
-            "lhsId": "orders_db",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api_gw",
+            "lhsId": "orders_db",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api_gw",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "orders_db",
+        "in": "private_net",
         "title": "Orders DB",
-        "in": "private_net"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "api_gw",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api_gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth_svc",
+            "lhsId": "api_gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth_svc",
+            "rhsInto": true,
             "title": "JWT"
           },
           {
-            "lhsId": "orders_db",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api_gw",
+            "lhsId": "orders_db",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api_gw",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api_gw",
+        "in": "private_net",
         "title": "API GW",
-        "in": "private_net"
+        "type": "service"
       },
       {
-        "id": "auth_svc",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api_gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth_svc",
+            "lhsId": "api_gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth_svc",
+            "rhsInto": true,
             "title": "JWT"
           },
           {
-            "lhsId": "auth_svc",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "orders_db",
+            "lhsId": "auth_svc",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "orders_db",
+            "rhsInto": true,
             "title": "RW"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "auth_svc",
+        "in": "private_net",
         "title": "Auth",
-        "in": "private_net"
+        "type": "service"
       },
       {
-        "id": "orders_db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth_svc",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "orders_db",
+            "lhsId": "auth_svc",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "orders_db",
+            "rhsInto": true,
             "title": "RW"
           },
           {
-            "lhsId": "orders_db",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "api_gw",
+            "lhsId": "orders_db",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "api_gw",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "orders_db",
+        "in": "private_net",
         "title": "Orders DB",
-        "in": "private_net"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "api_gw",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "auth_svc",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "JWT"
-      },
-      {
-        "lhsId": "auth_svc",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "orders_db",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "RW"
-      },
-      {
-        "lhsId": "orders_db",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "api_gw",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

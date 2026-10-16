@@ -1,121 +1,121 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Container",
-    "title": "Container diagram for Internet Banking System",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "email_system",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_system"
-        },
-        "label": {
-          "text": "E-Mail System"
-        },
-        "wrap": false,
-        "tags": "v1.0",
-        "descr": {
-          "text": "The internal Microsoft Exchange system"
-        }
-      },
-      {
-        "alias": "customer",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": "Customer"
-        },
-        "wrap": false,
-        "tags": "v1.0",
-        "descr": {
-          "text": "A customer of the bank, with personal bank accounts"
-        }
-      },
-      {
-        "alias": "spa",
-        "parentBoundary": "c1",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Single-Page App"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "JavaScript, Angular"
-        },
-        "descr": {
-          "text": "Provides all the Internet banking functionality to customers via their web browser"
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "c1",
-        "parentBoundary": "global",
         "label": {
           "text": "Internet Banking"
         },
+        "parentBoundary": "global",
         "type": {
           "text": "CONTAINER"
         },
         "wrap": false
       }
     ],
+    "c4Type": "C4Container",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "customer",
-        "to": "spa",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
         "techn": {
           "text": "HTTPS"
         },
-        "descr": {
-          "text": ""
-        },
+        "to": "spa",
+        "type": "rel",
         "wrap": false
       },
       {
+        "descr": {
+          "text": ""
+        },
         "from": "email_system",
-        "to": "customer",
-        "type": "rel",
         "label": {
           "text": "Sends e-mails to"
         },
         "techn": {
           "text": ""
         },
+        "to": "customer",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "email_system",
         "descr": {
-          "text": ""
+          "text": "The internal Microsoft Exchange system"
+        },
+        "label": {
+          "text": "E-Mail System"
+        },
+        "parentBoundary": "global",
+        "tags": "v1.0",
+        "typeC4Shape": {
+          "text": "external_system"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "customer",
+        "descr": {
+          "text": "A customer of the bank, with personal bank accounts"
+        },
+        "label": {
+          "text": "Customer"
+        },
+        "parentBoundary": "global",
+        "tags": "v1.0",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "spa",
+        "descr": {
+          "text": "Provides all the Internet banking functionality to customers via their web browser"
+        },
+        "label": {
+          "text": "Single-Page App"
+        },
+        "parentBoundary": "c1",
+        "techn": {
+          "text": "JavaScript, Angular"
+        },
+        "typeC4Shape": {
+          "text": "container"
         },
         "wrap": false
       }
-    ]
+    ],
+    "title": "Container diagram for Internet Banking System",
+    "type": "c4",
+    "wrap": false
   }
 }

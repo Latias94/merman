@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B",
@@ -12,141 +10,143 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "Carol",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": "rgb(230, 255, 230)",
-        "wrap": false,
-        "type": 22,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "B",
-        "message": "start batch",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "over A,B",
-        "wrap": false,
-        "type": 19,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "A",
-        "to": "B",
-        "message": "p1",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "over B,C",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "B",
-        "to": "C",
-        "message": "p2",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": null,
-        "to": null,
-        "message": "over A,C",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "A",
-        "to": "C",
-        "message": "p3",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 21,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "B",
-        "to": "A",
-        "message": "batch done",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 23,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": "rgb(230, 255, 230)",
+        "to": null,
+        "type": 22,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "start batch",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "over A,B",
+        "to": null,
+        "type": 19,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "3",
+        "message": "p1",
+        "to": "B",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "over B,C",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "5",
+        "message": "p2",
+        "to": "C",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "6",
+        "message": "over A,C",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "7",
+        "message": "p3",
+        "to": "C",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "8",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "9",
+        "message": "batch done",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "",
+        "to": null,
+        "type": 23,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

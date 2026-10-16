@@ -1,71 +1,71 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "plain",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": null,
+        "id": "plain",
+        "in": null,
         "title": null,
-        "in": null
+        "type": "service"
       },
       {
-        "id": "with_icon",
-        "type": "service",
         "edges": [],
         "icon": "server",
         "iconText": null,
+        "id": "with_icon",
+        "in": null,
         "title": "Icon Node",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "with_icon_text",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "with_icon_text",
+        "in": null,
         "title": "Iconify Text Node",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "plain",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": null,
+        "id": "plain",
+        "in": null,
         "title": null,
-        "in": null
+        "type": "service"
       },
       {
-        "id": "with_icon",
-        "type": "service",
         "edges": [],
         "icon": "server",
         "iconText": null,
+        "id": "with_icon",
+        "in": null,
         "title": "Icon Node",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "with_icon_text",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": "logos:aws-lambda",
+        "id": "with_icon_text",
+        "in": null,
         "title": "Iconify Text Node",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

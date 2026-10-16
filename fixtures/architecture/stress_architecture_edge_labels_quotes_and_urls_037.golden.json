@@ -1,331 +1,331 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "api",
-        "icon": "cloud",
-        "title": "API",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "gw",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "auth",
+        "rhsInto": true,
+        "title": "GET"
       },
       {
-        "id": "data",
-        "icon": "cloud",
-        "title": "Data",
-        "in": null
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "auth",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": "POST"
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "auth",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "cache",
+        "rhsInto": true,
+        "title": "CACHE"
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "cache",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": "EVICT"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "api",
+        "in": null,
+        "title": "API"
+      },
+      {
+        "icon": "cloud",
+        "id": "data",
+        "in": null,
+        "title": "Data"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "gw",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "auth",
+            "rhsInto": true,
+            "title": "GET"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "gw",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "gw",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "auth",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "GET"
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": "api",
         "title": "Gateway",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "auth",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth",
+            "rhsInto": true,
             "title": "GET"
           },
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "POST"
           },
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "CACHE"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "auth",
+        "in": "api",
         "title": "Auth",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "POST"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "EVICT"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "data",
         "title": "Orders",
-        "in": "data"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "CACHE"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "EVICT"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "cache",
+        "in": "data",
         "title": "Cache",
-        "in": "data"
+        "type": "service"
       }
     ],
     "services": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "gw",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "auth",
+            "rhsInto": true,
+            "title": "GET"
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "gw",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "gw",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "auth",
-            "rhsDir": "L",
-            "rhsInto": true,
-            "rhsGroup": null,
-            "title": "GET"
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": "api",
         "title": "Gateway",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "auth",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth",
+            "rhsInto": true,
             "title": "GET"
           },
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "POST"
           },
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "CACHE"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "auth",
+        "in": "api",
         "title": "Auth",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "POST"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "EVICT"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "data",
         "title": "Orders",
-        "in": "data"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "CACHE"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "EVICT"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "cache",
+        "in": "data",
         "title": "Cache",
-        "in": "data"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "gw",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "auth",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "GET"
-      },
-      {
-        "lhsId": "auth",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "POST"
-      },
-      {
-        "lhsId": "auth",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "cache",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "CACHE"
-      },
-      {
-        "lhsId": "cache",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "B",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "EVICT"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

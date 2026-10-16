@@ -1,19 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Item",
-          "value": 123.45
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -21,6 +11,16 @@
         "value": 123.45
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "name": "Item",
+          "value": 123.45
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

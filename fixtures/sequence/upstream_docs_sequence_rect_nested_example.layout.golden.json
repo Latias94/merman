@@ -2,191 +2,147 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "nodes": [
-        {
-          "id": "actor-top-Alice",
-          "x": 75.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-John",
-          "x": 414.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note-1",
-          "x": 175.0,
-          "y": 123.5,
-          "width": 150.0,
-          "height": 39.0,
-          "is_cluster": false
-        },
-        {
-          "id": "rect-4",
-          "x": 242.5,
-          "y": 255.0,
-          "width": 353.0,
-          "height": 112.0,
-          "is_cluster": false
-        },
-        {
-          "id": "rect-0",
-          "x": 242.5,
-          "y": 225.5,
-          "width": 373.0,
-          "height": 283.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-Alice",
-          "x": 75.0,
-          "y": 516.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-John",
-          "x": 414.0,
-          "y": 516.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 539.0,
+        "max_y": 564.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
       "edges": [
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Alice",
+          "from_cluster": null,
           "id": "msg-2",
-          "from": "Alice",
-          "to": "John",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 189.0
-            },
-            {
-              "x": 403.0,
-              "y": 189.0
-            }
-          ],
           "label": {
-            "x": 240.0,
-            "y": 158.0,
+            "height": 17.6,
             "width": 167.2,
-            "height": 17.6
+            "x": 240.0,
+            "y": 158.0
           },
+          "points": [
+            {
+              "x": 76.0,
+              "y": 189.0
+            },
+            {
+              "x": 403.0,
+              "y": 189.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "John",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Alice",
+          "from_cluster": null,
           "id": "msg-5",
-          "from": "Alice",
-          "to": "John",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 76.0,
-              "y": 255.0
-            },
-            {
-              "x": 403.0,
-              "y": 255.0
-            }
-          ],
           "label": {
-            "x": 240.0,
-            "y": 224.0,
+            "height": 17.6,
             "width": 155.52,
-            "height": 17.6
+            "x": 240.0,
+            "y": 224.0
           },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "msg-7",
-          "from": "John",
-          "to": "Alice",
-          "from_cluster": null,
-          "to_cluster": null,
           "points": [
             {
-              "x": 409.0,
-              "y": 301.0
+              "x": 76.0,
+              "y": 255.0
             },
             {
-              "x": 82.0,
-              "y": 301.0
+              "x": 403.0,
+              "y": 255.0
             }
           ],
-          "label": {
-            "x": 246.0,
-            "y": 270.0,
-            "width": 162.4,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "msg-10",
-          "from": "John",
-          "to": "Alice",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 409.0,
-              "y": 357.0
-            },
-            {
-              "x": 82.0,
-              "y": 357.0
-            }
-          ],
-          "label": {
-            "x": 246.0,
-            "y": 326.0,
-            "width": 84.48,
-            "height": 17.6
-          },
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        },
-        {
-          "id": "msg-13",
-          "from": "Alice",
+          "stroke_dasharray": null,
           "to": "John",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "John",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-7",
+          "label": {
+            "height": 17.6,
+            "width": 162.4,
+            "x": 246.0,
+            "y": 270.0
+          },
+          "points": [
+            {
+              "x": 409.0,
+              "y": 301.0
+            },
+            {
+              "x": 82.0,
+              "y": 301.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Alice",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "John",
+          "from_cluster": null,
+          "id": "msg-10",
+          "label": {
+            "height": 17.6,
+            "width": 84.48,
+            "x": 246.0,
+            "y": 326.0
+          },
+          "points": [
+            {
+              "x": 409.0,
+              "y": 357.0
+            },
+            {
+              "x": 82.0,
+              "y": 357.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Alice",
+          "to_cluster": null
+        },
+        {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "Alice",
+          "from_cluster": null,
+          "id": "msg-13",
+          "label": {
+            "height": 17.6,
+            "width": 269.28,
+            "x": 240.0,
+            "y": 382.0
+          },
           "points": [
             {
               "x": 76.0,
@@ -197,26 +153,26 @@
               "y": 413.0
             }
           ],
-          "label": {
-            "x": 240.0,
-            "y": 382.0,
-            "width": 269.28,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "John",
+          "to_cluster": null
         },
         {
-          "id": "msg-15",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "John",
-          "to": "Alice",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-15",
+          "label": {
+            "height": 17.6,
+            "width": 140.48,
+            "x": 246.0,
+            "y": 428.0
+          },
           "points": [
             {
               "x": 409.0,
@@ -227,26 +183,21 @@
               "y": 459.0
             }
           ],
-          "label": {
-            "x": 246.0,
-            "y": 428.0,
-            "width": 140.48,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Alice",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-Alice",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-Alice",
-          "to": "actor-bottom-Alice",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-Alice",
+          "label": null,
           "points": [
             {
               "x": 75.0,
@@ -257,21 +208,21 @@
               "y": 479.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-Alice",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-John",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-John",
-          "to": "actor-bottom-John",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-John",
+          "label": null,
           "points": [
             {
               "x": 414.0,
@@ -282,23 +233,72 @@
               "y": 479.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-John",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 539.0,
-        "max_y": 564.0
-      }
+      "nodes": [
+        {
+          "height": 74.0,
+          "id": "actor-top-Alice",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-John",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 414.0,
+          "y": 37.0
+        },
+        {
+          "height": 39.0,
+          "id": "note-1",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 175.0,
+          "y": 123.5
+        },
+        {
+          "height": 112.0,
+          "id": "rect-4",
+          "is_cluster": false,
+          "width": 353.0,
+          "x": 242.5,
+          "y": 255.0
+        },
+        {
+          "height": 283.0,
+          "id": "rect-0",
+          "is_cluster": false,
+          "width": 373.0,
+          "x": 242.5,
+          "y": 225.5
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-Alice",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 516.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-John",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 414.0,
+          "y": 516.0
+        }
+      ]
     }
   }
 }

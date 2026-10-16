@@ -2,493 +2,493 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 782.0,
-        "max_y": 1445.482
-      },
-      "width": 832.0,
-      "height": 1455.482,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Context",
-      "title": "Relationship direction variants",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 632.0,
+          "descr": null,
           "height": 1329.482,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 632.0,
+          "x": 100.0,
+          "y": 66.0
         }
       ],
-      "shapes": [
-        {
-          "alias": "a",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "A",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "b",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "B",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "c",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 421.896,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "C",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "d",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 466.0,
-          "y": 421.896,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "D",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "e",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 677.793,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "E",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "f",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 466.0,
-          "y": 677.793,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "F",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "g",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 933.689,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "G",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "h",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 466.0,
-          "y": 933.689,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "H",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "i",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 150.0,
-          "y": 1189.586,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "I",
-            "y": 27.7,
-            "width": 4.2,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        },
-        {
-          "alias": "j",
-          "parent_boundary": "global",
-          "type_c4_shape": "person",
-          "x": 466.0,
-          "y": 1189.586,
-          "width": 216.0,
-          "height": 155.896,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Person]",
-            "y": 44.175,
-            "width": 35.805,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "J",
-            "y": 27.7,
-            "width": 8.4,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": null
-        }
-      ],
+      "bounds": {
+        "max_x": 782.0,
+        "max_y": 1445.482,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Context",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 1455.482,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 533.342,
+            "y": 243.948
+          },
           "from": "a",
-          "to": "b",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "up",
+            "width": 10.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": null,
           "rel_type": "rel_u",
           "start_point": {
             "x": 298.658,
             "y": 243.948
           },
+          "techn": null,
+          "to": "b"
+        },
+        {
+          "descr": null,
           "end_point": {
             "x": 533.342,
-            "y": 243.948
+            "y": 499.845
+          },
+          "from": "c",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "down",
+            "width": 25.0,
+            "y": 0.0
           },
           "offset_x": null,
           "offset_y": null,
-          "label": {
-            "text": "up",
-            "y": 0.0,
-            "width": 10.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "techn": null,
-          "descr": null
-        },
-        {
-          "from": "c",
-          "to": "d",
           "rel_type": "rel_d",
           "start_point": {
             "x": 298.658,
             "y": 499.845
           },
+          "techn": null,
+          "to": "d"
+        },
+        {
+          "descr": null,
           "end_point": {
             "x": 533.342,
-            "y": 499.845
+            "y": 755.741
+          },
+          "from": "e",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "left",
+            "width": 19.0,
+            "y": 0.0
           },
           "offset_x": null,
           "offset_y": null,
-          "label": {
-            "text": "down",
-            "y": 0.0,
-            "width": 25.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "techn": null,
-          "descr": null
-        },
-        {
-          "from": "e",
-          "to": "f",
           "rel_type": "rel_l",
           "start_point": {
             "x": 298.658,
             "y": 755.741
           },
+          "techn": null,
+          "to": "f"
+        },
+        {
+          "descr": null,
           "end_point": {
             "x": 533.342,
-            "y": 755.741
+            "y": 1011.637
+          },
+          "from": "g",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "right",
+            "width": 24.0,
+            "y": 0.0
           },
           "offset_x": null,
           "offset_y": null,
-          "label": {
-            "text": "left",
-            "y": 0.0,
-            "width": 19.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "techn": null,
-          "descr": null
-        },
-        {
-          "from": "g",
-          "to": "h",
           "rel_type": "rel_r",
           "start_point": {
             "x": 298.658,
             "y": 1011.637
           },
+          "techn": null,
+          "to": "h"
+        },
+        {
+          "descr": null,
           "end_point": {
             "x": 533.342,
-            "y": 1011.637
+            "y": 1267.534
+          },
+          "from": "i",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "back",
+            "width": 22.0,
+            "y": 0.0
           },
           "offset_x": null,
           "offset_y": null,
-          "label": {
-            "text": "right",
-            "y": 0.0,
-            "width": 24.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
-          "techn": null,
-          "descr": null
-        },
-        {
-          "from": "i",
-          "to": "j",
           "rel_type": "rel_b",
           "start_point": {
             "x": 298.658,
             "y": 1267.534
           },
-          "end_point": {
-            "x": 533.342,
-            "y": 1267.534
-          },
-          "offset_x": null,
-          "offset_y": null,
-          "label": {
-            "text": "back",
-            "y": 0.0,
-            "width": 22.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": null,
-          "descr": null
+          "to": "j"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "a",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "A",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "b",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "B",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
+        },
+        {
+          "alias": "c",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "C",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 421.896
+        },
+        {
+          "alias": "d",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "D",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 421.896
+        },
+        {
+          "alias": "e",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "E",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 677.793
+        },
+        {
+          "alias": "f",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "F",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 677.793
+        },
+        {
+          "alias": "g",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "G",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 933.689
+        },
+        {
+          "alias": "h",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "H",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 933.689
+        },
+        {
+          "alias": "i",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "I",
+            "width": 4.2,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 1189.586
+        },
+        {
+          "alias": "j",
+          "descr": null,
+          "height": 155.896,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "J",
+            "width": 8.4,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Person]",
+            "width": 35.805,
+            "y": 44.175
+          },
+          "type_c4_shape": "person",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 1189.586
+        }
+      ],
+      "title": "Relationship direction variants",
+      "use_max_width": true,
+      "width": 832.0
     }
   }
 }

@@ -1,325 +1,325 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": "Long Labels and Spacing",
-    "accTitle": "Architecture Stress Long Labels",
     "accDescr": "This is a long accessibility description to ensure the parser handles blocks.\nSecond line should be preserved.",
-    "groups": [
+    "accTitle": "Architecture Stress Long Labels",
+    "edges": [
       {
-        "id": "g",
-        "icon": "cloud",
-        "title": "Group With Title",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": true,
+        "lhsId": "out",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": true,
+        "rhsId": "a",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "a",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "b",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "b",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "c",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": true,
+        "lhsId": "c",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": true,
+        "rhsId": "out",
+        "rhsInto": true,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "g",
+        "in": null,
+        "title": "Group With Title"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "a",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "out",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "a",
+            "lhsId": "out",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "a",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "b",
+            "lhsId": "a",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "b",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "a",
+        "in": "g",
         "title": "Service Name",
-        "in": "g"
+        "type": "service"
       },
       {
-        "id": "b",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "a",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "b",
+            "lhsId": "a",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "b",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "b",
+        "in": "g",
         "title": "Database Name",
-        "in": "g"
+        "type": "service"
       },
       {
-        "id": "c",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "c",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "out",
+            "lhsId": "c",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "out",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "c",
+        "in": "g",
         "title": "Storage Name",
-        "in": "g"
+        "type": "service"
       },
       {
-        "id": "out",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "out",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "a",
+            "lhsId": "out",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "c",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "out",
+            "lhsId": "c",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "out",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "internet",
         "iconText": null,
+        "id": "out",
+        "in": null,
         "title": "Outside",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "a",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "out",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "a",
+            "lhsId": "out",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "a",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "b",
+            "lhsId": "a",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "b",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "a",
+        "in": "g",
         "title": "Service Name",
-        "in": "g"
+        "type": "service"
       },
       {
-        "id": "b",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "a",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "b",
+            "lhsId": "a",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "b",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "b",
+        "in": "g",
         "title": "Database Name",
-        "in": "g"
+        "type": "service"
       },
       {
-        "id": "c",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "b",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "c",
+            "lhsId": "b",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "c",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "c",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "out",
+            "lhsId": "c",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "out",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "c",
+        "in": "g",
         "title": "Storage Name",
-        "in": "g"
+        "type": "service"
       },
       {
-        "id": "out",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "out",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "a",
+            "lhsId": "out",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "a",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "c",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": true,
-            "rhsId": "out",
+            "lhsId": "c",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": true,
             "rhsGroup": true,
+            "rhsId": "out",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "internet",
         "iconText": null,
+        "id": "out",
+        "in": null,
         "title": "Outside",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "out",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": true,
-        "rhsId": "a",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": true,
-        "title": null
-      },
-      {
-        "lhsId": "a",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "b",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "b",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "c",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "c",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": true,
-        "rhsId": "out",
-        "rhsDir": "B",
-        "rhsInto": true,
-        "rhsGroup": true,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": "Long Labels and Spacing",
+    "type": "architecture"
   }
 }

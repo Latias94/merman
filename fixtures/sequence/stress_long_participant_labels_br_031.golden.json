@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "1",
       "2",
@@ -12,67 +10,77 @@
     ],
     "actors": {
       "1": {
-        "name": "1",
         "description": "very-long-participant-label<br/>line-2<br/>line-3",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "1",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "2": {
-        "name": "2",
         "description": "another-long-participant-label<br>line-2",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "2",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "3": {
-        "name": "3",
         "description": "short",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "3",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "1",
-        "to": "2",
-        "message": "message with <br/> inside<br/>and another line",
-        "wrap": true,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "2",
-        "to": "1",
-        "message": "message with <br> inside<br>and another line",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "1",
-        "to": "2",
-        "message": "note with multiple lines<br/>line 2<br/>line 3",
-        "wrap": true,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": "1",
+        "id": "0",
+        "message": "message with <br/> inside<br/>and another line",
+        "to": "2",
+        "type": 0,
+        "wrap": true
       },
       {
-        "id": "3",
+        "activate": false,
         "from": "2",
-        "to": "3",
+        "id": "1",
+        "message": "message with <br> inside<br>and another line",
+        "to": "1",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "1",
+        "id": "2",
+        "message": "note with multiple lines<br/>line 2<br/>line 3",
+        "placement": 2,
+        "to": "2",
+        "type": 2,
+        "wrap": true
+      },
+      {
+        "activate": false,
+        "from": "2",
+        "id": "3",
         "message": "ok",
-        "wrap": false,
+        "to": "3",
         "type": 0,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -81,20 +89,12 @@
           "1",
           "2"
         ],
-        "placement": 2,
         "message": "note with multiple lines<br/>line 2<br/>line 3",
+        "placement": 2,
         "wrap": true
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

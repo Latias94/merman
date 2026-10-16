@@ -1,39 +1,63 @@
 {
   "diagramType": "venn",
   "model": {
-    "type": "venn",
-    "title": "Software Engineering Skills",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "styleEntries": [
+      {
+        "styles": {
+          "fill": "#ff6b6b"
+        },
+        "targets": [
+          "Frontend"
+        ]
+      },
+      {
+        "styles": {
+          "fill": "#4ecdc4"
+        },
+        "targets": [
+          "Backend"
+        ]
+      },
+      {
+        "styles": {
+          "fill": "#45b7d1"
+        },
+        "targets": [
+          "DevOps"
+        ]
+      }
+    ],
     "subsets": [
       {
+        "label": "Frontend",
         "sets": [
           "Frontend"
         ],
-        "size": 10.0,
-        "label": "Frontend"
+        "size": 10.0
       },
       {
+        "label": "Backend",
         "sets": [
           "Backend"
         ],
-        "size": 10.0,
-        "label": "Backend"
+        "size": 10.0
       },
       {
+        "label": "DevOps",
         "sets": [
           "DevOps"
         ],
-        "size": 10.0,
-        "label": "DevOps"
+        "size": 10.0
       },
       {
+        "label": "Fullstack",
         "sets": [
           "Backend",
           "Frontend"
         ],
-        "size": 2.5,
-        "label": "Fullstack"
+        "size": 2.5
       },
       {
         "sets": [
@@ -60,115 +84,91 @@
     ],
     "textNodes": [
       {
+        "id": "React",
         "sets": [
           "Frontend"
-        ],
-        "id": "React"
+        ]
       },
       {
+        "id": "CSS",
         "sets": [
           "Frontend"
-        ],
-        "id": "CSS"
+        ]
       },
       {
+        "id": "HTML",
         "sets": [
           "Frontend"
-        ],
-        "id": "HTML"
+        ]
       },
       {
+        "id": "Node.js",
         "sets": [
           "Backend"
-        ],
-        "id": "Node.js"
+        ]
       },
       {
+        "id": "SQL",
         "sets": [
           "Backend"
-        ],
-        "id": "SQL"
+        ]
       },
       {
+        "id": "APIs",
         "sets": [
           "Backend"
-        ],
-        "id": "APIs"
+        ]
       },
       {
+        "id": "Docker",
         "sets": [
           "DevOps"
-        ],
-        "id": "Docker"
+        ]
       },
       {
+        "id": "CI/CD",
         "sets": [
           "DevOps"
-        ],
-        "id": "CI/CD"
+        ]
       },
       {
+        "id": "REST",
         "sets": [
           "Backend",
           "Frontend"
-        ],
-        "id": "REST"
+        ]
       },
       {
+        "id": "GraphQL",
         "sets": [
           "Backend",
           "Frontend"
-        ],
-        "id": "GraphQL"
+        ]
       },
       {
+        "id": "Monitoring",
         "sets": [
           "Backend",
           "DevOps"
-        ],
-        "id": "Monitoring"
+        ]
       },
       {
+        "id": "Performance",
         "sets": [
           "DevOps",
           "Frontend"
-        ],
-        "id": "Performance"
+        ]
       },
       {
+        "id": "Architecture",
         "sets": [
           "Backend",
           "DevOps",
           "Frontend"
-        ],
-        "id": "Architecture"
+        ]
       }
     ],
-    "styleEntries": [
-      {
-        "targets": [
-          "Frontend"
-        ],
-        "styles": {
-          "fill": "#ff6b6b"
-        }
-      },
-      {
-        "targets": [
-          "Backend"
-        ],
-        "styles": {
-          "fill": "#4ecdc4"
-        }
-      },
-      {
-        "targets": [
-          "DevOps"
-        ],
-        "styles": {
-          "fill": "#45b7d1"
-        }
-      }
-    ]
+    "title": "Software Engineering Skills",
+    "type": "venn"
   }
 }

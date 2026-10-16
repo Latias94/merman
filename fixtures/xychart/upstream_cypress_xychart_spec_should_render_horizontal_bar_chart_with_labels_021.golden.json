@@ -1,52 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "horizontal",
-    "title": "Sales Revenue",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "Months",
-      "categories": [
-        "jan",
-        "feb",
-        "mar",
-        "apr",
-        "may",
-        "jun",
-        "jul",
-        "aug",
-        "sep",
-        "oct",
-        "nov",
-        "dec"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "Revenue (in $)",
-      "min": 4000.0,
-      "max": 11000.0
-    },
+    "accTitle": null,
+    "orientation": "horizontal",
     "plots": [
       {
-        "type": "bar",
-        "title": "",
-        "values": [
-          5000.0,
-          6000.0,
-          7500.0,
-          8200.0,
-          9500.0,
-          10500.0,
-          11000.0,
-          10200.0,
-          9200.0,
-          8500.0,
-          7000.0,
-          6000.0
-        ],
         "data": [
           [
             "jan",
@@ -96,9 +55,50 @@
             "dec",
             6000.0
           ]
+        ],
+        "title": "",
+        "type": "bar",
+        "values": [
+          5000.0,
+          6000.0,
+          7500.0,
+          8200.0,
+          9500.0,
+          10500.0,
+          11000.0,
+          10200.0,
+          9200.0,
+          8500.0,
+          7000.0,
+          6000.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Sales Revenue",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "jan",
+        "feb",
+        "mar",
+        "apr",
+        "may",
+        "jun",
+        "jul",
+        "aug",
+        "sep",
+        "oct",
+        "nov",
+        "dec"
+      ],
+      "title": "Months",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 11000.0,
+      "min": 4000.0,
+      "title": "Revenue (in $)",
+      "type": "linear"
+    }
   }
 }

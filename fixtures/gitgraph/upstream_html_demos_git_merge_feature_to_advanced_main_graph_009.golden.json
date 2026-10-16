@@ -1,53 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "0-<dynamic>",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "1-<dynamic>",
-        "message": "",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "0-<dynamic>"
-        ],
-        "branch": "newbranch"
-      },
-      {
-        "id": "2-<dynamic>",
-        "message": "",
-        "seq": 2,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "0-<dynamic>"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "3-<dynamic>",
-        "message": "merged branch newbranch into main",
-        "seq": 3,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "2-<dynamic>",
-          "1-<dynamic>"
-        ],
-        "branch": "main",
-        "customId": false
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -56,10 +11,55 @@
         "name": "newbranch"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "0-<dynamic>",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "newbranch",
+        "id": "1-<dynamic>",
+        "message": "",
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "2-<dynamic>",
+        "message": "",
+        "parents": [
+          "0-<dynamic>"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": false,
+        "id": "3-<dynamic>",
+        "message": "merged branch newbranch into main",
+        "parents": [
+          "2-<dynamic>",
+          "1-<dynamic>"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 3
+      }
+    ],
     "currentBranch": "main",
     "direction": "BT",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

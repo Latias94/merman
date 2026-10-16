@@ -1,59 +1,59 @@
 {
   "diagramType": "eventmodeling",
   "model": {
-    "type": "eventmodeling",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "dataEntities": [],
     "frames": [
       {
-        "name": "01",
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "CartScreen",
         "frameKind": "timeframe",
         "modelEntityType": "ui",
-        "entityIdentifier": "CartScreen",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
+        "name": "01",
+        "sourceFrames": []
       },
       {
-        "name": "02",
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "AddItem",
         "frameKind": "timeframe",
         "modelEntityType": "cmd",
-        "entityIdentifier": "AddItem",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
+        "name": "02",
+        "sourceFrames": []
       },
       {
-        "name": "03",
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "ItemAdded",
         "frameKind": "timeframe",
         "modelEntityType": "evt",
-        "entityIdentifier": "ItemAdded",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
+        "name": "03",
+        "sourceFrames": []
       },
       {
-        "name": "04",
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "CartItems",
         "frameKind": "timeframe",
         "modelEntityType": "rmo",
-        "entityIdentifier": "CartItems",
+        "name": "04",
         "sourceFrames": [
           "03"
-        ],
-        "dataInlineValue": null,
-        "dataReference": null
+        ]
       },
       {
-        "name": "05",
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "AccountingItemAdded",
         "frameKind": "timeframe",
         "modelEntityType": "evt",
-        "entityIdentifier": "AccountingItemAdded",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
+        "name": "05",
+        "sourceFrames": []
       }
     ],
-    "dataEntities": []
+    "title": null,
+    "type": "eventmodeling"
   }
 }

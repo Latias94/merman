@@ -2,104 +2,104 @@
   "diagramType": "cynefin",
   "layout": {
     "CynefinDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 880.0,
-        "max_y": 680.0
-      },
-      "width": 800.0,
-      "height": 600.0,
-      "padding": 40.0,
-      "total_width": 880.0,
-      "total_height": 680.0,
-      "use_max_width": true,
-      "show_domain_descriptions": true,
       "boundary_amplitude": 8.0,
+      "bounds": {
+        "max_x": 880.0,
+        "max_y": 680.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "domain_layouts": [
         {
+          "cx": 200.0,
+          "cy": 150.0,
+          "height": 300.0,
           "name": "complex",
-          "cx": 200.0,
-          "cy": 150.0,
-          "x": 0.0,
-          "y": 0.0,
           "width": 400.0,
-          "height": 300.0
+          "x": 0.0,
+          "y": 0.0
         },
         {
+          "cx": 600.0,
+          "cy": 150.0,
+          "height": 300.0,
           "name": "complicated",
-          "cx": 600.0,
-          "cy": 150.0,
-          "x": 400.0,
-          "y": 0.0,
           "width": 400.0,
-          "height": 300.0
+          "x": 400.0,
+          "y": 0.0
         },
         {
-          "name": "chaotic",
           "cx": 200.0,
           "cy": 450.0,
-          "x": 0.0,
-          "y": 300.0,
+          "height": 300.0,
+          "name": "chaotic",
           "width": 400.0,
-          "height": 300.0
+          "x": 0.0,
+          "y": 300.0
         },
         {
-          "name": "clear",
           "cx": 600.0,
           "cy": 450.0,
-          "x": 400.0,
-          "y": 300.0,
+          "height": 300.0,
+          "name": "clear",
           "width": 400.0,
-          "height": 300.0
+          "x": 400.0,
+          "y": 300.0
         },
         {
-          "name": "confusion",
           "cx": 400.0,
           "cy": 300.0,
-          "x": 280.0,
-          "y": 210.0,
+          "height": 180.0,
+          "name": "confusion",
           "width": 240.0,
-          "height": 180.0
+          "x": 280.0,
+          "y": 210.0
         }
       ],
+      "height": 600.0,
       "items": [
         {
           "domain": "complex",
-          "label": "Retrospective",
-          "x": 156.34,
-          "y": 175.0,
-          "width": 87.32,
           "height": 26.0,
+          "label": "Retrospective",
+          "overflow": false,
           "text_x": 43.66,
           "text_y": 13.0,
-          "overflow": false
+          "width": 87.32,
+          "x": 156.34,
+          "y": 175.0
         },
         {
           "domain": "clear",
-          "label": "Runbook",
-          "x": 570.2,
-          "y": 475.0,
-          "width": 59.6,
           "height": 26.0,
+          "label": "Runbook",
+          "overflow": false,
           "text_x": 29.8,
           "text_y": 13.0,
-          "overflow": false
+          "width": 59.6,
+          "x": 570.2,
+          "y": 475.0
         }
       ],
+      "padding": 40.0,
+      "show_domain_descriptions": true,
+      "total_height": 680.0,
+      "total_width": 880.0,
       "transitions": [
         {
-          "from": "clear",
-          "to": "complex",
-          "label": "Probe",
-          "x1": 600.0,
-          "y1": 450.0,
-          "x2": 200.0,
-          "y2": 150.0,
           "cpx": 445.0,
-          "cpy": 240.0
+          "cpy": 240.0,
+          "from": "clear",
+          "label": "Probe",
+          "to": "complex",
+          "x1": 600.0,
+          "x2": 200.0,
+          "y1": 450.0,
+          "y2": 150.0
         }
-      ]
+      ],
+      "use_max_width": true,
+      "width": 800.0
     }
   }
 }

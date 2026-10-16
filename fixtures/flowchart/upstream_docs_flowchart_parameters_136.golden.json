@@ -1,43 +1,43 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "flowchart",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [],
+    "keyword": "flowchart",
+    "nodes": [
+      {
+        "assetHeight": 60.0,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": "on",
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "A",
+        "img": "https://mermaid.js.org/favicon.svg",
+        "label": "My example image label",
+        "labelType": "markdown",
+        "layoutShape": "imageSquare",
+        "link": null,
+        "linkTarget": null,
+        "pos": "t",
+        "shape": null,
+        "styles": []
+      }
+    ],
+    "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
     "vertexCalls": [
       "A",
       "A"
-    ],
-    "nodes": [
-      {
-        "id": "A",
-        "label": "My example image label",
-        "labelType": "markdown",
-        "shape": null,
-        "layoutShape": "imageSquare",
-        "icon": null,
-        "form": null,
-        "pos": "t",
-        "img": "https://mermaid.js.org/favicon.svg",
-        "constraint": "on",
-        "assetWidth": null,
-        "assetHeight": 60.0,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [],
-    "subgraphs": []
+    ]
   }
 }

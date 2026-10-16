@@ -1,87 +1,87 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "A Gantt Diagram Excluding Fri - Sat weekends",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
     "excludes": [
       "weekends"
     ],
+    "includes": [],
     "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "friday",
-    "displayMode": "",
+    "links": {},
     "sections": [
       "Section"
     ],
     "tasks": [
       {
-        "section": "Section",
-        "type": "Section",
-        "task": "A task          ",
-        "id": "a1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-02-12T00:00:00.000",
+        "id": "a1",
         "manualEndTime": false,
-        "renderEndTime": "2024-02-12T00:00:00.000",
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":a1, 2024-01-01, 30d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-01-01"
-          },
           "endTime": {
             "data": "30d"
+          },
+          "startTime": {
+            "startData": "2024-01-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-02-12T00:00:00.000",
+        "section": "Section",
         "startTime": "2024-01-01T00:00:00.000",
-        "endTime": "2024-02-12T00:00:00.000"
+        "task": "A task          ",
+        "type": "Section",
+        "vert": false
       },
       {
-        "section": "Section",
-        "type": "Section",
-        "task": "Another task    ",
-        "id": "task1",
-        "prevTaskId": "a1",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-03-11T00:00:00.000",
+        "id": "task1",
         "manualEndTime": false,
-        "renderEndTime": "2024-03-11T00:00:00.000",
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "a1",
+        "processed": true,
         "raw": {
           "data": ":after a1, 20d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after a1"
-          },
           "endTime": {
             "data": "20d"
+          },
+          "startTime": {
+            "startData": "after a1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-03-11T00:00:00.000",
+        "section": "Section",
         "startTime": "2024-02-12T00:00:00.000",
-        "endTime": "2024-03-11T00:00:00.000"
+        "task": "Another task    ",
+        "type": "Section",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "A Gantt Diagram Excluding Fri - Sat weekends",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "friday"
   }
 }

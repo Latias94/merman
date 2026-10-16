@@ -1,67 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "ZERO",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "A",
-        "message": "",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "ZERO"
-        ],
-        "branch": "feature"
-      },
-      {
-        "id": "B",
-        "message": "",
-        "seq": 2,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "A"
-        ],
-        "branch": "feature"
-      },
-      {
-        "id": "M",
-        "message": "merged branch feature into main",
-        "seq": 3,
-        "type": 3,
-        "tags": [],
-        "parents": [
-          "ZERO",
-          "B"
-        ],
-        "branch": "main",
-        "customId": true
-      },
-      {
-        "id": "4-<dynamic>",
-        "message": "cherry-picked merged branch feature into main into release",
-        "seq": 4,
-        "type": 4,
-        "tags": [
-          "v1.0"
-        ],
-        "parents": [
-          "ZERO",
-          "M"
-        ],
-        "branch": "release"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -73,10 +14,69 @@
         "name": "release"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "ZERO",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "feature",
+        "id": "A",
+        "message": "",
+        "parents": [
+          "ZERO"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "feature",
+        "id": "B",
+        "message": "",
+        "parents": [
+          "A"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "customId": true,
+        "id": "M",
+        "message": "merged branch feature into main",
+        "parents": [
+          "ZERO",
+          "B"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 3
+      },
+      {
+        "branch": "release",
+        "id": "4-<dynamic>",
+        "message": "cherry-picked merged branch feature into main into release",
+        "parents": [
+          "ZERO",
+          "M"
+        ],
+        "seq": 4,
+        "tags": [
+          "v1.0"
+        ],
+        "type": 4
+      }
+    ],
     "currentBranch": "release",
     "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

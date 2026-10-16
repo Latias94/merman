@@ -2,9 +2,9 @@
   "diagramType": "error",
   "layout": {
     "ErrorDiagram": {
-      "viewbox_width": 2412.0,
+      "max_width_px": 614.661,
       "viewbox_height": 614.661,
-      "max_width_px": 614.661
+      "viewbox_width": 2412.0
     }
   }
 }

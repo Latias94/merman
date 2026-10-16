@@ -2,146 +2,146 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
-      "bounds": {
-        "min_x": -106.76,
-        "min_y": -20.0,
-        "max_x": 258.0,
-        "max_y": 106.0
-      },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 250.0,
-      "branches": [
+      "arrows": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
-          "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "class_index": 0.0,
+          "d": "M 10 -2 L 60 -2",
+          "from": "Alpha",
+          "to": "Beta"
         },
         {
-          "name": "develop",
-          "index": 1.0,
-          "pos": 90.0,
+          "class_index": 1.0,
+          "d": "M 60 -2 L 60 68 A 20 20, 0, 0, 0, 80 88 L 110 88",
+          "from": "Beta",
+          "to": "Gamma"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 110 88 L 160 88",
+          "from": "Gamma",
+          "to": "Delta"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 60 -2 L 210 -2",
+          "from": "Beta",
+          "to": "Epsilon"
+        }
+      ],
+      "bounds": {
+        "max_x": 258.0,
+        "max_y": 106.0,
+        "min_x": -106.76,
+        "min_y": -20.0
+      },
+      "branches": [
+        {
+          "bbox_height": 17.6,
+          "bbox_width": 30.72,
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
+        },
+        {
+          "bbox_height": 17.6,
           "bbox_width": 45.76,
-          "bbox_height": 17.6
+          "index": 1.0,
+          "name": "develop",
+          "pos": 90.0
         }
       ],
       "commits": [
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Alpha",
           "message": "",
-          "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [],
-          "branch": "main",
           "pos": 0.0,
           "pos_with_offset": 10.0,
+          "seq": 0.0,
+          "tags": [],
           "x": 10.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Beta",
           "message": "",
-          "seq": 1.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Alpha"
           ],
-          "branch": "main",
           "pos": 50.0,
           "pos_with_offset": 60.0,
+          "seq": 1.0,
+          "tags": [],
           "x": 60.0,
           "y": -2.0
         },
         {
+          "branch": "develop",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Gamma",
           "message": "",
-          "seq": 2.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Beta"
           ],
-          "branch": "develop",
           "pos": 100.0,
           "pos_with_offset": 110.0,
+          "seq": 2.0,
+          "tags": [],
           "x": 110.0,
           "y": 88.0
         },
         {
+          "branch": "develop",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Delta",
           "message": "",
-          "seq": 3.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Gamma"
           ],
-          "branch": "develop",
           "pos": 150.0,
           "pos_with_offset": 160.0,
+          "seq": 3.0,
+          "tags": [],
           "x": 160.0,
           "y": 88.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "Epsilon",
           "message": "",
-          "seq": 4.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "Beta"
           ],
-          "branch": "main",
           "pos": 200.0,
           "pos_with_offset": 210.0,
+          "seq": 4.0,
+          "tags": [],
           "x": 210.0,
           "y": -2.0
         }
       ],
-      "arrows": [
-        {
-          "from": "Alpha",
-          "to": "Beta",
-          "class_index": 0.0,
-          "d": "M 10 -2 L 60 -2"
-        },
-        {
-          "from": "Beta",
-          "to": "Gamma",
-          "class_index": 1.0,
-          "d": "M 60 -2 L 60 68 A 20 20, 0, 0, 0, 80 88 L 110 88"
-        },
-        {
-          "from": "Gamma",
-          "to": "Delta",
-          "class_index": 1.0,
-          "d": "M 110 88 L 160 88"
-        },
-        {
-          "from": "Beta",
-          "to": "Epsilon",
-          "class_index": 0.0,
-          "d": "M 60 -2 L 210 -2"
-        }
-      ]
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 250.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

@@ -1,65 +1,65 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
       "ADDRESS": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-ADDRESS-1",
         "label": "ADDRESS",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
+        "shape": "erBox"
       },
       "CUSTOMER": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-CUSTOMER-0",
         "label": "CUSTOMER",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-CUSTOMER-0",
-        "roleA": "invoiced at",
         "entityB": "entity-ADDRESS-1",
         "relSpec": {
           "cardA": "ONE_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "invoiced at"
       },
       {
         "entityA": "entity-CUSTOMER-0",
-        "roleA": "receives goods at",
         "entityB": "entity-ADDRESS-1",
         "relSpec": {
           "cardA": "ONE_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "receives goods at"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

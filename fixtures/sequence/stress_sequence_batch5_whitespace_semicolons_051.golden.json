@@ -1,114 +1,122 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "A",
-        "to": "B",
-        "message": "hello ﬂ°°59¶ß world",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "B",
-        "message": "note ﬂ°°59¶ß with escaped semicolon",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
+        "from": "A",
+        "id": "0",
+        "message": "hello ﬂ°°59¶ß world",
+        "to": "B",
+        "type": 0,
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "note ﬂ°°59¶ß with escaped semicolon",
+        "placement": 2,
+        "to": "B",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
         "id": "2",
-        "from": null,
-        "to": null,
         "message": "retry",
-        "wrap": false,
+        "to": null,
         "type": 10,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "A",
         "id": "3",
-        "from": "A",
-        "to": "B",
         "message": "attempt 1",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "A",
         "to": "B",
-        "message": "attempt 2 ﬂ°°59¶ß",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "A",
+        "id": "4",
+        "message": "attempt 2 ﬂ°°59¶ß",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
         "id": "5",
-        "from": null,
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 11,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "6",
-        "from": null,
-        "to": null,
         "message": "optional branch",
-        "wrap": false,
-        "type": 15,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "B",
-        "to": "A",
-        "message": "ok",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": null,
         "to": null,
+        "type": 15,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "7",
+        "message": "ok",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "8",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 16,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -117,20 +125,12 @@
           "A",
           "B"
         ],
-        "placement": 2,
         "message": "note ﬂ°°59¶ß with escaped semicolon",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

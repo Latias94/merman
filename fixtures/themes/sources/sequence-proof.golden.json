@@ -1,105 +1,113 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "User",
       "Service"
     ],
     "actors": {
       "Service": {
-        "name": "Service",
         "description": "Service",
-        "type": "participant",
-        "wrap": false,
         "links": {},
-        "properties": {}
+        "name": "Service",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "User": {
-        "name": "User",
         "description": "User",
-        "type": "actor",
-        "wrap": false,
         "links": {},
-        "properties": {}
+        "name": "User",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": "User",
+        "id": "0",
+        "message": "Submit request",
         "to": "Service",
         "type": 0,
-        "message": "Submit request",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "1",
+        "activate": false,
         "from": "Service",
+        "id": "1",
+        "message": "",
         "to": null,
         "type": 17,
-        "message": "",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "2",
+        "activate": false,
         "from": "User",
+        "id": "2",
+        "message": "Request accepted",
+        "placement": 2,
         "to": "Service",
         "type": 2,
-        "message": "Request accepted",
-        "wrap": false,
-        "activate": false,
-        "placement": 2
+        "wrap": false
       },
       {
-        "id": "3",
+        "activate": false,
         "from": null,
+        "id": "3",
+        "message": "Poll status",
         "to": null,
         "type": 10,
-        "message": "Poll status",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "4",
+        "activate": false,
         "from": "Service",
+        "id": "4",
+        "message": "Processing",
         "to": "User",
         "type": 1,
-        "message": "Processing",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "5",
+        "activate": false,
         "from": null,
+        "id": "5",
+        "message": "",
         "to": null,
         "type": 11,
-        "message": "",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "6",
+        "activate": false,
         "from": "Service",
+        "id": "6",
+        "message": "Complete",
         "to": "User",
         "type": 1,
-        "message": "Complete",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "7",
+        "activate": false,
         "from": "Service",
+        "id": "7",
+        "message": "",
         "to": null,
         "type": 18,
-        "message": "",
-        "wrap": false,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -113,15 +121,7 @@
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

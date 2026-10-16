@@ -2,9 +2,9 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [],
+      "bounds": null,
       "edges": [],
-      "bounds": null
+      "nodes": []
     }
   }
 }

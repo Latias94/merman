@@ -2,31 +2,75 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
+      "bounds": {
+        "max_x": 80.0,
+        "max_y": 218.606,
+        "min_x": 0.0,
+        "min_y": -104.606
+      },
+      "cytoscape_service_bounds": [
         {
+          "body_bounds": {
+            "max_x": 80.0,
+            "max_y": -24.606,
+            "min_x": 0.0,
+            "min_y": -104.606
+          },
           "id": "server",
-          "x": 0.0,
-          "y": -104.606,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "groupOne",
+          "label_bounds": {
+            "max_x": 64.0,
+            "max_y": -6.606,
+            "min_x": 16.0,
+            "min_y": -104.606
+          },
+          "label_metrics": {
+            "half_width": 22.0,
+            "text_width": 44.0
+          },
+          "union_bounds": {
+            "max_x": 81.0,
+            "max_y": -6.606,
+            "min_x": -1.0,
+            "min_y": -105.606
+          }
         },
         {
+          "body_bounds": {
+            "max_x": 80.0,
+            "max_y": 218.606,
+            "min_x": 0.0,
+            "min_y": 138.606
+          },
           "id": "subnet",
-          "x": 0.0,
-          "y": 138.606,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "groupTwo",
+          "label_bounds": {
+            "max_x": 64.0,
+            "max_y": 236.606,
+            "min_x": 16.0,
+            "min_y": 138.606
+          },
+          "label_metrics": {
+            "half_width": 22.0,
+            "text_width": 44.0
+          },
+          "union_bounds": {
+            "max_x": 81.0,
+            "max_y": 236.606,
+            "min_x": -1.0,
+            "min_y": 137.606
+          }
         }
       ],
       "edges": [
         {
-          "id": "edge-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "server",
-          "to": "subnet",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-0",
+          "label": null,
           "points": [
             {
               "x": 40.0,
@@ -41,96 +85,52 @@
               "y": 138.606
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        }
-      ],
-      "cytoscape_service_bounds": [
-        {
-          "id": "server",
-          "in_group": "groupOne",
-          "body_bounds": {
-            "min_x": 0.0,
-            "min_y": -104.606,
-            "max_x": 80.0,
-            "max_y": -24.606
-          },
-          "label_bounds": {
-            "min_x": 16.0,
-            "min_y": -104.606,
-            "max_x": 64.0,
-            "max_y": -6.606
-          },
-          "label_metrics": {
-            "text_width": 44.0,
-            "half_width": 22.0
-          },
-          "union_bounds": {
-            "min_x": -1.0,
-            "min_y": -105.606,
-            "max_x": 81.0,
-            "max_y": -6.606
-          }
-        },
-        {
-          "id": "subnet",
-          "in_group": "groupTwo",
-          "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 138.606,
-            "max_x": 80.0,
-            "max_y": 218.606
-          },
-          "label_bounds": {
-            "min_x": 16.0,
-            "min_y": 138.606,
-            "max_x": 64.0,
-            "max_y": 236.606
-          },
-          "label_metrics": {
-            "text_width": 44.0,
-            "half_width": 22.0
-          },
-          "union_bounds": {
-            "min_x": -1.0,
-            "min_y": 137.606,
-            "max_x": 81.0,
-            "max_y": 236.606
-          }
+          "stroke_dasharray": null,
+          "to": "subnet",
+          "to_cluster": null
         }
       ],
       "fcose_compound_bounds": [
         {
-          "id": "groupOne",
           "bounds": {
-            "min_x": -80.0,
-            "min_y": -184.606,
             "max_x": 80.0,
-            "max_y": -24.606
-          }
+            "max_y": -24.606,
+            "min_x": -80.0,
+            "min_y": -184.606
+          },
+          "id": "groupOne"
         },
         {
-          "id": "groupTwo",
           "bounds": {
-            "min_x": -80.0,
-            "min_y": 58.606,
             "max_x": 80.0,
-            "max_y": 218.606
-          }
+            "max_y": 218.606,
+            "min_x": -80.0,
+            "min_y": 58.606
+          },
+          "id": "groupTwo"
         }
       ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": -104.606,
-        "max_x": 80.0,
-        "max_y": 218.606
-      }
+      "nodes": [
+        {
+          "height": 80.0,
+          "id": "server",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 0.0,
+          "y": -104.606
+        },
+        {
+          "height": 80.0,
+          "id": "subnet",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 0.0,
+          "y": 138.606
+        }
+      ]
     }
   }
 }

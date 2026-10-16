@@ -1,196 +1,204 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "U",
       "S",
       "W"
     ],
     "actors": {
-      "U": {
-        "name": "U",
-        "description": "User",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "S": {
-        "name": "S",
         "description": "Service",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "S",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "U": {
+        "description": "User",
+        "links": {},
+        "name": "U",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "W": {
-        "name": "W",
         "description": "Worker",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "W",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": null,
         "id": "0",
-        "from": null,
-        "to": null,
         "message": "rgba(240,240,255,0.7)",
-        "wrap": false,
+        "to": null,
         "type": 22,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "1",
+        "activate": false,
         "from": "U",
-        "to": "S",
+        "id": "1",
         "message": "Request",
-        "wrap": false,
+        "to": "S",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "S",
         "id": "2",
-        "from": "S",
-        "to": null,
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 17,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": null,
         "id": "3",
-        "from": null,
-        "to": null,
         "message": "processing",
-        "wrap": false,
+        "to": null,
         "type": 19,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "S",
         "id": "4",
-        "from": "S",
-        "to": "W",
         "message": "enqueue job",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "W",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "W",
-        "to": "S",
-        "message": "ready",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "S",
         "to": "W",
-        "message": "job metadata<br/>line 2",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "8",
-        "from": "W",
-        "to": "S",
-        "message": "result",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "W",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": null,
-        "to": null,
-        "message": "telemetry",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "S",
-        "to": "S",
-        "message": "record metric",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "12",
-        "from": "S",
-        "to": "S",
-        "message": "local note",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "13",
-        "from": null,
-        "to": null,
+        "from": "W",
+        "id": "5",
         "message": "",
-        "wrap": false,
-        "type": 21,
-        "activate": false
+        "to": null,
+        "type": 17,
+        "wrap": false
       },
       {
-        "id": "14",
-        "from": "S",
-        "to": "U",
-        "message": "Response",
-        "wrap": false,
+        "activate": false,
+        "from": "W",
+        "id": "6",
+        "message": "ready",
+        "to": "S",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "15",
+        "activate": false,
         "from": "S",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
+        "id": "7",
+        "message": "job metadata<br/>line 2",
+        "placement": 2,
+        "to": "W",
+        "type": 2,
+        "wrap": false
       },
       {
-        "id": "16",
-        "from": null,
-        "to": null,
+        "activate": false,
+        "from": "W",
+        "id": "8",
+        "message": "result",
+        "to": "S",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "W",
+        "id": "9",
         "message": "",
-        "wrap": false,
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "telemetry",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "11",
+        "message": "record metric",
+        "to": "S",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "12",
+        "message": "local note",
+        "placement": 1,
+        "to": "S",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "13",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "14",
+        "message": "Response",
+        "to": "U",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "15",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "16",
+        "message": "",
+        "to": null,
         "type": 23,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
@@ -199,26 +207,18 @@
           "S",
           "W"
         ],
-        "placement": 2,
         "message": "job metadata<br/>line 2",
+        "placement": 2,
         "wrap": false
       },
       {
         "actor": "S",
-        "placement": 1,
         "message": "local note",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

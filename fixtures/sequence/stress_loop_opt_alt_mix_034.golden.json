@@ -1,196 +1,196 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "U",
       "A",
       "DB"
     ],
     "actors": {
-      "U": {
-        "name": "U",
-        "description": "User",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "A": {
-        "name": "A",
         "description": "API",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "DB": {
-        "name": "DB",
         "description": "Database",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "DB",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "U": {
+        "description": "User",
+        "links": {},
+        "name": "U",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": "poll every minute",
-        "wrap": false,
-        "type": 10,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "U",
-        "to": "A",
-        "message": "GET /items",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "A",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": null,
-        "to": null,
-        "message": "cache miss",
-        "wrap": false,
-        "type": 15,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "A",
-        "to": "DB",
-        "message": "query",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "DB",
-        "to": "A",
-        "message": "rows",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 16,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "ok",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "A",
-        "to": "U",
-        "message": "200",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": null,
-        "to": null,
-        "message": "error",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "A",
-        "to": "U",
-        "message": "500",
-        "wrap": false,
-        "type": 4,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "U",
-        "to": "U",
-        "message": "try later",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "12",
         "from": null,
+        "id": "0",
+        "message": "poll every minute",
         "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
+        "type": 10,
+        "wrap": false
       },
       {
-        "id": "13",
+        "activate": false,
+        "from": "U",
+        "id": "1",
+        "message": "GET /items",
+        "to": "A",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
         "from": "A",
-        "to": null,
+        "id": "2",
         "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
+        "to": null,
+        "type": 17,
+        "wrap": false
       },
       {
-        "id": "14",
+        "activate": false,
         "from": null,
+        "id": "3",
+        "message": "cache miss",
         "to": null,
+        "type": 15,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "4",
+        "message": "query",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "5",
+        "message": "rows",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "6",
         "message": "",
-        "wrap": false,
+        "to": null,
+        "type": 16,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "ok",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "8",
+        "message": "200",
+        "to": "U",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "9",
+        "message": "error",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "10",
+        "message": "500",
+        "to": "U",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "U",
+        "id": "11",
+        "message": "try later",
+        "placement": 1,
+        "to": "U",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "12",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "13",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "14",
+        "message": "",
+        "to": null,
         "type": 11,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "U",
-        "placement": 1,
         "message": "try later",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

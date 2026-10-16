@@ -2,9 +2,9 @@
   "diagramType": "requirement",
   "layout": {
     "RequirementDiagram": {
-      "nodes": [],
+      "bounds": null,
       "edges": [],
-      "bounds": null
+      "nodes": []
     }
   }
 }

@@ -1,34 +1,54 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Ready",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "type": null,
+        "id": "root_start",
         "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "centerLabel": true,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Ready",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "active statediagram-state",
         "cssCompiledStyles": [
           "fill:#dcfce7",
@@ -40,75 +60,24 @@
           "stroke:#dc2626",
           "color:#7f1d1d"
         ],
-        "id": "Ready",
         "dir": null,
         "domId": "state-Ready-0",
-        "type": null,
+        "id": "Ready",
         "isGroup": false,
+        "label": "Ready",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "centerLabel": true,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "root_start",
-        "end": "Ready",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
-      "Ready": {
-        "id": "Ready",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [
-          "active"
-        ],
-        "styles": [
-          "fill:#fee2e2",
-          "stroke:#dc2626",
-          "color:#7f1d1d"
-        ],
-        "textStyles": [],
-        "start": null
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -116,6 +85,36 @@
         "relationTitle": null
       }
     ],
+    "states": {
+      "Ready": {
+        "classes": [
+          "active"
+        ],
+        "descriptions": [],
+        "doc": null,
+        "id": "Ready",
+        "note": null,
+        "start": null,
+        "styles": [
+          "fill:#fee2e2",
+          "stroke:#dc2626",
+          "color:#7f1d1d"
+        ],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
     "styleClasses": {
       "active": {
         "id": "active",
@@ -128,6 +127,7 @@
           "fill:#14532d"
         ]
       }
-    }
+    },
+    "type": "stateDiagram"
   }
 }

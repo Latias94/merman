@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "U",
       "UI",
@@ -15,201 +13,203 @@
       "Q"
     ],
     "actors": {
-      "U": {
-        "name": "U",
-        "description": "User",
-        "wrap": false,
-        "type": "actor",
+      "C": {
+        "description": "C",
         "links": {},
-        "properties": {}
-      },
-      "UI": {
-        "name": "UI",
-        "description": "UI",
-        "wrap": false,
-        "type": "boundary",
-        "links": {},
-        "properties": {}
-      },
-      "S": {
-        "name": "S",
-        "description": "S",
-        "wrap": false,
-        "type": "control",
-        "links": {},
-        "properties": {}
-      },
-      "M": {
-        "name": "M",
-        "description": "M",
-        "wrap": false,
-        "type": "entity",
-        "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "collections",
+        "wrap": false
       },
       "DB": {
-        "name": "DB",
         "description": "DB",
-        "wrap": false,
+        "links": {},
+        "name": "DB",
+        "properties": {},
         "type": "database",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
-      "C": {
-        "name": "C",
-        "description": "C",
-        "wrap": false,
-        "type": "collections",
+      "M": {
+        "description": "M",
         "links": {},
-        "properties": {}
+        "name": "M",
+        "properties": {},
+        "type": "entity",
+        "wrap": false
       },
       "Q": {
-        "name": "Q",
         "description": "Q",
-        "wrap": false,
-        "type": "queue",
         "links": {},
-        "properties": {}
+        "name": "Q",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
+      },
+      "S": {
+        "description": "S",
+        "links": {},
+        "name": "S",
+        "properties": {},
+        "type": "control",
+        "wrap": false
+      },
+      "U": {
+        "description": "User",
+        "links": {},
+        "name": "U",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
+      },
+      "UI": {
+        "description": "UI",
+        "links": {},
+        "name": "UI",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "U",
-        "to": "UI",
-        "message": "click",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "UI",
-        "to": "S",
-        "message": "handle()",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "S",
-        "to": "C",
-        "message": "get(key)",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": null,
-        "to": null,
-        "message": "cache hit",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "C",
-        "to": "S",
-        "message": "value",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": null,
-        "to": null,
-        "message": "miss",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "S",
-        "to": "DB",
-        "message": "query",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "DB",
-        "to": "S",
-        "message": "row",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "S",
-        "to": "C",
-        "message": "set(key, value)",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "S",
-        "to": "Q",
-        "message": "enqueue(job)",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "Q",
-        "to": "S",
-        "message": "accepted",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": "S",
-        "to": "UI",
-        "message": "render(value)",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "13",
-        "from": "UI",
-        "to": "U",
-        "message": "show",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "U",
+        "id": "0",
+        "message": "click",
+        "to": "UI",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "UI",
+        "id": "1",
+        "message": "handle()",
+        "to": "S",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "2",
+        "message": "get(key)",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "3",
+        "message": "cache hit",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "4",
+        "message": "value",
+        "to": "S",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "5",
+        "message": "miss",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "6",
+        "message": "query",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "7",
+        "message": "row",
+        "to": "S",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "8",
+        "message": "set(key, value)",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "9",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "10",
+        "message": "enqueue(job)",
+        "to": "Q",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Q",
+        "id": "11",
+        "message": "accepted",
+        "to": "S",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "S",
+        "id": "12",
+        "message": "render(value)",
+        "to": "UI",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "UI",
+        "id": "13",
+        "message": "show",
+        "to": "U",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

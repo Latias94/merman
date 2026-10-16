@@ -1,35 +1,35 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
-    "entities": {
-      "X": {
-        "id": "entity-X-0",
-        "label": "X",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
-      }
-    },
-    "relationships": [],
+    "accTitle": null,
     "classes": {},
     "constants": {
       "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
+        "mdParent": "MD_PARENT",
         "oneOrMore": "ONE_OR_MORE",
         "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
       },
       "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
       }
-    }
+    },
+    "direction": "TB",
+    "entities": {
+      "X": {
+        "alias": "",
+        "attributes": [],
+        "cssClasses": "default",
+        "cssStyles": [],
+        "id": "entity-X-0",
+        "label": "X",
+        "shape": "erBox"
+      }
+    },
+    "relationships": [],
+    "type": "er"
   }
 }

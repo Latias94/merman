@@ -1,35 +1,35 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Wide timeline with long labels",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Wide"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Wide",
-        "type": "Wide",
-        "task": "2001 ",
-        "score": 0,
         "events": [
           "This is a long event label that should fit without wrapping when width is large enough"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Wide",
+        "task": "2001 ",
+        "type": "Wide"
       },
       {
-        "id": 1,
-        "section": "Wide",
-        "type": "Wide",
-        "task": "2002 ",
-        "score": 0,
         "events": [
           "Another long event label with punctuation ((), [], {}) and unicode — dash"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Wide",
+        "task": "2002 ",
+        "type": "Wide"
       }
-    ]
+    ],
+    "title": "Wide timeline with long labels",
+    "type": "timeline"
   }
 }

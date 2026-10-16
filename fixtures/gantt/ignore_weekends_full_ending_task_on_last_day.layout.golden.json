@@ -2,162 +2,162 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 124.0
-      },
-      "width": 800.0,
-      "height": 124.0,
-      "left_padding": 75.0,
-      "right_padding": 75.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 4.0,
-      "display_mode": "",
-      "date_format": "YYYY-MM-DD",
       "axis_format": "",
-      "tick_interval": null,
-      "top_axis": false,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": "2019-02-13",
+          "time_ms": 1550016000000.0,
+          "x": 75.0
+        },
+        {
+          "label": "2019-02-13",
+          "time_ms": 1550059200000.0,
+          "x": 140.0
+        },
+        {
+          "label": "2019-02-14",
+          "time_ms": 1550102400000.0,
+          "x": 205.0
+        },
+        {
+          "label": "2019-02-14",
+          "time_ms": 1550145600000.0,
+          "x": 270.0
+        },
+        {
+          "label": "2019-02-15",
+          "time_ms": 1550188800000.0,
+          "x": 335.0
+        },
+        {
+          "label": "2019-02-15",
+          "time_ms": 1550232000000.0,
+          "x": 400.0
+        },
+        {
+          "label": "2019-02-16",
+          "time_ms": 1550275200000.0,
+          "x": 465.0
+        },
+        {
+          "label": "2019-02-16",
+          "time_ms": 1550318400000.0,
+          "x": 530.0
+        },
+        {
+          "label": "2019-02-17",
+          "time_ms": 1550361600000.0,
+          "x": 595.0
+        },
+        {
+          "label": "2019-02-17",
+          "time_ms": 1550404800000.0,
+          "x": 660.0
+        },
+        {
+          "label": "2019-02-18",
+          "time_ms": 1550448000000.0,
+          "x": 725.0
+        }
+      ],
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 124.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "full ending task on last day"
       ],
-      "rows": [
+      "date_format": "YYYY-MM-DD",
+      "display_mode": "",
+      "excludes": [
         {
-          "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
-          "width": 762.5,
-          "height": 24.0,
-          "class": "section section0"
+          "end_ms": 1550447999999.0,
+          "height": 39.0,
+          "id": "exclude-2019-02-15",
+          "start_ms": 1550188800000.0,
+          "width": 390.0,
+          "x": 335.0,
+          "y": 35.0
         }
       ],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": true,
+      "height": 124.0,
+      "left_padding": 75.0,
+      "number_section_styles": 4.0,
+      "right_padding": 75.0,
+      "rows": [
+        {
+          "class": "section section0",
+          "height": 24.0,
+          "index": 0.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 48.0
+        }
+      ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "full ending task on last day",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 62.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "full ending task on last day"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "full ending task on last day",
+          "x": 10.0,
+          "y": 62.0
         }
       ],
       "tasks": [
         {
-          "id": "id6",
-          "task": "test6",
-          "section": "full ending task on last day",
-          "task_type": "full ending task on last day",
-          "order": 0.0,
-          "start_ms": 1550016000000.0,
-          "end_ms": 1550448000000.0,
-          "render_end_ms": 1550188800000.0,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "id6",
-            "x": 75.0,
-            "y": 50.0,
-            "width": 260.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "id6",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 260.0,
+            "x": 75.0,
+            "y": 50.0
           },
+          "end_ms": 1550448000000.0,
+          "id": "id6",
           "label": {
+            "class": "taskText taskText0 width-25.080000000000002",
+            "font_size": 11.0,
             "id": "id6-text",
             "text": "test6",
-            "font_size": 11.0,
             "width": 25.08,
             "x": 205.0,
-            "y": 63.5,
-            "class": "taskText taskText0 width-25.080000000000002"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": 1550188800000.0,
+          "section": "full ending task on last day",
+          "start_ms": 1550016000000.0,
+          "task": "test6",
+          "task_type": "full ending task on last day",
+          "vert": false
         }
       ],
-      "excludes": [
-        {
-          "id": "exclude-2019-02-15",
-          "start_ms": 1550188800000.0,
-          "end_ms": 1550447999999.0,
-          "x": 335.0,
-          "y": 35.0,
-          "width": 390.0,
-          "height": 39.0
-        }
-      ],
-      "has_excludes_layer": true,
-      "bottom_ticks": [
-        {
-          "time_ms": 1550016000000.0,
-          "x": 75.0,
-          "label": "2019-02-13"
-        },
-        {
-          "time_ms": 1550059200000.0,
-          "x": 140.0,
-          "label": "2019-02-13"
-        },
-        {
-          "time_ms": 1550102400000.0,
-          "x": 205.0,
-          "label": "2019-02-14"
-        },
-        {
-          "time_ms": 1550145600000.0,
-          "x": 270.0,
-          "label": "2019-02-14"
-        },
-        {
-          "time_ms": 1550188800000.0,
-          "x": 335.0,
-          "label": "2019-02-15"
-        },
-        {
-          "time_ms": 1550232000000.0,
-          "x": 400.0,
-          "label": "2019-02-15"
-        },
-        {
-          "time_ms": 1550275200000.0,
-          "x": 465.0,
-          "label": "2019-02-16"
-        },
-        {
-          "time_ms": 1550318400000.0,
-          "x": 530.0,
-          "label": "2019-02-16"
-        },
-        {
-          "time_ms": 1550361600000.0,
-          "x": 595.0,
-          "label": "2019-02-17"
-        },
-        {
-          "time_ms": 1550404800000.0,
-          "x": 660.0,
-          "label": "2019-02-17"
-        },
-        {
-          "time_ms": 1550448000000.0,
-          "x": 725.0,
-          "label": "2019-02-18"
-        }
-      ],
-      "top_ticks": [],
+      "tick_interval": null,
       "title": "Ignore weekends - full ending task on last day",
+      "title_top_margin": 25.0,
       "title_x": 400.0,
-      "title_y": 25.0
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": false,
+      "top_padding": 50.0,
+      "top_ticks": [],
+      "width": 800.0
     }
   }
 }

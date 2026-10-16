@@ -1,48 +1,48 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "type": "quadrantChart",
-    "title": "Theme variables",
-    "accTitle": null,
     "accDescr": null,
-    "quadrants": {
-      "quadrant1Text": "One",
-      "quadrant2Text": "Two",
-      "quadrant3Text": "Three",
-      "quadrant4Text": "Four"
-    },
+    "accTitle": null,
     "axes": {
       "xAxisLeftText": "Left",
       "xAxisRightText": "Right",
       "yAxisBottomText": "Bottom",
       "yAxisTopText": "Top"
     },
+    "classes": {},
     "points": [
       {
+        "className": null,
+        "styles": {
+          "color": null,
+          "radius": null,
+          "strokeColor": null,
+          "strokeWidth": null
+        },
         "text": "Beta",
         "x": 0.75,
-        "y": 0.25,
-        "className": null,
-        "styles": {
-          "radius": null,
-          "color": null,
-          "strokeColor": null,
-          "strokeWidth": null
-        }
+        "y": 0.25
       },
       {
-        "text": "Alpha",
-        "x": 0.25,
-        "y": 0.75,
         "className": null,
         "styles": {
-          "radius": null,
           "color": null,
+          "radius": null,
           "strokeColor": null,
           "strokeWidth": null
-        }
+        },
+        "text": "Alpha",
+        "x": 0.25,
+        "y": 0.75
       }
     ],
-    "classes": {}
+    "quadrants": {
+      "quadrant1Text": "One",
+      "quadrant2Text": "Two",
+      "quadrant3Text": "Three",
+      "quadrant4Text": "Four"
+    },
+    "title": "Theme variables",
+    "type": "quadrantChart"
   }
 }

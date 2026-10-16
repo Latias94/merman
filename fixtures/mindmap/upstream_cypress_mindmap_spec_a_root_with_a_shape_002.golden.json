@@ -1,53 +1,53 @@
 {
   "diagramType": "mindmap",
   "model": {
-    "type": "mindmap",
-    "nodes": [
-      {
-        "id": "0",
-        "domId": "node_0",
-        "label": "root",
-        "labelType": "markdown",
-        "isGroup": false,
-        "shape": "rect",
-        "width": 200,
-        "height": 0,
-        "padding": 20,
-        "cssClasses": "mindmap-node section-root section--1",
-        "cssStyles": [],
-        "centerLabel": true,
-        "look": "classic",
-        "level": 0,
-        "nodeId": "root",
-        "type": 2
-      }
-    ],
-    "edges": [],
     "diagramId": "<dynamic>",
-    "rootNode": {
-      "id": 0,
-      "nodeId": "root",
-      "level": 0,
-      "descr": "root",
-      "type": 2,
-      "children": [],
-      "width": 200,
-      "padding": 20,
-      "isRoot": true
-    },
+    "direction": "TB",
+    "edges": [],
     "markers": [
       "point"
     ],
-    "direction": "TB",
     "nodeSpacing": 50,
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "domId": "node_0",
+        "height": 0,
+        "id": "0",
+        "isGroup": false,
+        "label": "root",
+        "labelType": "markdown",
+        "level": 0,
+        "look": "classic",
+        "nodeId": "root",
+        "padding": 20,
+        "shape": "rect",
+        "type": 2,
+        "width": 200
+      }
+    ],
     "rankSpacing": 50,
+    "rootNode": {
+      "children": [],
+      "descr": "root",
+      "id": 0,
+      "isRoot": true,
+      "level": 0,
+      "nodeId": "root",
+      "padding": 20,
+      "type": 2,
+      "width": 200
+    },
     "shapes": {
       "0": {
-        "shape": "rect",
-        "width": 200,
         "height": 0,
-        "padding": 20
+        "padding": 20,
+        "shape": "rect",
+        "width": 200
       }
-    }
+    },
+    "type": "mindmap"
   }
 }

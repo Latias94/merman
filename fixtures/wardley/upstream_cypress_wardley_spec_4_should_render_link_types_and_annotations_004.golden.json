@@ -1,112 +1,112 @@
 {
   "diagramType": "wardley",
   "model": {
-    "type": "wardley",
-    "title": "Link Features Demo",
-    "accTitle": null,
     "accDescr": null,
-    "nodes": [
-      {
-        "id": "User",
-        "label": "User",
-        "x": 90.0,
-        "y": 95.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "App",
-        "label": "App",
-        "x": 75.0,
-        "y": 75.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "API",
-        "label": "API",
-        "x": 60.0,
-        "y": 60.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "Cache",
-        "label": "Cache",
-        "x": 45.0,
-        "y": 65.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "Database",
-        "label": "Database",
-        "x": 80.0,
-        "y": 15.0,
-        "className": "component",
-        "inertia": false
-      },
-      {
-        "id": "Service",
-        "label": "Service",
-        "x": 50.0,
-        "y": 45.0,
-        "className": "component",
-        "inertia": false
-      }
-    ],
-    "links": [
-      {
-        "source": "User",
-        "target": "App",
-        "dashed": false
-      },
-      {
-        "source": "App",
-        "target": "API",
-        "dashed": false,
-        "label": "+>",
-        "flow": "forward"
-      },
-      {
-        "source": "API",
-        "target": "Database",
-        "dashed": false,
-        "label": "constraint"
-      },
-      {
-        "source": "API",
-        "target": "Cache",
-        "dashed": false,
-        "label": "+<>",
-        "flow": "bidirectional"
-      },
-      {
-        "source": "Cache",
-        "target": "Service",
-        "dashed": false,
-        "label": "+<",
-        "flow": "backward"
-      },
-      {
-        "source": "Service",
-        "target": "Database",
-        "dashed": false,
-        "label": "backup",
-        "flow": "forward"
-      }
-    ],
-    "trends": [],
-    "pipelines": [],
-    "annotations": [],
-    "notes": [],
+    "accTitle": null,
     "accelerators": [],
-    "deaccelerators": [],
+    "annotations": [],
     "annotationsBox": null,
     "axes": {},
+    "deaccelerators": [],
+    "links": [
+      {
+        "dashed": false,
+        "source": "User",
+        "target": "App"
+      },
+      {
+        "dashed": false,
+        "flow": "forward",
+        "label": "+>",
+        "source": "App",
+        "target": "API"
+      },
+      {
+        "dashed": false,
+        "label": "constraint",
+        "source": "API",
+        "target": "Database"
+      },
+      {
+        "dashed": false,
+        "flow": "bidirectional",
+        "label": "+<>",
+        "source": "API",
+        "target": "Cache"
+      },
+      {
+        "dashed": false,
+        "flow": "backward",
+        "label": "+<",
+        "source": "Cache",
+        "target": "Service"
+      },
+      {
+        "dashed": false,
+        "flow": "forward",
+        "label": "backup",
+        "source": "Service",
+        "target": "Database"
+      }
+    ],
+    "nodes": [
+      {
+        "className": "component",
+        "id": "User",
+        "inertia": false,
+        "label": "User",
+        "x": 90.0,
+        "y": 95.0
+      },
+      {
+        "className": "component",
+        "id": "App",
+        "inertia": false,
+        "label": "App",
+        "x": 75.0,
+        "y": 75.0
+      },
+      {
+        "className": "component",
+        "id": "API",
+        "inertia": false,
+        "label": "API",
+        "x": 60.0,
+        "y": 60.0
+      },
+      {
+        "className": "component",
+        "id": "Cache",
+        "inertia": false,
+        "label": "Cache",
+        "x": 45.0,
+        "y": 65.0
+      },
+      {
+        "className": "component",
+        "id": "Database",
+        "inertia": false,
+        "label": "Database",
+        "x": 80.0,
+        "y": 15.0
+      },
+      {
+        "className": "component",
+        "id": "Service",
+        "inertia": false,
+        "label": "Service",
+        "x": 50.0,
+        "y": 45.0
+      }
+    ],
+    "notes": [],
+    "pipelines": [],
     "size": {
-      "width": 1100.0,
-      "height": 800.0
-    }
+      "height": 800.0,
+      "width": 1100.0
+    },
+    "title": "Link Features Demo",
+    "trends": [],
+    "type": "wardley"
   }
 }

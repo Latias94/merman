@@ -1,62 +1,62 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "J"
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "J": {
-        "name": "J",
         "description": "John",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "J",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "J",
-        "message": "Hello John, how are you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "J",
-        "to": "A",
-        "message": "Great!",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "Hello John, how are you?",
+        "to": "J",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "J",
+        "id": "1",
+        "message": "Great!",
+        "to": "A",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

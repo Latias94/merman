@@ -1,58 +1,58 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "A Gantt Diagram",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": " YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
+    "clickEvents": {},
+    "dateFormat": " YYYY-MM-DD",
+    "displayMode": "",
     "excludes": [
       "weekends"
     ],
+    "includes": [],
     "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "friday",
-    "displayMode": "",
+    "links": {},
     "sections": [
       "Section1"
     ],
     "tasks": [
       {
-        "section": "Section1",
-        "type": "Section1",
-        "task": "A task ",
-        "id": "a1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-03-13T00:00:00.000",
+        "id": "a1",
         "manualEndTime": false,
-        "renderEndTime": "2024-03-13T00:00:00.000",
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":a1, 2024-02-28, 10d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-02-28"
-          },
           "endTime": {
             "data": "10d"
+          },
+          "startTime": {
+            "startData": "2024-02-28",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-03-13T00:00:00.000",
+        "section": "Section1",
         "startTime": "2024-02-28T00:00:00.000",
-        "endTime": "2024-03-13T00:00:00.000"
+        "task": "A task ",
+        "type": "Section1",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "A Gantt Diagram",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "friday"
   }
 }

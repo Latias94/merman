@@ -2,145 +2,62 @@
   "diagramType": "radar",
   "layout": {
     "RadarDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 700.0,
-        "max_y": 700.0
-      },
-      "svg_width": 700.0,
-      "svg_height": 700.0,
-      "center_x": 350.0,
-      "center_y": 350.0,
-      "radius": 300.0,
-      "axis_label_factor": 1.05,
-      "title_y": -350.0,
       "axes": [
         {
-          "label": "Agility",
           "angle": -1.571,
-          "line_x2": 0.0,
-          "line_y2": -300.0,
+          "label": "Agility",
           "label_x": 0.0,
-          "label_y": -315.0
+          "label_y": -315.0,
+          "line_x2": 0.0,
+          "line_y2": -300.0
         },
         {
-          "label": "Speed",
           "angle": -0.314,
-          "line_x2": 285.317,
-          "line_y2": -92.705,
+          "label": "Speed",
           "label_x": 299.583,
-          "label_y": -97.34
+          "label_y": -97.34,
+          "line_x2": 285.317,
+          "line_y2": -92.705
         },
         {
-          "label": "Strength",
           "angle": 0.942,
-          "line_x2": 176.336,
-          "line_y2": 242.705,
+          "label": "Strength",
           "label_x": 185.152,
-          "label_y": 254.84
+          "label_y": 254.84,
+          "line_x2": 176.336,
+          "line_y2": 242.705
         },
         {
-          "label": "Stamina",
           "angle": 2.199,
-          "line_x2": -176.336,
-          "line_y2": 242.705,
+          "label": "Stamina",
           "label_x": -185.152,
-          "label_y": 254.84
+          "label_y": 254.84,
+          "line_x2": -176.336,
+          "line_y2": 242.705
         },
         {
-          "label": "Intelligence",
           "angle": 3.456,
-          "line_x2": -285.317,
-          "line_y2": -92.705,
+          "label": "Intelligence",
           "label_x": -299.583,
-          "label_y": -97.34
+          "label_y": -97.34,
+          "line_x2": -285.317,
+          "line_y2": -92.705
         }
       ],
-      "graticules": [
-        {
-          "kind": "polygon",
-          "r": null,
-          "points": [
-            {
-              "x": 0.0,
-              "y": -100.0
-            },
-            {
-              "x": 95.106,
-              "y": -30.902
-            },
-            {
-              "x": 58.779,
-              "y": 80.902
-            },
-            {
-              "x": -58.779,
-              "y": 80.902
-            },
-            {
-              "x": -95.106,
-              "y": -30.902
-            }
-          ]
-        },
-        {
-          "kind": "polygon",
-          "r": null,
-          "points": [
-            {
-              "x": 0.0,
-              "y": -200.0
-            },
-            {
-              "x": 190.211,
-              "y": -61.803
-            },
-            {
-              "x": 117.557,
-              "y": 161.803
-            },
-            {
-              "x": -117.557,
-              "y": 161.803
-            },
-            {
-              "x": -190.211,
-              "y": -61.803
-            }
-          ]
-        },
-        {
-          "kind": "polygon",
-          "r": null,
-          "points": [
-            {
-              "x": 0.0,
-              "y": -300.0
-            },
-            {
-              "x": 285.317,
-              "y": -92.705
-            },
-            {
-              "x": 176.336,
-              "y": 242.705
-            },
-            {
-              "x": -176.336,
-              "y": 242.705
-            },
-            {
-              "x": -285.317,
-              "y": -92.705
-            }
-          ]
-        }
-      ],
+      "axis_label_factor": 1.05,
+      "bounds": {
+        "max_x": 700.0,
+        "max_y": 700.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "center_x": 350.0,
+      "center_y": 350.0,
       "curves": [
         {
-          "label": "Naruto Uzumaki",
           "class_index": 0.0,
+          "label": "Naruto Uzumaki",
+          "path_d": "",
           "points": [
             {
               "x": 0.0,
@@ -162,12 +79,12 @@
               "x": -0.0,
               "y": -0.0
             }
-          ],
-          "path_d": ""
+          ]
         },
         {
-          "label": "Sasuke",
           "class_index": 1.0,
+          "label": "Sasuke",
+          "path_d": "",
           "points": [
             {
               "x": 0.0,
@@ -189,12 +106,12 @@
               "x": -178.323,
               "y": -57.941
             }
-          ],
-          "path_d": ""
+          ]
         },
         {
-          "label": "Ninja3",
           "class_index": 2.0,
+          "label": "Ninja3",
+          "path_d": "",
           "points": [
             {
               "x": 0.0,
@@ -216,30 +133,113 @@
               "x": -142.658,
               "y": -46.353
             }
+          ]
+        }
+      ],
+      "graticules": [
+        {
+          "kind": "polygon",
+          "points": [
+            {
+              "x": 0.0,
+              "y": -100.0
+            },
+            {
+              "x": 95.106,
+              "y": -30.902
+            },
+            {
+              "x": 58.779,
+              "y": 80.902
+            },
+            {
+              "x": -58.779,
+              "y": 80.902
+            },
+            {
+              "x": -95.106,
+              "y": -30.902
+            }
           ],
-          "path_d": ""
+          "r": null
+        },
+        {
+          "kind": "polygon",
+          "points": [
+            {
+              "x": 0.0,
+              "y": -200.0
+            },
+            {
+              "x": 190.211,
+              "y": -61.803
+            },
+            {
+              "x": 117.557,
+              "y": 161.803
+            },
+            {
+              "x": -117.557,
+              "y": 161.803
+            },
+            {
+              "x": -190.211,
+              "y": -61.803
+            }
+          ],
+          "r": null
+        },
+        {
+          "kind": "polygon",
+          "points": [
+            {
+              "x": 0.0,
+              "y": -300.0
+            },
+            {
+              "x": 285.317,
+              "y": -92.705
+            },
+            {
+              "x": 176.336,
+              "y": 242.705
+            },
+            {
+              "x": -176.336,
+              "y": 242.705
+            },
+            {
+              "x": -285.317,
+              "y": -92.705
+            }
+          ],
+          "r": null
         }
       ],
       "legend_items": [
         {
-          "label": "Naruto Uzumaki",
           "class_index": 0.0,
+          "label": "Naruto Uzumaki",
           "x": 262.5,
           "y": -262.5
         },
         {
-          "label": "Sasuke",
           "class_index": 1.0,
+          "label": "Sasuke",
           "x": 262.5,
           "y": -242.5
         },
         {
-          "label": "Ninja3",
           "class_index": 2.0,
+          "label": "Ninja3",
           "x": 262.5,
           "y": -222.5
         }
-      ]
+      ],
+      "radius": 300.0,
+      "svg_height": 700.0,
+      "svg_width": 700.0,
+      "title_y": -350.0
     }
   }
 }

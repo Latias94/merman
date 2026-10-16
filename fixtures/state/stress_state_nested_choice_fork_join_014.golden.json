@@ -1,1148 +1,797 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Session",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Decide",
+        "id": "edge1",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Session_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Fork",
+        "id": "edge2",
+        "label": "\"ok / proceed\"",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Decide",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "End",
+        "id": "edge3",
+        "label": "\"deny / stop\"",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Decide",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Validate",
+        "id": "edge4",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Fork",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Fetch",
+        "id": "edge5",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Fork",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Audit",
+        "id": "edge6",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Fork",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "V1",
+        "id": "edge7",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Validate_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "V2",
+        "id": "edge8",
+        "label": "step",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "V1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Validate_end",
+        "id": "edge9",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "V2",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "F1",
+        "id": "edge10",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Fetch_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Fetch_end",
+        "id": "edge11",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "F1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "A1",
+        "id": "edge12",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Audit_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Audit_end",
+        "id": "edge13",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "A1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Join",
+        "id": "edge14",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Validate",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Join",
+        "id": "edge15",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Fetch",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Join",
+        "id": "edge16",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Audit",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Decide",
+        "id": "edge17",
+        "label": "loop?",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Join",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "End",
+        "id": "edge18",
+        "label": "finish",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Join",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "root_end",
+        "id": "edge19",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "End",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "type": null,
+        "id": "root_start",
         "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Session",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Session",
         "dir": "TB",
         "domId": "state-Session-1",
-        "type": "group",
+        "id": "Session",
         "isGroup": true,
+        "label": "Session",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Session_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Session_start",
         "dir": null,
         "domId": "state-Session_start-1",
-        "type": null,
+        "id": "Session_start",
         "isGroup": false,
+        "label": "Session_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Decide",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Decide",
         "dir": null,
         "domId": "state-Decide-17",
-        "type": null,
+        "id": "Decide",
         "isGroup": false,
+        "label": "Decide",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Fork",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Fork",
         "dir": null,
         "domId": "state-Fork-6",
-        "type": null,
+        "id": "Fork",
         "isGroup": false,
+        "label": "Fork",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "End",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "End",
         "dir": null,
         "domId": "state-End-19",
-        "type": null,
+        "id": "End",
         "isGroup": false,
+        "label": "End",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Validate",
+        "centerLabel": true,
+        "colorIndex": 1,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Validate",
         "dir": "TB",
         "domId": "state-Validate-14",
-        "type": "group",
+        "id": "Validate",
         "isGroup": true,
+        "label": "Validate",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": 1,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Fetch",
+        "centerLabel": true,
+        "colorIndex": 2,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Fetch",
         "dir": "TB",
         "domId": "state-Fetch-15",
-        "type": "group",
+        "id": "Fetch",
         "isGroup": true,
+        "label": "Fetch",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": 2,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Audit",
+        "centerLabel": true,
+        "colorIndex": 3,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Audit",
         "dir": "TB",
         "domId": "state-Audit-16",
-        "type": "group",
+        "id": "Audit",
         "isGroup": true,
+        "label": "Audit",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": 3,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Validate_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Validate_start",
         "dir": null,
         "domId": "state-Validate_start-7",
-        "type": null,
+        "id": "Validate_start",
         "isGroup": false,
+        "label": "Validate_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Validate",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Validate",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "V1",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "V1",
         "dir": null,
         "domId": "state-V1-8",
-        "type": null,
+        "id": "V1",
         "isGroup": false,
+        "label": "V1",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Validate",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Validate",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "V2",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "V2",
         "dir": null,
         "domId": "state-V2-9",
-        "type": null,
+        "id": "V2",
         "isGroup": false,
+        "label": "V2",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Validate",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Validate",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "Validate_end",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Validate_end",
         "dir": null,
         "domId": "state-Validate_end-9",
-        "type": null,
+        "id": "Validate_end",
         "isGroup": false,
+        "label": "Validate_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Validate",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Validate",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Fetch_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Fetch_start",
         "dir": null,
         "domId": "state-Fetch_start-10",
-        "type": null,
+        "id": "Fetch_start",
         "isGroup": false,
+        "label": "Fetch_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Fetch",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Fetch",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "F1",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "F1",
         "dir": null,
         "domId": "state-F1-11",
-        "type": null,
+        "id": "F1",
         "isGroup": false,
+        "label": "F1",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Fetch",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Fetch",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "Fetch_end",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Fetch_end",
         "dir": null,
         "domId": "state-Fetch_end-11",
-        "type": null,
+        "id": "Fetch_end",
         "isGroup": false,
+        "label": "Fetch_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Fetch",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Fetch",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Audit_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Audit_start",
         "dir": null,
         "domId": "state-Audit_start-12",
-        "type": null,
+        "id": "Audit_start",
         "isGroup": false,
+        "label": "Audit_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Audit",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Audit",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "A1",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "A1",
         "dir": null,
         "domId": "state-A1-13",
-        "type": null,
+        "id": "A1",
         "isGroup": false,
+        "label": "A1",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Audit",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Audit",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "Audit_end",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Audit_end",
         "dir": null,
         "domId": "state-Audit_end-13",
-        "type": null,
+        "id": "Audit_end",
         "isGroup": false,
+        "label": "Audit_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Audit",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Audit",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "join",
-        "label": "Join",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Join",
         "dir": null,
         "domId": "state-Join-18",
-        "type": null,
+        "id": "Join",
         "isGroup": false,
+        "label": "Join",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Session",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Session",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "join",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "root_end",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_end",
         "dir": null,
         "domId": "state-root_end-19",
-        "type": null,
+        "id": "root_end",
         "isGroup": false,
+        "label": "root_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "root_start",
-        "end": "Session",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "Session_start",
-        "end": "Decide",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "Decide",
-        "end": "Fork",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "\"ok / proceed\"",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge3",
-        "start": "Decide",
-        "end": "End",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "\"deny / stop\"",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge4",
-        "start": "Fork",
-        "end": "Validate",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge5",
-        "start": "Fork",
-        "end": "Fetch",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge6",
-        "start": "Fork",
-        "end": "Audit",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge7",
-        "start": "Validate_start",
-        "end": "V1",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge8",
-        "start": "V1",
-        "end": "V2",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "step",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge9",
-        "start": "V2",
-        "end": "Validate_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge10",
-        "start": "Fetch_start",
-        "end": "F1",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge11",
-        "start": "F1",
-        "end": "Fetch_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge12",
-        "start": "Audit_start",
-        "end": "A1",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge13",
-        "start": "A1",
-        "end": "Audit_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge14",
-        "start": "Validate",
-        "end": "Join",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge15",
-        "start": "Fetch",
-        "end": "Join",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge16",
-        "start": "Audit",
-        "end": "Join",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge17",
-        "start": "Join",
-        "end": "Decide",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "loop?",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge18",
-        "start": "Join",
-        "end": "End",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "finish",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge19",
-        "start": "End",
-        "end": "root_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "End": {
-        "id": "End",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
-      "Session": {
-        "id": "Session",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Session_start",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Decide",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "state",
-            "id": "Decide",
-            "type": "choice",
-            "description": null,
-            "doc": null,
-            "classes": []
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Decide",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Fork",
-              "type": "default",
-              "classes": []
-            },
-            "description": "\"ok / proceed\""
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Decide",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "End",
-              "type": "default",
-              "classes": []
-            },
-            "description": "\"deny / stop\""
-          },
-          {
-            "stmt": "state",
-            "id": "Fork",
-            "type": "fork",
-            "description": null,
-            "doc": null,
-            "classes": []
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Fork",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Validate",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Fork",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Fetch",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Fork",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Audit",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "state",
-            "id": "Validate",
-            "type": "default",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "Validate_start",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "V1",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "V1",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "V2",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": "step"
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "V2",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "Validate_end",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              }
-            ],
-            "classes": []
-          },
-          {
-            "stmt": "state",
-            "id": "Fetch",
-            "type": "default",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "Fetch_start",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "F1",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "F1",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "Fetch_end",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              }
-            ],
-            "classes": []
-          },
-          {
-            "stmt": "state",
-            "id": "Audit",
-            "type": "default",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "Audit_start",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "A1",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "A1",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "Audit_end",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              }
-            ],
-            "classes": []
-          },
-          {
-            "stmt": "state",
-            "id": "Join",
-            "type": "join",
-            "description": null,
-            "doc": null,
-            "classes": []
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Validate",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Join",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Fetch",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Join",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Audit",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Join",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Join",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Decide",
-              "type": "default",
-              "classes": []
-            },
-            "description": "loop?"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Join",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "End",
-              "type": "default",
-              "classes": []
-            },
-            "description": "finish"
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_end": {
-        "id": "root_end",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": false
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -1155,6 +804,357 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "End": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "End",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Session": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Session_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Decide",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": null,
+            "id": "Decide",
+            "stmt": "state",
+            "type": "choice"
+          },
+          {
+            "description": "\"ok / proceed\"",
+            "state1": {
+              "classes": [],
+              "id": "Decide",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Fork",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "\"deny / stop\"",
+            "state1": {
+              "classes": [],
+              "id": "Decide",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "End",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": null,
+            "id": "Fork",
+            "stmt": "state",
+            "type": "fork"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Fork",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Validate",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Fork",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Fetch",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Fork",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Audit",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "Validate_start",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "V1",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": "step",
+                "state1": {
+                  "classes": [],
+                  "id": "V1",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "V2",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "V2",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "Validate_end",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "Validate",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "Fetch_start",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "F1",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "F1",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "Fetch_end",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "Fetch",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "Audit_start",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "A1",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "A1",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "Audit_end",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "Audit",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": null,
+            "id": "Join",
+            "stmt": "state",
+            "type": "join"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Validate",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Join",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Fetch",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Join",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Audit",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Join",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "loop?",
+            "state1": {
+              "classes": [],
+              "id": "Join",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Decide",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "finish",
+            "state1": {
+              "classes": [],
+              "id": "Join",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "End",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "Session",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_end": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_end",
+        "note": null,
+        "start": false,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

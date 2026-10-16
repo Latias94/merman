@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Package",
       "Module",
@@ -14,121 +12,123 @@
       "ValueConverter"
     ],
     "actors": {
-      "Package": {
-        "name": "Package",
-        "description": "Package",
-        "wrap": false,
-        "type": "actor",
+      "Lexer": {
+        "description": "Lexer",
         "links": {},
-        "properties": {}
+        "name": "Lexer",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Module": {
-        "name": "Module",
         "description": "Module",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Module",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
-      "TokenBuilder": {
-        "name": "TokenBuilder",
-        "description": "TokenBuilder",
-        "wrap": false,
-        "type": "participant",
+      "Package": {
+        "description": "Package",
         "links": {},
-        "properties": {}
-      },
-      "Lexer": {
-        "name": "Lexer",
-        "description": "Lexer",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
+        "name": "Package",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       },
       "Parser": {
-        "name": "Parser",
         "description": "Parser",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Parser",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "TokenBuilder": {
+        "description": "TokenBuilder",
+        "links": {},
+        "name": "TokenBuilder",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "ValueConverter": {
-        "name": "ValueConverter",
         "description": "ValueConverter",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "ValueConverter",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Package",
-        "to": "Module",
-        "message": "Create services",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Module",
-        "to": "TokenBuilder",
-        "message": "Override or/and<br>reorder rules",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "TokenBuilder",
-        "to": "Lexer",
-        "message": "Read the string and transform<br>it into a token stream",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Lexer",
-        "to": "Parser",
-        "message": "Parse token<br>stream into AST",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "Parser",
-        "to": "ValueConverter",
-        "message": "Clean/modify tokenized<br>rules returned value",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "ValueConverter",
-        "to": "Package",
-        "message": "Return AST",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Package",
+        "id": "0",
+        "message": "Create services",
+        "to": "Module",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Module",
+        "id": "1",
+        "message": "Override or/and<br>reorder rules",
+        "to": "TokenBuilder",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "TokenBuilder",
+        "id": "2",
+        "message": "Read the string and transform<br>it into a token stream",
+        "to": "Lexer",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Lexer",
+        "id": "3",
+        "message": "Parse token<br>stream into AST",
+        "to": "Parser",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Parser",
+        "id": "4",
+        "message": "Clean/modify tokenized<br>rules returned value",
+        "to": "ValueConverter",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "ValueConverter",
+        "id": "5",
+        "message": "Return AST",
+        "to": "Package",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

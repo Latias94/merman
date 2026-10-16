@@ -2,39 +2,26 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-EMPRESA-0",
-          "x": 217.67,
-          "y": 71.625,
-          "width": 187.42,
-          "height": 119.25,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-UNIDADE-1",
-          "x": 105.71,
-          "y": 311.75,
-          "width": 187.42,
-          "height": 159.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-USUARIO-2",
-          "x": 329.63,
-          "y": 291.875,
-          "width": 180.42,
-          "height": 119.25,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 419.84,
+        "max_y": 391.25,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "er-rel-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-EMPRESA-0",
-          "to": "entity-UNIDADE-1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-0",
+          "label": {
+            "height": 21.0,
+            "width": 18.06,
+            "x": 105.24,
+            "y": 181.75
+          },
           "points": [
             {
               "x": 189.767,
@@ -53,26 +40,26 @@
               "y": 232.25
             }
           ],
-          "label": {
-            "x": 105.24,
-            "y": 181.75,
-            "width": 18.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-UNIDADE-1",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-EMPRESA-0",
-          "to": "entity-USUARIO-2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-1",
+          "label": {
+            "height": 21.0,
+            "width": 46.62,
+            "x": 329.44,
+            "y": 181.75
+          },
           "points": [
             {
               "x": 245.573,
@@ -91,27 +78,40 @@
               "y": 232.25
             }
           ],
-          "label": {
-            "x": 329.44,
-            "y": 181.75,
-            "width": 46.62,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-USUARIO-2",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 419.84,
-        "max_y": 391.25
-      }
+      "nodes": [
+        {
+          "height": 119.25,
+          "id": "entity-EMPRESA-0",
+          "is_cluster": false,
+          "width": 187.42,
+          "x": 217.67,
+          "y": 71.625
+        },
+        {
+          "height": 159.0,
+          "id": "entity-UNIDADE-1",
+          "is_cluster": false,
+          "width": 187.42,
+          "x": 105.71,
+          "y": 311.75
+        },
+        {
+          "height": 119.25,
+          "id": "entity-USUARIO-2",
+          "is_cluster": false,
+          "width": 180.42,
+          "x": 329.63,
+          "y": 291.875
+        }
+      ]
     }
   }
 }

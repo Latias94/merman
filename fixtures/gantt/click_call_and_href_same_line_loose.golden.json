@@ -1,69 +1,69 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Click call+href same line (loose)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {
+      "a1": {
+        "function_args": [
+          "x"
+        ],
+        "function_name": "cb",
+        "raw_function_args": "\"x\""
+      }
+    },
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {
+      "a1": "https://example.com"
+    },
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "section": "A",
-        "type": "A",
-        "task": "Task1",
-        "id": "a1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
+        "active": false,
         "classes": [
           "clickable",
           "clickable"
         ],
-        "active": false,
-        "done": false,
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2014-01-10T00:00:00.000",
+        "id": "a1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": a1, 2014-01-07, 3d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2014-01-07"
-          },
           "endTime": {
             "data": "3d"
+          },
+          "startTime": {
+            "startData": "2014-01-07",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "A",
         "startTime": "2014-01-07T00:00:00.000",
-        "endTime": "2014-01-10T00:00:00.000"
+        "task": "Task1",
+        "type": "A",
+        "vert": false
       }
     ],
-    "links": {
-      "a1": "https://example.com"
-    },
-    "clickEvents": {
-      "a1": {
-        "function_name": "cb",
-        "function_args": [
-          "x"
-        ],
-        "raw_function_args": "\"x\""
-      }
-    }
+    "tickInterval": null,
+    "title": "Click call+href same line (loose)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

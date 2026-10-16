@@ -2,159 +2,159 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 782.0,
-        "max_y": 379.085
-      },
-      "width": 832.0,
-      "height": 389.085,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Component",
-      "title": "C4Component sprite (positional) on ComponentDb_Ext",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 632.0,
+          "descr": null,
           "height": 263.085,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 632.0,
+          "x": 100.0,
+          "y": 66.0
         }
       ],
-      "shapes": [
-        {
-          "alias": "api",
-          "parent_boundary": "global",
-          "type_c4_shape": "component",
-          "x": 150.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 85.578,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Component: Rust]",
-            "y": 44.175,
-            "width": 79.275,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "API",
-            "y": 27.7,
-            "width": 21.0,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "Handles requests.",
-            "y": 59.264,
-            "width": 81.278,
-            "height": 12.628,
-            "line_count": 1.0
-          }
-        },
-        {
-          "alias": "db",
-          "parent_boundary": "global",
-          "type_c4_shape": "external_component_db",
-          "x": 466.0,
-          "y": 166.0,
-          "width": 216.0,
-          "height": 113.085,
-          "margin": 50.0,
-          "image": {
-            "width": 0.0,
-            "height": 0.0,
-            "y": 0.0
-          },
-          "type_block": {
-            "text": "[Component: PostgreSQL]",
-            "y": 44.175,
-            "width": 111.72,
-            "height": 11.55,
-            "line_count": 1.0
-          },
-          "label": {
-            "text": "External Component DB",
-            "y": 27.7,
-            "width": 135.94,
-            "height": 15.4,
-            "line_count": 1.0
-          },
-          "ty": null,
-          "techn": null,
-          "descr": {
-            "text": "External database component.",
-            "y": 59.264,
-            "width": 138.449,
-            "height": 12.628,
-            "line_count": 1.0
-          }
-        }
-      ],
+      "bounds": {
+        "max_x": 782.0,
+        "max_y": 379.085,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Component",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 389.085,
       "rels": [
         {
+          "descr": null,
+          "end_point": {
+            "x": 466.0,
+            "y": 217.842
+          },
           "from": "api",
-          "to": "db",
+          "label": {
+            "height": 13.0,
+            "line_count": 1.0,
+            "text": "Reads/Writes",
+            "width": 66.0,
+            "y": 0.0
+          },
+          "offset_x": null,
+          "offset_y": null,
           "rel_type": "rel",
           "start_point": {
             "x": 366.0,
             "y": 213.49
           },
-          "end_point": {
-            "x": 466.0,
-            "y": 217.842
-          },
-          "offset_x": null,
-          "offset_y": null,
-          "label": {
-            "text": "Reads/Writes",
-            "y": 0.0,
-            "width": 66.0,
-            "height": 13.0,
-            "line_count": 1.0
-          },
           "techn": {
-            "text": "JDBC",
-            "y": 0.0,
-            "width": 29.0,
             "height": 13.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "JDBC",
+            "width": 29.0,
+            "y": 0.0
           },
-          "descr": null
+          "to": "db"
         }
-      ]
+      ],
+      "shapes": [
+        {
+          "alias": "api",
+          "descr": {
+            "height": 12.628,
+            "line_count": 1.0,
+            "text": "Handles requests.",
+            "width": 81.278,
+            "y": 59.264
+          },
+          "height": 85.578,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "API",
+            "width": 21.0,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Component: Rust]",
+            "width": 79.275,
+            "y": 44.175
+          },
+          "type_c4_shape": "component",
+          "width": 216.0,
+          "x": 150.0,
+          "y": 166.0
+        },
+        {
+          "alias": "db",
+          "descr": {
+            "height": 12.628,
+            "line_count": 1.0,
+            "text": "External database component.",
+            "width": 138.449,
+            "y": 59.264
+          },
+          "height": 113.085,
+          "image": {
+            "height": 0.0,
+            "width": 0.0,
+            "y": 0.0
+          },
+          "label": {
+            "height": 15.4,
+            "line_count": 1.0,
+            "text": "External Component DB",
+            "width": 135.94,
+            "y": 27.7
+          },
+          "margin": 50.0,
+          "parent_boundary": "global",
+          "techn": null,
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Component: PostgreSQL]",
+            "width": 111.72,
+            "y": 44.175
+          },
+          "type_c4_shape": "external_component_db",
+          "width": 216.0,
+          "x": 466.0,
+          "y": 166.0
+        }
+      ],
+      "title": "C4Component sprite (positional) on ComponentDb_Ext",
+      "use_max_width": true,
+      "width": 832.0
     }
   }
 }

@@ -1,49 +1,45 @@
 {
   "diagramType": "railroadEbnf",
   "model": {
-    "type": "railroadEbnf",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "identifier",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "nonterminal",
-              "name": "letter"
+              "name": "letter",
+              "type": "nonterminal"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "choice",
                 "alternatives": [
                   {
-                    "type": "nonterminal",
-                    "name": "letter"
+                    "name": "letter",
+                    "type": "nonterminal"
                   },
                   {
-                    "type": "nonterminal",
-                    "name": "digit"
+                    "name": "digit",
+                    "type": "nonterminal"
                   },
                   {
                     "type": "terminal",
                     "value": "_"
                   }
-                ]
+                ],
+                "type": "choice"
               },
+              "max": null,
               "min": 0,
-              "max": null
+              "type": "repetition"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "identifier"
       },
       {
-        "name": "letter",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -57,13 +53,13 @@
               "type": "terminal",
               "value": "c"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "letter"
       },
       {
-        "name": "digit",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -77,9 +73,13 @@
               "type": "terminal",
               "value": "2"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "digit"
       }
-    ]
+    ],
+    "title": null,
+    "type": "railroadEbnf"
   }
 }

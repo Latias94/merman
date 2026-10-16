@@ -1,44 +1,44 @@
 {
   "diagramType": "eventmodeling",
   "model": {
-    "type": "eventmodeling",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "frames": [
-      {
-        "name": "01",
-        "frameKind": "timeframe",
-        "modelEntityType": "ui",
-        "entityIdentifier": "CartScreen",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": null
-      },
-      {
-        "name": "02",
-        "frameKind": "timeframe",
-        "modelEntityType": "cmd",
-        "entityIdentifier": "AddItem",
-        "sourceFrames": [],
-        "dataInlineValue": "{ productId: 7 }",
-        "dataReference": null
-      },
-      {
-        "name": "03",
-        "frameKind": "timeframe",
-        "modelEntityType": "evt",
-        "entityIdentifier": "ItemAdded",
-        "sourceFrames": [],
-        "dataInlineValue": null,
-        "dataReference": "ItemAddedData"
-      }
-    ],
+    "accTitle": null,
     "dataEntities": [
       {
-        "name": "ItemAddedData",
-        "dataBlockValue": "{\n  productId: 7,\n  quantity: 1\n}"
+        "dataBlockValue": "{\n  productId: 7,\n  quantity: 1\n}",
+        "name": "ItemAddedData"
       }
-    ]
+    ],
+    "frames": [
+      {
+        "dataInlineValue": null,
+        "dataReference": null,
+        "entityIdentifier": "CartScreen",
+        "frameKind": "timeframe",
+        "modelEntityType": "ui",
+        "name": "01",
+        "sourceFrames": []
+      },
+      {
+        "dataInlineValue": "{ productId: 7 }",
+        "dataReference": null,
+        "entityIdentifier": "AddItem",
+        "frameKind": "timeframe",
+        "modelEntityType": "cmd",
+        "name": "02",
+        "sourceFrames": []
+      },
+      {
+        "dataInlineValue": null,
+        "dataReference": "ItemAddedData",
+        "entityIdentifier": "ItemAdded",
+        "frameKind": "timeframe",
+        "modelEntityType": "evt",
+        "name": "03",
+        "sourceFrames": []
+      }
+    ],
+    "title": null,
+    "type": "eventmodeling"
   }
 }

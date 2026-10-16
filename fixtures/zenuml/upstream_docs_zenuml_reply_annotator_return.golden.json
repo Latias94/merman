@@ -1,65 +1,65 @@
 {
   "diagramType": "zenuml",
   "model": {
-    "title": null,
-    "starter": null,
+    "groups": [],
     "participants": [
       {
-        "name": "A",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "A",
         "occurrences": [
           {
-            "start": 23,
-            "end": 24
+            "end": 24,
+            "start": 23
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       },
       {
-        "name": "B",
-        "label": null,
-        "participantType": null,
-        "stereotype": null,
-        "emoji": null,
         "color": null,
-        "groupId": null,
-        "explicit": false,
-        "isStarter": false,
         "declarationSpan": null,
+        "emoji": null,
+        "explicit": false,
+        "groupId": null,
+        "isStarter": false,
+        "label": null,
+        "name": "B",
         "occurrences": [
           {
-            "start": 26,
-            "end": 27
+            "end": 27,
+            "start": 26
           }
         ],
+        "participantType": null,
+        "stereotype": null,
         "width": null
       }
     ],
-    "groups": [],
+    "starter": null,
     "statements": [
       {
-        "id": "zenuml-statement-0",
         "comment": null,
-        "span": {
-          "start": 11,
-          "end": 36
-        },
-        "kind": "return",
         "explicit_from": "A",
-        "resolved_from": "A",
         "explicit_to": "B",
+        "id": "zenuml-statement-0",
+        "kind": "return",
+        "label": "result",
+        "resolved_from": "A",
         "resolved_to": "B",
-        "label": "result"
+        "span": {
+          "end": 36,
+          "start": 11
+        }
       }
     ],
+    "title": null,
     "type": "zenuml"
   }
 }

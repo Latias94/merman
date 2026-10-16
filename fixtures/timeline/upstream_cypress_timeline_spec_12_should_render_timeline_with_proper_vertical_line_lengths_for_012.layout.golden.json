@@ -2,635 +2,635 @@
   "diagramType": "timeline",
   "layout": {
     "TimelineDiagram": {
-      "direction": "LR",
-      "bounds": {
-        "min_x": 100.0,
-        "min_y": -62.938,
-        "max_x": 2290.0,
-        "max_y": 830.4
+      "activity_line": {
+        "kind": "activity",
+        "x1": 150.0,
+        "x2": 2240.0,
+        "y1": 287.6,
+        "y2": 287.6
       },
-      "left_margin": 150.0,
       "base_x": 200.0,
       "base_y": 50.0,
+      "bounds": {
+        "max_x": 2290.0,
+        "max_y": 830.4,
+        "min_x": 100.0,
+        "min_y": -62.938
+      },
+      "direction": "LR",
+      "left_margin": 150.0,
+      "orphan_tasks": [],
       "pre_title_box_width": 1790.0,
       "sections": [
         {
           "node": {
-            "x": 200.0,
-            "y": 50.0,
-            "width": 590.0,
-            "height": 68.8,
             "content_width": 550.0,
-            "padding": 20.0,
-            "section_class": "section--1",
+            "height": 68.8,
+            "kind": "section",
             "label": "Planning",
             "label_lines": [
               "Planning"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section--1",
+            "width": 590.0,
+            "x": 200.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 200.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section--1",
-                "label": "Quality Management System (4)",
-                "label_lines": [
-                  "Quality   Management",
-                  "System   (4)"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 295.0,
-                  "y1": 237.6,
                   "x2": 295.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 200.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 67.5,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Regulatory Compliance (4.1.1)",
                   "label_lines": [
                     "Regulatory",
                     "Compliance   (4.1.1)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 200.0,
-                  "y": 446.3,
-                  "width": 190.0,
-                  "height": 67.5,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 368.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Risk Management (4.1.2)",
                   "label_lines": [
                     "Risk   Management",
                     "(4.1.2)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 200.0,
+                  "y": 446.3
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 400.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
                 "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Quality Management System (4)",
+                "label_lines": [
+                  "Quality   Management",
+                  "System   (4)"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "Management Resposibility (5)",
-                "label_lines": [
-                  "Management",
-                  "Resposibility   (5)"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 200.0,
+                "y": 168.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 495.0,
-                  "y1": 237.6,
                   "x2": 495.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 400.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 67.5,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Planning Activities (5.4)",
                   "label_lines": [
                     "Planning   Activities",
                     "(5.4)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 400.0,
-                  "y": 446.3,
-                  "width": 190.0,
-                  "height": 67.5,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 368.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Management Reviews (5.6)",
                   "label_lines": [
                     "Management   Reviews",
                     "(5.6)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 400.0,
+                  "y": 446.3
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 600.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
                 "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Management Resposibility (5)",
+                "label_lines": [
+                  "Management",
+                  "Resposibility   (5)"
+                ],
                 "padding": 20.0,
                 "section_class": "section--1",
-                "label": "Resource Management (6)",
-                "label_lines": [
-                  "Resource   Management",
-                  "(6)"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 400.0,
+                "y": 168.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 695.0,
-                  "y1": 237.6,
                   "x2": 695.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 600.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 67.5,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section--1",
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Human Resources (6.2)",
                   "label_lines": [
                     "Human   Resources",
                     "(6.2)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 600.0,
-                  "y": 446.3,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 368.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Infrastructure (6.3)",
                   "label_lines": [
                     "Infrastructure   (6.3)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section--1",
+                  "width": 190.0,
+                  "x": 600.0,
+                  "y": 446.3
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Resource Management (6)",
+                "label_lines": [
+                  "Resource   Management",
+                  "(6)"
+                ],
+                "padding": 20.0,
+                "section_class": "section--1",
+                "width": 190.0,
+                "x": 600.0,
+                "y": 168.8
+              }
             }
           ]
         },
         {
           "node": {
-            "x": 800.0,
-            "y": 50.0,
-            "width": 990.0,
-            "height": 68.8,
             "content_width": 950.0,
-            "padding": 20.0,
-            "section_class": "section-0",
+            "height": 68.8,
+            "kind": "section",
             "label": "Realization",
             "label_lines": [
               "Realization"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section-0",
+            "width": 990.0,
+            "x": 800.0,
+            "y": 50.0
           },
           "tasks": [
             {
+              "connectors": [
+                {
+                  "kind": "task-events",
+                  "x1": 895.0,
+                  "x2": 895.0,
+                  "y1": 237.6,
+                  "y2": 780.4
+                }
+              ],
+              "events": [
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
+                  "label": "RnD Planning (7.3.2)",
+                  "label_lines": [
+                    "RnD   Planning   (7.3.2)"
+                  ],
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 368.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
+                  "label": "Inputs (7.3.3)",
+                  "label_lines": [
+                    "Inputs   (7.3.3)"
+                  ],
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 428.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
+                  "label": "Outputs (7.3.4)",
+                  "label_lines": [
+                    "Outputs   (7.3.4)"
+                  ],
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 488.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
+                  "label": "Review (7.3.5)",
+                  "label_lines": [
+                    "Review   (7.3.5)"
+                  ],
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 548.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
+                  "label": "Verification (7.3.6)",
+                  "label_lines": [
+                    "Verification   (7.3.6)"
+                  ],
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 608.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
+                  "label": "Validation (7.3.7)",
+                  "label_lines": [
+                    "Validation   (7.3.7)"
+                  ],
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 800.0,
+                  "y": 668.8
+                }
+              ],
               "node": {
-                "x": 800.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
                 "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section-0",
+                "height": 68.8,
+                "kind": "task",
                 "label": "Research and Development (7.3)",
                 "label_lines": [
                   "Research   and",
                   "Development   (7.3)"
                 ],
-                "kind": "task"
-              },
-              "connectors": [
-                {
-                  "kind": "task-events",
-                  "x1": 895.0,
-                  "y1": 237.6,
-                  "x2": 895.0,
-                  "y2": 780.4
-                }
-              ],
-              "events": [
-                {
-                  "x": 800.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
-                  "label": "RnD Planning (7.3.2)",
-                  "label_lines": [
-                    "RnD   Planning   (7.3.2)"
-                  ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 428.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
-                  "label": "Inputs (7.3.3)",
-                  "label_lines": [
-                    "Inputs   (7.3.3)"
-                  ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 488.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
-                  "label": "Outputs (7.3.4)",
-                  "label_lines": [
-                    "Outputs   (7.3.4)"
-                  ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 548.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
-                  "label": "Review (7.3.5)",
-                  "label_lines": [
-                    "Review   (7.3.5)"
-                  ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 608.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
-                  "label": "Verification (7.3.6)",
-                  "label_lines": [
-                    "Verification   (7.3.6)"
-                  ],
-                  "kind": "event"
-                },
-                {
-                  "x": 800.0,
-                  "y": 668.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
-                  "label": "Validation (7.3.7)",
-                  "label_lines": [
-                    "Validation   (7.3.7)"
-                  ],
-                  "kind": "event"
-                }
-              ]
-            },
-            {
-              "node": {
-                "x": 1000.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
-                "content_width": 150.0,
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "Purchasing (7.4)",
-                "label_lines": [
-                  "Purchasing   (7.4)"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 800.0,
+                "y": 168.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1095.0,
-                  "y1": 237.6,
                   "x2": 1095.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 1000.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 67.5,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Purchasing Process (7.4.1)",
                   "label_lines": [
                     "Purchasing   Process",
                     "(7.4.1)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1000.0,
-                  "y": 446.3,
-                  "width": 190.0,
-                  "height": 67.5,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1000.0,
+                  "y": 368.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Purchasing Information (7.4.2)",
                   "label_lines": [
                     "Purchasing",
                     "Information   (7.4.2)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1000.0,
+                  "y": 446.3
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1200.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
                 "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Purchasing (7.4)",
+                "label_lines": [
+                  "Purchasing   (7.4)"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "Production (7.5)",
-                "label_lines": [
-                  "Production   (7.5)"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1000.0,
+                "y": 168.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1295.0,
-                  "y1": 237.6,
                   "x2": 1295.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 1200.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 67.5,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Production Activities (7.5.1)",
                   "label_lines": [
                     "Production   Activities",
                     "(7.5.1)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1200.0,
-                  "y": 446.3,
-                  "width": 190.0,
-                  "height": 67.5,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1200.0,
+                  "y": 368.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Production Feedback (8.2.1)",
                   "label_lines": [
                     "Production   Feedback",
                     "(8.2.1)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1200.0,
+                  "y": 446.3
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1400.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
                 "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Production (7.5)",
+                "label_lines": [
+                  "Production   (7.5)"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "Installation (7.5.3)",
-                "label_lines": [
-                  "Installation   (7.5.3)"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1200.0,
+                "y": 168.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1495.0,
-                  "y1": 237.6,
                   "x2": 1495.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 1400.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 67.5,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Installation Activities (7.5.3)",
                   "label_lines": [
                     "Installation",
                     "Activities   (7.5.3)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1400.0,
+                  "y": 368.8
                 }
-              ]
-            },
-            {
+              ],
               "node": {
-                "x": 1600.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
                 "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Installation (7.5.3)",
+                "label_lines": [
+                  "Installation   (7.5.3)"
+                ],
                 "padding": 20.0,
                 "section_class": "section-0",
-                "label": "Servicing (7.5.4)",
-                "label_lines": [
-                  "Servicing   (7.5.4)"
-                ],
-                "kind": "task"
-              },
+                "width": 190.0,
+                "x": 1400.0,
+                "y": 168.8
+              }
+            },
+            {
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1695.0,
-                  "y1": 237.6,
                   "x2": 1695.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 1600.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 67.5,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-0",
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Servicing Activities (7.5.4)",
                   "label_lines": [
                     "Servicing   Activities",
                     "(7.5.4)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-0",
+                  "width": 190.0,
+                  "x": 1600.0,
+                  "y": 368.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Servicing (7.5.4)",
+                "label_lines": [
+                  "Servicing   (7.5.4)"
+                ],
+                "padding": 20.0,
+                "section_class": "section-0",
+                "width": 190.0,
+                "x": 1600.0,
+                "y": 168.8
+              }
             }
           ]
         },
         {
           "node": {
-            "x": 1800.0,
-            "y": 50.0,
-            "width": 190.0,
-            "height": 68.8,
             "content_width": 150.0,
-            "padding": 20.0,
-            "section_class": "section-1",
+            "height": 68.8,
+            "kind": "section",
             "label": "Post-Production",
             "label_lines": [
               "Post-Production"
             ],
-            "kind": "section"
+            "padding": 20.0,
+            "section_class": "section-1",
+            "width": 190.0,
+            "x": 1800.0,
+            "y": 50.0
           },
           "tasks": [
             {
-              "node": {
-                "x": 1800.0,
-                "y": 168.8,
-                "width": 190.0,
-                "height": 68.8,
-                "content_width": 150.0,
-                "padding": 20.0,
-                "section_class": "section-1",
-                "label": "Post-Market Activities (8)",
-                "label_lines": [
-                  "Post-Market",
-                  "Activities   (8)"
-                ],
-                "kind": "task"
-              },
               "connectors": [
                 {
                   "kind": "task-events",
                   "x1": 1895.0,
-                  "y1": 237.6,
                   "x2": 1895.0,
+                  "y1": 237.6,
                   "y2": 780.4
                 }
               ],
               "events": [
                 {
-                  "x": 1800.0,
-                  "y": 368.8,
-                  "width": 190.0,
-                  "height": 50.0,
                   "content_width": 150.0,
-                  "padding": 20.0,
-                  "section_class": "section-1",
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Feedback (8.2.1)",
                   "label_lines": [
                     "Feedback   (8.2.1)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1800.0,
-                  "y": 428.8,
-                  "width": 190.0,
-                  "height": 50.0,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 1800.0,
+                  "y": 368.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 50.0,
+                  "kind": "event",
                   "label": "Complaints (8.2.2)",
                   "label_lines": [
                     "Complaints   (8.2.2)"
                   ],
-                  "kind": "event"
-                },
-                {
-                  "x": 1800.0,
-                  "y": 488.8,
-                  "width": 190.0,
-                  "height": 67.5,
-                  "content_width": 150.0,
                   "padding": 20.0,
                   "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 1800.0,
+                  "y": 428.8
+                },
+                {
+                  "content_width": 150.0,
+                  "height": 67.5,
+                  "kind": "event",
                   "label": "Adverse Events (8.2.3)",
                   "label_lines": [
                     "Adverse   Events",
                     "(8.2.3)"
                   ],
-                  "kind": "event"
+                  "padding": 20.0,
+                  "section_class": "section-1",
+                  "width": 190.0,
+                  "x": 1800.0,
+                  "y": 488.8
                 }
-              ]
+              ],
+              "node": {
+                "content_width": 150.0,
+                "height": 68.8,
+                "kind": "task",
+                "label": "Post-Market Activities (8)",
+                "label_lines": [
+                  "Post-Market",
+                  "Activities   (8)"
+                ],
+                "padding": 20.0,
+                "section_class": "section-1",
+                "width": 190.0,
+                "x": 1800.0,
+                "y": 168.8
+              }
             }
           ]
         }
       ],
-      "orphan_tasks": [],
-      "activity_line": {
-        "kind": "activity",
-        "x1": 150.0,
-        "y1": 287.6,
-        "x2": 2240.0,
-        "y2": 287.6
-      },
       "title": "Medical Device Lifecycle",
       "title_x": 745.0,
       "title_y": 20.0,

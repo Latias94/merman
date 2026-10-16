@@ -1,7 +1,7 @@
 {
   "diagramType": "info",
   "model": {
-    "type": "info",
-    "showInfo": false
+    "showInfo": false,
+    "type": "info"
   }
 }

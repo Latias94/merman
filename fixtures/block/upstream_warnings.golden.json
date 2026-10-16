@@ -1,188 +1,188 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "A",
-        "type": "na",
-        "label": "A",
         "children": [],
+        "id": "A",
+        "label": "A",
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "B",
-        "type": "na",
-        "label": "B",
         "children": [],
+        "id": "B",
+        "label": "B",
+        "type": "na",
         "widthInColumns": 2
       },
       {
-        "id": "C",
-        "type": "na",
-        "label": "C",
         "children": [],
+        "id": "C",
+        "label": "C",
+        "type": "na",
         "widthInColumns": 3
       },
       {
-        "id": "D",
-        "type": "na",
-        "label": "D",
         "children": [],
+        "id": "D",
+        "label": "D",
+        "type": "na",
         "widthInColumns": 4
       },
       {
-        "id": "E",
-        "type": "na",
-        "label": "E",
         "children": [],
+        "id": "E",
+        "label": "E",
+        "type": "na",
         "widthInColumns": 3
       },
       {
-        "id": "F",
-        "type": "na",
-        "label": "F",
         "children": [],
+        "id": "F",
+        "label": "F",
+        "type": "na",
         "widthInColumns": 2
       },
       {
-        "id": "G",
-        "type": "na",
-        "label": "G",
         "children": [],
+        "id": "G",
+        "label": "G",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "A",
-            "type": "na",
-            "label": "A",
             "children": [],
+            "id": "A",
+            "label": "A",
+            "type": "na",
             "widthInColumns": 1
           },
           {
-            "id": "B",
-            "type": "na",
-            "label": "B",
             "children": [],
+            "id": "B",
+            "label": "B",
+            "type": "na",
             "widthInColumns": 2
           },
           {
-            "id": "C",
-            "type": "na",
-            "label": "C",
             "children": [],
+            "id": "C",
+            "label": "C",
+            "type": "na",
             "widthInColumns": 3
           },
           {
-            "id": "D",
-            "type": "na",
-            "label": "D",
             "children": [],
+            "id": "D",
+            "label": "D",
+            "type": "na",
             "widthInColumns": 4
           },
           {
-            "id": "E",
-            "type": "na",
-            "label": "E",
             "children": [],
+            "id": "E",
+            "label": "E",
+            "type": "na",
             "widthInColumns": 3
           },
           {
-            "id": "F",
-            "type": "na",
-            "label": "F",
             "children": [],
+            "id": "F",
+            "label": "F",
+            "type": "na",
             "widthInColumns": 2
           },
           {
-            "id": "G",
-            "type": "na",
-            "label": "G",
             "children": [],
+            "id": "G",
+            "label": "G",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
-        "columns": 1
+        "columns": 1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "A",
-        "type": "na",
-        "label": "A",
         "children": [],
+        "id": "A",
+        "label": "A",
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "B",
-        "type": "na",
-        "label": "B",
         "children": [],
+        "id": "B",
+        "label": "B",
+        "type": "na",
         "widthInColumns": 2
       },
       {
-        "id": "C",
-        "type": "na",
-        "label": "C",
         "children": [],
+        "id": "C",
+        "label": "C",
+        "type": "na",
         "widthInColumns": 3
       },
       {
-        "id": "D",
-        "type": "na",
-        "label": "D",
         "children": [],
+        "id": "D",
+        "label": "D",
+        "type": "na",
         "widthInColumns": 4
       },
       {
-        "id": "E",
-        "type": "na",
-        "label": "E",
         "children": [],
+        "id": "E",
+        "label": "E",
+        "type": "na",
         "widthInColumns": 3
       },
       {
-        "id": "F",
-        "type": "na",
-        "label": "F",
         "children": [],
+        "id": "F",
+        "label": "F",
+        "type": "na",
         "widthInColumns": 2
       },
       {
-        "id": "G",
-        "type": "na",
-        "label": "G",
         "children": [],
+        "id": "G",
+        "label": "G",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [
       {
-        "ruleId": "merman.block.width_exceeds_columns",
-        "message": "Block B width 2 exceeds configured column width 1"
+        "message": "Block B width 2 exceeds configured column width 1",
+        "ruleId": "merman.block.width_exceeds_columns"
       },
       {
-        "ruleId": "merman.block.width_exceeds_columns",
-        "message": "Block C width 3 exceeds configured column width 1"
+        "message": "Block C width 3 exceeds configured column width 1",
+        "ruleId": "merman.block.width_exceeds_columns"
       },
       {
-        "ruleId": "merman.block.width_exceeds_columns",
-        "message": "Block D width 4 exceeds configured column width 1"
+        "message": "Block D width 4 exceeds configured column width 1",
+        "ruleId": "merman.block.width_exceeds_columns"
       },
       {
-        "ruleId": "merman.block.width_exceeds_columns",
-        "message": "Block E width 3 exceeds configured column width 1"
+        "message": "Block E width 3 exceeds configured column width 1",
+        "ruleId": "merman.block.width_exceeds_columns"
       },
       {
-        "ruleId": "merman.block.width_exceeds_columns",
-        "message": "Block F width 2 exceeds configured column width 1"
+        "message": "Block F width 2 exceeds configured column width 1",
+        "ruleId": "merman.block.width_exceeds_columns"
       }
     ],
     "warnings": [

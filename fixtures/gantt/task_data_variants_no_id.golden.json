@@ -1,143 +1,143 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Task data variants (no id)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "testa1"
     ],
     "tasks": [
       {
-        "section": "testa1",
-        "type": "testa1",
-        "task": "test1",
-        "id": "id1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2013-01-15T00:00:00.000",
+        "id": "id1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": id1,2013-01-01,2w",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2013-01-01"
-          },
           "endTime": {
             "data": "2w"
+          },
+          "startTime": {
+            "startData": "2013-01-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "testa1",
         "startTime": "2013-01-01T00:00:00.000",
-        "endTime": "2013-01-15T00:00:00.000"
+        "task": "test1",
+        "type": "testa1",
+        "vert": false
       },
       {
-        "section": "testa1",
-        "type": "testa1",
-        "task": "test2",
-        "id": "task1",
-        "prevTaskId": "id1",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2013-01-16T00:00:00.000",
+        "id": "task1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "id1",
+        "processed": true,
         "raw": {
           "data": ": after id1,1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after id1"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "after id1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "testa1",
         "startTime": "2013-01-15T00:00:00.000",
-        "endTime": "2013-01-16T00:00:00.000"
+        "task": "test2",
+        "type": "testa1",
+        "vert": false
       },
       {
-        "section": "testa1",
-        "type": "testa1",
-        "task": "test3",
-        "id": "task2",
-        "prevTaskId": "task1",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2013-01-26T00:00:00.000",
+        "id": "task2",
         "manualEndTime": true,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "task1",
+        "processed": true,
         "raw": {
           "data": ": 2013-01-26",
-          "startTime": {
-            "type": "prevTaskEnd",
-            "id": "task1"
-          },
           "endTime": {
             "data": "2013-01-26"
+          },
+          "startTime": {
+            "id": "task1",
+            "type": "prevTaskEnd"
           }
         },
+        "renderEndTime": null,
+        "section": "testa1",
         "startTime": "2013-01-16T00:00:00.000",
-        "endTime": "2013-01-26T00:00:00.000"
+        "task": "test3",
+        "type": "testa1",
+        "vert": false
       },
       {
-        "section": "testa1",
-        "type": "testa1",
-        "task": "test4",
-        "id": "task3",
-        "prevTaskId": "task2",
-        "order": 3,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2013-01-28T00:00:00.000",
+        "id": "task3",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "task2",
+        "processed": true,
         "raw": {
           "data": ": 2d",
-          "startTime": {
-            "type": "prevTaskEnd",
-            "id": "task2"
-          },
           "endTime": {
             "data": "2d"
+          },
+          "startTime": {
+            "id": "task2",
+            "type": "prevTaskEnd"
           }
         },
+        "renderEndTime": null,
+        "section": "testa1",
         "startTime": "2013-01-26T00:00:00.000",
-        "endTime": "2013-01-28T00:00:00.000"
+        "task": "test4",
+        "type": "testa1",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Task data variants (no id)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

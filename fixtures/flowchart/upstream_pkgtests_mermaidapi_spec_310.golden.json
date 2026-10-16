@@ -1,32 +1,32 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": null,
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
-    "vertexCalls": [],
-    "nodes": [],
     "edges": [],
+    "keyword": "graph",
+    "nodes": [],
     "subgraphs": [],
+    "tooltips": {},
+    "type": "flowchart-v2",
+    "vertexCalls": [],
     "warningFacts": [
       {
-        "ruleId": "merman.authoring.flowchart.explicit_direction",
-        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
-        "span": {
-          "start": 0,
-          "end": 5
-        },
         "fixSpan": {
-          "start": 5,
-          "end": 5
+          "end": 5,
+          "start": 5
+        },
+        "message": "flowchart headers should declare an explicit direction such as `TB`, `TD`, `BT`, `LR`, or `RL`",
+        "ruleId": "merman.authoring.flowchart.explicit_direction",
+        "span": {
+          "end": 5,
+          "start": 0
         }
       }
     ],

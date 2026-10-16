@@ -3,379 +3,379 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -337.695,
-        "min_y": -40.569,
         "max_x": 121.448,
-        "max_y": 539.566
+        "max_y": 539.566,
+        "min_x": -337.695,
+        "min_y": -40.569
       },
-      "total_width": 459.143,
-      "total_height": 580.134,
-      "viewbox_x": -337.695,
-      "viewbox_y": -40.569,
-      "padding": 20.0,
-      "use_max_width": true,
       "font_size": 16.0,
       "head": {
-        "x": 0.0,
-        "y": 333.333,
-        "width": 84.54,
         "height": 105.6,
-        "path_d": "M 0 -52.8 L 0 52.8 Q 202.896 0 0 -52.8 Z",
         "label": {
-          "text": "Manufacturing\nDefect",
+          "anchor": "start",
+          "bbox": {
+            "max_x": 84.54,
+            "max_y": 349.733,
+            "min_x": 6.0,
+            "min_y": 316.933
+          },
+          "class_name": "ishikawa-head-label",
+          "font_size": 16.0,
+          "line_height": 16.8,
           "lines": [
             "Manufacturing",
             "Defect"
           ],
-          "class_name": "ishikawa-head-label",
+          "text": "Manufacturing\nDefect",
           "x": 45.27,
-          "y": 333.333,
-          "anchor": "start",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": 6.0,
-            "min_y": 316.933,
-            "max_x": 84.54,
-            "max_y": 349.733
-          }
-        }
+          "y": 333.333
+        },
+        "path_d": "M 0 -52.8 L 0 52.8 Q 202.896 0 0 -52.8 Z",
+        "width": 84.54,
+        "x": 0.0,
+        "y": 333.333
       },
-      "spine": {
-        "x1": -317.695,
-        "y1": 333.333,
-        "x2": 0.0,
-        "y2": 333.333,
-        "class_name": "ishikawa-spine",
-        "marker_start": false
-      },
+      "padding": 20.0,
       "pairs": [
         {
-          "upper": {
-            "line": {
-              "x1": -20.0,
-              "y1": 333.333,
-              "x2": -66.391,
-              "y2": 3.244,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
+          "lower": {
             "label_group": {
-              "label_box": {
-                "x": -110.631,
-                "y": -20.569,
-                "width": 88.48,
-                "height": 23.0
-              },
               "label": {
-                "text": "Machine",
-                "lines": [
-                  "Machine"
-                ],
-                "class_name": "ishikawa-label cause",
-                "x": -66.391,
-                "y": -7.756,
                 "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
                 "bbox": {
-                  "min_x": -90.631,
-                  "min_y": -18.569,
-                  "max_x": -42.151,
-                  "max_y": 0.431
-                }
+                  "max_x": -21.196,
+                  "max_y": 517.566,
+                  "min_x": -65.196,
+                  "min_y": 498.566
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
+                "lines": [
+                  "Method"
+                ],
+                "text": "Method",
+                "x": -43.196,
+                "y": 509.378
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 84.0,
+                "x": -85.196,
+                "y": 496.566
               }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -20.0,
+              "x2": -43.196,
+              "y1": 333.333,
+              "y2": 498.378
             },
             "sub_groups": [
               {
-                "line": {
-                  "x1": -35.464,
-                  "y1": 223.304,
-                  "x2": -65.464,
-                  "y2": 223.304,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Calibration",
-                  "lines": [
-                    "Calibration"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -65.464,
-                  "y": 223.304,
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -136.664,
-                    "min_y": 212.491,
-                    "max_x": -65.464,
-                    "max_y": 231.491
-                  }
-                }
-              },
-              {
-                "line": {
-                  "x1": -50.927,
-                  "y1": 113.274,
-                  "x2": -80.927,
-                  "y2": 113.274,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
+                    "max_x": -61.598,
+                    "max_y": 424.043,
+                    "min_x": -140.478,
+                    "min_y": 405.043
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Missing step"
+                  ],
+                  "text": "Missing step",
+                  "x": -61.598,
+                  "y": 415.856
                 },
-                "label": {
-                  "text": "Worn tooling",
-                  "lines": [
-                    "Worn tooling"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -80.927,
-                  "y": 113.274,
-                  "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
-                  "bbox": {
-                    "min_x": -163.807,
-                    "min_y": 102.461,
-                    "max_x": -80.927,
-                    "max_y": 121.461
-                  }
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -31.598,
+                  "x2": -61.598,
+                  "y1": 415.856,
+                  "y2": 415.856
                 }
               }
             ]
           },
-          "lower": {
-            "line": {
-              "x1": -20.0,
-              "y1": 333.333,
-              "x2": -43.196,
-              "y2": 498.378,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
+          "upper": {
             "label_group": {
-              "label_box": {
-                "x": -85.196,
-                "y": 496.566,
-                "width": 84.0,
-                "height": 23.0
-              },
               "label": {
-                "text": "Method",
-                "lines": [
-                  "Method"
-                ],
-                "class_name": "ishikawa-label cause",
-                "x": -43.196,
-                "y": 509.378,
                 "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
                 "bbox": {
-                  "min_x": -65.196,
-                  "min_y": 498.566,
-                  "max_x": -21.196,
-                  "max_y": 517.566
-                }
+                  "max_x": -42.151,
+                  "max_y": 0.431,
+                  "min_x": -90.631,
+                  "min_y": -18.569
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
+                "lines": [
+                  "Machine"
+                ],
+                "text": "Machine",
+                "x": -66.391,
+                "y": -7.756
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 88.48,
+                "x": -110.631,
+                "y": -20.569
               }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -20.0,
+              "x2": -66.391,
+              "y1": 333.333,
+              "y2": 3.244
             },
             "sub_groups": [
               {
-                "line": {
-                  "x1": -31.598,
-                  "y1": 415.856,
-                  "x2": -61.598,
-                  "y2": 415.856,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Missing step",
-                  "lines": [
-                    "Missing step"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -61.598,
-                  "y": 415.856,
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -140.478,
-                    "min_y": 405.043,
-                    "max_x": -61.598,
-                    "max_y": 424.043
-                  }
+                    "max_x": -65.464,
+                    "max_y": 231.491,
+                    "min_x": -136.664,
+                    "min_y": 212.491
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Calibration"
+                  ],
+                  "text": "Calibration",
+                  "x": -65.464,
+                  "y": 223.304
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -35.464,
+                  "x2": -65.464,
+                  "y1": 223.304,
+                  "y2": 223.304
+                }
+              },
+              {
+                "label": {
+                  "anchor": "end",
+                  "bbox": {
+                    "max_x": -80.927,
+                    "max_y": 121.461,
+                    "min_x": -163.807,
+                    "min_y": 102.461
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Worn tooling"
+                  ],
+                  "text": "Worn tooling",
+                  "x": -80.927,
+                  "y": 113.274
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -50.927,
+                  "x2": -80.927,
+                  "y1": 113.274,
+                  "y2": 113.274
                 }
               }
             ]
           }
         },
         {
-          "upper": {
-            "line": {
-              "x1": -163.807,
-              "y1": 333.333,
-              "x2": -210.198,
-              "y2": 3.244,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
-            "label_group": {
-              "label_box": {
-                "x": -256.678,
-                "y": -20.569,
-                "width": 92.96,
-                "height": 23.0
-              },
-              "label": {
-                "text": "Material",
-                "lines": [
-                  "Material"
-                ],
-                "class_name": "ishikawa-label cause",
-                "x": -210.198,
-                "y": -7.756,
-                "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
-                "bbox": {
-                  "min_x": -236.678,
-                  "min_y": -18.569,
-                  "max_x": -183.718,
-                  "max_y": 0.431
-                }
-              }
-            },
-            "sub_groups": [
-              {
-                "line": {
-                  "x1": -179.271,
-                  "y1": 223.304,
-                  "x2": -209.271,
-                  "y2": 223.304,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
-                "label": {
-                  "text": "Wrong grade",
-                  "lines": [
-                    "Wrong grade"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -209.271,
-                  "y": 223.304,
-                  "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
-                  "bbox": {
-                    "min_x": -290.071,
-                    "min_y": 212.491,
-                    "max_x": -209.271,
-                    "max_y": 231.491
-                  }
-                }
-              },
-              {
-                "line": {
-                  "x1": -194.735,
-                  "y1": 113.274,
-                  "x2": -224.735,
-                  "y2": 113.274,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
-                "label": {
-                  "text": "Contamination",
-                  "lines": [
-                    "Contamination"
-                  ],
-                  "class_name": "ishikawa-label align",
-                  "x": -224.735,
-                  "y": 113.274,
-                  "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
-                  "bbox": {
-                    "min_x": -317.695,
-                    "min_y": 102.461,
-                    "max_x": -224.735,
-                    "max_y": 121.461
-                  }
-                }
-              }
-            ]
-          },
           "lower": {
-            "line": {
-              "x1": -163.807,
-              "y1": 333.333,
-              "x2": -187.003,
-              "y2": 498.378,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
             "label_group": {
-              "label_box": {
-                "x": -238.683,
-                "y": 496.566,
-                "width": 103.36,
-                "height": 23.0
-              },
               "label": {
-                "text": "Manpower",
+                "anchor": "middle",
+                "bbox": {
+                  "max_x": -155.323,
+                  "max_y": 517.566,
+                  "min_x": -218.683,
+                  "min_y": 498.566
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
                 "lines": [
                   "Manpower"
                 ],
-                "class_name": "ishikawa-label cause",
+                "text": "Manpower",
                 "x": -187.003,
-                "y": 509.378,
-                "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
-                "bbox": {
-                  "min_x": -218.683,
-                  "min_y": 498.566,
-                  "max_x": -155.323,
-                  "max_y": 517.566
-                }
+                "y": 509.378
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 103.36,
+                "x": -238.683,
+                "y": 496.566
               }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -163.807,
+              "x2": -187.003,
+              "y1": 333.333,
+              "y2": 498.378
             },
             "sub_groups": [
               {
-                "line": {
-                  "x1": -175.405,
-                  "y1": 415.856,
-                  "x2": -205.405,
-                  "y2": 415.856,
-                  "class_name": "ishikawa-sub-branch",
-                  "marker_start": true
-                },
                 "label": {
-                  "text": "Insufficient\ntraining",
+                  "anchor": "end",
+                  "bbox": {
+                    "max_x": -205.405,
+                    "max_y": 432.443,
+                    "min_x": -281.085,
+                    "min_y": 396.643
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
                   "lines": [
                     "Insufficient",
                     "training"
                   ],
-                  "class_name": "ishikawa-label align",
+                  "text": "Insufficient\ntraining",
                   "x": -205.405,
-                  "y": 415.856,
+                  "y": 415.856
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -175.405,
+                  "x2": -205.405,
+                  "y1": 415.856,
+                  "y2": 415.856
+                }
+              }
+            ]
+          },
+          "upper": {
+            "label_group": {
+              "label": {
+                "anchor": "middle",
+                "bbox": {
+                  "max_x": -183.718,
+                  "max_y": 0.431,
+                  "min_x": -236.678,
+                  "min_y": -18.569
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
+                "lines": [
+                  "Material"
+                ],
+                "text": "Material",
+                "x": -210.198,
+                "y": -7.756
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 92.96,
+                "x": -256.678,
+                "y": -20.569
+              }
+            },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -163.807,
+              "x2": -210.198,
+              "y1": 333.333,
+              "y2": 3.244
+            },
+            "sub_groups": [
+              {
+                "label": {
                   "anchor": "end",
-                  "line_height": 16.8,
-                  "font_size": 16.0,
                   "bbox": {
-                    "min_x": -281.085,
-                    "min_y": 396.643,
-                    "max_x": -205.405,
-                    "max_y": 432.443
-                  }
+                    "max_x": -209.271,
+                    "max_y": 231.491,
+                    "min_x": -290.071,
+                    "min_y": 212.491
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Wrong grade"
+                  ],
+                  "text": "Wrong grade",
+                  "x": -209.271,
+                  "y": 223.304
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -179.271,
+                  "x2": -209.271,
+                  "y1": 223.304,
+                  "y2": 223.304
+                }
+              },
+              {
+                "label": {
+                  "anchor": "end",
+                  "bbox": {
+                    "max_x": -224.735,
+                    "max_y": 121.461,
+                    "min_x": -317.695,
+                    "min_y": 102.461
+                  },
+                  "class_name": "ishikawa-label align",
+                  "font_size": 16.0,
+                  "line_height": 16.8,
+                  "lines": [
+                    "Contamination"
+                  ],
+                  "text": "Contamination",
+                  "x": -224.735,
+                  "y": 113.274
+                },
+                "line": {
+                  "class_name": "ishikawa-sub-branch",
+                  "marker_start": true,
+                  "x1": -194.735,
+                  "x2": -224.735,
+                  "y1": 113.274,
+                  "y2": 113.274
                 }
               }
             ]
           }
         }
-      ]
+      ],
+      "spine": {
+        "class_name": "ishikawa-spine",
+        "marker_start": false,
+        "x1": -317.695,
+        "x2": 0.0,
+        "y1": 333.333,
+        "y2": 333.333
+      },
+      "total_height": 580.134,
+      "total_width": 459.143,
+      "use_max_width": true,
+      "viewbox_x": -337.695,
+      "viewbox_y": -40.569
     }
   }
 }

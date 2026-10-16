@@ -1,36 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "horizontal",
-    "title": "Basic xychart",
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "band",
-      "title": "this is x axis",
-      "categories": [
-        "category1",
-        "category 2",
-        "category3",
-        "category4"
-      ]
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "yaxisText",
-      "min": 10.0,
-      "max": 150.0
-    },
+    "accTitle": null,
+    "orientation": "horizontal",
     "plots": [
       {
-        "type": "bar",
-        "title": "sample bat",
-        "values": [
-          52.0,
-          96.0,
-          35.0,
-          10.0
-        ],
         "data": [
           [
             "category1",
@@ -48,17 +23,17 @@
             "category4",
             10.0
           ]
+        ],
+        "title": "sample bat",
+        "type": "bar",
+        "values": [
+          52.0,
+          96.0,
+          35.0,
+          10.0
         ]
       },
       {
-        "type": "line",
-        "title": "",
-        "values": [
-          23.0,
-          46.0,
-          75.0,
-          43.0
-        ],
         "data": [
           [
             "category1",
@@ -76,9 +51,34 @@
             "category4",
             43.0
           ]
+        ],
+        "title": "",
+        "type": "line",
+        "values": [
+          23.0,
+          46.0,
+          75.0,
+          43.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": "Basic xychart",
+    "type": "xychart",
+    "xAxis": {
+      "categories": [
+        "category1",
+        "category 2",
+        "category3",
+        "category4"
+      ],
+      "title": "this is x axis",
+      "type": "band"
+    },
+    "yAxis": {
+      "max": 150.0,
+      "min": 10.0,
+      "title": "yaxisText",
+      "type": "linear"
+    }
   }
 }

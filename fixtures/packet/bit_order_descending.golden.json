@@ -1,51 +1,51 @@
 {
   "diagramType": "packet",
   "model": {
-    "type": "packet",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "packet": [
       [
         {
-          "start": 0,
-          "end": 7,
           "bits": 8,
-          "label": "DATA"
+          "end": 7,
+          "label": "DATA",
+          "start": 0
         },
         {
-          "start": 8,
-          "end": 11,
           "bits": 4,
-          "label": "TYPE"
+          "end": 11,
+          "label": "TYPE",
+          "start": 8
         },
         {
-          "start": 12,
-          "end": 12,
           "bits": 1,
-          "label": "EN"
+          "end": 12,
+          "label": "EN",
+          "start": 12
         },
         {
-          "start": 13,
-          "end": 15,
           "bits": 3,
-          "label": "FLAGS"
+          "end": 15,
+          "label": "FLAGS",
+          "start": 13
         }
       ],
       [
         {
-          "start": 16,
-          "end": 20,
           "bits": 5,
-          "label": "FLAGS"
+          "end": 20,
+          "label": "FLAGS",
+          "start": 16
         },
         {
-          "start": 21,
-          "end": 23,
           "bits": 3,
-          "label": "TAIL"
+          "end": 23,
+          "label": "TAIL",
+          "start": 21
         }
       ]
-    ]
+    ],
+    "title": null,
+    "type": "packet"
   }
 }

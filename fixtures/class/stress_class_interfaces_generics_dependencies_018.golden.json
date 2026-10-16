@@ -1,138 +1,138 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "IRepository": {
-        "id": "IRepository",
-        "type": "T",
-        "label": "IRepository",
-        "text": "IRepository&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [
           "interface"
         ],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-IRepository-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "IRepository",
+        "label": "IRepository",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "IRepository&lt;T&gt;",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": "T"
       },
       "Service": {
-        "id": "Service",
-        "type": "T",
-        "label": "Service",
-        "text": "Service&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "get",
-            "classifier": "",
-            "parameters": "id: String",
-            "returnType": "T",
-            "displayText": "+get(id: String) : T",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Service-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Service",
+        "label": "Service",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+get(id: String) : T",
+            "id": "get",
+            "memberType": "method",
+            "parameters": "id: String",
+            "returnType": "T",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Service&lt;T&gt;",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": "T"
       },
       "SqlRepo": {
-        "id": "SqlRepo",
-        "type": "T",
-        "label": "SqlRepo",
-        "text": "SqlRepo&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "get",
-            "classifier": "",
-            "parameters": "id: String",
-            "returnType": "T",
-            "displayText": "+get(id: String) : T",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-SqlRepo-2",
-        "parent": null,
+        "haveCallback": false,
+        "id": "SqlRepo",
+        "label": "SqlRepo",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+get(id: String) : T",
+            "id": "get",
+            "memberType": "method",
+            "parameters": "id: String",
+            "returnType": "T",
+            "visibility": "+"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "SqlRepo&lt;T&gt;",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": "T"
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "IRepository",
         "id2": "SqlRepo",
+        "relation": {
+          "lineType": 1,
+          "type1": 1,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": 1,
-          "type2": -1,
-          "lineType": 1
-        }
+        "title": ""
       },
       {
         "id": "1",
         "id1": "Service",
         "id2": "IRepository",
+        "relation": {
+          "lineType": 1,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "depends",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 1
-        }
+        "title": "depends"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

@@ -1,26 +1,26 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": "Long Word Test",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "Supercalifragilisticexpialidocious"
+    ],
     "sections": [
       "Test"
     ],
     "tasks": [
       {
-        "score": 5,
         "people": [
           "Supercalifragilisticexpialidocious"
         ],
+        "score": 5,
         "section": "Test",
-        "type": "Test",
-        "task": "    VeryLongWord"
+        "task": "    VeryLongWord",
+        "type": "Test"
       }
     ],
-    "actors": [
-      "Supercalifragilisticexpialidocious"
-    ]
+    "title": "Long Word Test",
+    "type": "journey"
   }
 }

@@ -1,256 +1,256 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "very_long_group_identifier_name_one",
-        "icon": "cloud",
-        "title": "Very Long Group Name One",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "extremely_long_service_identifier_name_alpha",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "extremely_long_service_identifier_name_beta",
+        "rhsInto": true,
+        "title": null
       },
       {
-        "id": "very_long_group_identifier_name_two",
-        "icon": "cloud",
-        "title": "Very Long Group Name Two",
-        "in": "very_long_group_identifier_name_one"
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "extremely_long_service_identifier_name_beta",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "extremely_long_service_identifier_name_gamma",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "L",
+        "lhsGroup": null,
+        "lhsId": "extremely_long_service_identifier_name_gamma",
+        "lhsInto": null,
+        "rhsDir": "R",
+        "rhsGroup": null,
+        "rhsId": "extremely_long_service_identifier_name_alpha",
+        "rhsInto": true,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "very_long_group_identifier_name_one",
+        "in": null,
+        "title": "Very Long Group Name One"
+      },
+      {
+        "icon": "cloud",
+        "id": "very_long_group_identifier_name_two",
+        "in": "very_long_group_identifier_name_one",
+        "title": "Very Long Group Name Two"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "extremely_long_service_identifier_name_alpha",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "extremely_long_service_identifier_name_alpha",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_beta",
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "extremely_long_service_identifier_name_gamma",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "extremely_long_service_identifier_name_alpha",
+        "in": "very_long_group_identifier_name_two",
         "title": "Service Alpha",
-        "in": "very_long_group_identifier_name_two"
+        "type": "service"
       },
       {
-        "id": "extremely_long_service_identifier_name_beta",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "extremely_long_service_identifier_name_alpha",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_beta",
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "extremely_long_service_identifier_name_beta",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "extremely_long_service_identifier_name_beta",
+        "in": "very_long_group_identifier_name_two",
         "title": "Service Beta",
-        "in": "very_long_group_identifier_name_two"
+        "type": "service"
       },
       {
-        "id": "extremely_long_service_identifier_name_gamma",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "extremely_long_service_identifier_name_beta",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "extremely_long_service_identifier_name_gamma",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "extremely_long_service_identifier_name_gamma",
+        "in": null,
         "title": "Service Gamma",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "extremely_long_service_identifier_name_alpha",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "extremely_long_service_identifier_name_alpha",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_beta",
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "extremely_long_service_identifier_name_gamma",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "extremely_long_service_identifier_name_alpha",
+        "in": "very_long_group_identifier_name_two",
         "title": "Service Alpha",
-        "in": "very_long_group_identifier_name_two"
+        "type": "service"
       },
       {
-        "id": "extremely_long_service_identifier_name_beta",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "extremely_long_service_identifier_name_alpha",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_beta",
+            "lhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_beta",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "extremely_long_service_identifier_name_beta",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "extremely_long_service_identifier_name_beta",
+        "in": "very_long_group_identifier_name_two",
         "title": "Service Beta",
-        "in": "very_long_group_identifier_name_two"
+        "type": "service"
       },
       {
-        "id": "extremely_long_service_identifier_name_gamma",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "extremely_long_service_identifier_name_beta",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsId": "extremely_long_service_identifier_name_beta",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_gamma",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "extremely_long_service_identifier_name_gamma",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "lhsId": "extremely_long_service_identifier_name_gamma",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "extremely_long_service_identifier_name_alpha",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "extremely_long_service_identifier_name_gamma",
+        "in": null,
         "title": "Service Gamma",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "extremely_long_service_identifier_name_alpha",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "extremely_long_service_identifier_name_beta",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "extremely_long_service_identifier_name_beta",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "extremely_long_service_identifier_name_gamma",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "extremely_long_service_identifier_name_gamma",
-        "lhsDir": "L",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "extremely_long_service_identifier_name_alpha",
-        "rhsDir": "R",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

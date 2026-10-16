@@ -1,355 +1,246 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Outer",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "long1",
+        "id": "edge1",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Outer_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "long1",
+        "id": "edge2",
+        "label": "New Data / append",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "long1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "ProcessData",
+        "id": "edge3",
+        "label": "Enough Data",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "long1",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "long1",
+        "id": "edge4",
+        "label": "Retry",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "ProcessData",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "root_end",
+        "id": "edge5",
+        "label": "Done",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Outer",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "type": null,
+        "id": "root_start",
         "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Outer",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Outer",
         "dir": "TB",
         "domId": "state-Outer-5",
-        "type": "group",
+        "id": "Outer",
         "isGroup": true,
+        "label": "Outer",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rectWithTitle",
-        "label": "Accumulate Enough Data\nLong State Name (with dashes - and spaces)",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "long1",
-        "dir": null,
-        "domId": "state-long1-4",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": "Outer",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
         "description": [
           "Just a test"
-        ]
+        ],
+        "dir": null,
+        "domId": "state-long1-4",
+        "id": "long1",
+        "isGroup": false,
+        "label": "Accumulate Enough Data\nLong State Name (with dashes - and spaces)",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": "Outer",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rectWithTitle",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Outer_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Outer_start",
         "dir": null,
         "domId": "state-Outer_start-1",
-        "type": null,
+        "id": "Outer_start",
         "isGroup": false,
+        "label": "Outer_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Outer",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Outer",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "ProcessData",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "ProcessData",
         "dir": null,
         "domId": "state-ProcessData-4",
-        "type": null,
+        "id": "ProcessData",
         "isGroup": false,
+        "label": "ProcessData",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Outer",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Outer",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "root_end",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_end",
         "dir": null,
         "domId": "state-root_end-5",
-        "type": null,
+        "id": "root_end",
         "isGroup": false,
+        "label": "root_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "root_start",
-        "end": "Outer",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "Outer_start",
-        "end": "long1",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "long1",
-        "end": "long1",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "New Data / append",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge3",
-        "start": "long1",
-        "end": "ProcessData",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Enough Data",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge4",
-        "start": "ProcessData",
-        "end": "long1",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Retry",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge5",
-        "start": "Outer",
-        "end": "root_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Done",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "Outer": {
-        "id": "Outer",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "state",
-            "id": "long1",
-            "type": "default",
-            "description": "Accumulate Enough Data\nLong State Name (with dashes - and spaces)",
-            "doc": null,
-            "classes": []
-          },
-          {
-            "stmt": "state",
-            "id": "long1",
-            "type": "default",
-            "description": "Just a test",
-            "doc": null,
-            "classes": []
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Outer_start",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "long1",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "long1",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "long1",
-              "type": "default",
-              "classes": []
-            },
-            "description": "New Data / append"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "long1",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "ProcessData",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Enough Data"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "ProcessData",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "long1",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Retry"
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_end": {
-        "id": "root_end",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": false
-      },
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -362,6 +253,115 @@
         "relationTitle": "Done"
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "Outer": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "classes": [],
+            "description": "Accumulate Enough Data\nLong State Name (with dashes - and spaces)",
+            "doc": null,
+            "id": "long1",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "classes": [],
+            "description": "Just a test",
+            "doc": null,
+            "id": "long1",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Outer_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "New Data / append",
+            "state1": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "Enough Data",
+            "state1": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "ProcessData",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "Retry",
+            "state1": {
+              "classes": [],
+              "id": "ProcessData",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "long1",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "Outer",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_end": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_end",
+        "note": null,
+        "start": false,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

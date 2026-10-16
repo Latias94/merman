@@ -1,120 +1,120 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "A": {
-        "id": "A",
-        "type": "",
-        "label": "This has\na newline!",
-        "text": "This has\na newline!",
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
         "cssClasses": "default",
-        "methods": [],
+        "domId": "classId-A-0",
+        "haveCallback": false,
+        "id": "A",
+        "label": "This has\na newline!",
+        "link": null,
+        "linkTarget": null,
         "members": [
           {
-            "memberType": "attribute",
-            "visibility": "+",
-            "id": "String boop",
             "classifier": "",
-            "parameters": "",
-            "returnType": "",
+            "cssStyle": "",
             "displayText": "+String boop",
-            "cssStyle": ""
-          },
-          {
+            "id": "String boop",
             "memberType": "attribute",
-            "visibility": "-",
-            "id": "Int beep",
-            "classifier": "",
             "parameters": "",
             "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
             "displayText": "-Int beep",
-            "cssStyle": ""
-          },
-          {
+            "id": "Int beep",
             "memberType": "attribute",
-            "visibility": "#",
-            "id": "double bop",
-            "classifier": "",
             "parameters": "",
             "returnType": "",
+            "visibility": "-"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
             "displayText": "#double bop",
-            "cssStyle": ""
+            "id": "double bop",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "#"
           }
         ],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-A-0",
+        "methods": [],
         "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "styles": [],
+        "text": "This has\na newline!",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "B": {
-        "id": "B",
-        "type": "",
-        "label": "This title also has\na newline",
-        "text": "This title also has\na newline",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "with",
-            "classifier": "",
-            "parameters": "more",
-            "returnType": "",
-            "displayText": "+with(more)",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "-",
-            "id": "methods",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-methods()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-B-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "B",
+        "label": "This title also has\na newline",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+with(more)",
+            "id": "with",
+            "memberType": "method",
+            "parameters": "more",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-methods()",
+            "id": "methods",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "This title also has\na newline",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

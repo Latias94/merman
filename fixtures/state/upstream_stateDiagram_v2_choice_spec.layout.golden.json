@@ -2,55 +2,22 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
-        {
-          "id": "False",
-          "x": 80.0,
-          "y": 290.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "IsPositive",
-          "x": 168.0,
-          "y": 84.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "True",
-          "x": 256.0,
-          "y": 290.5,
-          "width": 136.0,
-          "height": 37.0,
-          "is_cluster": false
-        },
-        {
-          "id": "if_state",
-          "x": 168.0,
-          "y": 157.0,
-          "width": 28.0,
-          "height": 28.0,
-          "is_cluster": false
-        },
-        {
-          "id": "root_start",
-          "x": 168.0,
-          "y": 19.0,
-          "width": 14.0,
-          "height": 14.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 324.0,
+        "max_y": 309.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "edge0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "root_start",
-          "to": "IsPositive",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge0",
+          "label": null,
           "points": [
             {
               "x": 168.0,
@@ -61,21 +28,21 @@
               "y": 66.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "IsPositive",
+          "to_cluster": null
         },
         {
-          "id": "edge1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "IsPositive",
-          "to": "if_state",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge1",
+          "label": null,
           "points": [
             {
               "x": 168.0,
@@ -86,21 +53,26 @@
               "y": 143.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "if_state",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "if_state",
+          "from_cluster": null,
           "id": "edge2",
-          "from": "if_state",
-          "to": "False",
-          "from_cluster": null,
-          "to_cluster": null,
+          "label": {
+            "height": 21.0,
+            "width": 46.06,
+            "x": 79.53,
+            "y": 221.5
+          },
           "points": [
             {
               "x": 166.667,
@@ -119,26 +91,26 @@
               "y": 272.0
             }
           ],
-          "label": {
-            "x": 79.53,
-            "y": 221.5,
-            "width": 46.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "False",
+          "to_cluster": null
         },
         {
-          "id": "edge3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "if_state",
-          "to": "True",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge3",
+          "label": {
+            "height": 21.0,
+            "width": 52.36,
+            "x": 255.68,
+            "y": 221.5
+          },
           "points": [
             {
               "x": 169.333,
@@ -157,28 +129,56 @@
               "y": 272.0
             }
           ],
-          "label": {
-            "x": 255.68,
-            "y": 221.5,
-            "width": 52.36,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "True",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 324.0,
-        "max_y": 309.0
-      }
+      "nodes": [
+        {
+          "height": 37.0,
+          "id": "False",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 80.0,
+          "y": 290.5
+        },
+        {
+          "height": 37.0,
+          "id": "IsPositive",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 168.0,
+          "y": 84.5
+        },
+        {
+          "height": 37.0,
+          "id": "True",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 256.0,
+          "y": 290.5
+        },
+        {
+          "height": 28.0,
+          "id": "if_state",
+          "is_cluster": false,
+          "width": 28.0,
+          "x": 168.0,
+          "y": 157.0
+        },
+        {
+          "height": 14.0,
+          "id": "root_start",
+          "is_cluster": false,
+          "width": 14.0,
+          "x": 168.0,
+          "y": 19.0
+        }
+      ]
     }
   }
 }

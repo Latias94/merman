@@ -1,159 +1,159 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "classA": {
-        "id": "classA",
-        "type": "",
-        "label": "classA",
-        "text": "classA",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-classA-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "classA",
+        "label": "classA",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "classA",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "classB": {
-        "id": "classB",
-        "type": "",
-        "label": "classB",
-        "text": "classB",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-classB-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "classB",
+        "label": "classB",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "classB",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "classC": {
-        "id": "classC",
-        "type": "",
-        "label": "classC",
-        "text": "classC",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-classC-2",
-        "parent": null,
+        "haveCallback": false,
+        "id": "classC",
+        "label": "classC",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "classC",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "classD": {
-        "id": "classD",
-        "type": "",
-        "label": "classD",
-        "text": "classD",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-classD-3",
-        "parent": null,
+        "haveCallback": false,
+        "id": "classD",
+        "label": "classD",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "classD",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "classA",
         "id2": "classB",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "Inheritance",
-        "relation": {
-          "type1": -1,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": "Inheritance"
       },
       {
         "id": "1",
         "id1": "classA",
         "id2": "classC",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "link",
-        "relation": {
-          "type1": -1,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": "link"
       },
       {
         "id": "2",
         "id1": "classC",
         "id2": "classD",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "link",
-        "relation": {
-          "type1": -1,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": "link"
       },
       {
         "id": "3",
         "id1": "classB",
         "id2": "classD",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": -1,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": ""
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

@@ -1,79 +1,79 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "actor",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "actor",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hola",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "Alice",
-        "message": "Extremely utterly long line of longness which had previously overflown the actor box as it is much longer than what it should be",
-        "wrap": true,
-        "type": 2,
         "activate": false,
-        "placement": 1
+        "from": "Alice",
+        "id": "0",
+        "message": "Hola",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
       },
       {
-        "id": "2",
-        "from": "Bob",
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "Extremely utterly long line of longness which had previously overflown the actor box as it is much longer than what it should be",
+        "placement": 1,
         "to": "Alice",
+        "type": 2,
+        "wrap": true
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
         "message": "I'm short though",
-        "wrap": false,
+        "to": "Alice",
         "type": 0,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "Alice",
-        "placement": 1,
         "message": "Extremely utterly long line of longness which had previously overflown the actor box as it is much longer than what it should be",
+        "placement": 1,
         "wrap": true
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

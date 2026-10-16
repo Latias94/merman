@@ -1,53 +1,53 @@
 {
   "diagramType": "mindmap",
   "model": {
-    "type": "mindmap",
-    "nodes": [
-      {
-        "id": "0",
-        "domId": "node_0",
-        "label": "I am the default shape",
-        "labelType": "markdown",
-        "isGroup": false,
-        "shape": "defaultMindmapNode",
-        "width": 200,
-        "height": 0,
-        "padding": 10,
-        "cssClasses": "mindmap-node section-root section--1",
-        "cssStyles": [],
-        "centerLabel": true,
-        "look": "classic",
-        "level": 0,
-        "nodeId": "I am the default shape",
-        "type": 0
-      }
-    ],
-    "edges": [],
     "diagramId": "<dynamic>",
-    "rootNode": {
-      "id": 0,
-      "nodeId": "I am the default shape",
-      "level": 0,
-      "descr": "I am the default shape",
-      "type": 0,
-      "children": [],
-      "width": 200,
-      "padding": 10,
-      "isRoot": true
-    },
+    "direction": "TB",
+    "edges": [],
     "markers": [
       "point"
     ],
-    "direction": "TB",
     "nodeSpacing": 50,
+    "nodes": [
+      {
+        "centerLabel": true,
+        "cssClasses": "mindmap-node section-root section--1",
+        "cssStyles": [],
+        "domId": "node_0",
+        "height": 0,
+        "id": "0",
+        "isGroup": false,
+        "label": "I am the default shape",
+        "labelType": "markdown",
+        "level": 0,
+        "look": "classic",
+        "nodeId": "I am the default shape",
+        "padding": 10,
+        "shape": "defaultMindmapNode",
+        "type": 0,
+        "width": 200
+      }
+    ],
     "rankSpacing": 50,
+    "rootNode": {
+      "children": [],
+      "descr": "I am the default shape",
+      "id": 0,
+      "isRoot": true,
+      "level": 0,
+      "nodeId": "I am the default shape",
+      "padding": 10,
+      "type": 0,
+      "width": 200
+    },
     "shapes": {
       "0": {
-        "shape": "defaultMindmapNode",
-        "width": 200,
         "height": 0,
-        "padding": 10
+        "padding": 10,
+        "shape": "defaultMindmapNode",
+        "width": 200
       }
-    }
+    },
+    "type": "mindmap"
   }
 }

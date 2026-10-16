@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B",
@@ -13,87 +11,46 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "C",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C2": {
-        "name": "C2",
         "description": "C2",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C2",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "B",
-        "message": "start",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "A",
-        "to": "C",
-        "message": "hello C",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "A",
-        "to": "C",
-        "message": "bye C",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "B",
-        "to": "C2",
-        "message": "welcome back",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "B",
-        "to": "C2",
-        "message": "bye again",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
     "createdActors": {
       "C": 1,
       "C2": 3
@@ -102,12 +59,55 @@
       "C": 2,
       "C2": 4
     },
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "start",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "1",
+        "message": "hello C",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "2",
+        "message": "bye C",
+        "to": "C",
+        "type": 3,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "3",
+        "message": "welcome back",
+        "to": "C2",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "4",
+        "message": "bye again",
+        "to": "C2",
+        "type": 3,
+        "wrap": false
       }
-    }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

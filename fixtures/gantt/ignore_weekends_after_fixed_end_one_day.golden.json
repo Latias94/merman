@@ -1,89 +1,89 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Ignore weekends - after fixed end (1d)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
+    "displayMode": "",
     "excludes": [
       "weekends",
       "2019-02-06",
       "friday"
     ],
+    "includes": [],
     "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
-    "displayMode": "",
+    "links": {},
     "sections": [
       "weekends skip test"
     ],
     "tasks": [
       {
-        "section": "weekends skip test",
-        "type": "weekends skip test",
-        "task": "test4",
-        "id": "id4",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2019-02-20T00:00:00.000",
+        "id": "id4",
         "manualEndTime": true,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": id4,2019-02-01,2019-02-20",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2019-02-01"
-          },
           "endTime": {
             "data": "2019-02-20"
+          },
+          "startTime": {
+            "startData": "2019-02-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "weekends skip test",
         "startTime": "2019-02-01T00:00:00.000",
-        "endTime": "2019-02-20T00:00:00.000"
+        "task": "test4",
+        "type": "weekends skip test",
+        "vert": false
       },
       {
-        "section": "weekends skip test",
-        "type": "weekends skip test",
-        "task": "test5",
-        "id": "id5",
-        "prevTaskId": "id4",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2019-02-21T00:00:00.000",
+        "id": "id5",
         "manualEndTime": false,
-        "renderEndTime": "2019-02-21T00:00:00.000",
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "id4",
+        "processed": true,
         "raw": {
           "data": ": id5,after id4,1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after id4"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "after id4",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2019-02-21T00:00:00.000",
+        "section": "weekends skip test",
         "startTime": "2019-02-20T00:00:00.000",
-        "endTime": "2019-02-21T00:00:00.000"
+        "task": "test5",
+        "type": "weekends skip test",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Ignore weekends - after fixed end (1d)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

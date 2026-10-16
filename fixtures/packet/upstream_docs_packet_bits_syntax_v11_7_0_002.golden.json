@@ -1,7 +1,7 @@
 {
   "diagramType": "error",
   "model": {
-    "type": "error",
-    "errorMessage": "Diagram parse error (packet): unexpected packet statement: ... More Fields ..."
+    "errorMessage": "Diagram parse error (packet): unexpected packet statement: ... More Fields ...",
+    "type": "error"
   }
 }

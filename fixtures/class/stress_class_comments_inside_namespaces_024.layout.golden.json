@@ -2,47 +2,49 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 322.536,
+        "max_y": 342.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "Outer",
-          "x": 91.259,
-          "y": 116.5,
-          "width": 158.519,
+          "diff": -12.0,
+          "effective_dir": "LR",
           "height": 209.0,
-          "is_cluster": true
-        },
-        {
-          "id": "Bar",
-          "x": 300.318,
-          "y": 301.5,
-          "width": 44.438,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Outer.Foo",
-          "x": 130.097,
-          "y": 301.5,
-          "width": 80.844,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Foo",
+          "id": "Outer",
+          "offset_y": 15.0,
+          "padding": 12.0,
+          "requested_dir": null,
+          "title": "Outer",
+          "title_label": {
+            "height": 21.0,
+            "width": 32.48,
+            "x": 91.259,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 158.519,
           "x": 91.259,
-          "y": 129.5,
-          "width": 110.519,
-          "height": 135.0,
-          "is_cluster": false
+          "y": 116.5
         }
       ],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Outer.Foo",
-          "to": "Bar",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": {
+            "height": 21.0,
+            "width": 27.58,
+            "x": 224.309,
+            "y": 301.0
+          },
           "points": [
             {
               "x": 170.519,
@@ -53,50 +55,48 @@
               "y": 301.5
             }
           ],
-          "label": {
-            "x": 224.309,
-            "y": 301.0,
-            "width": 27.58,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Bar",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "Outer",
-          "x": 91.259,
-          "y": 116.5,
-          "width": 158.519,
           "height": 209.0,
-          "diff": -12.0,
-          "offset_y": 15.0,
-          "title": "Outer",
-          "title_label": {
-            "x": 91.259,
-            "y": 22.5,
-            "width": 32.48,
-            "height": 21.0
-          },
-          "requested_dir": null,
-          "effective_dir": "LR",
-          "padding": 12.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "Outer",
+          "is_cluster": true,
+          "width": 158.519,
+          "x": 91.259,
+          "y": 116.5
+        },
+        {
+          "height": 81.0,
+          "id": "Bar",
+          "is_cluster": false,
+          "width": 44.438,
+          "x": 300.318,
+          "y": 301.5
+        },
+        {
+          "height": 81.0,
+          "id": "Outer.Foo",
+          "is_cluster": false,
+          "width": 80.844,
+          "x": 130.097,
+          "y": 301.5
+        },
+        {
+          "height": 135.0,
+          "id": "Foo",
+          "is_cluster": false,
+          "width": 110.519,
+          "x": 91.259,
+          "y": 129.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 322.536,
-        "max_y": 342.0
-      }
+      ]
     }
   }
 }

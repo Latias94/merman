@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B",
@@ -15,255 +13,257 @@
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "A",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "B",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "C": {
-        "name": "C",
         "description": "C",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "C",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "D": {
-        "name": "D",
         "description": "D",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "D",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "E": {
-        "name": "E",
         "description": "E",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "E",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "G": {
-        "name": "G",
         "description": "G",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "G",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "B",
-        "message": "Task 1",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "1",
-        "from": "B",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "this is an opt with a long title that will overflow",
-        "wrap": false,
-        "type": 15,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "B",
-        "to": "C",
-        "message": "Task 2",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "4",
-        "from": "C",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "C",
-        "to": "B",
-        "message": "Return",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "C",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 16,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "A",
-        "to": "D",
-        "message": "Task 3",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": null,
-        "to": null,
-        "message": "this is another opt with a long title that will overflow",
-        "wrap": false,
-        "type": 15,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "D",
-        "to": "E",
-        "message": "Task 4",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "11",
-        "from": "E",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": null,
-        "to": null,
-        "message": "this is a nested opt with a long title that will overflow",
-        "wrap": false,
-        "type": 15,
-        "activate": false
-      },
-      {
-        "id": "13",
-        "from": "E",
-        "to": "G",
-        "message": "Task 5",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "14",
-        "from": "G",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "15",
-        "from": "G",
-        "to": "E",
-        "message": "Return",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "16",
-        "from": "G",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "17",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 16,
-        "activate": false
-      },
-      {
-        "id": "18",
-        "from": "E",
-        "to": "E",
-        "message": "Task 6",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "19",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 16,
-        "activate": false
-      },
-      {
-        "id": "20",
-        "from": "D",
-        "to": "A",
-        "message": "Complete",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": true,
+        "from": "A",
+        "id": "0",
+        "message": "Task 1",
+        "to": "B",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "B",
+        "id": "1",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "this is an opt with a long title that will overflow",
+        "to": null,
+        "type": 15,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "B",
+        "id": "3",
+        "message": "Task 2",
+        "to": "C",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "5",
+        "message": "Return",
+        "to": "B",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "C",
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "",
+        "to": null,
+        "type": 16,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "A",
+        "id": "8",
+        "message": "Task 3",
+        "to": "D",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "9",
+        "message": "this is another opt with a long title that will overflow",
+        "to": null,
+        "type": 15,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "D",
+        "id": "10",
+        "message": "Task 4",
+        "to": "E",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "E",
+        "id": "11",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "12",
+        "message": "this is a nested opt with a long title that will overflow",
+        "to": null,
+        "type": 15,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "E",
+        "id": "13",
+        "message": "Task 5",
+        "to": "G",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "G",
+        "id": "14",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "G",
+        "id": "15",
+        "message": "Return",
+        "to": "E",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "G",
+        "id": "16",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "17",
+        "message": "",
+        "to": null,
+        "type": 16,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "E",
+        "id": "18",
+        "message": "Task 6",
+        "to": "E",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "19",
+        "message": "",
+        "to": null,
+        "type": 16,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "D",
+        "id": "20",
+        "message": "Complete",
+        "to": "A",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

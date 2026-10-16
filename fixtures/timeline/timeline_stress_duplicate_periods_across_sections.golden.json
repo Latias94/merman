@@ -1,11 +1,9 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Duplicate period labels across sections",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "Alpha",
       "Beta",
@@ -13,65 +11,67 @@
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "Alpha",
-        "type": "Alpha",
-        "task": "2024 ",
-        "score": 0,
         "events": [
           "A1"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "Alpha",
+        "task": "2024 ",
+        "type": "Alpha"
       },
       {
-        "id": 1,
-        "section": "Alpha",
-        "type": "Alpha",
-        "task": "2025 ",
-        "score": 0,
         "events": [
           "A2"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "Alpha",
+        "task": "2025 ",
+        "type": "Alpha"
       },
       {
-        "id": 2,
-        "section": "Beta",
-        "type": "Beta",
-        "task": "2024 ",
-        "score": 0,
         "events": [
           "B1"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "Beta",
+        "task": "2024 ",
+        "type": "Beta"
       },
       {
-        "id": 3,
-        "section": "Beta",
-        "type": "Beta",
-        "task": "2025 ",
-        "score": 0,
         "events": [
           "B2"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "Beta",
+        "task": "2025 ",
+        "type": "Beta"
       },
       {
-        "id": 4,
-        "section": "Gamma",
-        "type": "Gamma",
-        "task": "2024 ",
-        "score": 0,
         "events": [
           "C1"
-        ]
+        ],
+        "id": 4,
+        "score": 0,
+        "section": "Gamma",
+        "task": "2024 ",
+        "type": "Gamma"
       },
       {
-        "id": 5,
-        "section": "Gamma",
-        "type": "Gamma",
-        "task": "2025 ",
-        "score": 0,
         "events": [
           "C2"
-        ]
+        ],
+        "id": 5,
+        "score": 0,
+        "section": "Gamma",
+        "task": "2025 ",
+        "type": "Gamma"
       }
-    ]
+    ],
+    "title": "Duplicate period labels across sections",
+    "type": "timeline"
   }
 }

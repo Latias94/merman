@@ -1,662 +1,483 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Active",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NumLockOff",
+        "id": "edge1",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "divider-id-1_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NumLockOn",
+        "id": "edge2",
+        "label": "EvNumLockPressed",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "NumLockOff",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "NumLockOff",
+        "id": "edge3",
+        "label": "EvNumLockPressed",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "NumLockOn",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "CapsLockOff",
+        "id": "edge4",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "divider-id-2_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "CapsLockOn",
+        "id": "edge5",
+        "label": "EvCapsLockPressed",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "CapsLockOff",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "CapsLockOff",
+        "id": "edge6",
+        "label": "EvCapsLockPressed",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "CapsLockOn",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "ScrollLockOff",
+        "id": "edge7",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "id-38dvt516gkfs-1_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "ScrollLockOn",
+        "id": "edge8",
+        "label": "EvCapsLockPressed",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "ScrollLockOff",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "ScrollLockOff",
+        "id": "edge9",
+        "label": "EvCapsLockPressed",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "ScrollLockOn",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "type": null,
+        "id": "root_start",
         "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Active",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Active",
         "dir": "TB",
         "domId": "state-Active-1",
-        "type": "group",
+        "id": "Active",
         "isGroup": true,
+        "label": "Active",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "divider",
-        "label": "",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "divider-id-1",
         "dir": "TB",
         "domId": "state-divider-id-1-1",
-        "type": "group",
+        "id": "divider-id-1",
         "isGroup": true,
+        "label": "",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "Active",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Active",
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "divider",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "divider-id-1_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "divider-id-1_start",
         "dir": null,
         "domId": "state-divider-id-1_start-1",
-        "type": null,
+        "id": "divider-id-1_start",
         "isGroup": false,
+        "label": "divider-id-1_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "divider-id-1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "divider-id-1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "NumLockOff",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "NumLockOff",
         "dir": null,
         "domId": "state-NumLockOff-3",
-        "type": null,
+        "id": "NumLockOff",
         "isGroup": false,
+        "label": "NumLockOff",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "divider-id-1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "divider-id-1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "NumLockOn",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "NumLockOn",
         "dir": null,
         "domId": "state-NumLockOn-3",
-        "type": null,
+        "id": "NumLockOn",
         "isGroup": false,
+        "label": "NumLockOn",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "divider-id-1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "divider-id-1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "divider",
-        "label": "",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "divider-id-2",
         "dir": "TB",
         "domId": "state-divider-id-2-4",
-        "type": "group",
+        "id": "divider-id-2",
         "isGroup": true,
+        "label": "",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "Active",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Active",
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "divider",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "divider-id-2_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "divider-id-2_start",
         "dir": null,
         "domId": "state-divider-id-2_start-4",
-        "type": null,
+        "id": "divider-id-2_start",
         "isGroup": false,
+        "label": "divider-id-2_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "divider-id-2",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "divider-id-2",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "CapsLockOff",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "CapsLockOff",
         "dir": null,
         "domId": "state-CapsLockOff-6",
-        "type": null,
+        "id": "CapsLockOff",
         "isGroup": false,
+        "label": "CapsLockOff",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "divider-id-2",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "divider-id-2",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "CapsLockOn",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "CapsLockOn",
         "dir": null,
         "domId": "state-CapsLockOn-6",
-        "type": null,
+        "id": "CapsLockOn",
         "isGroup": false,
+        "label": "CapsLockOn",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "divider-id-2",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "divider-id-2",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "divider",
-        "label": "",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "id-38dvt516gkfs-1",
         "dir": "TB",
         "domId": "state-id-38dvt516gkfs-1-7",
-        "type": "group",
+        "id": "id-38dvt516gkfs-1",
         "isGroup": true,
+        "label": "",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "Active",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Active",
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "divider",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "id-38dvt516gkfs-1_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "id-38dvt516gkfs-1_start",
         "dir": null,
         "domId": "state-id-38dvt516gkfs-1_start-7",
-        "type": null,
+        "id": "id-38dvt516gkfs-1_start",
         "isGroup": false,
+        "label": "id-38dvt516gkfs-1_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "id-38dvt516gkfs-1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "id-38dvt516gkfs-1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "ScrollLockOff",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "ScrollLockOff",
         "dir": null,
         "domId": "state-ScrollLockOff-9",
-        "type": null,
+        "id": "ScrollLockOff",
         "isGroup": false,
+        "label": "ScrollLockOff",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "id-38dvt516gkfs-1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "id-38dvt516gkfs-1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "ScrollLockOn",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "ScrollLockOn",
         "dir": null,
         "domId": "state-ScrollLockOn-9",
-        "type": null,
+        "id": "ScrollLockOn",
         "isGroup": false,
+        "label": "ScrollLockOn",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "id-38dvt516gkfs-1",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "id-38dvt516gkfs-1",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "root_start",
-        "end": "Active",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "divider-id-1_start",
-        "end": "NumLockOff",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "NumLockOff",
-        "end": "NumLockOn",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvNumLockPressed",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge3",
-        "start": "NumLockOn",
-        "end": "NumLockOff",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvNumLockPressed",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge4",
-        "start": "divider-id-2_start",
-        "end": "CapsLockOff",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge5",
-        "start": "CapsLockOff",
-        "end": "CapsLockOn",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvCapsLockPressed",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge6",
-        "start": "CapsLockOn",
-        "end": "CapsLockOff",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvCapsLockPressed",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge7",
-        "start": "id-38dvt516gkfs-1_start",
-        "end": "ScrollLockOff",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge8",
-        "start": "ScrollLockOff",
-        "end": "ScrollLockOn",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvCapsLockPressed",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge9",
-        "start": "ScrollLockOn",
-        "end": "ScrollLockOff",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "EvCapsLockPressed",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "Active": {
-        "id": "Active",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "state",
-            "id": "divider-id-1",
-            "type": "divider",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "divider-id-1_start",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "NumLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "NumLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "NumLockOn",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": "EvNumLockPressed"
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "NumLockOn",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "NumLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": "EvNumLockPressed"
-              }
-            ],
-            "classes": []
-          },
-          {
-            "stmt": "state",
-            "id": "divider-id-2",
-            "type": "divider",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "divider-id-2_start",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "CapsLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "CapsLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "CapsLockOn",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": "EvCapsLockPressed"
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "CapsLockOn",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "CapsLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": "EvCapsLockPressed"
-              }
-            ],
-            "classes": []
-          },
-          {
-            "stmt": "state",
-            "id": "id-38dvt516gkfs-1",
-            "type": "divider",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "id-38dvt516gkfs-1_start",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "ScrollLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "ScrollLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "ScrollLockOn",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": "EvCapsLockPressed"
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "ScrollLockOn",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "ScrollLockOff",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": "EvCapsLockPressed"
-              }
-            ],
-            "classes": []
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -664,6 +485,185 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "Active": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "divider-id-1_start",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "NumLockOff",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": "EvNumLockPressed",
+                "state1": {
+                  "classes": [],
+                  "id": "NumLockOff",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "NumLockOn",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": "EvNumLockPressed",
+                "state1": {
+                  "classes": [],
+                  "id": "NumLockOn",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "NumLockOff",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "divider-id-1",
+            "stmt": "state",
+            "type": "divider"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "divider-id-2_start",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "CapsLockOff",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": "EvCapsLockPressed",
+                "state1": {
+                  "classes": [],
+                  "id": "CapsLockOff",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "CapsLockOn",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": "EvCapsLockPressed",
+                "state1": {
+                  "classes": [],
+                  "id": "CapsLockOn",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "CapsLockOff",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "divider-id-2",
+            "stmt": "state",
+            "type": "divider"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "id-38dvt516gkfs-1_start",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "ScrollLockOff",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": "EvCapsLockPressed",
+                "state1": {
+                  "classes": [],
+                  "id": "ScrollLockOff",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "ScrollLockOn",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": "EvCapsLockPressed",
+                "state1": {
+                  "classes": [],
+                  "id": "ScrollLockOn",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "ScrollLockOff",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "id-38dvt516gkfs-1",
+            "stmt": "state",
+            "type": "divider"
+          }
+        ],
+        "id": "Active",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

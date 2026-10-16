@@ -1,713 +1,524 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "First",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Second",
+        "id": "edge1",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "First",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Third",
+        "id": "edge2",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "First",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "1st",
+        "id": "edge3",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "First_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "1st1st",
+        "id": "edge4",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "innerFirst_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "1st2nd",
+        "id": "edge5",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "1st1st",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "innerFirst",
+        "id": "edge6",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "1st",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "2nd",
+        "id": "edge7",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "innerFirst",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Second_end",
+        "id": "edge8",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "2nd",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "3rd",
+        "id": "edge9",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Third_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Third_end",
+        "id": "edge10",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "3rd",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "type": null,
+        "id": "root_start",
         "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "the first composite",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "First",
+        "description": [],
         "dir": "TB",
         "domId": "state-First-3",
-        "type": "group",
+        "id": "First",
         "isGroup": true,
+        "label": "the first composite",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true,
-        "description": []
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Second",
+        "centerLabel": true,
+        "colorIndex": 2,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Second",
         "dir": "TB",
         "domId": "state-Second-8",
-        "type": "group",
+        "id": "Second",
         "isGroup": true,
+        "label": "Second",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 2,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Third",
+        "centerLabel": true,
+        "colorIndex": 3,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Third",
         "dir": "TB",
         "domId": "state-Third-9",
-        "type": "group",
+        "id": "Third",
         "isGroup": true,
+        "label": "Third",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 3,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "First_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "First_start",
         "dir": null,
         "domId": "state-First_start-3",
-        "type": null,
+        "id": "First_start",
         "isGroup": false,
+        "label": "First_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "First",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "First",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "1st",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "1st",
         "dir": null,
         "domId": "state-1st-6",
-        "type": null,
+        "id": "1st",
         "isGroup": false,
+        "label": "1st",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "First",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "First",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "innerFirst",
+        "centerLabel": true,
+        "colorIndex": 1,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "innerFirst",
         "dir": "TB",
         "domId": "state-innerFirst-7",
-        "type": "group",
+        "id": "innerFirst",
         "isGroup": true,
+        "label": "innerFirst",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "First",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "First",
-        "colorIndex": 1,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "1 in innerFirst",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "1st1st",
+        "description": [],
         "dir": null,
         "domId": "state-1st1st-5",
-        "type": null,
+        "id": "1st1st",
         "isGroup": false,
+        "label": "1 in innerFirst",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "innerFirst",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "innerFirst",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "2 in innerFirst",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "1st2nd",
+        "description": [],
         "dir": null,
         "domId": "state-1st2nd-5",
-        "type": null,
+        "id": "1st2nd",
         "isGroup": false,
+        "label": "2 in innerFirst",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "innerFirst",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "innerFirst",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true,
-        "description": []
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "innerFirst_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "innerFirst_start",
         "dir": null,
         "domId": "state-innerFirst_start-4",
-        "type": null,
+        "id": "innerFirst_start",
         "isGroup": false,
+        "label": "innerFirst_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "innerFirst",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "innerFirst",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "2nd",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "2nd",
         "dir": null,
         "domId": "state-2nd-8",
-        "type": null,
+        "id": "2nd",
         "isGroup": false,
+        "label": "2nd",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Second",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Second",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "Second_end",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Second_end",
         "dir": null,
         "domId": "state-Second_end-8",
-        "type": null,
+        "id": "Second_end",
         "isGroup": false,
+        "label": "Second_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Second",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Second",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Third_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Third_start",
         "dir": null,
         "domId": "state-Third_start-9",
-        "type": null,
+        "id": "Third_start",
         "isGroup": false,
+        "label": "Third_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Third",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Third",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "3rd",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "3rd",
         "dir": null,
         "domId": "state-3rd-10",
-        "type": null,
+        "id": "3rd",
         "isGroup": false,
+        "label": "3rd",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Third",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Third",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateEnd",
-        "label": "Third_end",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Third_end",
         "dir": null,
         "domId": "state-Third_end-10",
-        "type": null,
+        "id": "Third_end",
         "isGroup": false,
+        "label": "Third_end",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Third",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Third",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "root_start",
-        "end": "First",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "First",
-        "end": "Second",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "First",
-        "end": "Third",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge3",
-        "start": "First_start",
-        "end": "1st",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge4",
-        "start": "innerFirst_start",
-        "end": "1st1st",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge5",
-        "start": "1st1st",
-        "end": "1st2nd",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge6",
-        "start": "1st",
-        "end": "innerFirst",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge7",
-        "start": "innerFirst",
-        "end": "2nd",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge8",
-        "start": "2nd",
-        "end": "Second_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge9",
-        "start": "Third_start",
-        "end": "3rd",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge10",
-        "start": "3rd",
-        "end": "Third_end",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "stateEnd",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "Second": {
-        "id": "Second",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "2nd",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Second_end",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
-      "First": {
-        "id": "First",
-        "type": "default",
-        "descriptions": [
-          "the first composite"
-        ],
-        "doc": [
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "First_start",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "1st",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "state",
-            "id": "innerFirst",
-            "type": "default",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "state",
-                "id": "1st1st",
-                "type": "default",
-                "description": "1 in innerFirst",
-                "doc": null,
-                "classes": []
-              },
-              {
-                "stmt": "state",
-                "id": "1st2nd",
-                "type": "default",
-                "description": "2 in innerFirst",
-                "doc": null,
-                "classes": []
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "innerFirst_start",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "1st1st",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "1st1st",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "1st2nd",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              }
-            ],
-            "classes": []
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "1st",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "innerFirst",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "innerFirst",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "2nd",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Third": {
-        "id": "Third",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Third_start",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "3rd",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "3rd",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Third_end",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -725,6 +536,195 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "First": {
+        "classes": [],
+        "descriptions": [
+          "the first composite"
+        ],
+        "doc": [
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "First_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "1st",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "classes": [],
+                "description": "1 in innerFirst",
+                "doc": null,
+                "id": "1st1st",
+                "stmt": "state",
+                "type": "default"
+              },
+              {
+                "classes": [],
+                "description": "2 in innerFirst",
+                "doc": null,
+                "id": "1st2nd",
+                "stmt": "state",
+                "type": "default"
+              },
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "innerFirst_start",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "1st1st",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "1st1st",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "1st2nd",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "innerFirst",
+            "stmt": "state",
+            "type": "default"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "1st",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "innerFirst",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "innerFirst",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "2nd",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "First",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Second": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "2nd",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Second_end",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "Second",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "Third": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "Third_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "3rd",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "3rd",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Third_end",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "Third",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

@@ -1,158 +1,158 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "RL",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Apple": {
-        "id": "Apple",
-        "type": "",
-        "label": "Apple",
-        "text": "Apple",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "color",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "color()",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "-",
-            "id": "int leafCount",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-int leafCount()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Apple-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Apple",
+        "label": "Apple",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "color()",
+            "id": "color",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-int leafCount()",
+            "id": "int leafCount",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Apple",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Pineapple": {
-        "id": "Pineapple",
-        "type": "",
-        "label": "Pineapple",
-        "text": "Pineapple",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "color",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "color()",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "-",
-            "id": "int leafCount",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-int leafCount()",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "-",
-            "id": "int spikeCount",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "-int spikeCount()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Pineapple-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Pineapple",
+        "label": "Pineapple",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "color()",
+            "id": "color",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-int leafCount()",
+            "id": "int leafCount",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "-int spikeCount()",
+            "id": "int spikeCount",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": "-"
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Pineapple",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "RL",
+    "interfaces": [
+      {
+        "classId": "Apple",
+        "id": "interface0",
+        "label": "Fruit"
+      },
+      {
+        "classId": "Pineapple",
+        "id": "interface1",
+        "label": "Fruit"
+      }
+    ],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "interface0",
         "id2": "Apple",
+        "relation": {
+          "lineType": 0,
+          "type1": 4,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": 4,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": ""
       },
       {
         "id": "1",
         "id1": "interface1",
         "id2": "Pineapple",
+        "relation": {
+          "lineType": 0,
+          "type1": 4,
+          "type2": -1
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": 4,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": ""
       }
     ],
-    "notes": [],
-    "interfaces": [
-      {
-        "id": "interface0",
-        "label": "Fruit",
-        "classId": "Apple"
-      },
-      {
-        "id": "interface1",
-        "label": "Fruit",
-        "classId": "Pineapple"
-      }
-    ],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

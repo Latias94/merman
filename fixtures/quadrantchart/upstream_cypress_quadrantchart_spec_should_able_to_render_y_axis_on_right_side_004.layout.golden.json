@@ -2,181 +2,181 @@
   "diagramType": "quadrantChart",
   "layout": {
     "QuadrantChartDiagram": {
-      "width": 500.0,
-      "height": 500.0,
-      "title": {
-        "text": "Reach and engagement of campaigns",
-        "x": 250.0,
-        "y": 10.0,
-        "fill": "#131300",
-        "fontSize": 20.0,
-        "rotation": 0.0,
-        "verticalPos": "center",
-        "horizontalPos": "top"
-      },
-      "quadrants": [
+      "axisLabels": [
         {
-          "x": 237.0,
-          "y": 71.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#ECECFF",
-          "text": {
-            "text": "We should expand",
-            "x": 353.0,
-            "y": 177.0,
-            "fill": "#131300",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": 0.0,
+          "text": "Low Reach",
+          "verticalPos": "center",
+          "x": 121.0,
+          "y": 45.0
         },
         {
-          "x": 5.0,
-          "y": 71.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#f1f1ff",
-          "text": {
-            "text": "Need to promote",
-            "x": 121.0,
-            "y": 177.0,
-            "fill": "#0e0e00",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": 0.0,
+          "text": "High Reach",
+          "verticalPos": "center",
+          "x": 353.0,
+          "y": 45.0
         },
         {
-          "x": 5.0,
-          "y": 283.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#f6f6ff",
-          "text": {
-            "text": "Re-evaluate",
-            "x": 121.0,
-            "y": 389.0,
-            "fill": "#090900",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": -90.0,
+          "text": "Low Engagement",
+          "verticalPos": "center",
+          "x": 479.0,
+          "y": 389.0
         },
         {
-          "x": 237.0,
-          "y": 283.0,
-          "width": 232.0,
-          "height": 212.0,
-          "fill": "#fbfbff",
-          "text": {
-            "text": "May be improved",
-            "x": 353.0,
-            "y": 389.0,
-            "fill": "#040400",
-            "fontSize": 16.0,
-            "rotation": 0.0,
-            "verticalPos": "center",
-            "horizontalPos": "middle"
-          }
+          "fill": "#131300",
+          "fontSize": 16.0,
+          "horizontalPos": "top",
+          "rotation": -90.0,
+          "text": "High Engagement",
+          "verticalPos": "center",
+          "x": 479.0,
+          "y": 177.0
         }
       ],
       "borderLines": [
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 2.0,
           "x1": 4.0,
-          "y1": 71.0,
           "x2": 470.0,
+          "y1": 71.0,
           "y2": 71.0
         },
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 2.0,
           "x1": 469.0,
-          "y1": 72.0,
           "x2": 469.0,
+          "y1": 72.0,
           "y2": 494.0
         },
         {
-          "strokeWidth": 2.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 2.0,
           "x1": 4.0,
-          "y1": 495.0,
           "x2": 470.0,
+          "y1": 495.0,
           "y2": 495.0
         },
         {
+          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
           "strokeWidth": 2.0,
-          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
           "x1": 5.0,
-          "y1": 72.0,
           "x2": 5.0,
-          "y2": 494.0
-        },
-        {
-          "strokeWidth": 1.0,
-          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
-          "x1": 237.0,
           "y1": 72.0,
-          "x2": 237.0,
           "y2": 494.0
         },
         {
-          "strokeWidth": 1.0,
           "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 1.0,
+          "x1": 237.0,
+          "x2": 237.0,
+          "y1": 72.0,
+          "y2": 494.0
+        },
+        {
+          "strokeFill": "hsl(240, 60%, 86.2745098039%)",
+          "strokeWidth": 1.0,
           "x1": 6.0,
-          "y1": 283.0,
           "x2": 468.0,
+          "y1": 283.0,
           "y2": 283.0
         }
       ],
+      "height": 500.0,
       "points": [],
-      "axisLabels": [
+      "quadrants": [
         {
-          "text": "Low Reach",
-          "x": 121.0,
-          "y": 45.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": 0.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#ECECFF",
+          "height": 212.0,
+          "text": {
+            "fill": "#131300",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "We should expand",
+            "verticalPos": "center",
+            "x": 353.0,
+            "y": 177.0
+          },
+          "width": 232.0,
+          "x": 237.0,
+          "y": 71.0
         },
         {
-          "text": "High Reach",
-          "x": 353.0,
-          "y": 45.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": 0.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#f1f1ff",
+          "height": 212.0,
+          "text": {
+            "fill": "#0e0e00",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "Need to promote",
+            "verticalPos": "center",
+            "x": 121.0,
+            "y": 177.0
+          },
+          "width": 232.0,
+          "x": 5.0,
+          "y": 71.0
         },
         {
-          "text": "Low Engagement",
-          "x": 479.0,
-          "y": 389.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": -90.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#f6f6ff",
+          "height": 212.0,
+          "text": {
+            "fill": "#090900",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "Re-evaluate",
+            "verticalPos": "center",
+            "x": 121.0,
+            "y": 389.0
+          },
+          "width": 232.0,
+          "x": 5.0,
+          "y": 283.0
         },
         {
-          "text": "High Engagement",
-          "x": 479.0,
-          "y": 177.0,
-          "fill": "#131300",
-          "fontSize": 16.0,
-          "rotation": -90.0,
-          "verticalPos": "center",
-          "horizontalPos": "top"
+          "fill": "#fbfbff",
+          "height": 212.0,
+          "text": {
+            "fill": "#040400",
+            "fontSize": 16.0,
+            "horizontalPos": "middle",
+            "rotation": 0.0,
+            "text": "May be improved",
+            "verticalPos": "center",
+            "x": 353.0,
+            "y": 389.0
+          },
+          "width": 232.0,
+          "x": 237.0,
+          "y": 283.0
         }
-      ]
+      ],
+      "title": {
+        "fill": "#131300",
+        "fontSize": 20.0,
+        "horizontalPos": "top",
+        "rotation": 0.0,
+        "text": "Reach and engagement of campaigns",
+        "verticalPos": "center",
+        "x": 250.0,
+        "y": 10.0
+      },
+      "width": 500.0
     }
   }
 }

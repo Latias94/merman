@@ -1,70 +1,70 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "A",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "B": {
-        "name": "B",
         "description": "B",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
+        "activate": false,
         "from": "A",
-        "to": "B",
+        "id": "0",
         "message": "Hello",
-        "wrap": false,
+        "to": "B",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "1",
-        "from": "B",
-        "to": "B",
-        "message": "Note",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
+        "from": "B",
+        "id": "1",
+        "message": "Note",
+        "placement": 1,
+        "to": "B",
+        "type": 2,
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "B",
-        "placement": 1,
         "message": "Note",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

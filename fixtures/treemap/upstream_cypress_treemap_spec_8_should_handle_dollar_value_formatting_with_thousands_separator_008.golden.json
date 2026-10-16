@@ -1,50 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Budget",
-          "children": [
-            {
-              "name": "Operations",
-              "children": [
-                {
-                  "name": "Salaries",
-                  "value": 700000
-                },
-                {
-                  "name": "Equipment",
-                  "value": 200000
-                },
-                {
-                  "name": "Supplies",
-                  "value": 100000
-                }
-              ]
-            },
-            {
-              "name": "Marketing",
-              "children": [
-                {
-                  "name": "Advertising",
-                  "value": 400000
-                },
-                {
-                  "name": "Events",
-                  "value": 100000
-                }
-              ]
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -84,6 +43,47 @@
         "value": 100000
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [
+                {
+                  "name": "Salaries",
+                  "value": 700000
+                },
+                {
+                  "name": "Equipment",
+                  "value": 200000
+                },
+                {
+                  "name": "Supplies",
+                  "value": 100000
+                }
+              ],
+              "name": "Operations"
+            },
+            {
+              "children": [
+                {
+                  "name": "Advertising",
+                  "value": 400000
+                },
+                {
+                  "name": "Events",
+                  "value": 100000
+                }
+              ],
+              "name": "Marketing"
+            }
+          ],
+          "name": "Budget"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

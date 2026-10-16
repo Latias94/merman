@@ -1,140 +1,140 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "User": {
-        "id": "User",
-        "type": "",
-        "label": "User",
-        "text": "User",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
+      "Item": {
         "annotations": [],
-        "styles": [],
-        "domId": "classId-User-0",
-        "parent": null,
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Item-2",
+        "haveCallback": false,
+        "id": "Item",
+        "label": "Item",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Item",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Order": {
-        "id": "Order",
-        "type": "",
-        "label": "Order",
-        "text": "Order",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Order-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Order",
+        "label": "Order",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Item": {
-        "id": "Item",
-        "type": "",
-        "label": "Item",
-        "text": "Item",
-        "cssClasses": "default",
-        "methods": [],
         "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Item-2",
+        "methods": [],
         "parent": null,
+        "styles": [],
+        "text": "Order",
+        "tooltip": null,
+        "type": ""
+      },
+      "User": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-User-0",
+        "haveCallback": false,
+        "id": "User",
+        "label": "User",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "User",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "LR",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "User",
         "id2": "Order",
+        "relation": {
+          "lineType": 0,
+          "type1": 0,
+          "type2": -1
+        },
         "relationTitle1": "1",
         "relationTitle2": "*",
-        "title": "places",
-        "relation": {
-          "type1": 0,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": "places"
       },
       {
         "id": "1",
         "id1": "User",
         "id2": "Order",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "1",
         "relationTitle2": "*",
-        "title": "tracks",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "tracks"
       },
       {
         "id": "2",
         "id1": "Order",
         "id2": "Item",
+        "relation": {
+          "lineType": 0,
+          "type1": 2,
+          "type2": -1
+        },
         "relationTitle1": "1",
         "relationTitle2": "*",
-        "title": "contains",
-        "relation": {
-          "type1": 2,
-          "type2": -1,
-          "lineType": 0
-        }
+        "title": "contains"
       },
       {
         "id": "3",
         "id1": "Order",
         "id2": "Item",
+        "relation": {
+          "lineType": 1,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "references",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 1
-        }
+        "title": "references"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

@@ -1,558 +1,558 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [
+      {
+        "lhsDir": "L",
+        "lhsGroup": null,
+        "lhsId": "servC",
+        "lhsInto": null,
+        "rhsDir": "R",
+        "rhsGroup": null,
+        "rhsId": "servL",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "servC",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "servR",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "servC",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "servT",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "servC",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "servB",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "servL",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "servT",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "servL",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "servB",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "servR",
+        "lhsInto": null,
+        "rhsDir": "R",
+        "rhsGroup": null,
+        "rhsId": "servT",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "servR",
+        "lhsInto": null,
+        "rhsDir": "R",
+        "rhsGroup": null,
+        "rhsId": "servB",
+        "rhsInto": null,
+        "title": null
+      }
+    ],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
+        "edges": [
+          {
+            "lhsDir": "L",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "R",
+            "rhsGroup": null,
+            "rhsId": "servL",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "servR",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "T",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "B",
+            "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "servC",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "servC",
-            "lhsDir": "L",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servL",
-            "rhsDir": "R",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "servC",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servR",
-            "rhsDir": "L",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "servC",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servT",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "servC",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servB",
-            "rhsDir": "T",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": null,
         "title": "Server 1",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servL",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "servC",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "R",
+            "rhsGroup": null,
             "rhsId": "servL",
-            "rhsDir": "R",
             "rhsInto": null,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "servL",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servL",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servL",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servB",
+            "lhsId": "servL",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servL",
+        "in": null,
         "title": "Server 2",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servR",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "servC",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "servR",
-            "rhsDir": "L",
             "rhsInto": null,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servB",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servR",
+        "in": null,
         "title": "Server 3",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servT",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "servC",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servC",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "T",
+            "lhsGroup": null,
             "lhsId": "servL",
-            "lhsDir": "T",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servT",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servT",
+        "in": null,
         "title": "Server 4",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servB",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "servC",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servB",
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "servL",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servB",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servB",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servB",
+        "in": null,
         "title": "Server 5",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
+        "edges": [
+          {
+            "lhsDir": "L",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "R",
+            "rhsGroup": null,
+            "rhsId": "servL",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "servR",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "T",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "B",
+            "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": "server",
+        "iconText": null,
         "id": "servC",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "servC",
-            "lhsDir": "L",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servL",
-            "rhsDir": "R",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "servC",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servR",
-            "rhsDir": "L",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "servC",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servT",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "servC",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servB",
-            "rhsDir": "T",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "server",
-        "iconText": null,
+        "in": null,
         "title": "Server 1",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servL",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "servC",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "R",
+            "rhsGroup": null,
             "rhsId": "servL",
-            "rhsDir": "R",
             "rhsInto": null,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "servL",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servL",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servL",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servB",
+            "lhsId": "servL",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servL",
+        "in": null,
         "title": "Server 2",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servR",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "servC",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "servC",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "servR",
-            "rhsDir": "L",
             "rhsInto": null,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servB",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servR",
+        "in": null,
         "title": "Server 3",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servT",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "servC",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servC",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "T",
+            "lhsGroup": null,
             "lhsId": "servL",
-            "lhsDir": "T",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servT",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servT",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servT",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servT",
+        "in": null,
         "title": "Server 4",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "servB",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "servC",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servB",
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           },
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "servL",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "servB",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "servR",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "servB",
+            "lhsId": "servR",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "servB",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "servB",
+        "in": null,
         "title": "Server 5",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "servC",
-        "lhsDir": "L",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servL",
-        "rhsDir": "R",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "servC",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servR",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "servC",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servT",
-        "rhsDir": "B",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "servC",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servB",
-        "rhsDir": "T",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "servL",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servT",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "servL",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servB",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "servR",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servT",
-        "rhsDir": "R",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "servR",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "servB",
-        "rhsDir": "R",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

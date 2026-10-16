@@ -1,188 +1,188 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "top",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "mid",
+        "rhsInto": true,
+        "title": "long label words"
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "mid",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "bot",
+        "rhsInto": true,
+        "title": "another label"
+      }
+    ],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "top",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "top",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "mid",
+            "lhsId": "top",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "mid",
+            "rhsInto": true,
             "title": "long label words"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "top",
+        "in": null,
         "title": "Top",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "mid",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "top",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "mid",
+            "lhsId": "top",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "mid",
+            "rhsInto": true,
             "title": "long label words"
           },
           {
-            "lhsId": "mid",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "bot",
+            "lhsId": "mid",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "bot",
+            "rhsInto": true,
             "title": "another label"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "mid",
+        "in": null,
         "title": "Mid",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "bot",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "mid",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "bot",
+            "lhsId": "mid",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "bot",
+            "rhsInto": true,
             "title": "another label"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "bot",
+        "in": null,
         "title": "Bot",
-        "in": null
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "top",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "top",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "mid",
+            "lhsId": "top",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "mid",
+            "rhsInto": true,
             "title": "long label words"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "top",
+        "in": null,
         "title": "Top",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "mid",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "top",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "mid",
+            "lhsId": "top",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "mid",
+            "rhsInto": true,
             "title": "long label words"
           },
           {
-            "lhsId": "mid",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "bot",
+            "lhsId": "mid",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "bot",
+            "rhsInto": true,
             "title": "another label"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "mid",
+        "in": null,
         "title": "Mid",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "bot",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "mid",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "bot",
+            "lhsId": "mid",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "bot",
+            "rhsInto": true,
             "title": "another label"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "bot",
+        "in": null,
         "title": "Bot",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "top",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "mid",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "long label words"
-      },
-      {
-        "lhsId": "mid",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "bot",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "another label"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

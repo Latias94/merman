@@ -2,31 +2,26 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-c-1",
-          "x": 100.21,
-          "y": 272.0,
-          "width": 155.7,
-          "height": 79.5,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-p-0",
-          "x": 100.21,
-          "y": 71.625,
-          "width": 176.42,
-          "height": 119.25,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 188.42,
+        "max_y": 311.75,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "er-rel-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_ONE_END",
           "from": "entity-p-0",
-          "to": "entity-c-1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-0",
+          "label": {
+            "height": 21.0,
+            "width": 18.06,
+            "x": 99.74,
+            "y": 181.75
+          },
           "points": [
             {
               "x": 100.21,
@@ -37,27 +32,32 @@
               "y": 232.25
             }
           ],
-          "label": {
-            "x": 99.74,
-            "y": 181.75,
-            "width": 18.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_ONE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-c-1",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 188.42,
-        "max_y": 311.75
-      }
+      "nodes": [
+        {
+          "height": 79.5,
+          "id": "entity-c-1",
+          "is_cluster": false,
+          "width": 155.7,
+          "x": 100.21,
+          "y": 272.0
+        },
+        {
+          "height": 119.25,
+          "id": "entity-p-0",
+          "is_cluster": false,
+          "width": 176.42,
+          "x": 100.21,
+          "y": 71.625
+        }
+      ]
     }
   }
 }

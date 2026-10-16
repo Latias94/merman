@@ -1,127 +1,127 @@
 {
   "diagramType": "packet",
   "model": {
-    "type": "packet",
-    "title": "Dark theme",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "packet": [
       [
         {
-          "start": 0,
+          "bits": 16,
           "end": 15,
-          "bits": 16,
-          "label": "Source Port"
+          "label": "Source Port",
+          "start": 0
         },
         {
-          "start": 16,
+          "bits": 16,
           "end": 31,
-          "bits": 16,
-          "label": "Destination Port"
+          "label": "Destination Port",
+          "start": 16
         }
       ],
       [
         {
-          "start": 32,
+          "bits": 32,
           "end": 63,
-          "bits": 32,
-          "label": "Sequence Number"
+          "label": "Sequence Number",
+          "start": 32
         }
       ],
       [
         {
-          "start": 64,
+          "bits": 32,
           "end": 95,
-          "bits": 32,
-          "label": "Acknowledgment Number"
+          "label": "Acknowledgment Number",
+          "start": 64
         }
       ],
       [
         {
-          "start": 96,
-          "end": 99,
           "bits": 4,
-          "label": "Data Offset"
+          "end": 99,
+          "label": "Data Offset",
+          "start": 96
         },
         {
-          "start": 100,
-          "end": 105,
           "bits": 6,
-          "label": "Reserved"
+          "end": 105,
+          "label": "Reserved",
+          "start": 100
         },
         {
-          "start": 106,
+          "bits": 1,
           "end": 106,
-          "bits": 1,
-          "label": "URG"
+          "label": "URG",
+          "start": 106
         },
         {
-          "start": 107,
+          "bits": 1,
           "end": 107,
-          "bits": 1,
-          "label": "ACK"
+          "label": "ACK",
+          "start": 107
         },
         {
-          "start": 108,
+          "bits": 1,
           "end": 108,
-          "bits": 1,
-          "label": "PSH"
+          "label": "PSH",
+          "start": 108
         },
         {
-          "start": 109,
+          "bits": 1,
           "end": 109,
-          "bits": 1,
-          "label": "RST"
+          "label": "RST",
+          "start": 109
         },
         {
-          "start": 110,
+          "bits": 1,
           "end": 110,
-          "bits": 1,
-          "label": "SYN"
+          "label": "SYN",
+          "start": 110
         },
         {
-          "start": 111,
+          "bits": 1,
           "end": 111,
-          "bits": 1,
-          "label": "FIN"
+          "label": "FIN",
+          "start": 111
         },
         {
-          "start": 112,
+          "bits": 16,
           "end": 127,
-          "bits": 16,
-          "label": "Window"
+          "label": "Window",
+          "start": 112
         }
       ],
       [
         {
-          "start": 128,
-          "end": 143,
           "bits": 16,
-          "label": "Checksum"
+          "end": 143,
+          "label": "Checksum",
+          "start": 128
         },
         {
-          "start": 144,
-          "end": 159,
           "bits": 16,
-          "label": "Urgent Pointer"
+          "end": 159,
+          "label": "Urgent Pointer",
+          "start": 144
         }
       ],
       [
         {
-          "start": 160,
+          "bits": 32,
           "end": 191,
-          "bits": 32,
-          "label": "(Options and Padding)"
+          "label": "(Options and Padding)",
+          "start": 160
         }
       ],
       [
         {
-          "start": 192,
-          "end": 223,
           "bits": 32,
-          "label": "data"
+          "end": 223,
+          "label": "data",
+          "start": 192
         }
       ]
-    ]
+    ],
+    "title": "Dark theme",
+    "type": "packet"
   }
 }

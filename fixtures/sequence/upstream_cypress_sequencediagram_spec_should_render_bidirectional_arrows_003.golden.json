@@ -1,98 +1,98 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "John"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "John": {
-        "name": "John",
         "description": "John",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "John",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Alice",
-        "to": "John",
-        "message": "Hello John, how are you?",
-        "wrap": false,
-        "type": 33,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "John",
-        "message": "Hi Alice, I can hear you!",
-        "wrap": false,
-        "type": 34,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "John",
-        "to": "Alice",
-        "message": "This also works the other way",
-        "wrap": false,
-        "type": 33,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "John",
-        "to": "Alice",
-        "message": "Yes",
-        "wrap": false,
-        "type": 34,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "Alice",
-        "to": "John",
-        "message": "Test",
-        "wrap": false,
-        "type": 5,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "John",
-        "to": "Alice",
-        "message": "Still works",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello John, how are you?",
+        "to": "John",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "Hi Alice, I can hear you!",
+        "to": "John",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "2",
+        "message": "This also works the other way",
+        "to": "Alice",
+        "type": 33,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "3",
+        "message": "Yes",
+        "to": "Alice",
+        "type": 34,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "4",
+        "message": "Test",
+        "to": "John",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "5",
+        "message": "Still works",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

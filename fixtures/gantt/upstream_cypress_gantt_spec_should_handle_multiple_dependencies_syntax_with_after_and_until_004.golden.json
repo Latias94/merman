@@ -1,263 +1,263 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Adding GANTT diagram to mermaid",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": " YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": " %d/%m",
-    "tickInterval": null,
-    "todayMarker": "off",
-    "includes": [],
+    "clickEvents": {},
+    "dateFormat": " YYYY-MM-DD",
+    "displayMode": "",
     "excludes": [
       "weekdays",
       "2014-01-10"
     ],
+    "includes": [],
     "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
-    "displayMode": "",
+    "links": {},
     "sections": [
       "team's critical event",
       "new intern"
     ],
     "tasks": [
       {
-        "section": "team's critical event",
-        "type": "team's critical event",
-        "task": "deadline A           ",
-        "id": "deadlineA",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": true,
-        "milestone": true,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-02-01T00:00:00.000",
+        "id": "deadlineA",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": true,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":milestone, crit, deadlineA, 2024-02-01, 0",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-02-01"
-          },
           "endTime": {
             "data": "0"
+          },
+          "startTime": {
+            "startData": "2024-02-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "team's critical event",
         "startTime": "2024-02-01T00:00:00.000",
-        "endTime": "2024-02-01T00:00:00.000"
+        "task": "deadline A           ",
+        "type": "team's critical event",
+        "vert": false
       },
       {
-        "section": "team's critical event",
-        "type": "team's critical event",
-        "task": "deadline B           ",
-        "id": "deadlineB",
-        "prevTaskId": "deadlineA",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": true,
-        "milestone": true,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-02-15T00:00:00.000",
+        "id": "deadlineB",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": true,
+        "order": 1,
+        "prevTaskId": "deadlineA",
+        "processed": true,
         "raw": {
           "data": ":milestone, crit, deadlineB, 2024-02-15, 0",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-02-15"
-          },
           "endTime": {
             "data": "0"
+          },
+          "startTime": {
+            "startData": "2024-02-15",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "team's critical event",
         "startTime": "2024-02-15T00:00:00.000",
-        "endTime": "2024-02-15T00:00:00.000"
+        "task": "deadline B           ",
+        "type": "team's critical event",
+        "vert": false
       },
       {
-        "section": "team's critical event",
-        "type": "team's critical event",
-        "task": "boss on leave        ",
-        "id": "bossaway",
-        "prevTaskId": "deadlineB",
-        "order": 2,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-02-11T00:00:00.000",
+        "id": "bossaway",
         "manualEndTime": true,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 2,
+        "prevTaskId": "deadlineB",
+        "processed": true,
         "raw": {
           "data": ":bossaway, 2024-01-28, 2024-02-11",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-01-28"
-          },
           "endTime": {
             "data": "2024-02-11"
+          },
+          "startTime": {
+            "startData": "2024-01-28",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "team's critical event",
         "startTime": "2024-01-28T00:00:00.000",
-        "endTime": "2024-02-11T00:00:00.000"
+        "task": "boss on leave        ",
+        "type": "team's critical event",
+        "vert": false
       },
       {
-        "section": "new intern",
-        "type": "new intern",
-        "task": "onboarding           ",
-        "id": "onboarding",
-        "prevTaskId": "bossaway",
-        "order": 3,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-09T00:00:00.000",
+        "id": "onboarding",
         "manualEndTime": false,
-        "renderEndTime": "2024-01-09T00:00:00.000",
+        "milestone": false,
+        "order": 3,
+        "prevTaskId": "bossaway",
+        "processed": true,
         "raw": {
           "data": ":onboarding, 2024-01-02, 1w",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-01-02"
-          },
           "endTime": {
             "data": "1w"
+          },
+          "startTime": {
+            "startData": "2024-01-02",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-01-09T00:00:00.000",
+        "section": "new intern",
         "startTime": "2024-01-02T00:00:00.000",
-        "endTime": "2024-01-09T00:00:00.000"
+        "task": "onboarding           ",
+        "type": "new intern",
+        "vert": false
       },
       {
-        "section": "new intern",
-        "type": "new intern",
-        "task": "literature review    ",
-        "id": "litreview",
-        "prevTaskId": "onboarding",
-        "order": 4,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-12T00:00:00.000",
+        "id": "litreview",
         "manualEndTime": false,
-        "renderEndTime": "2024-01-12T00:00:00.000",
+        "milestone": false,
+        "order": 4,
+        "prevTaskId": "onboarding",
+        "processed": true,
         "raw": {
           "data": ":litreview, 2024-01-02, 10d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2024-01-02"
-          },
           "endTime": {
             "data": "10d"
+          },
+          "startTime": {
+            "startData": "2024-01-02",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-01-12T00:00:00.000",
+        "section": "new intern",
         "startTime": "2024-01-02T00:00:00.000",
-        "endTime": "2024-01-12T00:00:00.000"
+        "task": "literature review    ",
+        "type": "new intern",
+        "vert": false
       },
       {
-        "section": "new intern",
-        "type": "new intern",
-        "task": "project A            ",
-        "id": "projectA",
-        "prevTaskId": "litreview",
-        "order": 5,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-01-28T00:00:00.000",
+        "id": "projectA",
         "manualEndTime": false,
-        "renderEndTime": "2024-01-28T00:00:00.000",
+        "milestone": false,
+        "order": 5,
+        "prevTaskId": "litreview",
+        "processed": true,
         "raw": {
           "data": ":projectA, after onboarding litreview, until deadlineA bossaway",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after onboarding litreview"
-          },
           "endTime": {
             "data": "until deadlineA bossaway"
+          },
+          "startTime": {
+            "startData": "after onboarding litreview",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-01-28T00:00:00.000",
+        "section": "new intern",
         "startTime": "2024-01-12T00:00:00.000",
-        "endTime": "2024-01-28T00:00:00.000"
+        "task": "project A            ",
+        "type": "new intern",
+        "vert": false
       },
       {
-        "section": "new intern",
-        "type": "new intern",
-        "task": "chilling             ",
-        "id": "chilling",
-        "prevTaskId": "projectA",
-        "order": 6,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-02-01T00:00:00.000",
+        "id": "chilling",
         "manualEndTime": false,
-        "renderEndTime": "2024-02-01T00:00:00.000",
+        "milestone": false,
+        "order": 6,
+        "prevTaskId": "projectA",
+        "processed": true,
         "raw": {
           "data": ":chilling, after projectA, until deadlineA",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after projectA"
-          },
           "endTime": {
             "data": "until deadlineA"
+          },
+          "startTime": {
+            "startData": "after projectA",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-02-01T00:00:00.000",
+        "section": "new intern",
         "startTime": "2024-01-28T00:00:00.000",
-        "endTime": "2024-02-01T00:00:00.000"
+        "task": "chilling             ",
+        "type": "new intern",
+        "vert": false
       },
       {
-        "section": "new intern",
-        "type": "new intern",
-        "task": "project B            ",
-        "id": "projectB",
-        "prevTaskId": "chilling",
-        "order": 7,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2024-02-15T00:00:00.000",
+        "id": "projectB",
         "manualEndTime": false,
-        "renderEndTime": "2024-02-15T00:00:00.000",
+        "milestone": false,
+        "order": 7,
+        "prevTaskId": "chilling",
+        "processed": true,
         "raw": {
           "data": ":projectB, after deadlineA, until deadlineB",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after deadlineA"
-          },
           "endTime": {
             "data": "until deadlineB"
+          },
+          "startTime": {
+            "startData": "after deadlineA",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2024-02-15T00:00:00.000",
+        "section": "new intern",
         "startTime": "2024-02-01T00:00:00.000",
-        "endTime": "2024-02-15T00:00:00.000"
+        "task": "project B            ",
+        "type": "new intern",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Adding GANTT diagram to mermaid",
+    "todayMarker": "off",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

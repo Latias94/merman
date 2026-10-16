@@ -2,39 +2,44 @@
   "diagramType": "agentflow",
   "layout": {
     "AgentflowDiagram": {
-      "nodes": [
+      "bounds": {
+        "max_x": 246.0,
+        "max_y": 195.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "support",
-          "x": 129.0,
-          "y": 103.5,
-          "width": 234.0,
+          "diff": -4.0,
+          "effective_dir": "TB",
           "height": 183.0,
-          "is_cluster": true
-        },
-        {
-          "id": "input",
+          "id": "support",
+          "offset_y": 15.0,
+          "padding": 8.0,
+          "requested_dir": null,
+          "title": "Support",
+          "title_label": {
+            "height": 19.0,
+            "width": 44.52,
+            "x": 129.0,
+            "y": 21.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 234.0,
           "x": 129.0,
-          "y": 78.0,
-          "width": 186.0,
-          "height": 36.0,
-          "is_cluster": false
-        },
-        {
-          "id": "task",
-          "x": 129.0,
-          "y": 145.5,
-          "width": 150.0,
-          "height": 51.0,
-          "is_cluster": false
+          "y": 103.5
         }
       ],
       "edges": [
         {
-          "id": "L_input_task_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "input",
-          "to": "task",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_input_task_0",
+          "label": null,
           "points": [
             {
               "x": 129.0,
@@ -45,45 +50,40 @@
               "y": 120.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "task",
+          "to_cluster": null
         }
       ],
-      "clusters": [
+      "nodes": [
         {
-          "id": "support",
-          "x": 129.0,
-          "y": 103.5,
-          "width": 234.0,
           "height": 183.0,
-          "diff": -4.0,
-          "offset_y": 15.0,
-          "title": "Support",
-          "title_label": {
-            "x": 129.0,
-            "y": 21.5,
-            "width": 44.52,
-            "height": 19.0
-          },
-          "requested_dir": null,
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "support",
+          "is_cluster": true,
+          "width": 234.0,
+          "x": 129.0,
+          "y": 103.5
+        },
+        {
+          "height": 36.0,
+          "id": "input",
+          "is_cluster": false,
+          "width": 186.0,
+          "x": 129.0,
+          "y": 78.0
+        },
+        {
+          "height": 51.0,
+          "id": "task",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 129.0,
+          "y": 145.5
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 246.0,
-        "max_y": 195.0
-      }
+      ]
     }
   }
 }

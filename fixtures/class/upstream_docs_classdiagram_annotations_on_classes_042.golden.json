@@ -1,145 +1,145 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "Shape": {
-        "id": "Shape",
-        "type": "",
-        "label": "Shape",
-        "text": "Shape",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "draw",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "draw()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "noOfVertices",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "noOfVertices",
-            "cssStyle": ""
-          }
-        ],
-        "annotations": [
-          "interface"
-        ],
-        "styles": [],
-        "domId": "classId-Shape-0",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
       "Color": {
-        "id": "Color",
-        "type": "",
-        "label": "Color",
-        "text": "Color",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "RED",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "RED",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "BLUE",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "BLUE",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "GREEN",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "GREEN",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "WHITE",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "WHITE",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "BLACK",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "BLACK",
-            "cssStyle": ""
-          }
-        ],
         "annotations": [
           "enumeration"
         ],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Color-1",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Color",
+        "label": "Color",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "RED",
+            "id": "RED",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "BLUE",
+            "id": "BLUE",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "GREEN",
+            "id": "GREEN",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "WHITE",
+            "id": "WHITE",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "BLACK",
+            "id": "BLACK",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "Color",
         "tooltip": null,
-        "haveCallback": false,
+        "type": ""
+      },
+      "Shape": {
+        "annotations": [
+          "interface"
+        ],
         "callback": null,
-        "callbackEffective": false
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Shape-0",
+        "haveCallback": false,
+        "id": "Shape",
+        "label": "Shape",
+        "link": null,
+        "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "noOfVertices",
+            "id": "noOfVertices",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "draw()",
+            "id": "draw",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Shape",
+        "tooltip": null,
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

@@ -1,25 +1,25 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "My Section",
-          "children": []
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
         "name": "My Section"
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [],
+          "name": "My Section"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

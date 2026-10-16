@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "boundary",
       "C",
@@ -14,76 +12,78 @@
       "Q"
     ],
     "actors": {
-      "boundary": {
-        "name": "boundary",
-        "description": "boundary",
-        "wrap": false,
-        "type": "boundary",
-        "links": {},
-        "properties": {}
-      },
       "C": {
-        "name": "C",
         "description": "C",
-        "wrap": false,
+        "links": {},
+        "name": "C",
+        "properties": {},
         "type": "control",
-        "links": {},
-        "properties": {}
-      },
-      "E": {
-        "name": "E",
-        "description": "E",
-        "wrap": false,
-        "type": "entity",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "D": {
-        "name": "D",
         "description": "D",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "D",
+        "properties": {},
+        "type": "database",
+        "wrap": false
+      },
+      "E": {
+        "description": "E",
+        "links": {},
+        "name": "E",
+        "properties": {},
+        "type": "entity",
+        "wrap": false
       },
       "L": {
-        "name": "L",
         "description": "L",
-        "wrap": false,
-        "type": "collections",
         "links": {},
-        "properties": {}
+        "name": "L",
+        "properties": {},
+        "type": "collections",
+        "wrap": false
       },
       "Q": {
-        "name": "Q",
         "description": "Q",
-        "wrap": false,
-        "type": "queue",
         "links": {},
-        "properties": {}
+        "name": "Q",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
+      },
+      "boundary": {
+        "description": "boundary",
+        "links": {},
+        "name": "boundary",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "boundary",
-        "to": "boundary",
-        "message": "test",
-        "wrap": false,
-        "type": 5,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "boundary",
+        "id": "0",
+        "message": "test",
+        "to": "boundary",
+        "type": 5,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

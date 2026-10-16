@@ -2,55 +2,26 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
-          "x": 461.58,
-          "y": 390.875,
-          "width": 503.68,
-          "height": 384.75,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-ORDER-1",
-          "x": 119.74,
-          "y": 390.875,
-          "width": 100.0,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-Person . CUSTOMER-0",
-          "x": 290.66,
-          "y": 55.5,
-          "width": 175.84,
-          "height": 84.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-a_~`!@#$^&*()-_=+[]{}|/;:'.?¡⁄™€£‹¢›∞ﬁ§‡•°ª·º‚≠±œŒ∑„®†ˇ¥Á¨ˆˆØπ∏“«»åÅßÍ∂ÎƒÏ©˙Ó∆Ô˚¬Ò…ÚæÆΩ¸≈π˛çÇ√◊∫ı˜µÂ≤¯≥˘÷¿-4",
-          "x": 919.34,
-          "y": 54.75,
-          "width": 1001.52,
-          "height": 85.5,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-€£LINE_ITEM ¥-2",
-          "x": 119.74,
-          "y": 833.875,
-          "width": 215.48,
-          "height": 299.25,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 1420.1,
+        "max_y": 983.5,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "er-rel-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ZERO_OR_MORE_END",
           "from": "entity-Person . CUSTOMER-0",
-          "to": "entity-ORDER-1",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-0",
+          "label": {
+            "height": 21.0,
+            "width": 34.02,
+            "x": 119.25,
+            "y": 148.0
+          },
           "points": [
             {
               "x": 264.687,
@@ -69,26 +40,26 @@
               "y": 348.875
             }
           ],
-          "label": {
-            "x": 119.25,
-            "y": 148.0,
-            "width": 34.02,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ZERO_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-ORDER-1",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-ORDER-1",
-          "to": "entity-€£LINE_ITEM ¥-2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-1",
+          "label": {
+            "height": 21.0,
+            "width": 46.06,
+            "x": 119.27,
+            "y": 633.75
+          },
           "points": [
             {
               "x": 119.74,
@@ -99,26 +70,26 @@
               "y": 684.25
             }
           ],
-          "label": {
-            "x": 119.27,
-            "y": 633.75,
-            "width": 46.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-€£LINE_ITEM ¥-2",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONE_OR_MORE_END",
           "from": "entity-Person . CUSTOMER-0",
-          "to": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-2",
+          "label": {
+            "height": 21.0,
+            "width": 24.08,
+            "x": 461.12,
+            "y": 148.0
+          },
           "points": [
             {
               "x": 316.633,
@@ -137,27 +108,56 @@
               "y": 198.5
             }
           ],
-          "label": {
-            "x": 461.12,
-            "y": 148.0,
-            "width": 24.08,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONE_OR_MORE_START",
-          "end_marker": "ONE_OR_MORE_END",
-          "stroke_dasharray": "8,8"
+          "stroke_dasharray": "8,8",
+          "to": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 1420.1,
-        "max_y": 983.5
-      }
+      "nodes": [
+        {
+          "height": 384.75,
+          "id": "entity-Address//StreetAddress::[DELIVERY ADDRESS]-3",
+          "is_cluster": false,
+          "width": 503.68,
+          "x": 461.58,
+          "y": 390.875
+        },
+        {
+          "height": 84.0,
+          "id": "entity-ORDER-1",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 119.74,
+          "y": 390.875
+        },
+        {
+          "height": 84.0,
+          "id": "entity-Person . CUSTOMER-0",
+          "is_cluster": false,
+          "width": 175.84,
+          "x": 290.66,
+          "y": 55.5
+        },
+        {
+          "height": 85.5,
+          "id": "entity-a_~`!@#$^&*()-_=+[]{}|/;:'.?¡⁄™€£‹¢›∞ﬁ§‡•°ª·º‚≠±œŒ∑„®†ˇ¥Á¨ˆˆØπ∏“«»åÅßÍ∂ÎƒÏ©˙Ó∆Ô˚¬Ò…ÚæÆΩ¸≈π˛çÇ√◊∫ı˜µÂ≤¯≥˘÷¿-4",
+          "is_cluster": false,
+          "width": 1001.52,
+          "x": 919.34,
+          "y": 54.75
+        },
+        {
+          "height": 299.25,
+          "id": "entity-€£LINE_ITEM ¥-2",
+          "is_cluster": false,
+          "width": 215.48,
+          "x": 119.74,
+          "y": 833.875
+        }
+      ]
     }
   }
 }

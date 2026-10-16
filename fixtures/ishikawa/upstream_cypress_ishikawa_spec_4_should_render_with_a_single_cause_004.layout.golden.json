@@ -3,93 +3,93 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -92.959,
-        "min_y": 156.674,
         "max_x": 92.0,
-        "max_y": 306.0
+        "max_y": 306.0,
+        "min_x": -92.959,
+        "min_y": 156.674
       },
-      "total_width": 184.959,
-      "total_height": 149.326,
-      "viewbox_x": -92.959,
-      "viewbox_y": 156.674,
-      "padding": 20.0,
-      "use_max_width": true,
       "font_size": 16.0,
       "head": {
-        "x": 0.0,
-        "y": 250.0,
-        "width": 60.0,
         "height": 72.0,
-        "path_d": "M 0 -36 L 0 36 Q 144 0 0 -36 Z",
         "label": {
-          "text": "Problem",
+          "anchor": "start",
+          "bbox": {
+            "max_x": 56.66,
+            "max_y": 258.0,
+            "min_x": 9.34,
+            "min_y": 242.0
+          },
+          "class_name": "ishikawa-head-label",
+          "font_size": 16.0,
+          "line_height": 16.8,
           "lines": [
             "Problem"
           ],
-          "class_name": "ishikawa-head-label",
+          "text": "Problem",
           "x": 33.0,
-          "y": 250.0,
-          "anchor": "start",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": 9.34,
-            "min_y": 242.0,
-            "max_x": 56.66,
-            "max_y": 258.0
-          }
-        }
+          "y": 250.0
+        },
+        "path_d": "M 0 -36 L 0 36 Q 144 0 0 -36 Z",
+        "width": 60.0,
+        "x": 0.0,
+        "y": 250.0
       },
-      "spine": {
-        "x1": -52.959,
-        "y1": 250.0,
-        "x2": 0.0,
-        "y2": 250.0,
-        "class_name": "ishikawa-spine",
-        "marker_start": false
-      },
+      "padding": 20.0,
       "pairs": [
         {
+          "lower": null,
           "upper": {
-            "line": {
-              "x1": -20.0,
-              "y1": 250.0,
-              "x2": -26.959,
-              "y2": 200.487,
-              "class_name": "ishikawa-branch",
-              "marker_start": true
-            },
             "label_group": {
-              "label_box": {
-                "x": -72.959,
-                "y": 176.674,
-                "width": 92.0,
-                "height": 23.0
-              },
               "label": {
-                "text": "Cause A",
+                "anchor": "middle",
+                "bbox": {
+                  "max_x": -0.959,
+                  "max_y": 197.674,
+                  "min_x": -52.959,
+                  "min_y": 178.674
+                },
+                "class_name": "ishikawa-label cause",
+                "font_size": 16.0,
+                "line_height": 16.8,
                 "lines": [
                   "Cause A"
                 ],
-                "class_name": "ishikawa-label cause",
+                "text": "Cause A",
                 "x": -26.959,
-                "y": 189.487,
-                "anchor": "middle",
-                "line_height": 16.8,
-                "font_size": 16.0,
-                "bbox": {
-                  "min_x": -52.959,
-                  "min_y": 178.674,
-                  "max_x": -0.959,
-                  "max_y": 197.674
-                }
+                "y": 189.487
+              },
+              "label_box": {
+                "height": 23.0,
+                "width": 92.0,
+                "x": -72.959,
+                "y": 176.674
               }
             },
+            "line": {
+              "class_name": "ishikawa-branch",
+              "marker_start": true,
+              "x1": -20.0,
+              "x2": -26.959,
+              "y1": 250.0,
+              "y2": 200.487
+            },
             "sub_groups": []
-          },
-          "lower": null
+          }
         }
-      ]
+      ],
+      "spine": {
+        "class_name": "ishikawa-spine",
+        "marker_start": false,
+        "x1": -52.959,
+        "x2": 0.0,
+        "y1": 250.0,
+        "y2": 250.0
+      },
+      "total_height": 149.326,
+      "total_width": 184.959,
+      "use_max_width": true,
+      "viewbox_x": -92.959,
+      "viewbox_y": 156.674
     }
   }
 }

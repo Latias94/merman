@@ -1,27 +1,20 @@
 {
   "diagramType": "railroadPeg",
   "model": {
-    "type": "railroadPeg",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "Expression",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "nonterminal",
-              "name": "Term"
+              "name": "Term",
+              "type": "nonterminal"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "sequence",
                 "elements": [
                   {
-                    "type": "choice",
                     "alternatives": [
                       {
                         "type": "terminal",
@@ -31,36 +24,36 @@
                         "type": "terminal",
                         "value": "-"
                       }
-                    ]
+                    ],
+                    "type": "choice"
                   },
                   {
-                    "type": "nonterminal",
-                    "name": "Term"
+                    "name": "Term",
+                    "type": "nonterminal"
                   }
-                ]
+                ],
+                "type": "sequence"
               },
+              "max": null,
               "min": 0,
-              "max": null
+              "type": "repetition"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "Expression"
       },
       {
-        "name": "Term",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "nonterminal",
-              "name": "Factor"
+              "name": "Factor",
+              "type": "nonterminal"
             },
             {
-              "type": "repetition",
               "element": {
-                "type": "sequence",
                 "elements": [
                   {
-                    "type": "choice",
                     "alternatives": [
                       {
                         "type": "terminal",
@@ -70,65 +63,68 @@
                         "type": "terminal",
                         "value": "/"
                       }
-                    ]
+                    ],
+                    "type": "choice"
                   },
                   {
-                    "type": "nonterminal",
-                    "name": "Factor"
+                    "name": "Factor",
+                    "type": "nonterminal"
                   }
-                ]
+                ],
+                "type": "sequence"
               },
+              "max": null,
               "min": 0,
-              "max": null
+              "type": "repetition"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "Term"
       },
       {
-        "name": "Factor",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
-              "type": "nonterminal",
-              "name": "Number"
+              "name": "Number",
+              "type": "nonterminal"
             },
             {
-              "type": "sequence",
               "elements": [
                 {
                   "type": "terminal",
                   "value": "("
                 },
                 {
-                  "type": "nonterminal",
-                  "name": "Expression"
+                  "name": "Expression",
+                  "type": "nonterminal"
                 },
                 {
                   "type": "terminal",
                   "value": ")"
                 }
-              ]
+              ],
+              "type": "sequence"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "Factor"
       },
       {
-        "name": "Number",
         "definition": {
-          "type": "repetition",
           "element": {
-            "type": "nonterminal",
-            "name": "Digit"
+            "name": "Digit",
+            "type": "nonterminal"
           },
+          "max": null,
           "min": 1,
-          "max": null
-        }
+          "type": "repetition"
+        },
+        "name": "Number"
       },
       {
-        "name": "Digit",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -146,9 +142,13 @@
               "type": "terminal",
               "value": "3"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "Digit"
       }
-    ]
+    ],
+    "title": null,
+    "type": "railroadPeg"
   }
 }

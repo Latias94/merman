@@ -1,48 +1,48 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Comments & blank lines",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "A",
       "B"
     ],
     "tasks": [
       {
-        "id": 0,
-        "section": "A",
-        "type": "A",
-        "task": "1 ",
-        "score": 0,
         "events": [
           "First"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "A",
+        "task": "1 ",
+        "type": "A"
       },
       {
-        "id": 1,
-        "section": "A",
-        "type": "A",
-        "task": "2 ",
-        "score": 0,
         "events": [
           "Second ",
           "Also second"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "A",
+        "task": "2 ",
+        "type": "A"
       },
       {
-        "id": 2,
-        "section": "B",
-        "type": "B",
-        "task": "3 ",
-        "score": 0,
         "events": [
           "Third",
           "Continuation"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "B",
+        "task": "3 ",
+        "type": "B"
       }
-    ]
+    ],
+    "title": "Comments & blank lines",
+    "type": "timeline"
   }
 }

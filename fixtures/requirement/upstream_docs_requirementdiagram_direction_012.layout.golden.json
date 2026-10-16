@@ -2,31 +2,26 @@
   "diagramType": "requirement",
   "layout": {
     "RequirementDiagram": {
-      "nodes": [
-        {
-          "id": "test_req",
-          "x": 291.063,
-          "y": 12.0,
-          "width": 134.375,
-          "height": 166.0,
-          "is_cluster": false
-        },
-        {
-          "id": "test_entity",
-          "x": 12.0,
-          "y": 43.5,
-          "width": 115.484,
-          "height": 103.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 425.438,
+        "max_y": 178.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "test_entity-test_req-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "test_entity",
-          "to": "test_req",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "test_entity-test_req-0",
+          "label": {
+            "height": 21.0,
+            "width": 83.578,
+            "x": 209.273,
+            "y": 94.5
+          },
           "points": [
             {
               "x": 127.484,
@@ -37,27 +32,32 @@
               "y": 95.0
             }
           ],
-          "label": {
-            "x": 209.273,
-            "y": 94.5,
-            "width": 83.578,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "test_req",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 425.438,
-        "max_y": 178.0
-      }
+      "nodes": [
+        {
+          "height": 166.0,
+          "id": "test_req",
+          "is_cluster": false,
+          "width": 134.375,
+          "x": 291.063,
+          "y": 12.0
+        },
+        {
+          "height": 103.0,
+          "id": "test_entity",
+          "is_cluster": false,
+          "width": 115.484,
+          "x": 12.0,
+          "y": 43.5
+        }
+      ]
     }
   }
 }

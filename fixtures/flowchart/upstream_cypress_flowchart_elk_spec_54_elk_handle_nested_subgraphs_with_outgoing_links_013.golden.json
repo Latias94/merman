@@ -1,7 +1,6 @@
 {
   "diagramType": "flowchart-elk",
   "model": {
-    "keyword": "flowchart-elk",
     "accDescr": null,
     "accTitle": null,
     "classDefs": {},
@@ -10,134 +9,135 @@
       "interpolate": null,
       "style": []
     },
-    "vertexCalls": [
-      "subcontainer-child",
-      "subcontainer-child",
-      "subcontainer-sibling"
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "subcontainer-child",
+        "id": "L_subcontainer-child_subcontainer-sibling_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "subcontainer-sibling",
+        "type": "arrow_point"
+      }
     ],
+    "keyword": "flowchart-elk",
     "nodes": [
       {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
         "id": "subcontainer-child",
+        "img": null,
         "label": "subcontainer-child",
         "labelType": "text",
         "layoutShape": "squareRect",
-        "shape": null,
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "classes": [],
-        "styles": [],
         "link": null,
         "linkTarget": null,
-        "haveCallback": false
+        "pos": null,
+        "shape": null,
+        "styles": []
       },
       {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
         "id": "subcontainer-sibling",
+        "img": null,
         "label": "subcontainer-sibling",
         "labelType": "text",
         "layoutShape": "squareRect",
-        "shape": null,
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "classes": [],
-        "styles": [],
         "link": null,
         "linkTarget": null,
-        "haveCallback": false
+        "pos": null,
+        "shape": null,
+        "styles": []
       },
       {
-        "id": "subcontainer",
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
         "haveCallback": false,
+        "icon": null,
+        "id": "subcontainer",
+        "img": null,
         "label": "subcontainer",
         "labelType": "text",
         "layoutShape": "squareRect",
-        "shape": null,
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "classes": [],
-        "styles": [],
         "link": null,
-        "linkTarget": null
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
       },
       {
-        "id": "main",
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
         "haveCallback": false,
+        "icon": null,
+        "id": "main",
+        "img": null,
         "label": "main",
         "labelType": "text",
         "layoutShape": "squareRect",
-        "shape": null,
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "classes": [],
-        "styles": [],
         "link": null,
-        "linkTarget": null
-      }
-    ],
-    "edges": [
-      {
-        "id": "L_subcontainer-child_subcontainer-sibling_0",
-        "from": "subcontainer-child",
-        "to": "subcontainer-sibling",
-        "label": null,
-        "labelType": "text",
-        "type": "arrow_point",
-        "arrow": "-->",
-        "length": 1,
-        "animation": null,
-        "isUserDefinedId": false,
-        "stroke": "normal",
-        "animate": null,
-        "style": [],
-        "interpolate": null,
-        "classes": []
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
       }
     ],
     "subgraphs": [
       {
-        "id": "subcontainer",
-        "title": "subcontainer",
-        "dir": null,
-        "labelType": "text",
         "classes": [],
-        "styles": [],
+        "dir": null,
+        "id": "subcontainer",
+        "labelType": "text",
         "nodes": [
           "subcontainer-child"
-        ]
+        ],
+        "styles": [],
+        "title": "subcontainer"
       },
       {
-        "id": "main",
-        "title": "main",
-        "dir": null,
-        "labelType": "text",
         "classes": [],
-        "styles": [],
+        "dir": null,
+        "id": "main",
+        "labelType": "text",
         "nodes": [
           "subcontainer",
           "subcontainer-sibling"
-        ]
+        ],
+        "styles": [],
+        "title": "main"
       }
     ],
     "tooltips": {},
-    "type": "flowchart-elk"
+    "type": "flowchart-elk",
+    "vertexCalls": [
+      "subcontainer-child",
+      "subcontainer-child",
+      "subcontainer-sibling"
+    ]
   }
 }

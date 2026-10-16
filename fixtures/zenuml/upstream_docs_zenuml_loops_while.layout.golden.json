@@ -2,129 +2,129 @@
   "diagramType": "zenuml",
   "layout": {
     "ZenumlDiagram": {
-      "width": 292.2,
-      "height": 253.0,
-      "frameBorderLeft": 10.0,
-      "frameBorderRight": 10.0,
-      "participants": [
-        {
-          "name": "Alice",
-          "label": "Alice",
-          "x": 50.0,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 32.32,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        },
-        {
-          "name": "John",
-          "label": "John",
-          "x": 242.2,
-          "y": 28.0,
-          "width": 80.0,
-          "height": 40.0,
-          "isStarter": false,
-          "labelWidth": 30.24,
-          "stereotypeWidth": null,
-          "participantType": null,
-          "stereotype": null,
-          "color": null,
-          "emoji": null,
-          "groupId": null
-        }
-      ],
-      "lifelines": [
-        {
-          "participantName": "Alice",
-          "x": 50.0,
-          "topY": 68.0,
-          "bottomY": 265.0
-        },
-        {
-          "participantName": "John",
-          "x": 242.2,
-          "topY": 68.0,
-          "bottomY": 265.0
-        }
-      ],
-      "messages": [
-        {
-          "statementId": "zenuml-statement-0",
-          "number": "1",
-          "from": "Alice",
-          "to": "John",
-          "fromX": 50.0,
-          "toX": 242.2,
-          "y": 87.5,
-          "label": "Hello John, how are you?",
-          "arrowStyle": "open",
-          "isReverse": false,
-          "style": {}
-        },
-        {
-          "statementId": "zenuml-statement-2",
-          "number": "2.1",
-          "from": "John",
-          "to": "Alice",
-          "fromX": 242.2,
-          "toX": 50.0,
-          "y": 181.5,
-          "label": "Great!",
-          "arrowStyle": "open",
-          "isReverse": true,
-          "style": {}
-        }
-      ],
-      "selfCalls": [],
+      "bounds": {
+        "max_x": 292.2,
+        "max_y": 253.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
+      "comments": [],
       "creations": [],
-      "returns": [],
-      "occurrences": [],
+      "dividers": [],
       "fragments": [
         {
-          "statementId": "zenuml-statement-1",
+          "depth": 0.0,
+          "headerY": 105.0,
+          "height": 105.0,
           "kind": "loop",
           "label": "true",
           "labelWidth": 24.08,
-          "x": -10.0,
-          "y": 104.0,
-          "width": 312.2,
-          "height": 105.0,
-          "headerY": 105.0,
+          "number": "2",
           "sections": [
             {
-              "label": "true",
-              "y": 130.0,
+              "contentInsetLeft": null,
+              "detail": null,
+              "detailWidth": null,
               "height": 0.0,
-              "labelWidth": 24.08,
               "innerLabel": null,
               "innerLabelWidth": null,
               "keyword": null,
               "keywordWidth": null,
-              "detail": null,
-              "detailWidth": null,
-              "contentInsetLeft": null
+              "label": "true",
+              "labelWidth": 24.08,
+              "y": 130.0
             }
           ],
-          "number": "2",
-          "depth": 0.0
+          "statementId": "zenuml-statement-1",
+          "width": 312.2,
+          "x": -10.0,
+          "y": 104.0
         }
       ],
-      "dividers": [],
-      "comments": [],
+      "frameBorderLeft": 10.0,
+      "frameBorderRight": 10.0,
       "groups": [],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 292.2,
-        "max_y": 253.0
-      }
+      "height": 253.0,
+      "lifelines": [
+        {
+          "bottomY": 265.0,
+          "participantName": "Alice",
+          "topY": 68.0,
+          "x": 50.0
+        },
+        {
+          "bottomY": 265.0,
+          "participantName": "John",
+          "topY": 68.0,
+          "x": 242.2
+        }
+      ],
+      "messages": [
+        {
+          "arrowStyle": "open",
+          "from": "Alice",
+          "fromX": 50.0,
+          "isReverse": false,
+          "label": "Hello John, how are you?",
+          "number": "1",
+          "statementId": "zenuml-statement-0",
+          "style": {},
+          "to": "John",
+          "toX": 242.2,
+          "y": 87.5
+        },
+        {
+          "arrowStyle": "open",
+          "from": "John",
+          "fromX": 242.2,
+          "isReverse": true,
+          "label": "Great!",
+          "number": "2.1",
+          "statementId": "zenuml-statement-2",
+          "style": {},
+          "to": "Alice",
+          "toX": 50.0,
+          "y": 181.5
+        }
+      ],
+      "occurrences": [],
+      "participants": [
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "Alice",
+          "labelWidth": 32.32,
+          "name": "Alice",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 50.0,
+          "y": 28.0
+        },
+        {
+          "color": null,
+          "emoji": null,
+          "groupId": null,
+          "height": 40.0,
+          "isStarter": false,
+          "label": "John",
+          "labelWidth": 30.24,
+          "name": "John",
+          "participantType": null,
+          "stereotype": null,
+          "stereotypeWidth": null,
+          "width": 80.0,
+          "x": 242.2,
+          "y": 28.0
+        }
+      ],
+      "returns": [],
+      "selfCalls": [],
+      "width": 292.2
     }
   }
 }

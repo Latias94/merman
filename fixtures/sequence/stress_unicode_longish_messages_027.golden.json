@@ -1,80 +1,80 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "中",
       "E",
       "P"
     ],
     "actors": {
-      "中": {
-        "name": "中",
-        "description": "中文",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "E": {
-        "name": "E",
         "description": "EmojiSafe",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "E",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "P": {
-        "name": "P",
         "description": "Punct",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "P",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "中": {
+        "description": "中文",
+        "links": {},
+        "name": "中",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "中",
-        "to": "P",
-        "message": "你好，世界！— punctuation test: “quotes”, (parens), [brackets], {braces}",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "P",
-        "to": "中",
-        "message": "symbols: ✓✗ αβγ ﬂ°°35¶ß ﬂ°°9829¶ß ﬂ°infin¶ß",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "E",
-        "to": "E",
-        "message": "self-call with dashes -- and equals == should not break parsing",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "中",
+        "id": "0",
+        "message": "你好，世界！— punctuation test: “quotes”, (parens), [brackets], {braces}",
+        "to": "P",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "P",
+        "id": "1",
+        "message": "symbols: ✓✗ αβγ ﬂ°°35¶ß ﬂ°°9829¶ß ﬂ°infin¶ß",
+        "to": "中",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "E",
+        "id": "2",
+        "message": "self-call with dashes -- and equals == should not break parsing",
+        "to": "E",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

@@ -2,39 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "IRepository",
-          "x": 96.52,
-          "y": 284.0,
-          "width": 115.563,
-          "height": 102.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Service",
-          "x": 96.52,
-          "y": 72.0,
-          "width": 167.853,
-          "height": 120.0,
-          "is_cluster": false
-        },
-        {
-          "id": "SqlRepo",
-          "x": 96.52,
-          "y": 435.0,
-          "width": 169.04,
-          "height": 120.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 181.04,
+        "max_y": 495.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "IRepository",
-          "to": "SqlRepo",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 96.52,
@@ -45,21 +28,26 @@
               "y": 375.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "SqlRepo",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Service",
-          "to": "IRepository",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 42.14,
+            "x": 96.09,
+            "y": 182.5
+          },
           "points": [
             {
               "x": 96.52,
@@ -70,28 +58,40 @@
               "y": 233.0
             }
           ],
-          "label": {
-            "x": 96.09,
-            "y": 182.5,
-            "width": 42.14,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "IRepository",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 181.04,
-        "max_y": 495.0
-      }
+      "nodes": [
+        {
+          "height": 102.0,
+          "id": "IRepository",
+          "is_cluster": false,
+          "width": 115.563,
+          "x": 96.52,
+          "y": 284.0
+        },
+        {
+          "height": 120.0,
+          "id": "Service",
+          "is_cluster": false,
+          "width": 167.853,
+          "x": 96.52,
+          "y": 72.0
+        },
+        {
+          "height": 120.0,
+          "id": "SqlRepo",
+          "is_cluster": false,
+          "width": 169.04,
+          "x": 96.52,
+          "y": 435.0
+        }
+      ]
     }
   }
 }

@@ -2,47 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Apple",
-          "x": 94.736,
-          "y": 82.5,
-          "width": 128.087,
-          "height": 141.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Pineapple",
-          "x": 85.39,
-          "y": 274.0,
-          "width": 146.78,
-          "height": 162.0,
-          "is_cluster": false
-        },
-        {
-          "id": "interface0",
-          "x": 229.97,
-          "y": 82.5,
-          "width": 62.38,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "interface1",
-          "x": 229.97,
-          "y": 274.0,
-          "width": 62.38,
-          "height": 45.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 261.16,
+        "max_y": 355.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "interface0",
-          "to": "Apple",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 198.78,
@@ -53,21 +28,21 @@
               "y": 82.5
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Apple",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "interface1",
-          "to": "Pineapple",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": null,
           "points": [
             {
               "x": 198.78,
@@ -78,23 +53,48 @@
               "y": 274.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Pineapple",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 261.16,
-        "max_y": 355.0
-      }
+      "nodes": [
+        {
+          "height": 141.0,
+          "id": "Apple",
+          "is_cluster": false,
+          "width": 128.087,
+          "x": 94.736,
+          "y": 82.5
+        },
+        {
+          "height": 162.0,
+          "id": "Pineapple",
+          "is_cluster": false,
+          "width": 146.78,
+          "x": 85.39,
+          "y": 274.0
+        },
+        {
+          "height": 45.0,
+          "id": "interface0",
+          "is_cluster": false,
+          "width": 62.38,
+          "x": 229.97,
+          "y": 82.5
+        },
+        {
+          "height": 45.0,
+          "id": "interface1",
+          "is_cluster": false,
+          "width": 62.38,
+          "x": 229.97,
+          "y": 274.0
+        }
+      ]
     }
   }
 }

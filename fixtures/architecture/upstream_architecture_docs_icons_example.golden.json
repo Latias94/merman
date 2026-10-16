@@ -1,270 +1,270 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "api",
-        "icon": "logos:aws-lambda",
-        "title": "API",
-        "in": null
+        "lhsDir": "L",
+        "lhsGroup": null,
+        "lhsId": "db",
+        "lhsInto": null,
+        "rhsDir": "R",
+        "rhsGroup": null,
+        "rhsId": "server",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "disk1",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "server",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "disk2",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": null,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "logos:aws-lambda",
+        "id": "api",
+        "in": null,
+        "title": "API"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "disk2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "disk2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-aurora",
         "iconText": null,
+        "id": "db",
+        "in": "api",
         "title": "Database",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "disk1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "disk1",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "disk1",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-glacier",
         "iconText": null,
+        "id": "disk1",
+        "in": "api",
         "title": "Storage",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "disk2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "disk2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "disk2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "disk2",
+        "in": "api",
         "title": "Storage",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "server",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "disk1",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "disk1",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "server",
+        "in": "api",
         "title": "Server",
-        "in": "api"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "disk2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "disk2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-aurora",
         "iconText": null,
+        "id": "db",
+        "in": "api",
         "title": "Database",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "disk1",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "disk1",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "disk1",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-glacier",
         "iconText": null,
+        "id": "disk1",
+        "in": "api",
         "title": "Storage",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "disk2",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "disk2",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "disk2",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-s3",
         "iconText": null,
+        "id": "disk2",
+        "in": "api",
         "title": "Storage",
-        "in": "api"
+        "type": "service"
       },
       {
-        "id": "server",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "db",
             "lhsDir": "L",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "db",
+            "lhsInto": null,
             "rhsDir": "R",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "disk1",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "server",
+            "lhsId": "disk1",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "server",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "logos:aws-ec2",
         "iconText": null,
+        "id": "server",
+        "in": "api",
         "title": "Server",
-        "in": "api"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "db",
-        "lhsDir": "L",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "server",
-        "rhsDir": "R",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "disk1",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "server",
-        "rhsDir": "B",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "disk2",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "B",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

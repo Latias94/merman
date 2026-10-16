@@ -1,154 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "Agricultural 'waste'"
-        },
-        {
-          "id": "Bio-conversion"
-        },
-        {
-          "id": "Liquid"
-        },
-        {
-          "id": "Losses"
-        },
-        {
-          "id": "Solid"
-        },
-        {
-          "id": "Gas"
-        },
-        {
-          "id": "Biofuel imports"
-        },
-        {
-          "id": "Biomass imports"
-        },
-        {
-          "id": "Coal imports"
-        },
-        {
-          "id": "Coal"
-        },
-        {
-          "id": "Coal reserves"
-        },
-        {
-          "id": "District heating"
-        },
-        {
-          "id": "Industry"
-        },
-        {
-          "id": "Heating and cooling - commercial"
-        },
-        {
-          "id": "Heating and cooling - homes"
-        },
-        {
-          "id": "Electricity grid"
-        },
-        {
-          "id": "Over generation / exports"
-        },
-        {
-          "id": "H2 conversion"
-        },
-        {
-          "id": "Road transport"
-        },
-        {
-          "id": "Agriculture"
-        },
-        {
-          "id": "Rail transport"
-        },
-        {
-          "id": "Lighting & appliances - commercial"
-        },
-        {
-          "id": "Lighting & appliances - homes"
-        },
-        {
-          "id": "Gas imports"
-        },
-        {
-          "id": "Ngas"
-        },
-        {
-          "id": "Gas reserves"
-        },
-        {
-          "id": "Thermal generation"
-        },
-        {
-          "id": "Geothermal"
-        },
-        {
-          "id": "H2"
-        },
-        {
-          "id": "Hydro"
-        },
-        {
-          "id": "International shipping"
-        },
-        {
-          "id": "Domestic aviation"
-        },
-        {
-          "id": "International aviation"
-        },
-        {
-          "id": "National navigation"
-        },
-        {
-          "id": "Marine algae"
-        },
-        {
-          "id": "Nuclear"
-        },
-        {
-          "id": "Oil imports"
-        },
-        {
-          "id": "Oil"
-        },
-        {
-          "id": "Oil reserves"
-        },
-        {
-          "id": "Other waste"
-        },
-        {
-          "id": "Pumped heat"
-        },
-        {
-          "id": "Solar PV"
-        },
-        {
-          "id": "Solar Thermal"
-        },
-        {
-          "id": "Solar"
-        },
-        {
-          "id": "Tidal"
-        },
-        {
-          "id": "UK land based bioenergy"
-        },
-        {
-          "id": "Wave"
-        },
-        {
-          "id": "Wind"
-        }
-      ],
       "links": [
         {
           "source": "Agricultural 'waste'",
@@ -490,7 +343,154 @@
           "target": "Electricity grid",
           "value": 289.366
         }
+      ],
+      "nodes": [
+        {
+          "id": "Agricultural 'waste'"
+        },
+        {
+          "id": "Bio-conversion"
+        },
+        {
+          "id": "Liquid"
+        },
+        {
+          "id": "Losses"
+        },
+        {
+          "id": "Solid"
+        },
+        {
+          "id": "Gas"
+        },
+        {
+          "id": "Biofuel imports"
+        },
+        {
+          "id": "Biomass imports"
+        },
+        {
+          "id": "Coal imports"
+        },
+        {
+          "id": "Coal"
+        },
+        {
+          "id": "Coal reserves"
+        },
+        {
+          "id": "District heating"
+        },
+        {
+          "id": "Industry"
+        },
+        {
+          "id": "Heating and cooling - commercial"
+        },
+        {
+          "id": "Heating and cooling - homes"
+        },
+        {
+          "id": "Electricity grid"
+        },
+        {
+          "id": "Over generation / exports"
+        },
+        {
+          "id": "H2 conversion"
+        },
+        {
+          "id": "Road transport"
+        },
+        {
+          "id": "Agriculture"
+        },
+        {
+          "id": "Rail transport"
+        },
+        {
+          "id": "Lighting & appliances - commercial"
+        },
+        {
+          "id": "Lighting & appliances - homes"
+        },
+        {
+          "id": "Gas imports"
+        },
+        {
+          "id": "Ngas"
+        },
+        {
+          "id": "Gas reserves"
+        },
+        {
+          "id": "Thermal generation"
+        },
+        {
+          "id": "Geothermal"
+        },
+        {
+          "id": "H2"
+        },
+        {
+          "id": "Hydro"
+        },
+        {
+          "id": "International shipping"
+        },
+        {
+          "id": "Domestic aviation"
+        },
+        {
+          "id": "International aviation"
+        },
+        {
+          "id": "National navigation"
+        },
+        {
+          "id": "Marine algae"
+        },
+        {
+          "id": "Nuclear"
+        },
+        {
+          "id": "Oil imports"
+        },
+        {
+          "id": "Oil"
+        },
+        {
+          "id": "Oil reserves"
+        },
+        {
+          "id": "Other waste"
+        },
+        {
+          "id": "Pumped heat"
+        },
+        {
+          "id": "Solar PV"
+        },
+        {
+          "id": "Solar Thermal"
+        },
+        {
+          "id": "Solar"
+        },
+        {
+          "id": "Tidal"
+        },
+        {
+          "id": "UK land based bioenergy"
+        },
+        {
+          "id": "Wave"
+        },
+        {
+          "id": "Wind"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

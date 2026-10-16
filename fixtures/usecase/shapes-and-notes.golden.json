@@ -1,51 +1,11 @@
 {
   "diagramType": "usecase",
   "model": {
-    "type": "usecase",
-    "direction": "LR",
-    "nodes": [
-      {
-        "id": "User",
-        "label": "Customer",
-        "labelType": "text",
-        "kind": "actor",
-        "actorType": "hollow",
-        "icon": null,
-        "parentId": null,
-        "business": false,
-        "stereotype": "Human",
-        "classes": [],
-        "styles": []
-      },
-      {
-        "id": "Login",
-        "label": "Sign & go",
-        "labelType": "text",
-        "kind": "useCaseEllipse",
-        "actorType": "normal",
-        "icon": null,
-        "parentId": "Auth",
-        "business": true,
-        "stereotype": null,
-        "classes": [],
-        "styles": []
-      },
-      {
-        "id": "Verify",
-        "label": "Check",
-        "labelType": "text",
-        "kind": "useCaseRect",
-        "actorType": "normal",
-        "icon": null,
-        "parentId": "Auth",
-        "business": false,
-        "stereotype": null,
-        "classes": [],
-        "styles": []
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "boundaries": [
       {
+        "classes": [],
         "id": "Auth",
         "label": "Authentication",
         "labelType": "text",
@@ -54,78 +14,15 @@
           "Verify"
         ],
         "package": true,
-        "classes": [],
         "styles": []
       }
     ],
-    "relationships": [
-      {
-        "id": "link",
-        "explicitId": true,
-        "source": "User",
-        "target": "Login",
-        "relationshipType": "association",
-        "arrowType": 0,
-        "label": null,
-        "labelType": null,
-        "dotted": false,
-        "minlen": 1,
-        "classes": [],
-        "styles": [],
-        "animate": false,
-        "animation": null
-      },
-      {
-        "id": "edge-0",
-        "explicitId": false,
-        "source": "Login",
-        "target": "Verify",
-        "relationshipType": "include",
-        "arrowType": 0,
-        "label": "include",
-        "labelType": "text",
-        "dotted": true,
-        "minlen": 1,
-        "classes": [],
-        "styles": [],
-        "animate": false,
-        "animation": null
-      },
-      {
-        "id": "edge-1",
-        "explicitId": false,
-        "source": "Data",
-        "target": "Login",
-        "relationshipType": "association",
-        "arrowType": 2,
-        "label": null,
-        "labelType": null,
-        "dotted": false,
-        "minlen": 1,
-        "classes": [],
-        "styles": [],
-        "animate": false,
-        "animation": null
-      }
-    ],
-    "notes": [
-      {
-        "id": "note-0",
-        "target": "Login",
-        "label": "Remember",
-        "labelType": "text"
-      }
-    ],
+    "classDefs": [],
+    "direction": "LR",
     "jsonNodes": [
       {
+        "classes": [],
         "id": "Data",
-        "value": {
-          "second": 2,
-          "first": {
-            "z": 0,
-            "a": 1
-          }
-        },
         "propertyOrder": {
           "": [
             "second",
@@ -136,13 +33,116 @@
             "a"
           ]
         },
+        "styles": [],
+        "value": {
+          "first": {
+            "a": 1,
+            "z": 0
+          },
+          "second": 2
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "actorType": "hollow",
+        "business": false,
         "classes": [],
+        "icon": null,
+        "id": "User",
+        "kind": "actor",
+        "label": "Customer",
+        "labelType": "text",
+        "parentId": null,
+        "stereotype": "Human",
+        "styles": []
+      },
+      {
+        "actorType": "normal",
+        "business": true,
+        "classes": [],
+        "icon": null,
+        "id": "Login",
+        "kind": "useCaseEllipse",
+        "label": "Sign & go",
+        "labelType": "text",
+        "parentId": "Auth",
+        "stereotype": null,
+        "styles": []
+      },
+      {
+        "actorType": "normal",
+        "business": false,
+        "classes": [],
+        "icon": null,
+        "id": "Verify",
+        "kind": "useCaseRect",
+        "label": "Check",
+        "labelType": "text",
+        "parentId": "Auth",
+        "stereotype": null,
         "styles": []
       }
     ],
-    "classDefs": [],
+    "notes": [
+      {
+        "id": "note-0",
+        "label": "Remember",
+        "labelType": "text",
+        "target": "Login"
+      }
+    ],
+    "relationships": [
+      {
+        "animate": false,
+        "animation": null,
+        "arrowType": 0,
+        "classes": [],
+        "dotted": false,
+        "explicitId": true,
+        "id": "link",
+        "label": null,
+        "labelType": null,
+        "minlen": 1,
+        "relationshipType": "association",
+        "source": "User",
+        "styles": [],
+        "target": "Login"
+      },
+      {
+        "animate": false,
+        "animation": null,
+        "arrowType": 0,
+        "classes": [],
+        "dotted": true,
+        "explicitId": false,
+        "id": "edge-0",
+        "label": "include",
+        "labelType": "text",
+        "minlen": 1,
+        "relationshipType": "include",
+        "source": "Login",
+        "styles": [],
+        "target": "Verify"
+      },
+      {
+        "animate": false,
+        "animation": null,
+        "arrowType": 2,
+        "classes": [],
+        "dotted": false,
+        "explicitId": false,
+        "id": "edge-1",
+        "label": null,
+        "labelType": null,
+        "minlen": 1,
+        "relationshipType": "association",
+        "source": "Data",
+        "styles": [],
+        "target": "Login"
+      }
+    ],
     "title": null,
-    "accTitle": null,
-    "accDescr": null
+    "type": "usecase"
   }
 }

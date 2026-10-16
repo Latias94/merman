@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Site",
       "mermaid",
@@ -12,69 +10,71 @@
     ],
     "actors": {
       "Site": {
-        "name": "Site",
         "description": "Site",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Site",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "mermaid": {
-        "name": "mermaid",
         "description": "mermaid",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "mermaid",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "mermaidAPI": {
-        "name": "mermaidAPI",
         "description": "mermaidAPI",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "mermaidAPI",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Site",
-        "to": "mermaid",
-        "message": "initialize",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Site",
-        "to": "mermaid",
-        "message": "content loaded",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "mermaid",
-        "to": "mermaidAPI",
-        "message": "init",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Site",
+        "id": "0",
+        "message": "initialize",
+        "to": "mermaid",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Site",
+        "id": "1",
+        "message": "content loaded",
+        "to": "mermaid",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "mermaid",
+        "id": "2",
+        "message": "init",
+        "to": "mermaidAPI",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

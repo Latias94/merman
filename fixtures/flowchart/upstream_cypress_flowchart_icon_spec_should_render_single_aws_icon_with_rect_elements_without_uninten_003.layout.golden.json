@@ -2,24 +2,24 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
+      "bounds": {
+        "max_x": 60.0,
+        "max_y": 60.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
-          "id": "Cloudwatch",
-          "x": 36.0,
-          "y": 36.0,
-          "width": 48.0,
           "height": 48.0,
-          "is_cluster": false
+          "id": "Cloudwatch",
+          "is_cluster": false,
+          "width": 48.0,
+          "x": 36.0,
+          "y": 36.0
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 60.0,
-        "max_y": 60.0
-      }
+      ]
     }
   }
 }

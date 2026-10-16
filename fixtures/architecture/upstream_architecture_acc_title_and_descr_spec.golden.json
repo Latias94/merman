@@ -1,15 +1,15 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": "Accessibility Title",
     "accDescr": "Accessibility Description",
+    "accTitle": "Accessibility Title",
+    "edges": [],
     "groups": [],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [],
     "services": [],
-    "junctions": [],
-    "edges": [],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

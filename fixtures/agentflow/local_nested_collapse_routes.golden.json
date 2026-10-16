@@ -7,27 +7,57 @@
         "title": "API"
       }
     ],
-    "direction": "LR",
     "diagnostics": [],
+    "direction": "LR",
+    "edges": [
+      {
+        "edgeSemantic": "sequence",
+        "end": "task",
+        "id": "loop",
+        "length": 1,
+        "start": "task",
+        "stroke": "normal",
+        "type": "arrow_point"
+      },
+      {
+        "edgeSemantic": "sequence",
+        "end": "task",
+        "id": "enter",
+        "length": 1,
+        "start": "start",
+        "stroke": "normal",
+        "type": "arrow_point"
+      },
+      {
+        "edgeSemantic": "sequence",
+        "end": "api",
+        "id": "exit",
+        "length": 1,
+        "start": "task",
+        "stroke": "normal",
+        "type": "arrow_point"
+      }
+    ],
     "subGraphs": [
       {
         "id": "inner",
-        "title": "Inner",
         "nodes": [
           "task"
         ],
+        "title": "Inner",
         "type": "flow"
       },
       {
         "id": "outer",
-        "title": "Outer",
         "nodes": [
           "start",
           "inner"
         ],
+        "title": "Outer",
         "type": "flow"
       }
     ],
+    "type": "agentflow",
     "vertices": [
       {
         "id": "start",
@@ -41,36 +71,6 @@
         "shape": "subroutine",
         "vertexKind": "tool"
       }
-    ],
-    "edges": [
-      {
-        "start": "task",
-        "end": "task",
-        "id": "loop",
-        "edgeSemantic": "sequence",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1
-      },
-      {
-        "start": "start",
-        "end": "task",
-        "id": "enter",
-        "edgeSemantic": "sequence",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1
-      },
-      {
-        "start": "task",
-        "end": "api",
-        "id": "exit",
-        "edgeSemantic": "sequence",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1
-      }
-    ],
-    "type": "agentflow"
+    ]
   }
 }

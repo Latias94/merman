@@ -2,186 +2,186 @@
   "diagramType": "gantt",
   "layout": {
     "GanttDiagram": {
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 800.0,
-        "max_y": 148.0
-      },
-      "width": 800.0,
-      "height": 148.0,
-      "left_padding": 75.0,
-      "right_padding": 75.0,
-      "top_padding": 50.0,
-      "grid_line_start_padding": 35.0,
-      "bar_height": 20.0,
-      "bar_gap": 4.0,
-      "title_top_margin": 25.0,
-      "font_size": 11.0,
-      "section_font_size": 11.0,
-      "number_section_styles": 4.0,
-      "display_mode": "",
-      "date_format": "YY-MM-DD",
       "axis_format": "",
-      "tick_interval": null,
-      "top_axis": false,
-      "today_marker": "",
+      "bar_gap": 4.0,
+      "bar_height": 20.0,
+      "bottom_ticks": [
+        {
+          "label": "1970-01-01",
+          "time_ms": 0.0,
+          "x": 82.0
+        },
+        {
+          "label": "1980-01-01",
+          "time_ms": 315532800000.0,
+          "x": 147.0
+        },
+        {
+          "label": "1990-01-01",
+          "time_ms": 631152000000.0,
+          "x": 213.0
+        },
+        {
+          "label": "2000-01-01",
+          "time_ms": 946684800000.0,
+          "x": 279.0
+        },
+        {
+          "label": "2010-01-01",
+          "time_ms": 1262304000000.0,
+          "x": 344.0
+        },
+        {
+          "label": "2020-01-01",
+          "time_ms": 1577836800000.0,
+          "x": 410.0
+        },
+        {
+          "label": "2030-01-01",
+          "time_ms": 1893456000000.0,
+          "x": 475.0
+        },
+        {
+          "label": "2040-01-01",
+          "time_ms": 2208988800000.0,
+          "x": 541.0
+        },
+        {
+          "label": "2050-01-01",
+          "time_ms": 2524608000000.0,
+          "x": 607.0
+        },
+        {
+          "label": "2060-01-01",
+          "time_ms": 2840140800000.0,
+          "x": 672.0
+        }
+      ],
+      "bounds": {
+        "max_x": 800.0,
+        "max_y": 148.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "categories": [
         "A"
       ],
+      "date_format": "YY-MM-DD",
+      "display_mode": "",
+      "excludes": [],
+      "font_size": 11.0,
+      "grid_line_start_padding": 35.0,
+      "has_excludes_layer": false,
+      "height": 148.0,
+      "left_padding": 75.0,
+      "number_section_styles": 4.0,
+      "right_padding": 75.0,
       "rows": [
         {
-          "index": 1.0,
-          "x": 0.0,
-          "y": 72.0,
-          "width": 762.5,
+          "class": "section section0",
           "height": 24.0,
-          "class": "section section0"
+          "index": 1.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 72.0
         },
         {
-          "index": 0.0,
-          "x": 0.0,
-          "y": 48.0,
-          "width": 762.5,
+          "class": "section section0",
           "height": 24.0,
-          "class": "section section0"
+          "index": 0.0,
+          "width": 762.5,
+          "x": 0.0,
+          "y": 48.0
         }
       ],
+      "section_font_size": 11.0,
       "section_titles": [
         {
-          "section": "A",
-          "index": 0.0,
-          "x": 10.0,
-          "y": 74.0,
+          "class": "sectionTitle sectionTitle0",
           "dy_em": -0.0,
+          "index": 0.0,
           "lines": [
             "A"
           ],
-          "class": "sectionTitle sectionTitle0"
+          "section": "A",
+          "x": 10.0,
+          "y": 74.0
         }
       ],
       "tasks": [
         {
-          "id": "t2",
-          "task": "y69",
-          "section": "A",
-          "task_type": "A",
-          "order": 1.0,
-          "start_ms": -31536000000.0,
-          "end_ms": -31449600000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "t2",
-            "x": 75.0,
-            "y": 74.0,
-            "width": 0.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "t2",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 0.0,
+            "x": 75.0,
+            "y": 74.0
           },
+          "end_ms": -31449600000.0,
+          "id": "t2",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside0 width-18.37",
+            "font_size": 11.0,
             "id": "t2-text",
             "text": "y69",
-            "font_size": 11.0,
             "width": 18.37,
             "x": 80.0,
-            "y": 87.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-18.37"
-          }
+            "y": 87.5
+          },
+          "milestone": false,
+          "order": 1.0,
+          "render_end_ms": null,
+          "section": "A",
+          "start_ms": -31536000000.0,
+          "task": "y69",
+          "task_type": "A",
+          "vert": false
         },
         {
-          "id": "t1",
-          "task": "y68",
-          "section": "A",
-          "task_type": "A",
-          "order": 0.0,
-          "start_ms": 3092601600000.0,
-          "end_ms": 3092688000000.0,
-          "render_end_ms": null,
-          "milestone": false,
-          "vert": false,
           "bar": {
-            "id": "t1",
-            "x": 725.0,
-            "y": 50.0,
-            "width": 0.0,
+            "class": "task task0",
             "height": 20.0,
+            "id": "t1",
             "rx": 3.0,
             "ry": 3.0,
-            "class": "task task0"
+            "width": 0.0,
+            "x": 725.0,
+            "y": 50.0
           },
+          "end_ms": 3092688000000.0,
+          "id": "t1",
           "label": {
+            "class": "taskTextOutsideRight taskTextOutside0 width-18.37",
+            "font_size": 11.0,
             "id": "t1-text",
             "text": "y68",
-            "font_size": 11.0,
             "width": 18.37,
             "x": 730.0,
-            "y": 63.5,
-            "class": "taskTextOutsideRight taskTextOutside0 width-18.37"
-          }
+            "y": 63.5
+          },
+          "milestone": false,
+          "order": 0.0,
+          "render_end_ms": null,
+          "section": "A",
+          "start_ms": 3092601600000.0,
+          "task": "y68",
+          "task_type": "A",
+          "vert": false
         }
       ],
-      "excludes": [],
-      "has_excludes_layer": false,
-      "bottom_ticks": [
-        {
-          "time_ms": 0.0,
-          "x": 82.0,
-          "label": "1970-01-01"
-        },
-        {
-          "time_ms": 315532800000.0,
-          "x": 147.0,
-          "label": "1980-01-01"
-        },
-        {
-          "time_ms": 631152000000.0,
-          "x": 213.0,
-          "label": "1990-01-01"
-        },
-        {
-          "time_ms": 946684800000.0,
-          "x": 279.0,
-          "label": "2000-01-01"
-        },
-        {
-          "time_ms": 1262304000000.0,
-          "x": 344.0,
-          "label": "2010-01-01"
-        },
-        {
-          "time_ms": 1577836800000.0,
-          "x": 410.0,
-          "label": "2020-01-01"
-        },
-        {
-          "time_ms": 1893456000000.0,
-          "x": 475.0,
-          "label": "2030-01-01"
-        },
-        {
-          "time_ms": 2208988800000.0,
-          "x": 541.0,
-          "label": "2040-01-01"
-        },
-        {
-          "time_ms": 2524608000000.0,
-          "x": 607.0,
-          "label": "2050-01-01"
-        },
-        {
-          "time_ms": 2840140800000.0,
-          "x": 672.0,
-          "label": "2060-01-01"
-        }
-      ],
-      "top_ticks": [],
+      "tick_interval": null,
       "title": "Two-digit year boundary (YY)",
+      "title_top_margin": 25.0,
       "title_x": 400.0,
-      "title_y": 25.0
+      "title_y": 25.0,
+      "today_marker": "",
+      "top_axis": false,
+      "top_padding": 50.0,
+      "top_ticks": [],
+      "width": 800.0
     }
   }
 }

@@ -1,332 +1,332 @@
 {
   "diagramType": "c4",
   "model": {
-    "type": "c4",
-    "c4Type": "C4Container",
-    "title": "Container diagram for Internet Banking System",
-    "accTitle": null,
     "accDescr": null,
-    "wrap": false,
-    "layout": {
-      "c4ShapeInRow": 4,
-      "c4BoundaryInRow": 2
-    },
-    "shapes": [
-      {
-        "alias": "email_system",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_system"
-        },
-        "label": {
-          "text": "E-Mail System"
-        },
-        "wrap": false,
-        "tags": "v1.0",
-        "descr": {
-          "text": "The internal Microsoft Exchange system"
-        }
-      },
-      {
-        "alias": "customer",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "person"
-        },
-        "label": {
-          "text": "Customer"
-        },
-        "wrap": false,
-        "tags": "v1.0",
-        "descr": {
-          "text": "A customer of the bank, with personal bank accounts"
-        }
-      },
-      {
-        "alias": "spa",
-        "parentBoundary": "c1",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Single-Page App"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "JavaScript, Angular"
-        },
-        "descr": {
-          "text": "Provides all the Internet banking functionality to customers via their web browser"
-        }
-      },
-      {
-        "alias": "mobile_app",
-        "parentBoundary": "c1",
-        "typeC4Shape": {
-          "text": "external_container"
-        },
-        "label": {
-          "text": "Mobile App"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "C#, Xamarin"
-        },
-        "descr": {
-          "text": "Provides a limited subset of the Internet banking functionality to customers via their mobile device"
-        }
-      },
-      {
-        "alias": "web_app",
-        "parentBoundary": "c1",
-        "typeC4Shape": {
-          "text": "container"
-        },
-        "label": {
-          "text": "Web Application"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Java, Spring MVC"
-        },
-        "descr": {
-          "text": "Delivers the static content and the Internet banking SPA"
-        }
-      },
-      {
-        "alias": "database",
-        "parentBoundary": "c1",
-        "typeC4Shape": {
-          "text": "container_db"
-        },
-        "label": {
-          "text": "Database"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "SQL Database"
-        },
-        "descr": {
-          "text": "Stores user registration information, hashed auth credentials, access logs, etc."
-        }
-      },
-      {
-        "alias": "backend_api",
-        "parentBoundary": "c1",
-        "typeC4Shape": {
-          "text": "external_container_db"
-        },
-        "label": {
-          "text": "API Application"
-        },
-        "wrap": false,
-        "techn": {
-          "text": "Java, Docker Container"
-        },
-        "descr": {
-          "text": "Provides Internet banking functionality via API"
-        }
-      },
-      {
-        "alias": "banking_system",
-        "parentBoundary": "global",
-        "typeC4Shape": {
-          "text": "external_system"
-        },
-        "label": {
-          "text": "Mainframe Banking System"
-        },
-        "wrap": false,
-        "descr": {
-          "text": "Stores all of the core banking information about customers, accounts, transactions, etc."
-        }
-      }
-    ],
+    "accTitle": null,
     "boundaries": [
       {
         "alias": "global",
-        "parentBoundary": "",
         "label": {
           "text": "global"
         },
+        "link": null,
+        "parentBoundary": "",
+        "tags": null,
         "type": {
           "text": "global"
-        },
-        "tags": null,
-        "link": null
+        }
       },
       {
         "alias": "c1",
-        "parentBoundary": "global",
         "label": {
           "text": "Internet Banking"
         },
+        "parentBoundary": "global",
         "type": {
           "text": "CONTAINER"
         },
         "wrap": false
       }
     ],
+    "c4Type": "C4Container",
+    "layout": {
+      "c4BoundaryInRow": 2,
+      "c4ShapeInRow": 4
+    },
     "rels": [
       {
+        "descr": {
+          "text": ""
+        },
         "from": "customer",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetX": 90,
+        "offsetY": 60,
+        "techn": {
+          "text": "HTTPS"
+        },
         "to": "web_app",
         "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "HTTPS"
-        },
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetX": 90,
-        "offsetY": 60
-      },
-      {
         "from": "customer",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetY": -40,
+        "techn": {
+          "text": "HTTPS"
+        },
         "to": "spa",
         "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "HTTPS"
-        },
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -40
-      },
-      {
         "from": "customer",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetY": -30,
+        "techn": {
+          "text": ""
+        },
         "to": "mobile_app",
         "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": ""
-        },
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetY": -30
-      },
-      {
         "from": "web_app",
-        "to": "spa",
-        "type": "rel",
         "label": {
           "text": "Delivers"
         },
+        "offsetX": 130,
         "techn": {
           "text": ""
         },
+        "to": "spa",
+        "type": "rel",
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
         },
-        "wrap": false,
-        "offsetX": 130
-      },
-      {
         "from": "spa",
-        "to": "backend_api",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
         "techn": {
           "text": "async, JSON/HTTPS"
         },
-        "descr": {
-          "text": ""
-        },
+        "to": "backend_api",
+        "type": "rel",
         "wrap": false
       },
       {
+        "descr": {
+          "text": ""
+        },
         "from": "mobile_app",
-        "to": "backend_api",
-        "type": "rel",
         "label": {
           "text": "Uses"
         },
         "techn": {
           "text": "async, JSON/HTTPS"
         },
-        "descr": {
-          "text": ""
-        },
+        "to": "backend_api",
+        "type": "rel",
         "wrap": false
       },
       {
+        "descr": {
+          "text": ""
+        },
         "from": "database",
-        "to": "backend_api",
-        "type": "rel_b",
         "label": {
           "text": "Reads from and writes to"
         },
         "techn": {
           "text": "sync, JDBC"
         },
+        "to": "backend_api",
+        "type": "rel_b",
+        "wrap": false
+      },
+      {
         "descr": {
           "text": ""
+        },
+        "from": "email_system",
+        "label": {
+          "text": "Sends e-mails to"
+        },
+        "offsetX": -45,
+        "techn": {
+          "text": ""
+        },
+        "to": "customer",
+        "type": "rel",
+        "wrap": false
+      },
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "backend_api",
+        "label": {
+          "text": "Sends e-mails using"
+        },
+        "offsetY": -60,
+        "techn": {
+          "text": "sync, SMTP"
+        },
+        "to": "email_system",
+        "type": "rel",
+        "wrap": false
+      },
+      {
+        "descr": {
+          "text": ""
+        },
+        "from": "backend_api",
+        "label": {
+          "text": "Uses"
+        },
+        "offsetX": -140,
+        "offsetY": -50,
+        "techn": {
+          "text": "sync/async, XML/HTTPS"
+        },
+        "to": "banking_system",
+        "type": "rel",
+        "wrap": false
+      }
+    ],
+    "shapes": [
+      {
+        "alias": "email_system",
+        "descr": {
+          "text": "The internal Microsoft Exchange system"
+        },
+        "label": {
+          "text": "E-Mail System"
+        },
+        "parentBoundary": "global",
+        "tags": "v1.0",
+        "typeC4Shape": {
+          "text": "external_system"
         },
         "wrap": false
       },
       {
-        "from": "email_system",
-        "to": "customer",
-        "type": "rel",
-        "label": {
-          "text": "Sends e-mails to"
-        },
-        "techn": {
-          "text": ""
-        },
+        "alias": "customer",
         "descr": {
-          "text": ""
+          "text": "A customer of the bank, with personal bank accounts"
         },
-        "wrap": false,
-        "offsetX": -45
+        "label": {
+          "text": "Customer"
+        },
+        "parentBoundary": "global",
+        "tags": "v1.0",
+        "typeC4Shape": {
+          "text": "person"
+        },
+        "wrap": false
       },
       {
-        "from": "backend_api",
-        "to": "email_system",
-        "type": "rel",
-        "label": {
-          "text": "Sends e-mails using"
-        },
-        "techn": {
-          "text": "sync, SMTP"
-        },
+        "alias": "spa",
         "descr": {
-          "text": ""
+          "text": "Provides all the Internet banking functionality to customers via their web browser"
         },
-        "wrap": false,
-        "offsetY": -60
+        "label": {
+          "text": "Single-Page App"
+        },
+        "parentBoundary": "c1",
+        "techn": {
+          "text": "JavaScript, Angular"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
       },
       {
-        "from": "backend_api",
-        "to": "banking_system",
-        "type": "rel",
-        "label": {
-          "text": "Uses"
-        },
-        "techn": {
-          "text": "sync/async, XML/HTTPS"
-        },
+        "alias": "mobile_app",
         "descr": {
-          "text": ""
+          "text": "Provides a limited subset of the Internet banking functionality to customers via their mobile device"
         },
-        "wrap": false,
-        "offsetX": -140,
-        "offsetY": -50
+        "label": {
+          "text": "Mobile App"
+        },
+        "parentBoundary": "c1",
+        "techn": {
+          "text": "C#, Xamarin"
+        },
+        "typeC4Shape": {
+          "text": "external_container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "web_app",
+        "descr": {
+          "text": "Delivers the static content and the Internet banking SPA"
+        },
+        "label": {
+          "text": "Web Application"
+        },
+        "parentBoundary": "c1",
+        "techn": {
+          "text": "Java, Spring MVC"
+        },
+        "typeC4Shape": {
+          "text": "container"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "database",
+        "descr": {
+          "text": "Stores user registration information, hashed auth credentials, access logs, etc."
+        },
+        "label": {
+          "text": "Database"
+        },
+        "parentBoundary": "c1",
+        "techn": {
+          "text": "SQL Database"
+        },
+        "typeC4Shape": {
+          "text": "container_db"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "backend_api",
+        "descr": {
+          "text": "Provides Internet banking functionality via API"
+        },
+        "label": {
+          "text": "API Application"
+        },
+        "parentBoundary": "c1",
+        "techn": {
+          "text": "Java, Docker Container"
+        },
+        "typeC4Shape": {
+          "text": "external_container_db"
+        },
+        "wrap": false
+      },
+      {
+        "alias": "banking_system",
+        "descr": {
+          "text": "Stores all of the core banking information about customers, accounts, transactions, etc."
+        },
+        "label": {
+          "text": "Mainframe Banking System"
+        },
+        "parentBoundary": "global",
+        "typeC4Shape": {
+          "text": "external_system"
+        },
+        "wrap": false
       }
-    ]
+    ],
+    "title": "Container diagram for Internet Banking System",
+    "type": "c4",
+    "wrap": false
   }
 }

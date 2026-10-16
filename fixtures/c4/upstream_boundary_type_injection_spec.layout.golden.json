@@ -2,174 +2,174 @@
   "diagramType": "c4",
   "layout": {
     "C4Diagram": {
-      "bounds": {
-        "min_x": 50.0,
-        "min_y": 10.0,
-        "max_x": 766.0,
-        "max_y": 669.578
-      },
-      "width": 816.0,
-      "height": 679.578,
-      "use_max_width": true,
-      "container_width": 800.0,
-      "container_height": 600.0,
-      "c4_type": "C4Container",
-      "title": "Boundary type injection",
       "boundaries": [
         {
           "alias": "global",
-          "parent_boundary": "",
-          "x": 100.0,
-          "y": 66.0,
-          "width": 616.0,
+          "descr": null,
           "height": 553.578,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "global",
-            "y": 8.0,
-            "width": 36.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "global",
+            "width": 36.0,
+            "y": 8.0
           },
+          "parent_boundary": "",
           "ty": {
-            "text": "[global]",
-            "y": 31.0,
-            "width": 41.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[global]",
+            "width": 41.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 616.0,
+          "x": 100.0,
+          "y": 66.0
         },
         {
           "alias": "ent",
-          "parent_boundary": "global",
-          "x": 150.0,
-          "y": 122.0,
-          "width": 516.0,
+          "descr": null,
           "height": 447.578,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "Enterprise",
-            "y": 8.0,
-            "width": 69.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "Enterprise",
+            "width": 69.0,
+            "y": 8.0
           },
+          "parent_boundary": "global",
           "ty": {
-            "text": "[ENTERPRISE]",
-            "y": 31.0,
-            "width": 89.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[ENTERPRISE]",
+            "width": 89.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 516.0,
+          "x": 150.0,
+          "y": 122.0
         },
         {
           "alias": "sys",
-          "parent_boundary": "ent",
-          "x": 200.0,
-          "y": 178.0,
-          "width": 416.0,
+          "descr": null,
           "height": 341.578,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "System",
-            "y": 8.0,
-            "width": 52.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "System",
+            "width": 52.0,
+            "y": 8.0
           },
+          "parent_boundary": "ent",
           "ty": {
-            "text": "[SYSTEM]",
-            "y": 31.0,
-            "width": 60.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[SYSTEM]",
+            "width": 60.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 416.0,
+          "x": 200.0,
+          "y": 178.0
         },
         {
           "alias": "cb",
-          "parent_boundary": "sys",
-          "x": 250.0,
-          "y": 234.0,
-          "width": 316.0,
+          "descr": null,
           "height": 235.578,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
           "label": {
-            "text": "Container",
-            "y": 8.0,
-            "width": 62.0,
             "height": 18.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "Container",
+            "width": 62.0,
+            "y": 8.0
           },
+          "parent_boundary": "sys",
           "ty": {
-            "text": "[CONTAINER]",
-            "y": 31.0,
-            "width": 81.0,
             "height": 15.0,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "[CONTAINER]",
+            "width": 81.0,
+            "y": 31.0
           },
-          "descr": null
+          "width": 316.0,
+          "x": 250.0,
+          "y": 234.0
         }
       ],
+      "bounds": {
+        "max_x": 766.0,
+        "max_y": 669.578,
+        "min_x": 50.0,
+        "min_y": 10.0
+      },
+      "c4_type": "C4Container",
+      "container_height": 600.0,
+      "container_width": 800.0,
+      "height": 679.578,
+      "rels": [],
       "shapes": [
         {
           "alias": "c1",
-          "parent_boundary": "cb",
-          "type_c4_shape": "container",
-          "x": 300.0,
-          "y": 334.0,
-          "width": 216.0,
+          "descr": {
+            "height": 12.628,
+            "line_count": 1.0,
+            "text": "Desc",
+            "width": 21.697,
+            "y": 59.264
+          },
           "height": 85.578,
-          "margin": 50.0,
           "image": {
-            "width": 0.0,
             "height": 0.0,
+            "width": 0.0,
             "y": 0.0
           },
-          "type_block": {
-            "text": "[Container: Tech]",
-            "y": 44.175,
-            "width": 74.025,
-            "height": 11.55,
-            "line_count": 1.0
-          },
           "label": {
-            "text": "C1",
-            "y": 27.7,
-            "width": 16.24,
             "height": 15.4,
-            "line_count": 1.0
+            "line_count": 1.0,
+            "text": "C1",
+            "width": 16.24,
+            "y": 27.7
           },
-          "ty": null,
+          "margin": 50.0,
+          "parent_boundary": "cb",
           "techn": null,
-          "descr": {
-            "text": "Desc",
-            "y": 59.264,
-            "width": 21.697,
-            "height": 12.628,
-            "line_count": 1.0
-          }
+          "ty": null,
+          "type_block": {
+            "height": 11.55,
+            "line_count": 1.0,
+            "text": "[Container: Tech]",
+            "width": 74.025,
+            "y": 44.175
+          },
+          "type_c4_shape": "container",
+          "width": 216.0,
+          "x": 300.0,
+          "y": 334.0
         }
       ],
-      "rels": []
+      "title": "Boundary type injection",
+      "use_max_width": true,
+      "width": 816.0
     }
   }
 }

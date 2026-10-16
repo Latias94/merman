@@ -1,85 +1,85 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Hide today marker (vertical line should not be visible)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "%d",
-    "tickInterval": null,
-    "todayMarker": "off",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Section1"
     ],
     "tasks": [
       {
-        "section": "Section1",
-        "type": "Section1",
-        "task": "Yesterday",
-        "id": "task1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "1010-10-10T00:00:00.000",
+        "id": "task1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": 1010-10-09, 1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1010-10-09"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "1010-10-09",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section1",
         "startTime": "1010-10-09T00:00:00.000",
-        "endTime": "1010-10-10T00:00:00.000"
+        "task": "Yesterday",
+        "type": "Section1",
+        "vert": false
       },
       {
-        "section": "Section1",
-        "type": "Section1",
-        "task": "Today",
-        "id": "task2",
-        "prevTaskId": "task1",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "1010-10-11T00:00:00.000",
+        "id": "task2",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "task1",
+        "processed": true,
         "raw": {
           "data": ": 1010-10-10, 1d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "1010-10-10"
-          },
           "endTime": {
             "data": "1d"
+          },
+          "startTime": {
+            "startData": "1010-10-10",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section1",
         "startTime": "1010-10-10T00:00:00.000",
-        "endTime": "1010-10-11T00:00:00.000"
+        "task": "Today",
+        "type": "Section1",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Hide today marker (vertical line should not be visible)",
+    "todayMarker": "off",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

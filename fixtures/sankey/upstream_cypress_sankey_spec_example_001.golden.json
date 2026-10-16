@@ -1,8 +1,14 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
+      "links": [
+        {
+          "source": "sourceNode",
+          "target": "targetNode",
+          "value": 10
+        }
+      ],
       "nodes": [
         {
           "id": "sourceNode"
@@ -10,14 +16,8 @@
         {
           "id": "targetNode"
         }
-      ],
-      "links": [
-        {
-          "source": "sourceNode",
-          "target": "targetNode",
-          "value": 10
-        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

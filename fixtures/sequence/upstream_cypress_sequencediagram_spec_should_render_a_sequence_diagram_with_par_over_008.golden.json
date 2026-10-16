@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,151 +10,161 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "John": {
-        "name": "John",
         "description": "John",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "John",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": null,
         "id": "0",
-        "from": null,
-        "to": null,
         "message": "Section title",
-        "wrap": false,
+        "to": null,
         "type": 32,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Alice",
         "id": "1",
-        "from": "Alice",
-        "to": "Bob",
         "message": "Message 1<br>Second line",
-        "wrap": false,
+        "to": "Bob",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
+        "activate": false,
+        "from": "Bob",
         "id": "2",
-        "from": "Bob",
-        "to": "John",
         "message": "Message 2",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 21,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "Two line<br>section title",
-        "wrap": false,
-        "type": 32,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Alice",
-        "to": "Alice",
-        "message": "Alice note",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "6",
-        "from": "Bob",
-        "to": "Bob",
-        "message": "Bob note<br>Second line",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "7",
-        "from": "John",
         "to": "John",
-        "message": "John note",
-        "wrap": false,
-        "type": 2,
-        "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "8",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 21,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": null,
-        "to": null,
-        "message": "Mixed section",
-        "wrap": false,
-        "type": 32,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Message 1",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "11",
-        "from": "Bob",
-        "to": "Bob",
-        "message": "Alice/Bob Note",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 0
+        "from": null,
+        "id": "3",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
       },
       {
-        "id": "12",
+        "activate": false,
         "from": null,
+        "id": "4",
+        "message": "Two line<br>section title",
         "to": null,
+        "type": 32,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "5",
+        "message": "Alice note",
+        "placement": 2,
+        "to": "Alice",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "6",
+        "message": "Bob note<br>Second line",
+        "placement": 2,
+        "to": "Bob",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "7",
+        "message": "John note",
+        "placement": 2,
+        "to": "John",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "8",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 21,
-        "activate": false
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "9",
+        "message": "Mixed section",
+        "to": null,
+        "type": 32,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "10",
+        "message": "Message 1",
+        "to": "Bob",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "11",
+        "message": "Alice/Bob Note",
+        "placement": 0,
+        "to": "Bob",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "12",
+        "message": "",
+        "to": null,
+        "type": 21,
+        "wrap": false
       }
     ],
     "notes": [
@@ -165,8 +173,8 @@
           "Alice",
           "Alice"
         ],
-        "placement": 2,
         "message": "Alice note",
+        "placement": 2,
         "wrap": false
       },
       {
@@ -174,8 +182,8 @@
           "Bob",
           "Bob"
         ],
-        "placement": 2,
         "message": "Bob note<br>Second line",
+        "placement": 2,
         "wrap": false
       },
       {
@@ -183,26 +191,18 @@
           "John",
           "John"
         ],
-        "placement": 2,
         "message": "John note",
+        "placement": 2,
         "wrap": false
       },
       {
         "actor": "Bob",
-        "placement": 0,
         "message": "Alice/Bob Note",
+        "placement": 0,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

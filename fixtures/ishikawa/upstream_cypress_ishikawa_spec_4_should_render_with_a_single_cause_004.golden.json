@@ -1,28 +1,28 @@
 {
   "diagramType": "ishikawa",
   "model": {
-    "type": "ishikawa",
-    "title": "Problem",
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "text": "Problem",
-      "children": [
-        {
-          "text": "Cause A",
-          "children": []
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
-        "text": "Problem",
-        "depth": 0
+        "depth": 0,
+        "text": "Problem"
       },
       {
-        "text": "Cause A",
-        "depth": 1
+        "depth": 1,
+        "text": "Cause A"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [],
+          "text": "Cause A"
+        }
+      ],
+      "text": "Problem"
+    },
+    "title": "Problem",
+    "type": "ishikawa"
   }
 }

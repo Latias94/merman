@@ -1,10 +1,9 @@
 {
   "diagramType": "venn",
   "model": {
-    "type": "venn",
-    "title": "HandDrawn Skills",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "styleEntries": [],
     "subsets": [
       {
         "sets": [
@@ -55,6 +54,7 @@
       }
     ],
     "textNodes": [],
-    "styleEntries": []
+    "title": "HandDrawn Skills",
+    "type": "venn"
   }
 }

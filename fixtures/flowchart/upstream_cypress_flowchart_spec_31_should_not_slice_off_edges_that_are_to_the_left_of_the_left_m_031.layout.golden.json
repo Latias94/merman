@@ -2,39 +2,22 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
-      "nodes": [
-        {
-          "id": "work",
-          "x": 88.0,
-          "y": 34.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "sleep",
-          "x": 88.0,
-          "y": 204.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        },
-        {
-          "id": "eat",
-          "x": 185.0,
-          "y": 119.5,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 261.0,
+        "max_y": 227.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "L_work_sleep_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "work",
-          "to": "sleep",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_work_sleep_0",
+          "label": null,
           "points": [
             {
               "x": 55.0,
@@ -65,21 +48,21 @@
               "y": 182.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "sleep",
+          "to_cluster": null
         },
         {
-          "id": "L_sleep_work_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "sleep",
-          "to": "work",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_sleep_work_0",
+          "label": null,
           "points": [
             {
               "x": 88.0,
@@ -94,21 +77,21 @@
               "y": 57.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "work",
+          "to_cluster": null
         },
         {
-          "id": "L_eat_sleep_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "eat",
-          "to": "sleep",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_eat_sleep_0",
+          "label": null,
           "points": [
             {
               "x": 185.0,
@@ -127,21 +110,21 @@
               "y": 182.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "sleep",
+          "to_cluster": null
         },
         {
-          "id": "L_work_eat_0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "work",
-          "to": "eat",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "L_work_eat_0",
+          "label": null,
           "points": [
             {
               "x": 121.0,
@@ -160,23 +143,40 @@
               "y": 97.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "eat",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 261.0,
-        "max_y": 227.0
-      }
+      "nodes": [
+        {
+          "height": 45.0,
+          "id": "work",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 88.0,
+          "y": 34.5
+        },
+        {
+          "height": 45.0,
+          "id": "sleep",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 88.0,
+          "y": 204.5
+        },
+        {
+          "height": 45.0,
+          "id": "eat",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 185.0,
+          "y": 119.5
+        }
+      ]
     }
   }
 }

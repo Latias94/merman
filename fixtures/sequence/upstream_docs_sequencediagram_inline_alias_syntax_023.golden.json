@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "API",
       "Auth",
@@ -12,78 +10,80 @@
     ],
     "actors": {
       "API": {
-        "name": "API",
         "description": "Public API",
-        "wrap": false,
-        "type": "boundary",
         "links": {},
-        "properties": {}
+        "name": "API",
+        "properties": {},
+        "type": "boundary",
+        "wrap": false
       },
       "Auth": {
-        "name": "Auth",
         "description": "Auth Service",
-        "wrap": false,
-        "type": "control",
         "links": {},
-        "properties": {}
+        "name": "Auth",
+        "properties": {},
+        "type": "control",
+        "wrap": false
       },
       "DB": {
-        "name": "DB",
         "description": "User Database",
-        "wrap": false,
-        "type": "database",
         "links": {},
-        "properties": {}
+        "name": "DB",
+        "properties": {},
+        "type": "database",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "API",
-        "to": "Auth",
-        "message": "Login request",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Auth",
-        "to": "DB",
-        "message": "Query user",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "DB",
-        "to": "Auth",
-        "message": "User data",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Auth",
-        "to": "API",
-        "message": "Access token",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "API",
+        "id": "0",
+        "message": "Login request",
+        "to": "Auth",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Auth",
+        "id": "1",
+        "message": "Query user",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "2",
+        "message": "User data",
+        "to": "Auth",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Auth",
+        "id": "3",
+        "message": "Access token",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

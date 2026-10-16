@@ -1,250 +1,250 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "app",
-        "icon": "cloud",
-        "title": "Application",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": "read path v1 users id with many words for wrapping"
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "cache",
+        "rhsInto": true,
+        "title": "write then invalidate cache ttl 30s retries 3 extra words"
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "cache",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": "refresh cache from db delta 0 05 wrap words"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "app",
+        "in": null,
+        "title": "Application"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read path v1 users id with many words for wrapping"
           },
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write then invalidate cache ttl 30s retries 3 extra words"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "app",
         "title": "API",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read path v1 users id with many words for wrapping"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "refresh cache from db delta 0 05 wrap words"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "app",
         "title": "Primary DB",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write then invalidate cache ttl 30s retries 3 extra words"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "refresh cache from db delta 0 05 wrap words"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "cache",
+        "in": "app",
         "title": "Cache",
-        "in": "app"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read path v1 users id with many words for wrapping"
           },
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write then invalidate cache ttl 30s retries 3 extra words"
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "app",
         "title": "API",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read path v1 users id with many words for wrapping"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "refresh cache from db delta 0 05 wrap words"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "app",
         "title": "Primary DB",
-        "in": "app"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write then invalidate cache ttl 30s retries 3 extra words"
           },
           {
-            "lhsId": "cache",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "cache",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "refresh cache from db delta 0 05 wrap words"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "cache",
+        "in": "app",
         "title": "Cache",
-        "in": "app"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "api",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "read path v1 users id with many words for wrapping"
-      },
-      {
-        "lhsId": "api",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "cache",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "write then invalidate cache ttl 30s retries 3 extra words"
-      },
-      {
-        "lhsId": "cache",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "refresh cache from db delta 0 05 wrap words"
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

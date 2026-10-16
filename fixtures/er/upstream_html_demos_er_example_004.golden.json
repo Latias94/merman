@@ -1,174 +1,174 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
-    "entities": {
-      "MANUFACTURER": {
-        "id": "entity-MANUFACTURER-3",
-        "label": "MANUFACTURER",
-        "attributes": [],
-        "alias": "",
-        "shape": "erBox",
-        "cssClasses": "default",
-        "cssStyles": []
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
       },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
+    "entities": {
       "CAR": {
+        "alias": "",
+        "attributes": [
+          {
+            "comment": "",
+            "keys": [
+              "PK"
+            ],
+            "name": "registrationNumber",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "make",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "model",
+            "type": "string"
+          },
+          {
+            "comment": "",
+            "keys": [],
+            "name": "parts",
+            "type": "string[]"
+          }
+        ],
+        "cssClasses": "default",
+        "cssStyles": [],
         "id": "entity-CAR-0",
         "label": "CAR",
-        "attributes": [
-          {
-            "type": "string",
-            "name": "registrationNumber",
-            "keys": [
-              "PK"
-            ],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "make",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string",
-            "name": "model",
-            "keys": [],
-            "comment": ""
-          },
-          {
-            "type": "string[]",
-            "name": "parts",
-            "keys": [],
-            "comment": ""
-          }
-        ],
+        "shape": "erBox"
+      },
+      "MANUFACTURER": {
         "alias": "",
-        "shape": "erBox",
+        "attributes": [],
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-MANUFACTURER-3",
+        "label": "MANUFACTURER",
+        "shape": "erBox"
       },
       "NAMED-DRIVER": {
-        "id": "entity-NAMED-DRIVER-1",
-        "label": "NAMED-DRIVER",
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
-            "name": "carRegistrationNumber",
+            "comment": "",
             "keys": [
               "PK",
               "FK"
             ],
-            "comment": ""
+            "name": "carRegistrationNumber",
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "driverLicence",
+            "comment": "",
             "keys": [
               "PK",
               "FK"
             ],
-            "comment": ""
+            "name": "driverLicence",
+            "type": "string"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-NAMED-DRIVER-1",
+        "label": "NAMED-DRIVER",
+        "shape": "erBox"
       },
       "PERSON": {
-        "id": "entity-PERSON-2",
-        "label": "PERSON",
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
-            "name": "driversLicense",
+            "comment": "The license #",
             "keys": [
               "PK"
             ],
-            "comment": "The license #"
+            "name": "driversLicense",
+            "type": "string"
           },
           {
-            "type": "string(99)",
+            "comment": "Only 99 characters are allowed",
+            "keys": [],
             "name": "firstName",
-            "keys": [],
-            "comment": "Only 99 characters are allowed"
+            "type": "string(99)"
           },
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "lastName",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "phone",
+            "comment": "",
             "keys": [
               "UK"
             ],
-            "comment": ""
+            "name": "phone",
+            "type": "string"
           },
           {
-            "type": "int",
-            "name": "age",
+            "comment": "",
             "keys": [],
-            "comment": ""
+            "name": "age",
+            "type": "int"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-PERSON-2",
+        "label": "PERSON",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-CAR-0",
-        "roleA": "allows",
         "entityB": "entity-NAMED-DRIVER-1",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "allows"
       },
       {
         "entityA": "entity-PERSON-2",
-        "roleA": "is",
         "entityB": "entity-NAMED-DRIVER-1",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "is"
       },
       {
         "entityA": "entity-MANUFACTURER-3",
-        "roleA": "makes",
         "entityB": "entity-CAR-0",
         "relSpec": {
           "cardA": "ZERO_OR_MORE",
           "cardB": "ONLY_ONE",
           "relType": "IDENTIFYING"
-        }
+        },
+        "roleA": "makes"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

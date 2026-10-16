@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,148 +10,150 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Charlie": {
-        "name": "Charlie",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Charlie",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": {
-          "visible": true
-        },
-        "wrap": false,
-        "type": 26,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Solid arrow with circle at destination (RTL)",
-        "wrap": false,
-        "type": 0,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "2",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Charlie",
-        "to": "Bob",
-        "message": "Dotted arrow with circle at destination (RTL)",
-        "wrap": false,
-        "type": 1,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "4",
-        "from": "Bob",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Open arrow with circle at destination (RTL)",
-        "wrap": false,
-        "type": 5,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "6",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": "Charlie",
-        "to": "Alice",
-        "message": "Cross arrow with circle at destination (RTL)",
-        "wrap": false,
-        "type": 4,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "8",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Close arrow with circle at destination (RTL)",
-        "wrap": false,
-        "type": 25,
-        "activate": true,
-        "centralConnection": 59
-      },
-      {
-        "id": "10",
-        "from": "Alice",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 59,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": {
+          "visible": true
+        },
+        "to": null,
+        "type": 26,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Bob",
+        "id": "1",
+        "message": "Solid arrow with circle at destination (RTL)",
+        "to": "Alice",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "2",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Charlie",
+        "id": "3",
+        "message": "Dotted arrow with circle at destination (RTL)",
+        "to": "Bob",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Bob",
+        "id": "5",
+        "message": "Open arrow with circle at destination (RTL)",
+        "to": "Alice",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "6",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Charlie",
+        "id": "7",
+        "message": "Cross arrow with circle at destination (RTL)",
+        "to": "Alice",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "8",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "centralConnection": 59,
+        "from": "Bob",
+        "id": "9",
+        "message": "Close arrow with circle at destination (RTL)",
+        "to": "Alice",
+        "type": 25,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "10",
+        "message": "",
+        "to": null,
+        "type": 59,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

@@ -1,195 +1,195 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": "Accessibility i18n sample",
-    "accTitle": "可访问性标题",
     "accDescr": "包含中文、العربية、emoji 😀 (labels are ASCII due to upstream grammar limits)",
-    "groups": [
+    "accTitle": "可访问性标题",
+    "edges": [
       {
-        "id": "city_cloud",
-        "icon": "cloud",
-        "title": "City Cloud",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "gw",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "db",
+        "rhsInto": true,
+        "title": "read"
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "gw",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "cache",
+        "rhsInto": true,
+        "title": "write"
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "city_cloud",
+        "in": null,
+        "title": "City Cloud"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "gw",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           },
           {
-            "lhsId": "gw",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write"
           }
         ],
         "icon": "internet",
         "iconText": null,
+        "id": "gw",
+        "in": "city_cloud",
         "title": "Gateway",
-        "in": "city_cloud"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "city_cloud",
         "title": "DB Primary",
-        "in": "city_cloud"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write"
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "cache",
+        "in": "city_cloud",
         "title": "Cache Hot",
-        "in": "city_cloud"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "gw",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           },
           {
-            "lhsId": "gw",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write"
           }
         ],
         "icon": "internet",
         "iconText": null,
+        "id": "gw",
+        "in": "city_cloud",
         "title": "Gateway",
-        "in": "city_cloud"
+        "type": "service"
       },
       {
-        "id": "db",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "db",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "db",
+            "rhsInto": true,
             "title": "read"
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "db",
+        "in": "city_cloud",
         "title": "DB Primary",
-        "in": "city_cloud"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "gw",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "gw",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": "write"
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "cache",
+        "in": "city_cloud",
         "title": "Cache Hot",
-        "in": "city_cloud"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "gw",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "db",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "read"
-      },
-      {
-        "lhsId": "gw",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "cache",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": "write"
-      }
-    ],
-    "layoutHints": []
+    "title": "Accessibility i18n sample",
+    "type": "architecture"
   }
 }

@@ -2,40 +2,40 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
-        {
-          "id": "db",
-          "x": 0.0,
-          "y": 0.0,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
-        }
-      ],
-      "edges": [],
+      "bounds": {
+        "max_x": 80.0,
+        "max_y": 80.0,
+        "min_x": 0.0,
+        "min_y": 0.0
+      },
       "cytoscape_service_bounds": [
         {
-          "id": "db",
           "body_bounds": {
-            "min_x": 0.0,
-            "min_y": 0.0,
             "max_x": 80.0,
-            "max_y": 80.0
+            "max_y": 80.0,
+            "min_x": 0.0,
+            "min_y": 0.0
           },
+          "id": "db",
           "union_bounds": {
-            "min_x": -1.0,
-            "min_y": -1.0,
             "max_x": 81.0,
-            "max_y": 81.0
+            "max_y": 81.0,
+            "min_x": -1.0,
+            "min_y": -1.0
           }
         }
       ],
-      "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
-        "max_x": 80.0,
-        "max_y": 80.0
-      }
+      "edges": [],
+      "nodes": [
+        {
+          "height": 80.0,
+          "id": "db",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 0.0,
+          "y": 0.0
+        }
+      ]
     }
   }
 }

@@ -1,30 +1,11 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "xAxis": {
-      "type": "linear",
-      "title": "xAxisName",
-      "min": 45.5,
-      "max": 0.34
-    },
-    "yAxis": {
-      "type": "linear",
-      "title": "yAxisName",
-      "min": 45.5,
-      "max": 0.33
-    },
+    "accTitle": null,
+    "orientation": "vertical",
     "plots": [
       {
-        "type": "line",
-        "title": "",
-        "values": [
-          1.0,
-          2.0
-        ],
         "data": [
           [
             "45.5",
@@ -34,9 +15,28 @@
             "0.3400000000000034",
             2.0
           ]
+        ],
+        "title": "",
+        "type": "line",
+        "values": [
+          1.0,
+          2.0
         ]
       }
     ],
-    "type": "xychart"
+    "title": null,
+    "type": "xychart",
+    "xAxis": {
+      "max": 0.34,
+      "min": 45.5,
+      "title": "xAxisName",
+      "type": "linear"
+    },
+    "yAxis": {
+      "max": 0.33,
+      "min": 45.5,
+      "title": "yAxisName",
+      "type": "linear"
+    }
   }
 }

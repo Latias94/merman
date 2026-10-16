@@ -1,44 +1,44 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A"
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "A",
-        "wrap": false,
-        "type": "queue",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "queue",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "A",
-        "to": "A",
-        "message": "test",
-        "wrap": false,
-        "type": 5,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "A",
+        "id": "0",
+        "message": "test",
+        "to": "A",
+        "type": 5,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

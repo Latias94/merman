@@ -1,11 +1,9 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "Many sections with <br> in titles",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [
       "01 <br> Alpha",
       "02 <br> Beta",
@@ -23,148 +21,150 @@
     ],
     "tasks": [
       {
+        "events": [
+          "One ",
+          "Two"
+        ],
         "id": 0,
+        "score": 0,
         "section": "01 <br> Alpha",
-        "type": "01 <br> Alpha",
         "task": "A ",
-        "score": 0,
+        "type": "01 <br> Alpha"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 1,
+        "score": 0,
         "section": "02 <br> Beta",
-        "type": "02 <br> Beta",
         "task": "B ",
-        "score": 0,
+        "type": "02 <br> Beta"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 2,
+        "score": 0,
         "section": "03 <br> Gamma",
-        "type": "03 <br> Gamma",
         "task": "C ",
-        "score": 0,
+        "type": "03 <br> Gamma"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 3,
+        "score": 0,
         "section": "04 <br> Delta",
-        "type": "04 <br> Delta",
         "task": "D ",
-        "score": 0,
+        "type": "04 <br> Delta"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 4,
+        "score": 0,
         "section": "05 <br> Epsilon",
-        "type": "05 <br> Epsilon",
         "task": "E ",
-        "score": 0,
+        "type": "05 <br> Epsilon"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 5,
+        "score": 0,
         "section": "06 <br> Zeta",
-        "type": "06 <br> Zeta",
         "task": "F ",
-        "score": 0,
+        "type": "06 <br> Zeta"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 6,
+        "score": 0,
         "section": "07 <br> Eta",
-        "type": "07 <br> Eta",
         "task": "G ",
-        "score": 0,
+        "type": "07 <br> Eta"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 7,
+        "score": 0,
         "section": "08 <br> Theta",
-        "type": "08 <br> Theta",
         "task": "H ",
-        "score": 0,
+        "type": "08 <br> Theta"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 8,
+        "score": 0,
         "section": "09 <br> Iota",
-        "type": "09 <br> Iota",
         "task": "I ",
-        "score": 0,
+        "type": "09 <br> Iota"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 9,
+        "score": 0,
         "section": "10 <br> Kappa",
-        "type": "10 <br> Kappa",
         "task": "J ",
-        "score": 0,
+        "type": "10 <br> Kappa"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 10,
+        "score": 0,
         "section": "11 <br> Lambda",
-        "type": "11 <br> Lambda",
         "task": "K ",
-        "score": 0,
+        "type": "11 <br> Lambda"
+      },
+      {
         "events": [
           "One ",
           "Two"
-        ]
-      },
-      {
+        ],
         "id": 11,
-        "section": "12 <br> Mu",
-        "type": "12 <br> Mu",
-        "task": "L ",
         "score": 0,
-        "events": [
-          "One ",
-          "Two"
-        ]
+        "section": "12 <br> Mu",
+        "task": "L ",
+        "type": "12 <br> Mu"
       },
       {
-        "id": 12,
-        "section": "13 <br> Nu",
-        "type": "13 <br> Nu",
-        "task": "M ",
-        "score": 0,
         "events": [
           "One ",
           "Two"
-        ]
+        ],
+        "id": 12,
+        "score": 0,
+        "section": "13 <br> Nu",
+        "task": "M ",
+        "type": "13 <br> Nu"
       }
-    ]
+    ],
+    "title": "Many sections with <br> in titles",
+    "type": "timeline"
   }
 }

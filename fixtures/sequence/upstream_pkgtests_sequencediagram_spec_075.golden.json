@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "a",
       "b",
@@ -12,47 +10,49 @@
     ],
     "actors": {
       "a": {
-        "name": "a",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
+        "name": "a",
         "properties": {
           "class": "internal-service-actor",
           "icon": "@clock"
-        }
+        },
+        "type": "participant",
+        "wrap": false
       },
       "b": {
-        "name": "b",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
+        "name": "b",
         "properties": {
           "class": "external-service-actor",
           "icon": "@computer"
-        }
+        },
+        "type": "participant",
+        "wrap": false
       },
       "c": {
-        "name": "c",
         "description": "Charlie",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "c",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

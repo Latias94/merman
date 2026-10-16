@@ -2,74 +2,74 @@
   "diagramType": "radar",
   "layout": {
     "RadarDiagram": {
+      "axes": [],
+      "axis_label_factor": 1.05,
       "bounds": {
-        "min_x": 0.0,
-        "min_y": 0.0,
         "max_x": 700.0,
-        "max_y": 700.0
+        "max_y": 700.0,
+        "min_x": 0.0,
+        "min_y": 0.0
       },
-      "svg_width": 700.0,
-      "svg_height": 700.0,
       "center_x": 350.0,
       "center_y": 350.0,
-      "radius": 300.0,
-      "axis_label_factor": 1.05,
-      "title_y": -350.0,
-      "axes": [],
+      "curves": [],
       "graticules": [
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         },
         {
           "kind": "polygon",
-          "r": null,
-          "points": []
+          "points": [],
+          "r": null
         }
       ],
-      "curves": [],
-      "legend_items": []
+      "legend_items": [],
+      "radius": 300.0,
+      "svg_height": 700.0,
+      "svg_width": 700.0,
+      "title_y": -350.0
     }
   }
 }

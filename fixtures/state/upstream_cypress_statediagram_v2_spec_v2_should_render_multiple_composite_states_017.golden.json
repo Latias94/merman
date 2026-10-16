@@ -1,628 +1,455 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "TB",
+    "edges": [
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "TV",
+        "id": "edge0",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "root_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Off",
+        "id": "edge1",
+        "label": "Off to start with",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "TV_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Off",
+        "id": "edge2",
+        "label": "Turn off",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "On",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "On",
+        "id": "edge3",
+        "label": "Turn on",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Off",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Console",
+        "id": "edge4",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "TV",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Off2",
+        "id": "edge5",
+        "label": "Off to start with",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Console_start",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Off2",
+        "id": "edge6",
+        "label": "Turn off",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "On2",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "On2",
+        "id": "edge7",
+        "label": "Turn on",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Off2",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Playing",
+        "id": "edge8",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "On2",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Dead",
+        "id": "edge9",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Alive",
+        "style": "fill:none",
+        "thickness": "normal"
+      },
+      {
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
+        "end": "Alive",
+        "id": "edge10",
+        "label": "",
+        "labelStyle": "",
+        "labelType": "text",
+        "labelpos": "c",
+        "look": "neo",
+        "start": "Dead",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
     "nodes": [
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "root_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "root_start",
         "dir": null,
         "domId": "state-root_start-0",
-        "type": null,
+        "id": "root_start",
         "isGroup": false,
+        "label": "root_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "TV",
+        "centerLabel": true,
+        "colorIndex": 0,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "TV",
         "dir": "TB",
         "domId": "state-TV-4",
-        "type": "group",
+        "id": "TV",
         "isGroup": true,
+        "label": "TV",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "TV_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "TV_start",
         "dir": null,
         "domId": "state-TV_start-1",
-        "type": null,
+        "id": "TV_start",
         "isGroup": false,
+        "label": "TV_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "TV",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "TV",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Off",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Off",
         "dir": null,
         "domId": "state-Off-3",
-        "type": null,
+        "id": "Off",
         "isGroup": false,
+        "label": "Off",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "TV",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "TV",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "On",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "On",
         "dir": null,
         "domId": "state-On-3",
-        "type": null,
+        "id": "On",
         "isGroup": false,
+        "label": "On",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "TV",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "TV",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Console",
+        "centerLabel": true,
+        "colorIndex": 1,
         "cssClasses": "statediagram-state statediagram-cluster",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Console",
         "dir": "TB",
         "domId": "state-Console-5",
-        "type": "group",
+        "id": "Console",
         "isGroup": true,
+        "label": "Console",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": null,
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 1,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "stateStart",
-        "label": "Console_start",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Console_start",
         "dir": null,
         "domId": "state-Console_start-5",
-        "type": null,
+        "id": "Console_start",
         "isGroup": false,
+        "label": "Console_start",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Console",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Console",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "stateStart",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Off2",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Off2",
         "dir": null,
         "domId": "state-Off2-7",
-        "type": null,
+        "id": "Off2",
         "isGroup": false,
+        "label": "Off2",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Console",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Console",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "On2",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "On2",
         "dir": null,
         "domId": "state-On2-8",
-        "type": null,
+        "id": "On2",
         "isGroup": false,
+        "label": "On2",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Console",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Console",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "Playing",
+        "centerLabel": true,
+        "colorIndex": 2,
         "cssClasses": "statediagram-state statediagram-cluster statediagram-cluster-alt",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Playing",
         "dir": "TB",
         "domId": "state-Playing-9",
-        "type": "group",
+        "id": "Playing",
         "isGroup": true,
+        "label": "Playing",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
         "padding": 8,
+        "parentId": "Console",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Console",
-        "colorIndex": 2,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Alive",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Alive",
         "dir": null,
         "domId": "state-Alive-10",
-        "type": null,
+        "id": "Alive",
         "isGroup": false,
+        "label": "Alive",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Playing",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Playing",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       },
       {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "Dead",
+        "centerLabel": true,
+        "colorIndex": null,
         "cssClasses": "statediagram-state",
         "cssCompiledStyles": [],
         "cssStyles": [],
-        "id": "Dead",
         "dir": null,
         "domId": "state-Dead-10",
-        "type": null,
+        "id": "Dead",
         "isGroup": false,
+        "label": "Dead",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
         "padding": 8,
+        "parentId": "Playing",
         "rx": 10,
         "ry": 10,
-        "look": "neo",
-        "parentId": "Playing",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
-    "edges": [
-      {
-        "id": "edge0",
-        "start": "root_start",
-        "end": "TV",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge1",
-        "start": "TV_start",
-        "end": "Off",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Off to start with",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge2",
-        "start": "On",
-        "end": "Off",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Turn off",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge3",
-        "start": "Off",
-        "end": "On",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Turn on",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge4",
-        "start": "TV",
-        "end": "Console",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge5",
-        "start": "Console_start",
-        "end": "Off2",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Off to start with",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge6",
-        "start": "On2",
-        "end": "Off2",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Turn off",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge7",
-        "start": "Off2",
-        "end": "On2",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "Turn on",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge8",
-        "start": "On2",
-        "end": "Playing",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge9",
-        "start": "Alive",
-        "end": "Dead",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
-      },
-      {
-        "id": "edge10",
-        "start": "Dead",
-        "end": "Alive",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
-        "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "root_start": {
-        "id": "root_start",
-        "type": "default",
-        "descriptions": [],
-        "doc": null,
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": true
-      },
-      "TV": {
-        "id": "TV",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "TV_start",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Off",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Off to start with"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "On",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Off",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Turn off"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Off",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "On",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Turn on"
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "Console": {
-        "id": "Console",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Console_start",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Off2",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Off to start with"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "On2",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Off2",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Turn off"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "Off2",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "On2",
-              "type": "default",
-              "classes": []
-            },
-            "description": "Turn on"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "On2",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "Playing",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          },
-          {
-            "stmt": "state",
-            "id": "Playing",
-            "type": "default",
-            "description": null,
-            "doc": [
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "Alive",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "Dead",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              },
-              {
-                "stmt": "relation",
-                "state1": {
-                  "id": "Dead",
-                  "type": "default",
-                  "classes": []
-                },
-                "state2": {
-                  "id": "Alive",
-                  "type": "default",
-                  "classes": []
-                },
-                "description": null
-              }
-            ],
-            "classes": []
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      }
-    },
     "relations": [
       {
         "id1": "root_start",
@@ -635,6 +462,179 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "Console": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": "Off to start with",
+            "state1": {
+              "classes": [],
+              "id": "Console_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Off2",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "Turn off",
+            "state1": {
+              "classes": [],
+              "id": "On2",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Off2",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "Turn on",
+            "state1": {
+              "classes": [],
+              "id": "Off2",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "On2",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "On2",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Playing",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "classes": [],
+            "description": null,
+            "doc": [
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "Alive",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "Dead",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              },
+              {
+                "description": null,
+                "state1": {
+                  "classes": [],
+                  "id": "Dead",
+                  "type": "default"
+                },
+                "state2": {
+                  "classes": [],
+                  "id": "Alive",
+                  "type": "default"
+                },
+                "stmt": "relation"
+              }
+            ],
+            "id": "Playing",
+            "stmt": "state",
+            "type": "default"
+          }
+        ],
+        "id": "Console",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "TV": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "description": "Off to start with",
+            "state1": {
+              "classes": [],
+              "id": "TV_start",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Off",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "Turn off",
+            "state1": {
+              "classes": [],
+              "id": "On",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "Off",
+              "type": "default"
+            },
+            "stmt": "relation"
+          },
+          {
+            "description": "Turn on",
+            "state1": {
+              "classes": [],
+              "id": "Off",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "On",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "TV",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "root_start": {
+        "classes": [],
+        "descriptions": [],
+        "doc": null,
+        "id": "root_start",
+        "note": null,
+        "start": true,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

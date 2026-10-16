@@ -2,261 +2,261 @@
   "diagramType": "gitGraph",
   "layout": {
     "GitGraphDiagram": {
+      "arrows": [
+        {
+          "class_index": 2.0,
+          "d": "M 10 -2 L 10 158 A 20 20, 0, 0, 0, 30 178 L 60 178",
+          "from": "ZERO",
+          "to": "A"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 10 -2 L 110 -2",
+          "from": "ZERO",
+          "to": "ONE"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 10 -2 L 10 68 A 20 20, 0, 0, 0, 30 88 L 160 88",
+          "from": "ZERO",
+          "to": "B"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 110 -2 L 210 -2",
+          "from": "ONE",
+          "to": "MERGE"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 160 88 L 190 88 A 20 20, 0, 0, 0, 210 68 L 210 -2",
+          "from": "B",
+          "to": "MERGE"
+        },
+        {
+          "class_index": 0.0,
+          "d": "M 210 -2 L 260 -2",
+          "from": "MERGE",
+          "to": "TWO"
+        },
+        {
+          "class_index": 2.0,
+          "d": "M 60 178 L 310 178",
+          "from": "A",
+          "to": "6-<dynamic>"
+        },
+        {
+          "class_index": 2.0,
+          "d": "M 210 -2 L 210 158 A 20 20, 0, 0, 0, 230 178 L 310 178",
+          "from": "MERGE",
+          "to": "6-<dynamic>"
+        },
+        {
+          "class_index": 2.0,
+          "d": "M 310 178 L 360 178",
+          "from": "6-<dynamic>",
+          "to": "THREE"
+        },
+        {
+          "class_index": 1.0,
+          "d": "M 160 88 L 410 88",
+          "from": "B",
+          "to": "C"
+        }
+      ],
       "bounds": {
-        "min_x": -106.76,
-        "min_y": -20.0,
         "max_x": 458.0,
-        "max_y": 196.0
+        "max_y": 196.0,
+        "min_x": -106.76,
+        "min_y": -20.0
       },
-      "direction": "LR",
-      "rotate_commit_label": true,
-      "show_branches": true,
-      "show_commit_label": true,
-      "parallel_commits": false,
-      "diagram_padding": 8.0,
-      "max_pos": 450.0,
       "branches": [
         {
-          "name": "main",
-          "index": 0.0,
-          "pos": 0.0,
+          "bbox_height": 17.6,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "index": 0.0,
+          "name": "main",
+          "pos": 0.0
         },
         {
-          "name": "develop",
+          "bbox_height": 17.6,
+          "bbox_width": 45.76,
           "index": 1.0,
-          "pos": 90.0,
-          "bbox_width": 45.76,
-          "bbox_height": 17.6
+          "name": "develop",
+          "pos": 90.0
         },
         {
-          "name": "release",
-          "index": 2.0,
-          "pos": 180.0,
+          "bbox_height": 17.6,
           "bbox_width": 45.76,
-          "bbox_height": 17.6
+          "index": 2.0,
+          "name": "release",
+          "pos": 180.0
         }
       ],
       "commits": [
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "ZERO",
           "message": "",
-          "seq": 0.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [],
-          "branch": "main",
           "pos": 0.0,
           "pos_with_offset": 10.0,
+          "seq": 0.0,
+          "tags": [],
           "x": 10.0,
           "y": -2.0
         },
         {
+          "branch": "release",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "A",
           "message": "",
-          "seq": 1.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "ZERO"
           ],
-          "branch": "release",
           "pos": 50.0,
           "pos_with_offset": 60.0,
+          "seq": 1.0,
+          "tags": [],
           "x": 60.0,
           "y": 178.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "ONE",
           "message": "",
-          "seq": 2.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "ZERO"
           ],
-          "branch": "main",
           "pos": 100.0,
           "pos_with_offset": 110.0,
+          "seq": 2.0,
+          "tags": [],
           "x": 110.0,
           "y": -2.0
         },
         {
+          "branch": "develop",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "B",
           "message": "",
-          "seq": 3.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "ZERO"
           ],
-          "branch": "develop",
           "pos": 150.0,
           "pos_with_offset": 160.0,
+          "seq": 3.0,
+          "tags": [],
           "x": 160.0,
           "y": 88.0
         },
         {
+          "branch": "main",
+          "commit_type": 3.0,
+          "custom_id": true,
+          "custom_type": null,
           "id": "MERGE",
           "message": "merged branch develop into main",
-          "seq": 4.0,
-          "commit_type": 3.0,
-          "custom_type": null,
-          "custom_id": true,
-          "tags": [],
           "parents": [
             "ONE",
             "B"
           ],
-          "branch": "main",
           "pos": 200.0,
           "pos_with_offset": 210.0,
+          "seq": 4.0,
+          "tags": [],
           "x": 210.0,
           "y": -2.0
         },
         {
+          "branch": "main",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "TWO",
           "message": "",
-          "seq": 5.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "MERGE"
           ],
-          "branch": "main",
           "pos": 250.0,
           "pos_with_offset": 260.0,
+          "seq": 5.0,
+          "tags": [],
           "x": 260.0,
           "y": -2.0
         },
         {
+          "branch": "release",
+          "commit_type": 4.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "6-<dynamic>",
           "message": "cherry-picked merged branch develop into main into release",
-          "seq": 6.0,
-          "commit_type": 4.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [
-            "cherry-pick:MERGE|parent:B"
-          ],
           "parents": [
             "A",
             "MERGE"
           ],
-          "branch": "release",
           "pos": 300.0,
           "pos_with_offset": 310.0,
+          "seq": 6.0,
+          "tags": [
+            "cherry-pick:MERGE|parent:B"
+          ],
           "x": 310.0,
           "y": 178.0
         },
         {
+          "branch": "release",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "THREE",
           "message": "",
-          "seq": 7.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "6-<dynamic>"
           ],
-          "branch": "release",
           "pos": 350.0,
           "pos_with_offset": 360.0,
+          "seq": 7.0,
+          "tags": [],
           "x": 360.0,
           "y": 178.0
         },
         {
+          "branch": "develop",
+          "commit_type": 0.0,
+          "custom_id": null,
+          "custom_type": null,
           "id": "C",
           "message": "",
-          "seq": 8.0,
-          "commit_type": 0.0,
-          "custom_type": null,
-          "custom_id": null,
-          "tags": [],
           "parents": [
             "B"
           ],
-          "branch": "develop",
           "pos": 400.0,
           "pos_with_offset": 410.0,
+          "seq": 8.0,
+          "tags": [],
           "x": 410.0,
           "y": 88.0
         }
       ],
-      "arrows": [
-        {
-          "from": "ZERO",
-          "to": "A",
-          "class_index": 2.0,
-          "d": "M 10 -2 L 10 158 A 20 20, 0, 0, 0, 30 178 L 60 178"
-        },
-        {
-          "from": "ZERO",
-          "to": "ONE",
-          "class_index": 0.0,
-          "d": "M 10 -2 L 110 -2"
-        },
-        {
-          "from": "ZERO",
-          "to": "B",
-          "class_index": 1.0,
-          "d": "M 10 -2 L 10 68 A 20 20, 0, 0, 0, 30 88 L 160 88"
-        },
-        {
-          "from": "ONE",
-          "to": "MERGE",
-          "class_index": 0.0,
-          "d": "M 110 -2 L 210 -2"
-        },
-        {
-          "from": "B",
-          "to": "MERGE",
-          "class_index": 1.0,
-          "d": "M 160 88 L 190 88 A 20 20, 0, 0, 0, 210 68 L 210 -2"
-        },
-        {
-          "from": "MERGE",
-          "to": "TWO",
-          "class_index": 0.0,
-          "d": "M 210 -2 L 260 -2"
-        },
-        {
-          "from": "A",
-          "to": "6-<dynamic>",
-          "class_index": 2.0,
-          "d": "M 60 178 L 310 178"
-        },
-        {
-          "from": "MERGE",
-          "to": "6-<dynamic>",
-          "class_index": 2.0,
-          "d": "M 210 -2 L 210 158 A 20 20, 0, 0, 0, 230 178 L 310 178"
-        },
-        {
-          "from": "6-<dynamic>",
-          "to": "THREE",
-          "class_index": 2.0,
-          "d": "M 310 178 L 360 178"
-        },
-        {
-          "from": "B",
-          "to": "C",
-          "class_index": 1.0,
-          "d": "M 160 88 L 410 88"
-        }
-      ]
+      "diagram_padding": 8.0,
+      "direction": "LR",
+      "max_pos": 450.0,
+      "parallel_commits": false,
+      "rotate_commit_label": true,
+      "show_branches": true,
+      "show_commit_label": true
     }
   }
 }

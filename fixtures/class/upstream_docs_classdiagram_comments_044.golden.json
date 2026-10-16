@@ -1,73 +1,73 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Shape": {
-        "id": "Shape",
-        "type": "",
-        "label": "Shape",
-        "text": "Shape",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "draw",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "draw()",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "noOfVertices",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "noOfVertices",
-            "cssStyle": ""
-          }
-        ],
         "annotations": [
           "interface"
         ],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Shape-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Shape",
+        "label": "Shape",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "noOfVertices",
+            "id": "noOfVertices",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "draw()",
+            "id": "draw",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Shape",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

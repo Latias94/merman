@@ -1,23 +1,23 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "type": "quadrantChart",
-    "title": "Reach and engagement of campaigns",
-    "accTitle": null,
     "accDescr": null,
-    "quadrants": {
-      "quadrant1Text": "We should expand",
-      "quadrant2Text": "Need to promote",
-      "quadrant3Text": "Re-evaluate",
-      "quadrant4Text": "May be improved"
-    },
+    "accTitle": null,
     "axes": {
       "xAxisLeftText": "Low Reach",
       "xAxisRightText": "High Reach",
       "yAxisBottomText": "Low Engagement",
       "yAxisTopText": "High Engagement"
     },
+    "classes": {},
     "points": [],
-    "classes": {}
+    "quadrants": {
+      "quadrant1Text": "We should expand",
+      "quadrant2Text": "Need to promote",
+      "quadrant3Text": "Re-evaluate",
+      "quadrant4Text": "May be improved"
+    },
+    "title": "Reach and engagement of campaigns",
+    "type": "quadrantChart"
   }
 }

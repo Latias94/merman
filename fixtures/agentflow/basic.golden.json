@@ -2,19 +2,31 @@
   "diagramType": "agentflow",
   "model": {
     "connectors": [],
-    "direction": "TB",
     "diagnostics": [],
+    "direction": "TB",
+    "edges": [
+      {
+        "edgeSemantic": "sequence",
+        "end": "task",
+        "id": "L_input_task_0",
+        "length": 1,
+        "start": "input",
+        "stroke": "normal",
+        "type": "arrow_point"
+      }
+    ],
     "subGraphs": [
       {
         "id": "support",
-        "title": "Support",
         "nodes": [
           "input",
           "task"
         ],
+        "title": "Support",
         "type": "flow"
       }
     ],
+    "type": "agentflow",
     "vertices": [
       {
         "id": "input",
@@ -28,18 +40,6 @@
         "shape": "roundedRect",
         "vertexKind": "task"
       }
-    ],
-    "edges": [
-      {
-        "start": "input",
-        "end": "task",
-        "id": "L_input_task_0",
-        "edgeSemantic": "sequence",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1
-      }
-    ],
-    "type": "agentflow"
+    ]
   }
 }

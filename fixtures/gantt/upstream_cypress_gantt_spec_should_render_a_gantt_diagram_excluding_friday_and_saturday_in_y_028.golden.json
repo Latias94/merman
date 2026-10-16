@@ -1,87 +1,87 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": " YYYY-MM-DD HH:mm:ss",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
+    "clickEvents": {},
+    "dateFormat": " YYYY-MM-DD HH:mm:ss",
+    "displayMode": "",
     "excludes": [
       "weekends"
     ],
+    "includes": [],
     "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "friday",
-    "displayMode": "",
+    "links": {},
     "sections": [
       "Section"
     ],
     "tasks": [
       {
-        "section": "Section",
-        "type": "Section",
-        "task": "A task      ",
-        "id": "a1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2025-07-09T10:30:30.000",
+        "id": "a1",
         "manualEndTime": false,
-        "renderEndTime": "2025-07-09T10:30:30.000",
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ":a1, 2025-07-04 20:30:30, 2025-07-08 10:30:30",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2025-07-04 20:30:30"
-          },
           "endTime": {
             "data": "2025-07-08 10:30:30"
+          },
+          "startTime": {
+            "startData": "2025-07-04 20:30:30",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": "2025-07-09T10:30:30.000",
+        "section": "Section",
         "startTime": "2025-07-04T20:30:30.000",
-        "endTime": "2025-07-09T10:30:30.000"
+        "task": "A task      ",
+        "type": "Section",
+        "vert": false
       },
       {
-        "section": "Section",
-        "type": "Section",
-        "task": "Another task",
-        "id": "task1",
-        "prevTaskId": "a1",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2025-07-10T06:30:30.000",
+        "id": "task1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "a1",
+        "processed": true,
         "raw": {
           "data": ":after a1, 20h",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "after a1"
-          },
           "endTime": {
             "data": "20h"
+          },
+          "startTime": {
+            "startData": "after a1",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section",
         "startTime": "2025-07-09T10:30:30.000",
-        "endTime": "2025-07-10T06:30:30.000"
+        "task": "Another task",
+        "type": "Section",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": null,
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "friday"
   }
 }

@@ -1,122 +1,122 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
-        "id": "id-<id>-1",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "id2",
-            "type": "square",
-            "label": "I am a wide one",
             "children": [],
+            "id": "id2",
+            "label": "I am a wide one",
+            "type": "square",
             "widthInColumns": 1
           },
           {
-            "id": "id1",
-            "type": "na",
-            "label": "id1",
             "children": [],
+            "id": "id1",
+            "label": "id1",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
-        "colorIndex": 0
+        "colorIndex": 0,
+        "id": "id-<id>-1",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "id",
-        "type": "square",
-        "label": "Next row",
         "children": [],
+        "id": "id",
+        "label": "Next row",
+        "type": "square",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "id-<id>-1",
-            "type": "composite",
-            "label": "",
             "children": [
               {
-                "id": "id2",
-                "type": "square",
-                "label": "I am a wide one",
                 "children": [],
+                "id": "id2",
+                "label": "I am a wide one",
+                "type": "square",
                 "widthInColumns": 1
               },
               {
-                "id": "id1",
-                "type": "na",
-                "label": "id1",
                 "children": [],
+                "id": "id1",
+                "label": "id1",
+                "type": "na",
                 "widthInColumns": 1
               }
             ],
-            "colorIndex": 0
+            "colorIndex": 0,
+            "id": "id-<id>-1",
+            "label": "",
+            "type": "composite"
           },
           {
-            "id": "id",
-            "type": "square",
-            "label": "Next row",
             "children": [],
+            "id": "id",
+            "label": "Next row",
+            "type": "square",
             "widthInColumns": 1
           }
         ],
-        "columns": 2
+        "columns": 2,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
-        "id": "id-<id>-1",
-        "type": "composite",
-        "label": "",
         "children": [
           {
-            "id": "id2",
-            "type": "square",
-            "label": "I am a wide one",
             "children": [],
+            "id": "id2",
+            "label": "I am a wide one",
+            "type": "square",
             "widthInColumns": 1
           },
           {
-            "id": "id1",
-            "type": "na",
-            "label": "id1",
             "children": [],
+            "id": "id1",
+            "label": "id1",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
-        "colorIndex": 0
+        "colorIndex": 0,
+        "id": "id-<id>-1",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "id2",
-        "type": "square",
         "label": "I am a wide one",
-        "children": [],
-        "widthInColumns": 1
-      },
-      {
-        "id": "id1",
-        "type": "na",
-        "label": "id1",
-        "children": [],
-        "widthInColumns": 1
-      },
-      {
-        "id": "id",
         "type": "square",
-        "label": "Next row",
+        "widthInColumns": 1
+      },
+      {
         "children": [],
+        "id": "id1",
+        "label": "id1",
+        "type": "na",
+        "widthInColumns": 1
+      },
+      {
+        "children": [],
+        "id": "id",
+        "label": "Next row",
+        "type": "square",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

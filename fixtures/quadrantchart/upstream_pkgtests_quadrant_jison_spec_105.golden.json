@@ -1,36 +1,36 @@
 {
   "diagramType": "quadrantChart",
   "model": {
-    "type": "quadrantChart",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "quadrants": {
-      "quadrant1Text": "",
-      "quadrant2Text": "",
-      "quadrant3Text": "",
-      "quadrant4Text": ""
-    },
+    "accTitle": null,
     "axes": {
       "xAxisLeftText": "",
       "xAxisRightText": "",
       "yAxisBottomText": "",
       "yAxisTopText": ""
     },
+    "classes": {},
     "points": [
       {
-        "text": "point1",
-        "x": 0.1,
-        "y": 0.4,
         "className": null,
         "styles": {
-          "radius": null,
           "color": null,
+          "radius": null,
           "strokeColor": null,
           "strokeWidth": null
-        }
+        },
+        "text": "point1",
+        "x": 0.1,
+        "y": 0.4
       }
     ],
-    "classes": {}
+    "quadrants": {
+      "quadrant1Text": "",
+      "quadrant2Text": "",
+      "quadrant3Text": "",
+      "quadrant4Text": ""
+    },
+    "title": null,
+    "type": "quadrantChart"
   }
 }

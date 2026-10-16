@@ -1,321 +1,329 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Browser",
       "API",
       "DB"
     ],
     "actors": {
-      "Browser": {
-        "name": "Browser",
-        "description": "Browser",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "API": {
-        "name": "API",
         "description": "API",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "API",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Browser": {
+        "description": "Browser",
+        "links": {},
+        "name": "Browser",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "DB": {
-        "name": "DB",
         "description": "DB",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "DB",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": true,
+        "from": "Browser",
         "id": "0",
-        "from": "Browser",
-        "to": "API",
         "message": "POST /login (credentials)",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "1",
-        "from": "API",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "API",
         "to": "API",
-        "message": "Validate input",
-        "wrap": false,
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "3",
-        "from": "API",
-        "to": "DB",
-        "message": "SELECT user WHERE email = ?",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "4",
-        "from": "DB",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "DB",
-        "to": "API",
-        "message": "User record",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": "DB",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "7",
-        "from": null,
-        "to": null,
-        "message": "User found",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": "API",
-        "to": "API",
-        "message": "Compare password hash",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": null,
-        "to": null,
-        "message": "Password matches",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": "API",
-        "to": "DB",
-        "message": "INSERT session token",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "11",
-        "from": "DB",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 17,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": "DB",
-        "to": "API",
-        "message": "OK",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "13",
-        "from": "DB",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "14",
-        "from": "API",
-        "to": "Browser",
-        "message": "200 OK + JWT",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "15",
-        "from": null,
-        "to": null,
-        "message": "Password wrong",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "16",
-        "from": "API",
-        "to": "Browser",
-        "message": "401 Unauthorized",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "17",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
-      },
-      {
-        "id": "18",
-        "from": null,
-        "to": null,
-        "message": "User not found",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "19",
-        "from": "API",
-        "to": "Browser",
-        "message": "404 Not Found",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "20",
-        "from": "API",
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 18,
-        "activate": false
-      },
-      {
-        "id": "21",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
-      },
-      {
-        "id": "22",
-        "from": "Browser",
-        "to": "API",
-        "message": "Subsequent requests use JWT",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 2
-      },
-      {
-        "id": "23",
-        "from": "Browser",
-        "to": "API",
-        "message": "GET /profile (JWT)",
-        "wrap": false,
-        "type": 0,
-        "activate": true
-      },
-      {
-        "id": "24",
         "from": "API",
-        "to": null,
+        "id": "1",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 17,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "25",
+        "activate": false,
         "from": "API",
+        "id": "2",
+        "message": "Validate input",
+        "to": "API",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "API",
+        "id": "3",
+        "message": "SELECT user WHERE email = ?",
         "to": "DB",
-        "message": "SELECT profile WHERE user_id = ?",
-        "wrap": false,
         "type": 0,
-        "activate": true
+        "wrap": false
       },
       {
-        "id": "26",
+        "activate": false,
         "from": "DB",
-        "to": null,
+        "id": "4",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 17,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "27",
+        "activate": false,
         "from": "DB",
+        "id": "5",
+        "message": "User record",
         "to": "API",
-        "message": "Profile data",
-        "wrap": false,
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "28",
+        "activate": false,
         "from": "DB",
-        "to": null,
+        "id": "6",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 18,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "29",
+        "activate": false,
+        "from": null,
+        "id": "7",
+        "message": "User found",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
         "from": "API",
-        "to": "Browser",
-        "message": "200 OK + profile JSON",
-        "wrap": false,
+        "id": "8",
+        "message": "Compare password hash",
+        "to": "API",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "9",
+        "message": "Password matches",
+        "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "API",
+        "id": "10",
+        "message": "INSERT session token",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "11",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "12",
+        "message": "OK",
+        "to": "API",
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "30",
-        "from": "API",
-        "to": null,
+        "activate": false,
+        "from": "DB",
+        "id": "13",
         "message": "",
-        "wrap": false,
+        "to": null,
         "type": 18,
-        "activate": false
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "14",
+        "message": "200 OK + JWT",
+        "to": "Browser",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "15",
+        "message": "Password wrong",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "16",
+        "message": "401 Unauthorized",
+        "to": "Browser",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "17",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "18",
+        "message": "User not found",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "19",
+        "message": "404 Not Found",
+        "to": "Browser",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "20",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "21",
+        "message": "",
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Browser",
+        "id": "22",
+        "message": "Subsequent requests use JWT",
+        "placement": 2,
+        "to": "API",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "Browser",
+        "id": "23",
+        "message": "GET /profile (JWT)",
+        "to": "API",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "24",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": true,
+        "from": "API",
+        "id": "25",
+        "message": "SELECT profile WHERE user_id = ?",
+        "to": "DB",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "26",
+        "message": "",
+        "to": null,
+        "type": 17,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "27",
+        "message": "Profile data",
+        "to": "API",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "DB",
+        "id": "28",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "29",
+        "message": "200 OK + profile JSON",
+        "to": "Browser",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "30",
+        "message": "",
+        "to": null,
+        "type": 18,
+        "wrap": false
       }
     ],
     "notes": [
@@ -324,20 +332,12 @@
           "Browser",
           "API"
         ],
-        "placement": 2,
         "message": "Subsequent requests use JWT",
+        "placement": 2,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

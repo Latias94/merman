@@ -1,85 +1,85 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "Exclusive end dates (Manual date should end on 3d)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD",
+    "accTitle": null,
     "axisFormat": "%d",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "Section1"
     ],
     "tasks": [
       {
-        "section": "Section1",
-        "type": "Section1",
-        "task": "2 Days",
-        "id": "1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2019-01-03T00:00:00.000",
+        "id": "1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": 1, 2019-01-01,2d",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2019-01-01"
-          },
           "endTime": {
             "data": "2d"
+          },
+          "startTime": {
+            "startData": "2019-01-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section1",
         "startTime": "2019-01-01T00:00:00.000",
-        "endTime": "2019-01-03T00:00:00.000"
+        "task": "2 Days",
+        "type": "Section1",
+        "vert": false
       },
       {
-        "section": "Section1",
-        "type": "Section1",
-        "task": "Manual Date",
-        "id": "2",
-        "prevTaskId": "1",
-        "order": 1,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2019-01-03T00:00:00.000",
+        "id": "2",
         "manualEndTime": true,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 1,
+        "prevTaskId": "1",
+        "processed": true,
         "raw": {
           "data": ": 2, 2019-01-01,2019-01-03",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2019-01-01"
-          },
           "endTime": {
             "data": "2019-01-03"
+          },
+          "startTime": {
+            "startData": "2019-01-01",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "Section1",
         "startTime": "2019-01-01T00:00:00.000",
-        "endTime": "2019-01-03T00:00:00.000"
+        "task": "Manual Date",
+        "type": "Section1",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "Exclusive end dates (Manual date should end on 3d)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

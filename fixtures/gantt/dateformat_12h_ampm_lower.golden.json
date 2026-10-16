@@ -1,56 +1,56 @@
 {
   "diagramType": "gantt",
   "model": {
-    "type": "gantt",
-    "title": "12h am/pm (a)",
-    "accTitle": null,
     "accDescr": null,
-    "dateFormat": "YYYY-MM-DD h:mm a",
+    "accTitle": null,
     "axisFormat": "",
-    "tickInterval": null,
-    "todayMarker": "",
-    "includes": [],
-    "excludes": [],
-    "inclusiveEndDates": false,
-    "topAxis": false,
-    "weekday": "sunday",
-    "weekend": "saturday",
+    "clickEvents": {},
+    "dateFormat": "YYYY-MM-DD h:mm a",
     "displayMode": "",
+    "excludes": [],
+    "includes": [],
+    "inclusiveEndDates": false,
+    "links": {},
     "sections": [
       "A"
     ],
     "tasks": [
       {
-        "section": "A",
-        "type": "A",
-        "task": "One PM",
-        "id": "p1",
-        "prevTaskId": null,
-        "order": 0,
-        "processed": true,
-        "classes": [],
         "active": false,
-        "done": false,
+        "classes": [],
         "crit": false,
-        "milestone": false,
-        "vert": false,
+        "done": false,
+        "endTime": "2014-01-01T14:05:00.000",
+        "id": "p1",
         "manualEndTime": false,
-        "renderEndTime": null,
+        "milestone": false,
+        "order": 0,
+        "prevTaskId": null,
+        "processed": true,
         "raw": {
           "data": ": p1, 2014-01-01 1:05 pm, 1h",
-          "startTime": {
-            "type": "getStartDate",
-            "startData": "2014-01-01 1:05 pm"
-          },
           "endTime": {
             "data": "1h"
+          },
+          "startTime": {
+            "startData": "2014-01-01 1:05 pm",
+            "type": "getStartDate"
           }
         },
+        "renderEndTime": null,
+        "section": "A",
         "startTime": "2014-01-01T13:05:00.000",
-        "endTime": "2014-01-01T14:05:00.000"
+        "task": "One PM",
+        "type": "A",
+        "vert": false
       }
     ],
-    "links": {},
-    "clickEvents": {}
+    "tickInterval": null,
+    "title": "12h am/pm (a)",
+    "todayMarker": "",
+    "topAxis": false,
+    "type": "gantt",
+    "weekday": "sunday",
+    "weekend": "saturday"
   }
 }

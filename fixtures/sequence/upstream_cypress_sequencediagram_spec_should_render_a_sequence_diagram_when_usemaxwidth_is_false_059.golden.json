@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob",
@@ -12,212 +10,214 @@
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       },
       "John": {
-        "name": "John",
         "description": "John<br/>Second Line",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "John",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hello Bob, how are you?",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Bob",
-        "to": "John",
-        "message": "How about you John?",
-        "wrap": false,
-        "type": 1,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "I am good thanks!",
-        "wrap": false,
-        "type": 4,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "Bob",
-        "to": "John",
-        "message": "I am good thanks!",
-        "wrap": false,
-        "type": 3,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": "John",
-        "to": "John",
-        "message": "Bob thinks a long<br/>long time, so long<br/>that the text does<br/>not fit on a row.",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
-      },
-      {
-        "id": "5",
-        "from": "Bob",
-        "to": "Alice",
-        "message": "Checking with John...",
-        "wrap": false,
-        "type": 6,
-        "activate": false
-      },
-      {
-        "id": "6",
-        "from": null,
-        "to": null,
-        "message": "either this",
-        "wrap": false,
-        "type": 12,
-        "activate": false
-      },
-      {
-        "id": "7",
         "from": "Alice",
-        "to": "John",
-        "message": "Yes",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "8",
-        "from": null,
-        "to": null,
-        "message": "or this",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "9",
-        "from": "Alice",
-        "to": "John",
-        "message": "No",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "10",
-        "from": null,
-        "to": null,
-        "message": "or this will happen",
-        "wrap": false,
-        "type": 13,
-        "activate": false
-      },
-      {
-        "id": "11",
-        "from": "Alice",
-        "to": "John",
-        "message": "Maybe",
-        "wrap": false,
-        "type": 5,
-        "activate": false
-      },
-      {
-        "id": "12",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 14,
-        "activate": false
-      },
-      {
-        "id": "13",
-        "from": null,
-        "to": null,
-        "message": "this happens in parallel",
-        "wrap": false,
-        "type": 19,
-        "activate": false
-      },
-      {
-        "id": "14",
-        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you?",
         "to": "Bob",
-        "message": "Parallel message 1",
-        "wrap": false,
-        "type": 1,
-        "activate": false
+        "type": 0,
+        "wrap": false
       },
       {
-        "id": "15",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 20,
-        "activate": false
-      },
-      {
-        "id": "16",
-        "from": "Alice",
+        "activate": false,
+        "from": "Bob",
+        "id": "1",
+        "message": "How about you John?",
         "to": "John",
-        "message": "Parallel message 2",
-        "wrap": false,
         "type": 1,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "17",
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
+        "message": "I am good thanks!",
+        "to": "Alice",
+        "type": 4,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "3",
+        "message": "I am good thanks!",
+        "to": "John",
+        "type": 3,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "John",
+        "id": "4",
+        "message": "Bob thinks a long<br/>long time, so long<br/>that the text does<br/>not fit on a row.",
+        "placement": 1,
+        "to": "John",
+        "type": 2,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "5",
+        "message": "Checking with John...",
+        "to": "Alice",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
         "from": null,
+        "id": "6",
+        "message": "either this",
         "to": null,
+        "type": 12,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "7",
+        "message": "Yes",
+        "to": "John",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "8",
+        "message": "or this",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "9",
+        "message": "No",
+        "to": "John",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "10",
+        "message": "or this will happen",
+        "to": null,
+        "type": 13,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "11",
+        "message": "Maybe",
+        "to": "John",
+        "type": 5,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "12",
         "message": "",
-        "wrap": false,
+        "to": null,
+        "type": 14,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "13",
+        "message": "this happens in parallel",
+        "to": null,
+        "type": 19,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "14",
+        "message": "Parallel message 1",
+        "to": "Bob",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "15",
+        "message": "",
+        "to": null,
+        "type": 20,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "Alice",
+        "id": "16",
+        "message": "Parallel message 2",
+        "to": "John",
+        "type": 1,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "17",
+        "message": "",
+        "to": null,
         "type": 21,
-        "activate": false
+        "wrap": false
       }
     ],
     "notes": [
       {
         "actor": "John",
-        "placement": 1,
         "message": "Bob thinks a long<br/>long time, so long<br/>that the text does<br/>not fit on a row.",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

@@ -1,97 +1,97 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "long1",
-        "label": "This is a very long column title intended to wrap over multiple lines in the header area",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      },
-      {
-        "id": "long2",
-        "label": "Another extremely long column title with extra filler text to stress header height and alignment",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "long1",
-        "label": "This is a very long column title intended to wrap over multiple lines in the header area",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "This is a very long column title intended to wrap over multiple lines in the header area",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "t1",
-        "parentId": "long1",
-        "label": "Short",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t1",
+        "isGroup": false,
+        "label": "Short",
+        "level": 4,
+        "parentId": "long1",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
-        "id": "t2",
-        "parentId": "long1",
-        "label": "Another short",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": "alice",
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t2",
+        "isGroup": false,
+        "label": "Another short",
+        "level": 4,
+        "parentId": "long1",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "long2",
-        "label": "Another extremely long column title with extra filler text to stress header height and alignment",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Another extremely long column title with extra filler text to stress header height and alignment",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "t3",
-        "parentId": "long2",
-        "label": "Task with a long description that should wrap over multiple lines in the item body and increase the node height accordingly.",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t3",
+        "isGroup": false,
+        "label": "Task with a long description that should wrap over multiple lines in the item body and increase the node height accordingly.",
+        "level": 4,
+        "parentId": "long2",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "id": "long1",
+        "isGroup": false,
+        "label": "This is a very long column title intended to wrap over multiple lines in the header area",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "id": "long2",
+        "isGroup": false,
+        "label": "Another extremely long column title with extra filler text to stress header height and alignment",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }

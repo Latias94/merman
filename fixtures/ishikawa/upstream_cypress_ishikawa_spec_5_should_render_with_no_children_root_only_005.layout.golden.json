@@ -3,52 +3,52 @@
   "layout": {
     "IshikawaDiagram": {
       "bounds": {
-        "min_x": -20.0,
-        "min_y": 194.0,
         "max_x": 92.0,
-        "max_y": 306.0
+        "max_y": 306.0,
+        "min_x": -20.0,
+        "min_y": 194.0
       },
-      "total_width": 112.0,
-      "total_height": 112.0,
-      "viewbox_x": -20.0,
-      "viewbox_y": 194.0,
-      "padding": 20.0,
-      "use_max_width": true,
       "font_size": 16.0,
       "head": {
-        "x": 0.0,
-        "y": 250.0,
-        "width": 60.0,
         "height": 72.0,
-        "path_d": "M 0 -36 L 0 36 Q 144 0 0 -36 Z",
         "label": {
-          "text": "Problem",
+          "anchor": "start",
+          "bbox": {
+            "max_x": 56.66,
+            "max_y": 258.0,
+            "min_x": 9.34,
+            "min_y": 242.0
+          },
+          "class_name": "ishikawa-head-label",
+          "font_size": 16.0,
+          "line_height": 16.8,
           "lines": [
             "Problem"
           ],
-          "class_name": "ishikawa-head-label",
+          "text": "Problem",
           "x": 33.0,
-          "y": 250.0,
-          "anchor": "start",
-          "line_height": 16.8,
-          "font_size": 16.0,
-          "bbox": {
-            "min_x": 9.34,
-            "min_y": 242.0,
-            "max_x": 56.66,
-            "max_y": 258.0
-          }
-        }
+          "y": 250.0
+        },
+        "path_d": "M 0 -36 L 0 36 Q 144 0 0 -36 Z",
+        "width": 60.0,
+        "x": 0.0,
+        "y": 250.0
       },
+      "padding": 20.0,
+      "pairs": [],
       "spine": {
-        "x1": 0.0,
-        "y1": 250.0,
-        "x2": 0.0,
-        "y2": 250.0,
         "class_name": "ishikawa-spine",
-        "marker_start": false
+        "marker_start": false,
+        "x1": 0.0,
+        "x2": 0.0,
+        "y1": 250.0,
+        "y2": 250.0
       },
-      "pairs": []
+      "total_height": 112.0,
+      "total_width": 112.0,
+      "use_max_width": true,
+      "viewbox_x": -20.0,
+      "viewbox_y": 194.0
     }
   }
 }

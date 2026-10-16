@@ -1,41 +1,41 @@
 {
   "diagramType": "packet",
   "model": {
-    "type": "packet",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "packet": [
       [
         {
-          "start": 0,
-          "end": 10,
           "bits": 11,
-          "label": "test"
+          "end": 10,
+          "label": "test",
+          "start": 0
         },
         {
-          "start": 11,
-          "end": 31,
           "bits": 21,
-          "label": "multiple"
+          "end": 31,
+          "label": "multiple",
+          "start": 11
         }
       ],
       [
         {
-          "start": 32,
-          "end": 63,
           "bits": 32,
-          "label": "multiple"
+          "end": 63,
+          "label": "multiple",
+          "start": 32
         }
       ],
       [
         {
-          "start": 64,
-          "end": 90,
           "bits": 27,
-          "label": "multiple"
+          "end": 90,
+          "label": "multiple",
+          "start": 64
         }
       ]
-    ]
+    ],
+    "title": null,
+    "type": "packet"
   }
 }

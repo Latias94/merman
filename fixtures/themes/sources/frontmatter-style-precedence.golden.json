@@ -1,7 +1,6 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "keyword": "flowchart",
     "accDescr": null,
     "accTitle": null,
     "classDefs": {},
@@ -10,71 +9,72 @@
       "interpolate": null,
       "style": []
     },
-    "vertexCalls": [
-      "Frontmatter",
-      "Theme"
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "Frontmatter",
+        "id": "L_Frontmatter_Theme_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "Theme",
+        "type": "arrow_point"
+      }
     ],
+    "keyword": "flowchart",
     "nodes": [
       {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
         "id": "Frontmatter",
+        "img": null,
         "label": "Frontmatter",
         "labelType": "text",
         "layoutShape": "squareRect",
-        "shape": "square",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "classes": [],
-        "styles": [],
         "link": null,
         "linkTarget": null,
-        "haveCallback": false
+        "pos": null,
+        "shape": "square",
+        "styles": []
       },
       {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
         "id": "Theme",
+        "img": null,
         "label": "Theme variables",
         "labelType": "text",
         "layoutShape": "squareRect",
-        "shape": "square",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "classes": [],
-        "styles": [],
         "link": null,
         "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [
-      {
-        "id": "L_Frontmatter_Theme_0",
-        "from": "Frontmatter",
-        "to": "Theme",
-        "label": null,
-        "labelType": "text",
-        "type": "arrow_point",
-        "arrow": "-->",
-        "isUserDefinedId": false,
-        "stroke": "normal",
-        "interpolate": null,
-        "classes": [],
-        "style": [],
-        "animate": null,
-        "animation": null,
-        "length": 1
+        "pos": null,
+        "shape": "square",
+        "styles": []
       }
     ],
     "subgraphs": [],
     "tooltips": {},
-    "type": "flowchart-v2"
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "Frontmatter",
+      "Theme"
+    ]
   }
 }

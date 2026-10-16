@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": true,
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "sections": [
       {
         "label": "Dogs",
@@ -15,6 +12,9 @@
         "label": "Cats",
         "value": 25.0
       }
-    ]
+    ],
+    "showData": true,
+    "title": null,
+    "type": "pie"
   }
 }

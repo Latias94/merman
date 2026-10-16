@@ -2,64 +2,64 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
+      "bounds": {
+        "max_x": 1124.0,
+        "max_y": 78.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
+          "height": 45.0,
           "id": "allSides",
+          "is_cluster": false,
+          "width": 152.0,
           "x": 88.0,
-          "y": 45.0,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 45.0
         },
         {
+          "height": 45.0,
           "id": "allSides2",
+          "is_cluster": false,
+          "width": 152.0,
           "x": 280.0,
-          "y": 45.0,
-          "width": 152.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 45.0
         },
         {
+          "height": 66.0,
           "id": "rbSides",
+          "is_cluster": false,
+          "width": 152.0,
           "x": 472.0,
-          "y": 45.0,
-          "width": 152.0,
-          "height": 66.0,
-          "is_cluster": false
+          "y": 45.0
         },
         {
+          "height": 66.0,
           "id": "ltSides",
+          "is_cluster": false,
+          "width": 152.0,
           "x": 664.0,
-          "y": 45.0,
-          "width": 152.0,
-          "height": 66.0,
-          "is_cluster": false
+          "y": 45.0
         },
         {
+          "height": 66.0,
           "id": "lrSides",
-          "x": 856.0,
-          "y": 45.0,
+          "is_cluster": false,
           "width": 152.0,
-          "height": 66.0,
-          "is_cluster": false
+          "x": 856.0,
+          "y": 45.0
         },
         {
-          "id": "noSide",
-          "x": 1048.0,
-          "y": 45.0,
-          "width": 152.0,
           "height": 45.0,
-          "is_cluster": false
+          "id": "noSide",
+          "is_cluster": false,
+          "width": 152.0,
+          "x": 1048.0,
+          "y": 45.0
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 1124.0,
-        "max_y": 78.0
-      }
+      ]
     }
   }
 }

@@ -1,12 +1,12 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [],
     "sections": [],
     "tasks": [],
-    "actors": []
+    "title": null,
+    "type": "journey"
   }
 }

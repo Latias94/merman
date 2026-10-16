@@ -2,47 +2,32 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "User",
-          "x": 37.227,
-          "y": 68.75,
-          "width": 50.453,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Cart",
-          "x": 467.793,
-          "y": 68.75,
-          "width": 50.453,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Item",
-          "x": 665.608,
-          "y": 68.75,
-          "width": 51.156,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Payment",
-          "x": 250.04,
-          "y": 114.5,
-          "width": 75.094,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 691.186,
+        "max_y": 155.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 6.16,
+            "x": 435.487,
+            "y": 45.333
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "User",
-          "to": "Cart",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": {
+            "height": 21.0,
+            "width": 28.98,
+            "x": 250.04,
+            "y": 22.5
+          },
           "points": [
             {
               "x": 62.453,
@@ -77,36 +62,36 @@
               "y": 58.583
             }
           ],
-          "label": {
-            "x": 250.04,
-            "y": 22.5,
-            "width": 28.98,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": {
+            "height": 16.5,
+            "width": 6.16,
             "x": 75.533,
-            "y": 77.833,
-            "width": 6.16,
-            "height": 16.5
+            "y": 77.833
           },
-          "end_label_left": {
-            "x": 435.487,
-            "y": 45.333,
-            "width": 6.16,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Cart",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 4.95,
+            "x": 633.555,
+            "y": 55.5
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Cart",
-          "to": "Item",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 46.06,
+            "x": 568.05,
+            "y": 68.25
+          },
           "points": [
             {
               "x": 493.02,
@@ -117,36 +102,31 @@
               "y": 68.75
             }
           ],
-          "label": {
-            "x": 568.05,
-            "y": 68.25,
-            "width": 46.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": {
-            "x": 506.1,
-            "y": 88.0,
+            "height": 16.5,
             "width": 6.16,
-            "height": 16.5
+            "x": 506.1,
+            "y": 88.0
           },
-          "end_label_left": {
-            "x": 633.555,
-            "y": 55.5,
-            "width": 4.95,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Item",
+          "to_cluster": null
         },
         {
-          "id": "2",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "User",
-          "to": "Payment",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "2",
+          "label": {
+            "height": 21.0,
+            "width": 47.88,
+            "x": 148.553,
+            "y": 114.0
+          },
           "points": [
             {
               "x": 62.453,
@@ -165,26 +145,26 @@
               "y": 114.5
             }
           ],
-          "label": {
-            "x": 148.553,
-            "y": 114.0,
-            "width": 47.88,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Payment",
+          "to_cluster": null
         },
         {
-          "id": "3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Payment",
-          "to": "Cart",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "3",
+          "label": {
+            "height": 21.0,
+            "width": 64.82,
+            "x": 359.997,
+            "y": 114.0
+          },
           "points": [
             {
               "x": 287.587,
@@ -203,28 +183,48 @@
               "y": 78.917
             }
           ],
-          "label": {
-            "x": 359.997,
-            "y": 114.0,
-            "width": 64.82,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Cart",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 691.186,
-        "max_y": 155.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "User",
+          "is_cluster": false,
+          "width": 50.453,
+          "x": 37.227,
+          "y": 68.75
+        },
+        {
+          "height": 81.0,
+          "id": "Cart",
+          "is_cluster": false,
+          "width": 50.453,
+          "x": 467.793,
+          "y": 68.75
+        },
+        {
+          "height": 81.0,
+          "id": "Item",
+          "is_cluster": false,
+          "width": 51.156,
+          "x": 665.608,
+          "y": 68.75
+        },
+        {
+          "height": 81.0,
+          "id": "Payment",
+          "is_cluster": false,
+          "width": 75.094,
+          "x": 250.04,
+          "y": 114.5
+        }
+      ]
     }
   }
 }

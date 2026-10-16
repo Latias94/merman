@@ -2,39 +2,101 @@
   "diagramType": "architecture",
   "layout": {
     "ArchitectureDiagram": {
-      "nodes": [
+      "bounds": {
+        "max_x": 163.547,
+        "max_y": 194.479,
+        "min_x": -83.547,
+        "min_y": -157.479
+      },
+      "cytoscape_service_bounds": [
         {
+          "body_bounds": {
+            "max_x": -3.547,
+            "max_y": 194.479,
+            "min_x": -83.547,
+            "min_y": 114.479
+          },
           "id": "s1",
-          "x": -83.547,
-          "y": 114.479,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "p2",
+          "label_bounds": {
+            "max_x": -32.047,
+            "max_y": 212.479,
+            "min_x": -55.047,
+            "min_y": 114.479
+          },
+          "label_metrics": {
+            "half_width": 9.5,
+            "text_width": 19.0
+          },
+          "union_bounds": {
+            "max_x": -2.547,
+            "max_y": 212.479,
+            "min_x": -84.547,
+            "min_y": 113.479
+          }
         },
         {
+          "body_bounds": {
+            "max_x": 163.547,
+            "max_y": 166.724,
+            "min_x": 83.547,
+            "min_y": 86.724
+          },
           "id": "s2",
-          "x": 83.547,
-          "y": 86.724,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "p2",
+          "label_bounds": {
+            "max_x": 135.047,
+            "max_y": 184.724,
+            "min_x": 112.047,
+            "min_y": 86.724
+          },
+          "label_metrics": {
+            "half_width": 9.5,
+            "text_width": 19.0
+          },
+          "union_bounds": {
+            "max_x": 164.547,
+            "max_y": 184.724,
+            "min_x": 82.547,
+            "min_y": 85.724
+          }
         },
         {
+          "body_bounds": {
+            "max_x": -3.547,
+            "max_y": -77.479,
+            "min_x": -83.547,
+            "min_y": -157.479
+          },
           "id": "ext",
-          "x": -83.547,
-          "y": -157.479,
-          "width": 80.0,
-          "height": 80.0,
-          "is_cluster": false
+          "in_group": "root",
+          "label_bounds": {
+            "max_x": -27.047,
+            "max_y": -59.479,
+            "min_x": -60.047,
+            "min_y": -157.479
+          },
+          "label_metrics": {
+            "half_width": 14.5,
+            "text_width": 29.0
+          },
+          "union_bounds": {
+            "max_x": -2.547,
+            "max_y": -59.479,
+            "min_x": -84.547,
+            "min_y": -158.479
+          }
         }
       ],
       "edges": [
         {
-          "id": "edge-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "ext",
-          "to": "s2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-0",
+          "label": null,
           "points": [
             {
               "x": -43.547,
@@ -49,21 +111,21 @@
               "y": 86.724
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "s2",
+          "to_cluster": null
         },
         {
-          "id": "edge-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "s1",
-          "to": "ext",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "edge-1",
+          "label": null,
           "points": [
             {
               "x": -43.547,
@@ -78,131 +140,69 @@
               "y": -77.479
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
-        }
-      ],
-      "cytoscape_service_bounds": [
-        {
-          "id": "s1",
-          "in_group": "p2",
-          "body_bounds": {
-            "min_x": -83.547,
-            "min_y": 114.479,
-            "max_x": -3.547,
-            "max_y": 194.479
-          },
-          "label_bounds": {
-            "min_x": -55.047,
-            "min_y": 114.479,
-            "max_x": -32.047,
-            "max_y": 212.479
-          },
-          "label_metrics": {
-            "text_width": 19.0,
-            "half_width": 9.5
-          },
-          "union_bounds": {
-            "min_x": -84.547,
-            "min_y": 113.479,
-            "max_x": -2.547,
-            "max_y": 212.479
-          }
-        },
-        {
-          "id": "s2",
-          "in_group": "p2",
-          "body_bounds": {
-            "min_x": 83.547,
-            "min_y": 86.724,
-            "max_x": 163.547,
-            "max_y": 166.724
-          },
-          "label_bounds": {
-            "min_x": 112.047,
-            "min_y": 86.724,
-            "max_x": 135.047,
-            "max_y": 184.724
-          },
-          "label_metrics": {
-            "text_width": 19.0,
-            "half_width": 9.5
-          },
-          "union_bounds": {
-            "min_x": 82.547,
-            "min_y": 85.724,
-            "max_x": 164.547,
-            "max_y": 184.724
-          }
-        },
-        {
-          "id": "ext",
-          "in_group": "root",
-          "body_bounds": {
-            "min_x": -83.547,
-            "min_y": -157.479,
-            "max_x": -3.547,
-            "max_y": -77.479
-          },
-          "label_bounds": {
-            "min_x": -60.047,
-            "min_y": -157.479,
-            "max_x": -27.047,
-            "max_y": -59.479
-          },
-          "label_metrics": {
-            "text_width": 29.0,
-            "half_width": 14.5
-          },
-          "union_bounds": {
-            "min_x": -84.547,
-            "min_y": -158.479,
-            "max_x": -2.547,
-            "max_y": -59.479
-          }
+          "stroke_dasharray": null,
+          "to": "ext",
+          "to_cluster": null
         }
       ],
       "fcose_compound_bounds": [
         {
-          "id": "root",
           "bounds": {
-            "min_x": -243.547,
-            "min_y": -237.479,
             "max_x": 243.547,
-            "max_y": 274.479
-          }
+            "max_y": 274.479,
+            "min_x": -243.547,
+            "min_y": -237.479
+          },
+          "id": "root"
         },
         {
-          "id": "p1",
           "bounds": {
-            "min_x": -203.547,
-            "min_y": -33.276,
             "max_x": 203.547,
-            "max_y": 234.479
-          }
+            "max_y": 234.479,
+            "min_x": -203.547,
+            "min_y": -33.276
+          },
+          "id": "p1"
         },
         {
-          "id": "p2",
           "bounds": {
-            "min_x": -163.547,
-            "min_y": 6.724,
             "max_x": 163.547,
-            "max_y": 194.479
-          }
+            "max_y": 194.479,
+            "min_x": -163.547,
+            "min_y": 6.724
+          },
+          "id": "p2"
         }
       ],
-      "bounds": {
-        "min_x": -83.547,
-        "min_y": -157.479,
-        "max_x": 163.547,
-        "max_y": 194.479
-      }
+      "nodes": [
+        {
+          "height": 80.0,
+          "id": "s1",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": -83.547,
+          "y": 114.479
+        },
+        {
+          "height": 80.0,
+          "id": "s2",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": 83.547,
+          "y": 86.724
+        },
+        {
+          "height": 80.0,
+          "id": "ext",
+          "is_cluster": false,
+          "width": 80.0,
+          "x": -83.547,
+          "y": -157.479
+        }
+      ]
     }
   }
 }

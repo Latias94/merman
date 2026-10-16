@@ -2,98 +2,62 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Customer",
-          "x": 51.719,
-          "y": 52.5,
-          "width": 79.438,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Ticket",
-          "x": 51.719,
-          "y": 226.5,
-          "width": 62.078,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Student",
-          "x": 165.695,
-          "y": 52.5,
-          "width": 68.516,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Course",
-          "x": 165.695,
-          "y": 226.5,
-          "width": 62.5,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Galaxy",
-          "x": 270.992,
-          "y": 52.5,
-          "width": 62.078,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Star",
-          "x": 270.992,
-          "y": 380.0,
-          "width": 50.453,
-          "height": 81.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 306.082,
+        "max_y": 420.5,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
-          "from": "Customer",
-          "to": "Ticket",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 51.719,
-              "y": 93.0
-            },
-            {
-              "x": 51.719,
-              "y": 186.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": {
-            "x": 43.639,
-            "y": 105.25,
-            "width": 6.16,
-            "height": 16.5
-          },
           "end_label_left": {
-            "x": 65.194,
-            "y": 167.75,
+            "height": 16.5,
             "width": 4.95,
-            "height": 16.5
+            "x": 65.194,
+            "y": 167.75
           },
           "end_label_right": null,
-          "start_marker": null,
           "end_marker": null,
-          "stroke_dasharray": null
+          "from": "Customer",
+          "from_cluster": null,
+          "id": "0",
+          "label": null,
+          "points": [
+            {
+              "x": 51.719,
+              "y": 93.0
+            },
+            {
+              "x": 51.719,
+              "y": 186.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": {
+            "height": 16.5,
+            "width": 6.16,
+            "x": 43.639,
+            "y": 105.25
+          },
+          "start_marker": null,
+          "stroke_dasharray": null,
+          "to": "Ticket",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 17.27,
+            "x": 185.33,
+            "y": 167.75
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Student",
-          "to": "Course",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": null,
           "points": [
             {
               "x": 165.695,
@@ -104,31 +68,36 @@
               "y": 186.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": {
-            "x": 157.615,
-            "y": 105.25,
+            "height": 16.5,
             "width": 6.16,
-            "height": 16.5
+            "x": 157.615,
+            "y": 105.25
           },
-          "end_label_left": {
-            "x": 185.33,
-            "y": 167.75,
-            "width": 17.27,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Course",
+          "to_cluster": null
         },
         {
-          "id": "2",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 24.09,
+            "x": 294.037,
+            "y": 321.25
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Galaxy",
-          "to": "Star",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "2",
+          "label": {
+            "height": 21.0,
+            "width": 48.44,
+            "x": 270.712,
+            "y": 210.25
+          },
           "points": [
             {
               "x": 270.992,
@@ -139,33 +108,64 @@
               "y": 339.5
             }
           ],
-          "label": {
-            "x": 270.712,
-            "y": 210.25,
-            "width": 48.44,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": {
-            "x": 294.037,
-            "y": 321.25,
-            "width": 24.09,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Star",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 306.082,
-        "max_y": 420.5
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "Customer",
+          "is_cluster": false,
+          "width": 79.438,
+          "x": 51.719,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "Ticket",
+          "is_cluster": false,
+          "width": 62.078,
+          "x": 51.719,
+          "y": 226.5
+        },
+        {
+          "height": 81.0,
+          "id": "Student",
+          "is_cluster": false,
+          "width": 68.516,
+          "x": 165.695,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "Course",
+          "is_cluster": false,
+          "width": 62.5,
+          "x": 165.695,
+          "y": 226.5
+        },
+        {
+          "height": 81.0,
+          "id": "Galaxy",
+          "is_cluster": false,
+          "width": 62.078,
+          "x": 270.992,
+          "y": 52.5
+        },
+        {
+          "height": 81.0,
+          "id": "Star",
+          "is_cluster": false,
+          "width": 50.453,
+          "x": 270.992,
+          "y": 380.0
+        }
+      ]
     }
   }
 }

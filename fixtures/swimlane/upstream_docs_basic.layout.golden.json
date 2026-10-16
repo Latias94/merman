@@ -2,212 +2,19 @@
   "diagramType": "swimlane",
   "layout": {
     "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 1178.127,
+        "max_y": 562.5,
+        "min_x": -86.0,
+        "min_y": -58.5
+      },
       "direction": "LR",
-      "nodes": [
-        {
-          "id": "request",
-          "label": "Request service",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "Customer",
-          "top_lane_id": "Customer",
-          "x": 36.0,
-          "y": 0.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 0.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "receive",
-          "label": "Receive update",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "Customer",
-          "top_lane_id": "Customer",
-          "x": 1092.127,
-          "y": 0.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 2.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "triage",
-          "label": "Triage request",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "Support",
-          "top_lane_id": "Support",
-          "x": 36.0,
-          "y": 252.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 0.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "answer",
-          "label": "Send answer",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "Support",
-          "top_lane_id": "Support",
-          "x": 1092.127,
-          "y": 252.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 2.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "investigate",
-          "label": "Investigate issue",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "Engineering",
-          "top_lane_id": "Engineering",
-          "x": 564.064,
-          "y": 504.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 1.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "fix",
-          "label": "Prepare fix",
-          "label_type": "text",
-          "shape": "squareRect",
-          "parent_id": "Engineering",
-          "top_lane_id": "Engineering",
-          "x": 1092.127,
-          "y": 504.0,
-          "width": 152.0,
-          "height": 45.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 2.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "edge-label-triage-answer-L_triage_answer_0",
-          "label": "Known issue",
-          "label_type": "text",
-          "shape": "labelRect",
-          "parent_id": "Support",
-          "top_lane_id": "Support",
-          "x": 564.064,
-          "y": 252.0,
-          "width": 70.0,
-          "height": 21.0,
-          "label_width": 70.0,
-          "label_height": 21.0,
-          "layer": 1.0,
-          "order": 0.0,
-          "is_edge_label": true
-        },
-        {
-          "id": "edge-label-triage-investigate-L_triage_investigate_0",
-          "label": "Needs code change",
-          "label_type": "text",
-          "shape": "labelRect",
-          "parent_id": "Engineering",
-          "top_lane_id": "Engineering",
-          "x": 262.032,
-          "y": 504.0,
-          "width": 101.92,
-          "height": 21.0,
-          "label_width": 101.92,
-          "label_height": 21.0,
-          "layer": 0.0,
-          "order": 0.0,
-          "is_edge_label": true
-        }
-      ],
-      "lanes": [
-        {
-          "id": "Engineering",
-          "title": "Engineering",
-          "parent_id": null,
-          "x": 546.064,
-          "y": 470.25,
-          "width": 1264.127,
-          "height": 184.5,
-          "padding": 8.0,
-          "title_label_width": 64.406,
-          "title_label_height": 21.0,
-          "content_top": 481.5,
-          "title_rect": {
-            "left": -86.0,
-            "right": -50.0,
-            "top": 378.0,
-            "bottom": 562.5
-          },
-          "requested_dir": "LR"
-        },
-        {
-          "id": "Support",
-          "title": "Support",
-          "parent_id": null,
-          "x": 546.064,
-          "y": 252.0,
-          "width": 1264.127,
-          "height": 252.0,
-          "padding": 8.0,
-          "title_label_width": 44.516,
-          "title_label_height": 21.0,
-          "content_top": 229.5,
-          "title_rect": {
-            "left": -86.0,
-            "right": -50.0,
-            "top": 126.0,
-            "bottom": 378.0
-          },
-          "requested_dir": "LR"
-        },
-        {
-          "id": "Customer",
-          "title": "Customer",
-          "parent_id": null,
-          "x": 546.064,
-          "y": 33.75,
-          "width": 1264.127,
-          "height": 184.5,
-          "padding": 8.0,
-          "title_label_width": 55.438,
-          "title_label_height": 21.0,
-          "content_top": -22.5,
-          "title_rect": {
-            "left": -86.0,
-            "right": -50.0,
-            "top": -58.5,
-            "bottom": 126.0
-          },
-          "requested_dir": "LR"
-        }
-      ],
       "edges": [
         {
-          "id": "L_request_triage_0",
+          "curve": "rounded",
           "from": "request",
-          "to": "triage",
+          "id": "L_request_triage_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 36.0,
@@ -218,14 +25,14 @@
               "y": 229.5
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "triage"
         },
         {
-          "id": "L_triage_answer_0",
+          "curve": "rounded",
           "from": "triage",
-          "to": "answer",
+          "id": "L_triage_answer_0",
+          "label_node_id": "edge-label-triage-answer-L_triage_answer_0",
           "points": [
             {
               "x": 112.0,
@@ -236,14 +43,14 @@
               "y": 252.0
             }
           ],
-          "label_node_id": "edge-label-triage-answer-L_triage_answer_0",
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "answer"
         },
         {
-          "id": "L_triage_investigate_0",
+          "curve": "rounded",
           "from": "triage",
-          "to": "investigate",
+          "id": "L_triage_investigate_0",
+          "label_node_id": "edge-label-triage-investigate-L_triage_investigate_0",
           "points": [
             {
               "x": 36.0,
@@ -266,14 +73,14 @@
               "y": 504.0
             }
           ],
-          "label_node_id": "edge-label-triage-investigate-L_triage_investigate_0",
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "investigate"
         },
         {
-          "id": "L_investigate_fix_0",
+          "curve": "rounded",
           "from": "investigate",
-          "to": "fix",
+          "id": "L_investigate_fix_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 640.064,
@@ -284,14 +91,14 @@
               "y": 504.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "fix"
         },
         {
-          "id": "L_fix_answer_0",
+          "curve": "rounded",
           "from": "fix",
-          "to": "answer",
+          "id": "L_fix_answer_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 1092.127,
@@ -302,14 +109,14 @@
               "y": 274.5
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "answer"
         },
         {
-          "id": "L_answer_receive_0",
+          "curve": "rounded",
           "from": "answer",
-          "to": "receive",
+          "id": "L_answer_receive_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 1092.127,
@@ -320,17 +127,210 @@
               "y": 22.5
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "receive"
         }
       ],
-      "bounds": {
-        "min_x": -86.0,
-        "min_y": -58.5,
-        "max_x": 1178.127,
-        "max_y": 562.5
-      }
+      "lanes": [
+        {
+          "content_top": 481.5,
+          "height": 184.5,
+          "id": "Engineering",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "Engineering",
+          "title_label_height": 21.0,
+          "title_label_width": 64.406,
+          "title_rect": {
+            "bottom": 562.5,
+            "left": -86.0,
+            "right": -50.0,
+            "top": 378.0
+          },
+          "width": 1264.127,
+          "x": 546.064,
+          "y": 470.25
+        },
+        {
+          "content_top": 229.5,
+          "height": 252.0,
+          "id": "Support",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "Support",
+          "title_label_height": 21.0,
+          "title_label_width": 44.516,
+          "title_rect": {
+            "bottom": 378.0,
+            "left": -86.0,
+            "right": -50.0,
+            "top": 126.0
+          },
+          "width": 1264.127,
+          "x": 546.064,
+          "y": 252.0
+        },
+        {
+          "content_top": -22.5,
+          "height": 184.5,
+          "id": "Customer",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "Customer",
+          "title_label_height": 21.0,
+          "title_label_width": 55.438,
+          "title_rect": {
+            "bottom": 126.0,
+            "left": -86.0,
+            "right": -50.0,
+            "top": -58.5
+          },
+          "width": 1264.127,
+          "x": 546.064,
+          "y": 33.75
+        }
+      ],
+      "nodes": [
+        {
+          "height": 45.0,
+          "id": "request",
+          "is_edge_label": false,
+          "label": "Request service",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "Customer",
+          "shape": "squareRect",
+          "top_lane_id": "Customer",
+          "width": 152.0,
+          "x": 36.0,
+          "y": 0.0
+        },
+        {
+          "height": 45.0,
+          "id": "receive",
+          "is_edge_label": false,
+          "label": "Receive update",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "parent_id": "Customer",
+          "shape": "squareRect",
+          "top_lane_id": "Customer",
+          "width": 152.0,
+          "x": 1092.127,
+          "y": 0.0
+        },
+        {
+          "height": 45.0,
+          "id": "triage",
+          "is_edge_label": false,
+          "label": "Triage request",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "Support",
+          "shape": "squareRect",
+          "top_lane_id": "Support",
+          "width": 152.0,
+          "x": 36.0,
+          "y": 252.0
+        },
+        {
+          "height": 45.0,
+          "id": "answer",
+          "is_edge_label": false,
+          "label": "Send answer",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "parent_id": "Support",
+          "shape": "squareRect",
+          "top_lane_id": "Support",
+          "width": 152.0,
+          "x": 1092.127,
+          "y": 252.0
+        },
+        {
+          "height": 45.0,
+          "id": "investigate",
+          "is_edge_label": false,
+          "label": "Investigate issue",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "Engineering",
+          "shape": "squareRect",
+          "top_lane_id": "Engineering",
+          "width": 152.0,
+          "x": 564.064,
+          "y": 504.0
+        },
+        {
+          "height": 45.0,
+          "id": "fix",
+          "is_edge_label": false,
+          "label": "Prepare fix",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "parent_id": "Engineering",
+          "shape": "squareRect",
+          "top_lane_id": "Engineering",
+          "width": 152.0,
+          "x": 1092.127,
+          "y": 504.0
+        },
+        {
+          "height": 21.0,
+          "id": "edge-label-triage-answer-L_triage_answer_0",
+          "is_edge_label": true,
+          "label": "Known issue",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 70.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "Support",
+          "shape": "labelRect",
+          "top_lane_id": "Support",
+          "width": 70.0,
+          "x": 564.064,
+          "y": 252.0
+        },
+        {
+          "height": 21.0,
+          "id": "edge-label-triage-investigate-L_triage_investigate_0",
+          "is_edge_label": true,
+          "label": "Needs code change",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 101.92,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "Engineering",
+          "shape": "labelRect",
+          "top_lane_id": "Engineering",
+          "width": 101.92,
+          "x": 262.032,
+          "y": 504.0
+        }
+      ]
     }
   }
 }

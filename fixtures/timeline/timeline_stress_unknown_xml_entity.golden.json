@@ -1,35 +1,35 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [],
     "tasks": [
       {
-        "id": 0,
-        "section": "",
-        "type": "",
-        "task": "2020 ",
-        "score": 0,
         "events": [
           "Known entities",
           "&amp; &lt; &gt;"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "",
+        "task": "2020 ",
+        "type": ""
       },
       {
-        "id": 1,
-        "section": "",
-        "type": "",
-        "task": "2021 ",
-        "score": 0,
         "events": [
           "Unknown entity should be escaped in SVG XML",
           "&madeup;"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "",
+        "task": "2021 ",
+        "type": ""
       }
-    ]
+    ],
+    "title": null,
+    "type": "timeline"
   }
 }

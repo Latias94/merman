@@ -1,38 +1,34 @@
 {
   "diagramType": "railroad",
   "model": {
-    "type": "railroad",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "rules": [
       {
-        "name": "json",
         "definition": {
-          "type": "nonterminal",
-          "name": "element"
-        }
+          "name": "element",
+          "type": "nonterminal"
+        },
+        "name": "json"
       },
       {
-        "name": "element",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
-              "type": "nonterminal",
-              "name": "object"
+              "name": "object",
+              "type": "nonterminal"
             },
             {
-              "type": "nonterminal",
-              "name": "array"
+              "name": "array",
+              "type": "nonterminal"
             },
             {
-              "type": "nonterminal",
-              "name": "string"
+              "name": "string",
+              "type": "nonterminal"
             },
             {
-              "type": "nonterminal",
-              "name": "number"
+              "name": "number",
+              "type": "nonterminal"
             },
             {
               "type": "terminal",
@@ -46,137 +42,137 @@
               "type": "terminal",
               "value": "null"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "element"
       },
       {
-        "name": "object",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
               "type": "terminal",
               "value": "{"
             },
             {
-              "type": "optional",
               "element": {
-                "type": "sequence",
                 "elements": [
                   {
-                    "type": "nonterminal",
-                    "name": "member"
+                    "name": "member",
+                    "type": "nonterminal"
                   },
                   {
-                    "type": "repetition",
                     "element": {
-                      "type": "sequence",
                       "elements": [
                         {
                           "type": "terminal",
                           "value": ","
                         },
                         {
-                          "type": "nonterminal",
-                          "name": "member"
+                          "name": "member",
+                          "type": "nonterminal"
                         }
-                      ]
+                      ],
+                      "type": "sequence"
                     },
+                    "max": null,
                     "min": 0,
-                    "max": null
+                    "type": "repetition"
                   }
-                ]
-              }
+                ],
+                "type": "sequence"
+              },
+              "type": "optional"
             },
             {
               "type": "terminal",
               "value": "}"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "object"
       },
       {
-        "name": "array",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
               "type": "terminal",
               "value": "["
             },
             {
-              "type": "optional",
               "element": {
-                "type": "sequence",
                 "elements": [
                   {
-                    "type": "nonterminal",
-                    "name": "element"
+                    "name": "element",
+                    "type": "nonterminal"
                   },
                   {
-                    "type": "repetition",
                     "element": {
-                      "type": "sequence",
                       "elements": [
                         {
                           "type": "terminal",
                           "value": ","
                         },
                         {
-                          "type": "nonterminal",
-                          "name": "element"
+                          "name": "element",
+                          "type": "nonterminal"
                         }
-                      ]
+                      ],
+                      "type": "sequence"
                     },
+                    "max": null,
                     "min": 0,
-                    "max": null
+                    "type": "repetition"
                   }
-                ]
-              }
+                ],
+                "type": "sequence"
+              },
+              "type": "optional"
             },
             {
               "type": "terminal",
               "value": "]"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "array"
       },
       {
-        "name": "member",
         "definition": {
-          "type": "sequence",
           "elements": [
             {
-              "type": "nonterminal",
-              "name": "string"
+              "name": "string",
+              "type": "nonterminal"
             },
             {
               "type": "terminal",
               "value": ":"
             },
             {
-              "type": "nonterminal",
-              "name": "element"
+              "name": "element",
+              "type": "nonterminal"
             }
-          ]
-        }
+          ],
+          "type": "sequence"
+        },
+        "name": "member"
       },
       {
-        "name": "number",
         "definition": {
-          "type": "repetition",
           "element": {
-            "type": "nonterminal",
-            "name": "digit"
+            "name": "digit",
+            "type": "nonterminal"
           },
+          "max": null,
           "min": 1,
-          "max": null
-        }
+          "type": "repetition"
+        },
+        "name": "number"
       },
       {
-        "name": "digit",
         "definition": {
-          "type": "choice",
           "alternatives": [
             {
               "type": "terminal",
@@ -218,9 +214,13 @@
               "type": "terminal",
               "value": "9"
             }
-          ]
-        }
+          ],
+          "type": "choice"
+        },
+        "name": "digit"
       }
-    ]
+    ],
+    "title": null,
+    "type": "railroad"
   }
 }

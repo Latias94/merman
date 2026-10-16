@@ -1,40 +1,36 @@
 {
   "diagramType": "radar",
   "model": {
-    "type": "radar",
-    "title": "DevOps Radar",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "axes": [
       {
-        "name": "f",
-        "label": "Feature Velocity"
+        "label": "Feature Velocity",
+        "name": "f"
       },
       {
-        "name": "s",
-        "label": "Stability"
+        "label": "Stability",
+        "name": "s"
       },
       {
-        "name": "r",
-        "label": "Resilience"
+        "label": "Resilience",
+        "name": "r"
       },
       {
-        "name": "e",
-        "label": "Efficiency"
+        "label": "Efficiency",
+        "name": "e"
       },
       {
-        "name": "c",
-        "label": "Cost"
+        "label": "Cost",
+        "name": "c"
       },
       {
-        "name": "d",
-        "label": "DevSecOps"
+        "label": "DevSecOps",
+        "name": "d"
       }
     ],
     "curves": [
       {
-        "name": "app1",
-        "label": "App1",
         "entries": [
           5,
           4.5,
@@ -42,11 +38,11 @@
           4.5,
           3.5,
           4.2
-        ]
+        ],
+        "label": "App1",
+        "name": "app1"
       },
       {
-        "name": "app2",
-        "label": "App2",
         "entries": [
           4,
           3,
@@ -54,11 +50,11 @@
           3,
           3,
           4
-        ]
+        ],
+        "label": "App2",
+        "name": "app2"
       },
       {
-        "name": "app3",
-        "label": "App3",
         "entries": [
           3,
           2,
@@ -66,11 +62,11 @@
           3,
           2,
           3
-        ]
+        ],
+        "label": "App3",
+        "name": "app3"
       },
       {
-        "name": "app4",
-        "label": "App4",
         "entries": [
           2,
           1,
@@ -78,15 +74,19 @@
           2.5,
           1,
           2
-        ]
+        ],
+        "label": "App4",
+        "name": "app4"
       }
     ],
     "options": {
-      "showLegend": true,
-      "ticks": 3,
+      "graticule": "polygon",
       "max": 5,
       "min": 0,
-      "graticule": "polygon"
-    }
+      "showLegend": true,
+      "ticks": 3
+    },
+    "title": "DevOps Radar",
+    "type": "radar"
   }
 }

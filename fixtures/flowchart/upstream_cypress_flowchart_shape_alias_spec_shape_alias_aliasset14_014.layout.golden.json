@@ -2,56 +2,56 @@
   "diagramType": "flowchart-v2",
   "layout": {
     "FlowchartV2": {
+      "bounds": {
+        "max_x": 972.0,
+        "max_y": 57.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
+      "edges": [],
       "nodes": [
         {
+          "height": 45.0,
           "id": "n0",
+          "is_cluster": false,
+          "width": 160.0,
           "x": 92.0,
-          "y": 34.5,
-          "width": 160.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 34.5
         },
         {
+          "height": 45.0,
           "id": "n1",
+          "is_cluster": false,
+          "width": 160.0,
           "x": 292.0,
-          "y": 34.5,
-          "width": 160.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 34.5
         },
         {
+          "height": 45.0,
           "id": "n2",
+          "is_cluster": false,
+          "width": 160.0,
           "x": 492.0,
-          "y": 34.5,
-          "width": 160.0,
-          "height": 45.0,
-          "is_cluster": false
+          "y": 34.5
         },
         {
+          "height": 45.0,
           "id": "n3",
-          "x": 692.0,
-          "y": 34.5,
+          "is_cluster": false,
           "width": 160.0,
-          "height": 45.0,
-          "is_cluster": false
+          "x": 692.0,
+          "y": 34.5
         },
         {
-          "id": "n4",
-          "x": 892.0,
-          "y": 34.5,
-          "width": 160.0,
           "height": 45.0,
-          "is_cluster": false
+          "id": "n4",
+          "is_cluster": false,
+          "width": 160.0,
+          "x": 892.0,
+          "y": 34.5
         }
-      ],
-      "edges": [],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 972.0,
-        "max_y": 57.0
-      }
+      ]
     }
   }
 }

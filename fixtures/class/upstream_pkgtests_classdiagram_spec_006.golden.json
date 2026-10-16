@@ -1,113 +1,113 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "User": {
-        "id": "User",
-        "type": "",
-        "label": "User",
-        "text": "User",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-User-0",
-        "parent": "Company.Project.Module",
-        "link": null,
-        "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
       "Admin": {
-        "id": "Admin",
-        "type": "",
-        "label": "Admin",
-        "text": "Admin",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Admin-1",
-        "parent": "Company.Project.Module",
+        "haveCallback": false,
+        "id": "Admin",
+        "label": "Admin",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": "Company.Project.Module",
+        "styles": [],
+        "text": "Admin",
         "tooltip": null,
-        "haveCallback": false,
+        "type": ""
+      },
+      "User": {
+        "annotations": [],
         "callback": null,
-        "callbackEffective": false
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-User-0",
+        "haveCallback": false,
+        "id": "User",
+        "label": "User",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": "Company.Project.Module",
+        "styles": [],
+        "text": "User",
+        "tooltip": null,
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "Company": {
+        "classIds": [],
+        "domId": "classId-Company-0",
+        "explicit": false,
+        "id": "Company",
+        "label": "Company",
+        "noteIds": [],
+        "parent": null
+      },
+      "Company.Project": {
+        "classIds": [],
+        "domId": "classId-Company.Project-1",
+        "explicit": false,
+        "id": "Company.Project",
+        "label": "Project",
+        "noteIds": [],
+        "parent": "Company"
+      },
+      "Company.Project.Module": {
+        "classIds": [
+          "User",
+          "Admin"
+        ],
+        "domId": "classId-Company.Project.Module-2",
+        "explicit": true,
+        "id": "Company.Project.Module",
+        "label": "Module",
+        "noteIds": [],
+        "parent": "Company.Project"
+      }
+    },
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Admin",
         "id2": "User",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "manages",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "manages"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {
-      "Company": {
-        "id": "Company",
-        "label": "Company",
-        "domId": "classId-Company-0",
-        "classIds": [],
-        "noteIds": [],
-        "parent": null,
-        "explicit": false
-      },
-      "Company.Project": {
-        "id": "Company.Project",
-        "label": "Project",
-        "domId": "classId-Company.Project-1",
-        "classIds": [],
-        "noteIds": [],
-        "parent": "Company",
-        "explicit": false
-      },
-      "Company.Project.Module": {
-        "id": "Company.Project.Module",
-        "label": "Module",
-        "domId": "classId-Company.Project.Module-2",
-        "classIds": [
-          "User",
-          "Admin"
-        ],
-        "noteIds": [],
-        "parent": "Company.Project",
-        "explicit": true
-      }
-    },
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

@@ -1,133 +1,133 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "C1": {
-        "id": "C1",
-        "type": "",
-        "label": "C1",
-        "text": "C1",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-C1-0",
-        "parent": "Namespace1",
+        "haveCallback": false,
+        "id": "C1",
+        "label": "C1",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": "Namespace1",
+        "styles": [],
+        "text": "C1",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "C2": {
-        "id": "C2",
-        "type": "",
-        "label": "C2",
-        "text": "C2",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-C2-1",
-        "parent": "Namespace1",
+        "haveCallback": false,
+        "id": "C2",
+        "label": "C2",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": "Namespace1",
+        "styles": [],
+        "text": "C2",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "C3": {
-        "id": "C3",
-        "type": "",
-        "label": "C3",
-        "text": "C3",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-C3-2",
-        "parent": null,
+        "haveCallback": false,
+        "id": "C3",
+        "label": "C3",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "C3",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "C4": {
-        "id": "C4",
-        "type": "",
-        "label": "C4",
-        "text": "C4",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-C4-3",
-        "parent": null,
+        "haveCallback": false,
+        "id": "C4",
+        "label": "C4",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
+        "styles": [],
+        "text": "C4",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "Namespace1": {
+        "classIds": [
+          "C1",
+          "C2"
+        ],
+        "domId": "classId-Namespace1-0",
+        "explicit": true,
+        "id": "Namespace1",
+        "label": "Namespace1",
+        "noteIds": [],
+        "parent": null
+      }
+    },
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "C1",
         "id2": "C2",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": ""
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {
-      "Namespace1": {
-        "id": "Namespace1",
-        "label": "Namespace1",
-        "domId": "classId-Namespace1-0",
-        "classIds": [
-          "C1",
-          "C2"
-        ],
-        "noteIds": [],
-        "parent": null,
-        "explicit": true
-      }
-    },
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

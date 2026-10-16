@@ -1,10 +1,8 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Consumer",
       "API",
@@ -12,105 +10,107 @@
       "BillingService"
     ],
     "actors": {
-      "Consumer": {
-        "name": "Consumer",
-        "description": "Consumer",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "API": {
-        "name": "API",
         "description": "API",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
-      },
-      "BookingService": {
-        "name": "BookingService",
-        "description": "BookingService",
-        "wrap": false,
+        "name": "API",
+        "properties": {},
         "type": "participant",
-        "links": {},
-        "properties": {}
+        "wrap": false
       },
       "BillingService": {
-        "name": "BillingService",
         "description": "BillingService",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "BillingService",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "BookingService": {
+        "description": "BookingService",
+        "links": {},
+        "name": "BookingService",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "Consumer": {
+        "description": "Consumer",
+        "links": {},
+        "name": "Consumer",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": "Consumer",
-        "to": "API",
-        "message": "Book something",
-        "wrap": false,
-        "type": 6,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "API",
-        "to": "BookingService",
-        "message": "Start booking process",
-        "wrap": false,
-        "type": 6,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "when the booking process fails",
-        "wrap": false,
-        "type": 30,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "API",
-        "to": "Consumer",
-        "message": "show failure",
-        "wrap": false,
-        "type": 6,
-        "activate": false
-      },
-      {
-        "id": "4",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 31,
-        "activate": false
-      },
-      {
-        "id": "5",
-        "from": "API",
-        "to": "BillingService",
-        "message": "Start billing process",
-        "wrap": false,
-        "type": 6,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": "Consumer",
+        "id": "0",
+        "message": "Book something",
+        "to": "API",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "1",
+        "message": "Start booking process",
+        "to": "BookingService",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "when the booking process fails",
+        "to": null,
+        "type": 30,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "3",
+        "message": "show failure",
+        "to": "Consumer",
+        "type": 6,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "4",
+        "message": "",
+        "to": null,
+        "type": 31,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "API",
+        "id": "5",
+        "message": "Start billing process",
+        "to": "BillingService",
+        "type": 6,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

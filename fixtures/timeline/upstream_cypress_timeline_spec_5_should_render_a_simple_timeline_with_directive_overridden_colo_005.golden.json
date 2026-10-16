@@ -1,84 +1,84 @@
 {
   "diagramType": "timeline",
   "model": {
-    "type": "timeline",
-    "direction": "LR",
-    "title": "History of Social Media Platform",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "sections": [],
     "tasks": [
       {
-        "id": 0,
-        "section": "",
-        "type": "",
-        "task": "2002 ",
-        "score": 0,
         "events": [
           "LinkedIn"
-        ]
+        ],
+        "id": 0,
+        "score": 0,
+        "section": "",
+        "task": "2002 ",
+        "type": ""
       },
       {
-        "id": 1,
-        "section": "",
-        "type": "",
-        "task": "2004 ",
-        "score": 0,
         "events": [
           "Facebook ",
           "Google"
-        ]
+        ],
+        "id": 1,
+        "score": 0,
+        "section": "",
+        "task": "2004 ",
+        "type": ""
       },
       {
-        "id": 2,
-        "section": "",
-        "type": "",
-        "task": "2005 ",
-        "score": 0,
         "events": [
           "YouTube"
-        ]
+        ],
+        "id": 2,
+        "score": 0,
+        "section": "",
+        "task": "2005 ",
+        "type": ""
       },
       {
-        "id": 3,
-        "section": "",
-        "type": "",
-        "task": "2006 ",
-        "score": 0,
         "events": [
           "Twitter"
-        ]
+        ],
+        "id": 3,
+        "score": 0,
+        "section": "",
+        "task": "2006 ",
+        "type": ""
       },
       {
-        "id": 4,
-        "section": "",
-        "type": "",
-        "task": "2007 ",
-        "score": 0,
         "events": [
           "Tumblr"
-        ]
+        ],
+        "id": 4,
+        "score": 0,
+        "section": "",
+        "task": "2007 ",
+        "type": ""
       },
       {
-        "id": 5,
-        "section": "",
-        "type": "",
-        "task": "2008 ",
-        "score": 0,
         "events": [
           "Instagram"
-        ]
+        ],
+        "id": 5,
+        "score": 0,
+        "section": "",
+        "task": "2008 ",
+        "type": ""
       },
       {
-        "id": 6,
-        "section": "",
-        "type": "",
-        "task": "2010 ",
-        "score": 0,
         "events": [
           "Pinterest"
-        ]
+        ],
+        "id": 6,
+        "score": 0,
+        "section": "",
+        "task": "2010 ",
+        "type": ""
       }
-    ]
+    ],
+    "title": "History of Social Media Platform",
+    "type": "timeline"
   }
 }

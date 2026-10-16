@@ -1,91 +1,91 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Class10": {
-        "id": "Class10",
-        "type": "T",
-        "label": "Class10",
-        "text": "Class10&lt;T&gt;",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "test",
-            "classifier": "",
-            "parameters": "int[] ids",
-            "returnType": "bool",
-            "displayText": "test(int[] ids) : bool",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "testArray",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "bool[]",
-            "displayText": "testArray() : bool[]",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "",
-            "id": "map",
-            "classifier": "",
-            "parameters": "List~T~ items",
-            "returnType": "Map~String,T~",
-            "displayText": "map(List<T> items) : Map<String,T>",
-            "cssStyle": ""
-          }
-        ],
-        "members": [
-          {
-            "memberType": "attribute",
-            "visibility": "",
-            "id": "int[] id",
-            "classifier": "",
-            "parameters": "",
-            "returnType": "",
-            "displayText": "int[] id",
-            "cssStyle": ""
-          }
-        ],
         "annotations": [],
-        "styles": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
         "domId": "classId-Class10-0",
-        "parent": null,
+        "haveCallback": false,
+        "id": "Class10",
+        "label": "Class10",
         "link": null,
         "linkTarget": null,
+        "members": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "int[] id",
+            "id": "int[] id",
+            "memberType": "attribute",
+            "parameters": "",
+            "returnType": "",
+            "visibility": ""
+          }
+        ],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "test(int[] ids) : bool",
+            "id": "test",
+            "memberType": "method",
+            "parameters": "int[] ids",
+            "returnType": "bool",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "testArray() : bool[]",
+            "id": "testArray",
+            "memberType": "method",
+            "parameters": "",
+            "returnType": "bool[]",
+            "visibility": ""
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "map(List<T> items) : Map<String,T>",
+            "id": "map",
+            "memberType": "method",
+            "parameters": "List~T~ items",
+            "returnType": "Map~String,T~",
+            "visibility": ""
+          }
+        ],
+        "parent": null,
+        "styles": [],
+        "text": "Class10&lt;T&gt;",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": "T"
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

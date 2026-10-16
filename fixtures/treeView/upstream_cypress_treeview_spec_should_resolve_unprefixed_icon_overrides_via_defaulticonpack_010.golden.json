@@ -1,41 +1,8 @@
 {
   "diagramType": "treeView",
   "model": {
-    "type": "treeView",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "id": 0,
-      "level": -1,
-      "name": "/",
-      "nodeType": "directory",
-      "children": [
-        {
-          "id": 1,
-          "level": 12,
-          "name": "src",
-          "nodeType": "directory",
-          "children": [
-            {
-              "id": 2,
-              "level": 16,
-              "name": "alarm.txt",
-              "nodeType": "file",
-              "icon": "bell",
-              "children": []
-            },
-            {
-              "id": 3,
-              "level": 16,
-              "name": "index.js",
-              "nodeType": "file",
-              "children": []
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
         "id": 0,
@@ -50,11 +17,11 @@
         "nodeType": "directory"
       },
       {
+        "icon": "bell",
         "id": 2,
         "level": 16,
         "name": "alarm.txt",
-        "nodeType": "file",
-        "icon": "bell"
+        "nodeType": "file"
       },
       {
         "id": 3,
@@ -62,6 +29,39 @@
         "name": "index.js",
         "nodeType": "file"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "icon": "bell",
+              "id": 2,
+              "level": 16,
+              "name": "alarm.txt",
+              "nodeType": "file"
+            },
+            {
+              "children": [],
+              "id": 3,
+              "level": 16,
+              "name": "index.js",
+              "nodeType": "file"
+            }
+          ],
+          "id": 1,
+          "level": 12,
+          "name": "src",
+          "nodeType": "directory"
+        }
+      ],
+      "id": 0,
+      "level": -1,
+      "name": "/",
+      "nodeType": "directory"
+    },
+    "title": null,
+    "type": "treeView"
   }
 }

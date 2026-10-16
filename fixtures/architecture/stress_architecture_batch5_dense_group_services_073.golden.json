@@ -1,530 +1,530 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "groups": [
+    "accTitle": null,
+    "edges": [
       {
-        "id": "core",
-        "icon": "cloud",
-        "title": "Core Platform",
-        "in": null
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "auth",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "auth",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "users",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "auth",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "billing",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "billing",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "users",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "api",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "cache",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "billing",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "queue",
+        "rhsInto": true,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "queue",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "cache",
+        "rhsInto": true,
+        "title": null
       }
     ],
+    "groups": [
+      {
+        "icon": "cloud",
+        "id": "core",
+        "in": null,
+        "title": "Core Platform"
+      }
+    ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "api",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "cache",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "core",
         "title": "API Gateway",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "auth",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "auth",
-            "rhsDir": "L",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "users",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "users",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "billing",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "billing",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "auth",
+        "in": "core",
         "title": "Auth",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "billing",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "billing",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "billing",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "billing",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "users",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "billing",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "billing",
+        "in": "core",
         "title": "Billing",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "users",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "users",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "users",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "users",
+            "lhsId": "billing",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "users",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "users",
+        "in": "core",
         "title": "Users DB",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "cache",
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "queue",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "queue",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "cache",
+        "in": "core",
         "title": "Cache",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "queue",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "billing",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "queue",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "queue",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "queue",
+        "in": "core",
         "title": "Queue",
-        "in": "core"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "api",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "api",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "auth",
+            "lhsId": "api",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "auth",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "api",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "api",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "cache",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "api",
+        "in": "core",
         "title": "API Gateway",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "auth",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
             "rhsId": "auth",
-            "rhsDir": "L",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "users",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "users",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "billing",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "billing",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "auth",
+        "in": "core",
         "title": "Auth",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "billing",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "billing",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "billing",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
+            "lhsId": "billing",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
             "rhsId": "users",
-            "rhsDir": "T",
             "rhsInto": true,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "billing",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "server",
         "iconText": null,
+        "id": "billing",
+        "in": "core",
         "title": "Billing",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "users",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "auth",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "users",
+            "lhsId": "auth",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "users",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "users",
+            "lhsId": "billing",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "users",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "database",
         "iconText": null,
+        "id": "users",
+        "in": "core",
         "title": "Users DB",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "cache",
-        "type": "service",
         "edges": [
           {
+            "lhsDir": "B",
+            "lhsGroup": null,
             "lhsId": "api",
-            "lhsDir": "B",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "cache",
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "queue",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "queue",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "cache",
+        "in": "core",
         "title": "Cache",
-        "in": "core"
+        "type": "service"
       },
       {
-        "id": "queue",
-        "type": "service",
         "edges": [
           {
-            "lhsId": "billing",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "queue",
+            "lhsId": "billing",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "queue",
+            "rhsInto": true,
             "title": null
           },
           {
-            "lhsId": "queue",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "cache",
+            "lhsId": "queue",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": true,
             "rhsGroup": null,
+            "rhsId": "cache",
+            "rhsInto": true,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
+        "id": "queue",
+        "in": "core",
         "title": "Queue",
-        "in": "core"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [
-      {
-        "lhsId": "api",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "auth",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "auth",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "users",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "auth",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "billing",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "billing",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "users",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "api",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "cache",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "billing",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "queue",
-        "rhsDir": "T",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "queue",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "cache",
-        "rhsDir": "L",
-        "rhsInto": true,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

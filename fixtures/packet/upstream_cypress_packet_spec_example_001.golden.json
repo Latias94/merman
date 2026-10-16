@@ -1,19 +1,19 @@
 {
   "diagramType": "packet",
   "model": {
-    "type": "packet",
-    "title": "Hello world",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "packet": [
       [
         {
-          "start": 0,
-          "end": 10,
           "bits": 11,
-          "label": "hello"
+          "end": 10,
+          "label": "hello",
+          "start": 0
         }
       ]
-    ]
+    ],
+    "title": "Hello world",
+    "type": "packet"
   }
 }

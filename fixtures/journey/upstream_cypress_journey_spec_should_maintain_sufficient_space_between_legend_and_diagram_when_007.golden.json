@@ -1,10 +1,15 @@
 {
   "diagramType": "journey",
   "model": {
-    "type": "journey",
-    "title": " Web hook life cycle",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "actors": [
+      "Darkoob user",
+      "Darkoob userf deliberately increasing the size of this label to check if distance between legend and diagram is  maintained",
+      "DarkoobAPI",
+      "External Service",
+      "admin Exjjjnjjjj qwerty"
+    ],
     "sections": [
       "Darkoob",
       "External Service",
@@ -12,84 +17,79 @@
     ],
     "tasks": [
       {
-        "score": 5,
         "people": [
           "Darkoob user"
         ],
+        "score": 5,
         "section": "Darkoob",
-        "type": "Darkoob",
-        "task": "        Make preBuilt"
+        "task": "        Make preBuilt",
+        "type": "Darkoob"
       },
       {
-        "score": 5,
         "people": [
           "Darkoob userf deliberately increasing the size of this label to check if distance between legend and diagram is  maintained"
         ],
+        "score": 5,
         "section": "Darkoob",
-        "type": "Darkoob",
-        "task": "        register slug "
+        "task": "        register slug ",
+        "type": "Darkoob"
       },
       {
-        "score": 5,
         "people": [
           "Darkoob user"
         ],
+        "score": 5,
         "section": "Darkoob",
-        "type": "Darkoob",
-        "task": "        Map slug to a Prebuilt Job"
+        "task": "        Map slug to a Prebuilt Job",
+        "type": "Darkoob"
       },
       {
-        "score": 5,
         "people": [
           "admin Exjjjnjjjj qwerty"
         ],
+        "score": 5,
         "section": "External Service",
-        "type": "External Service",
-        "task": "        set Darkoob slug as hook for an Event "
+        "task": "        set Darkoob slug as hook for an Event ",
+        "type": "External Service"
       },
       {
-        "score": 5,
         "people": [
           "External Service"
         ],
+        "score": 5,
         "section": "External Service",
-        "type": "External Service",
-        "task": "        listen to the events "
+        "task": "        listen to the events ",
+        "type": "External Service"
       },
       {
-        "score": 5,
         "people": [
           "External Service"
         ],
+        "score": 5,
         "section": "External Service",
-        "type": "External Service",
-        "task": "        call darkoob endpoint "
+        "task": "        call darkoob endpoint ",
+        "type": "External Service"
       },
       {
-        "score": 5,
         "people": [
           "DarkoobAPI"
         ],
+        "score": 5,
         "section": "Darkoob",
-        "type": "Darkoob",
-        "task": "        check for inputs "
+        "task": "        check for inputs ",
+        "type": "Darkoob"
       },
       {
-        "score": 5,
         "people": [
           "DarkoobAPI"
         ],
+        "score": 5,
         "section": "Darkoob",
-        "type": "Darkoob",
-        "task": "        run the prebuilt job "
+        "task": "        run the prebuilt job ",
+        "type": "Darkoob"
       }
     ],
-    "actors": [
-      "Darkoob user",
-      "Darkoob userf deliberately increasing the size of this label to check if distance between legend and diagram is  maintained",
-      "DarkoobAPI",
-      "External Service",
-      "admin Exjjjnjjjj qwerty"
-    ]
+    "title": " Web hook life cycle",
+    "type": "journey"
   }
 }

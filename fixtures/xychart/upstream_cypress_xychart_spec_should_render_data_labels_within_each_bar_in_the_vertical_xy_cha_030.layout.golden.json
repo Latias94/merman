@@ -2,369 +2,369 @@
   "diagramType": "xychart",
   "layout": {
     "XyChartDiagram": {
-      "width": 700.0,
-      "height": 500.0,
-      "chartOrientation": "vertical",
-      "showDataLabel": true,
-      "showDataLabelOutsideBar": false,
       "backgroundColor": "white",
+      "chartOrientation": "vertical",
+      "drawables": [
+        {
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 20.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "Sales Revenue",
+              "verticalPos": "middle",
+              "x": 391.9,
+              "y": 21.0
+            }
+          ],
+          "groupTexts": [
+            "chart-title"
+          ],
+          "type": "text"
+        },
+        {
+          "data": [
+            {
+              "fill": "#ECECFF",
+              "height": 55.525,
+              "strokeFill": "#ECECFF",
+              "strokeWidth": 0.0,
+              "width": 131.1,
+              "x": 87.25,
+              "y": 384.475
+            },
+            {
+              "fill": "#ECECFF",
+              "height": 103.35,
+              "strokeFill": "#ECECFF",
+              "strokeWidth": 0.0,
+              "width": 131.1,
+              "x": 326.35,
+              "y": 336.65
+            },
+            {
+              "fill": "#ECECFF",
+              "height": 175.087,
+              "strokeFill": "#ECECFF",
+              "strokeWidth": 0.0,
+              "width": 131.1,
+              "x": 565.45,
+              "y": 264.913
+            }
+          ],
+          "groupTexts": [
+            "plot",
+            "bar-plot-0"
+          ],
+          "type": "rect"
+        },
+        {
+          "data": [
+            {
+              "fill": null,
+              "path": "M 83.80000000000001,441 L 700,441",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
+          "groupTexts": [
+            "bottom-axis",
+            "axis-line"
+          ],
+          "type": "path"
+        },
+        {
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "jan",
+              "verticalPos": "top",
+              "x": 152.8,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "b",
+              "verticalPos": "top",
+              "x": 391.9,
+              "y": 452.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "c",
+              "verticalPos": "top",
+              "x": 631.0,
+              "y": 452.0
+            }
+          ],
+          "groupTexts": [
+            "bottom-axis",
+            "label"
+          ],
+          "type": "text"
+        },
+        {
+          "data": [
+            {
+              "fill": null,
+              "path": "M 152.8,442 L 152.8,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 391.9,442 L 391.9,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 631,442 L 631,447",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
+          "groupTexts": [
+            "bottom-axis",
+            "ticks"
+          ],
+          "type": "path"
+        },
+        {
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 16.0,
+              "horizontalPos": "center",
+              "rotation": 0.0,
+              "text": "Months",
+              "verticalPos": "top",
+              "x": 391.9,
+              "y": 477.4
+            }
+          ],
+          "groupTexts": [
+            "bottom-axis",
+            "title"
+          ],
+          "type": "text"
+        },
+        {
+          "data": [
+            {
+              "fill": null,
+              "path": "M 82.80000000000001,42 L 82.80000000000001,440 ",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
+          "groupTexts": [
+            "left-axis",
+            "axisl-line"
+          ],
+          "type": "path"
+        },
+        {
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "12000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 49.7
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "11000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 97.525
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "10000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 145.35
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "9000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 193.175
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "8000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 241.0
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "7000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 288.825
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "6000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 336.65
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "5000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 384.475
+            },
+            {
+              "fill": "#131300",
+              "fontSize": 14.0,
+              "horizontalPos": "right",
+              "rotation": 0.0,
+              "text": "4000",
+              "verticalPos": "middle",
+              "x": 71.8,
+              "y": 432.3
+            }
+          ],
+          "groupTexts": [
+            "left-axis",
+            "label"
+          ],
+          "type": "text"
+        },
+        {
+          "data": [
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,49.7 L 76.80000000000001,49.7",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,97.525 L 76.80000000000001,97.525",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,145.35000000000002 L 76.80000000000001,145.35000000000002",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,193.175 L 76.80000000000001,193.175",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,241 L 76.80000000000001,241",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,288.825 L 76.80000000000001,288.825",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,336.65000000000003 L 76.80000000000001,336.65000000000003",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,384.475 L 76.80000000000001,384.475",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            },
+            {
+              "fill": null,
+              "path": "M 81.80000000000001,432.3 L 76.80000000000001,432.3",
+              "strokeFill": "#131300",
+              "strokeWidth": 2.0
+            }
+          ],
+          "groupTexts": [
+            "left-axis",
+            "ticks"
+          ],
+          "type": "path"
+        },
+        {
+          "data": [
+            {
+              "fill": "#131300",
+              "fontSize": 16.0,
+              "horizontalPos": "center",
+              "rotation": 270.0,
+              "text": "Revenue (in $)",
+              "verticalPos": "top",
+              "x": 5.0,
+              "y": 241.0
+            }
+          ],
+          "groupTexts": [
+            "left-axis",
+            "title"
+          ],
+          "type": "text"
+        }
+      ],
+      "height": 500.0,
       "labelData": [
         "5000",
         "6000",
         "7500"
       ],
-      "drawables": [
-        {
-          "type": "text",
-          "groupTexts": [
-            "chart-title"
-          ],
-          "data": [
-            {
-              "text": "Sales Revenue",
-              "x": 391.9,
-              "y": 21.0,
-              "fill": "#131300",
-              "fontSize": 20.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "center"
-            }
-          ]
-        },
-        {
-          "type": "rect",
-          "groupTexts": [
-            "plot",
-            "bar-plot-0"
-          ],
-          "data": [
-            {
-              "x": 87.25,
-              "y": 384.475,
-              "width": 131.1,
-              "height": 55.525,
-              "fill": "#ECECFF",
-              "strokeFill": "#ECECFF",
-              "strokeWidth": 0.0
-            },
-            {
-              "x": 326.35,
-              "y": 336.65,
-              "width": 131.1,
-              "height": 103.35,
-              "fill": "#ECECFF",
-              "strokeFill": "#ECECFF",
-              "strokeWidth": 0.0
-            },
-            {
-              "x": 565.45,
-              "y": 264.913,
-              "width": 131.1,
-              "height": 175.087,
-              "fill": "#ECECFF",
-              "strokeFill": "#ECECFF",
-              "strokeWidth": 0.0
-            }
-          ]
-        },
-        {
-          "type": "path",
-          "groupTexts": [
-            "bottom-axis",
-            "axis-line"
-          ],
-          "data": [
-            {
-              "path": "M 83.80000000000001,441 L 700,441",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
-        },
-        {
-          "type": "text",
-          "groupTexts": [
-            "bottom-axis",
-            "label"
-          ],
-          "data": [
-            {
-              "text": "jan",
-              "x": 152.8,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "b",
-              "x": 391.9,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            },
-            {
-              "text": "c",
-              "x": 631.0,
-              "y": 452.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            }
-          ]
-        },
-        {
-          "type": "path",
-          "groupTexts": [
-            "bottom-axis",
-            "ticks"
-          ],
-          "data": [
-            {
-              "path": "M 152.8,442 L 152.8,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 391.9,442 L 391.9,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 631,442 L 631,447",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
-        },
-        {
-          "type": "text",
-          "groupTexts": [
-            "bottom-axis",
-            "title"
-          ],
-          "data": [
-            {
-              "text": "Months",
-              "x": 391.9,
-              "y": 477.4,
-              "fill": "#131300",
-              "fontSize": 16.0,
-              "rotation": 0.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            }
-          ]
-        },
-        {
-          "type": "path",
-          "groupTexts": [
-            "left-axis",
-            "axisl-line"
-          ],
-          "data": [
-            {
-              "path": "M 82.80000000000001,42 L 82.80000000000001,440 ",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
-        },
-        {
-          "type": "text",
-          "groupTexts": [
-            "left-axis",
-            "label"
-          ],
-          "data": [
-            {
-              "text": "12000",
-              "x": 71.8,
-              "y": 49.7,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "11000",
-              "x": 71.8,
-              "y": 97.525,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "10000",
-              "x": 71.8,
-              "y": 145.35,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "9000",
-              "x": 71.8,
-              "y": 193.175,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "8000",
-              "x": 71.8,
-              "y": 241.0,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "7000",
-              "x": 71.8,
-              "y": 288.825,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "6000",
-              "x": 71.8,
-              "y": 336.65,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "5000",
-              "x": 71.8,
-              "y": 384.475,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            },
-            {
-              "text": "4000",
-              "x": 71.8,
-              "y": 432.3,
-              "fill": "#131300",
-              "fontSize": 14.0,
-              "rotation": 0.0,
-              "verticalPos": "middle",
-              "horizontalPos": "right"
-            }
-          ]
-        },
-        {
-          "type": "path",
-          "groupTexts": [
-            "left-axis",
-            "ticks"
-          ],
-          "data": [
-            {
-              "path": "M 81.80000000000001,49.7 L 76.80000000000001,49.7",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,97.525 L 76.80000000000001,97.525",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,145.35000000000002 L 76.80000000000001,145.35000000000002",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,193.175 L 76.80000000000001,193.175",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,241 L 76.80000000000001,241",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,288.825 L 76.80000000000001,288.825",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,336.65000000000003 L 76.80000000000001,336.65000000000003",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,384.475 L 76.80000000000001,384.475",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            },
-            {
-              "path": "M 81.80000000000001,432.3 L 76.80000000000001,432.3",
-              "fill": null,
-              "strokeFill": "#131300",
-              "strokeWidth": 2.0
-            }
-          ]
-        },
-        {
-          "type": "text",
-          "groupTexts": [
-            "left-axis",
-            "title"
-          ],
-          "data": [
-            {
-              "text": "Revenue (in $)",
-              "x": 5.0,
-              "y": 241.0,
-              "fill": "#131300",
-              "fontSize": 16.0,
-              "rotation": 270.0,
-              "verticalPos": "top",
-              "horizontalPos": "center"
-            }
-          ]
-        }
-      ]
+      "showDataLabel": true,
+      "showDataLabelOutsideBar": false,
+      "width": 700.0
     }
   }
 }

@@ -1,154 +1,154 @@
 {
   "diagramType": "block",
   "model": {
-    "type": "block",
     "blocks": [
       {
+        "children": [],
         "id": "ida",
-        "type": "na",
         "label": "ida",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "id-<id>-1-0",
-        "type": "space",
         "label": "",
-        "children": [],
+        "type": "space",
         "width": 3
       },
       {
+        "children": [],
         "id": "id-<id>-1-1",
-        "type": "space",
         "label": "",
-        "children": [],
+        "type": "space",
         "width": 3
       },
       {
+        "children": [],
         "id": "id-<id>-1-2",
-        "type": "space",
         "label": "",
-        "children": [],
+        "type": "space",
         "width": 3
       },
       {
-        "id": "idb",
-        "type": "na",
-        "label": "idb",
         "children": [],
+        "id": "idb",
+        "label": "idb",
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "idc",
-        "type": "na",
-        "label": "idc",
         "children": [],
+        "id": "idc",
+        "label": "idc",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
-    "edges": [],
     "blocksFlat": [
       {
-        "id": "root",
-        "type": "composite",
-        "label": "",
         "children": [
           {
+            "children": [],
             "id": "ida",
-            "type": "na",
             "label": "ida",
-            "children": [],
+            "type": "na",
             "widthInColumns": 1
           },
           {
+            "children": [],
             "id": "id-<id>-1-0",
-            "type": "space",
             "label": "",
-            "children": [],
+            "type": "space",
             "width": 3
           },
           {
+            "children": [],
             "id": "id-<id>-1-1",
-            "type": "space",
             "label": "",
-            "children": [],
+            "type": "space",
             "width": 3
           },
           {
+            "children": [],
             "id": "id-<id>-1-2",
-            "type": "space",
             "label": "",
-            "children": [],
+            "type": "space",
             "width": 3
           },
           {
-            "id": "idb",
-            "type": "na",
-            "label": "idb",
             "children": [],
+            "id": "idb",
+            "label": "idb",
+            "type": "na",
             "widthInColumns": 1
           },
           {
-            "id": "idc",
-            "type": "na",
-            "label": "idc",
             "children": [],
+            "id": "idc",
+            "label": "idc",
+            "type": "na",
             "widthInColumns": 1
           }
         ],
-        "columns": -1
+        "columns": -1,
+        "id": "root",
+        "label": "",
+        "type": "composite"
       },
       {
+        "children": [],
         "id": "ida",
-        "type": "na",
         "label": "ida",
-        "children": [],
+        "type": "na",
         "widthInColumns": 1
       },
       {
+        "children": [],
         "id": "id-<id>-1",
-        "type": "space",
         "label": "",
-        "children": [],
+        "type": "space",
         "width": 3
       },
       {
+        "children": [],
         "id": "id-<id>-1-0",
-        "type": "space",
         "label": "",
-        "children": [],
+        "type": "space",
         "width": 3
       },
       {
+        "children": [],
         "id": "id-<id>-1-1",
-        "type": "space",
         "label": "",
-        "children": [],
+        "type": "space",
         "width": 3
       },
       {
+        "children": [],
         "id": "id-<id>-1-2",
-        "type": "space",
         "label": "",
-        "children": [],
+        "type": "space",
         "width": 3
       },
       {
-        "id": "idb",
-        "type": "na",
-        "label": "idb",
         "children": [],
+        "id": "idb",
+        "label": "idb",
+        "type": "na",
         "widthInColumns": 1
       },
       {
-        "id": "idc",
-        "type": "na",
-        "label": "idc",
         "children": [],
+        "id": "idc",
+        "label": "idc",
+        "type": "na",
         "widthInColumns": 1
       }
     ],
     "classes": {},
+    "edges": [],
+    "type": "block",
     "warningFacts": [],
     "warnings": []
   }

@@ -1,155 +1,155 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
-      "Report": {
-        "id": "Report",
-        "type": "",
-        "label": "Report",
-        "text": "Report",
-        "cssClasses": "default",
-        "methods": [
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "generatePDF",
-            "classifier": "",
-            "parameters": "data: List",
-            "returnType": "",
-            "displayText": "+generatePDF(data: List)",
-            "cssStyle": ""
-          },
-          {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "generateCSV",
-            "classifier": "",
-            "parameters": "data: List",
-            "returnType": "",
-            "displayText": "+generateCSV(data: List)",
-            "cssStyle": ""
-          }
-        ],
-        "members": [],
+      "Admin": {
         "annotations": [],
-        "styles": [],
-        "domId": "classId-Report-0",
-        "parent": "Company.Project.Module.SubModule",
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Admin-1",
+        "haveCallback": false,
+        "id": "Admin",
+        "label": "Admin",
         "link": null,
         "linkTarget": null,
-        "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
-      },
-      "Admin": {
-        "id": "Admin",
-        "type": "",
-        "label": "Admin",
-        "text": "Admin",
-        "cssClasses": "default",
+        "members": [],
         "methods": [
           {
-            "memberType": "method",
-            "visibility": "+",
-            "id": "generateReport",
             "classifier": "",
+            "cssStyle": "",
+            "displayText": "+generateReport()",
+            "id": "generateReport",
+            "memberType": "method",
             "parameters": "",
             "returnType": "",
-            "displayText": "+generateReport()",
-            "cssStyle": ""
+            "visibility": "+"
           }
         ],
-        "members": [],
-        "annotations": [],
-        "styles": [],
-        "domId": "classId-Admin-1",
         "parent": "Company.Project.Module",
+        "styles": [],
+        "text": "Admin",
+        "tooltip": null,
+        "type": ""
+      },
+      "Report": {
+        "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Report-0",
+        "haveCallback": false,
+        "id": "Report",
+        "label": "Report",
         "link": null,
         "linkTarget": null,
+        "members": [],
+        "methods": [
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+generatePDF(data: List)",
+            "id": "generatePDF",
+            "memberType": "method",
+            "parameters": "data: List",
+            "returnType": "",
+            "visibility": "+"
+          },
+          {
+            "classifier": "",
+            "cssStyle": "",
+            "displayText": "+generateCSV(data: List)",
+            "id": "generateCSV",
+            "memberType": "method",
+            "parameters": "data: List",
+            "returnType": "",
+            "visibility": "+"
+          }
+        ],
+        "parent": "Company.Project.Module.SubModule",
+        "styles": [],
+        "text": "Report",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
+    "constants": {
+      "lineType": {
+        "dottedLine": 1,
+        "line": 0
+      },
+      "relationType": {
+        "aggregation": 0,
+        "composition": 2,
+        "dependency": 3,
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
+      }
+    },
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {
+      "Company": {
+        "classIds": [],
+        "domId": "classId-Company-0",
+        "explicit": false,
+        "id": "Company",
+        "label": "Company",
+        "noteIds": [],
+        "parent": null
+      },
+      "Company.Project": {
+        "classIds": [],
+        "domId": "classId-Company.Project-1",
+        "explicit": false,
+        "id": "Company.Project",
+        "label": "Project",
+        "noteIds": [],
+        "parent": "Company"
+      },
+      "Company.Project.Module": {
+        "classIds": [
+          "Admin"
+        ],
+        "domId": "classId-Company.Project.Module-2",
+        "explicit": true,
+        "id": "Company.Project.Module",
+        "label": "Module",
+        "noteIds": [],
+        "parent": "Company.Project"
+      },
+      "Company.Project.Module.SubModule": {
+        "classIds": [
+          "Report"
+        ],
+        "domId": "classId-Company.Project.Module.SubModule-3",
+        "explicit": true,
+        "id": "Company.Project.Module.SubModule",
+        "label": "SubModule",
+        "noteIds": [],
+        "parent": "Company.Project.Module"
+      }
+    },
+    "notes": [],
     "relations": [
       {
         "id": "0",
         "id1": "Admin",
         "id2": "Report",
+        "relation": {
+          "lineType": 0,
+          "type1": -1,
+          "type2": 3
+        },
         "relationTitle1": "none",
         "relationTitle2": "none",
-        "title": "generates",
-        "relation": {
-          "type1": -1,
-          "type2": 3,
-          "lineType": 0
-        }
+        "title": "generates"
       }
     ],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {
-      "Company": {
-        "id": "Company",
-        "label": "Company",
-        "domId": "classId-Company-0",
-        "classIds": [],
-        "noteIds": [],
-        "parent": null,
-        "explicit": false
-      },
-      "Company.Project": {
-        "id": "Company.Project",
-        "label": "Project",
-        "domId": "classId-Company.Project-1",
-        "classIds": [],
-        "noteIds": [],
-        "parent": "Company",
-        "explicit": false
-      },
-      "Company.Project.Module": {
-        "id": "Company.Project.Module",
-        "label": "Module",
-        "domId": "classId-Company.Project.Module-2",
-        "classIds": [
-          "Admin"
-        ],
-        "noteIds": [],
-        "parent": "Company.Project",
-        "explicit": true
-      },
-      "Company.Project.Module.SubModule": {
-        "id": "Company.Project.Module.SubModule",
-        "label": "SubModule",
-        "domId": "classId-Company.Project.Module.SubModule-3",
-        "classIds": [
-          "Report"
-        ],
-        "noteIds": [],
-        "parent": "Company.Project.Module",
-        "explicit": true
-      }
-    },
-    "constants": {
-      "lineType": {
-        "line": 0,
-        "dottedLine": 1
-      },
-      "relationType": {
-        "none": -1,
-        "aggregation": 0,
-        "extension": 1,
-        "composition": 2,
-        "dependency": 3,
-        "lollipop": 4
-      }
-    },
-    "styleClasses": {}
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

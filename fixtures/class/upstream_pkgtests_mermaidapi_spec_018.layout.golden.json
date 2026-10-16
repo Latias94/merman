@@ -2,39 +2,32 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Student",
-          "x": 153.794,
-          "y": 69.0,
-          "width": 137.118,
-          "height": 114.0,
-          "is_cluster": false
-        },
-        {
-          "id": "IdCard",
-          "x": 73.562,
-          "y": 364.0,
-          "width": 123.124,
-          "height": 135.0,
-          "is_cluster": false
-        },
-        {
-          "id": "Bike",
-          "x": 234.025,
-          "y": 364.0,
-          "width": 117.803,
-          "height": 135.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 292.927,
+        "max_y": 431.5,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 6.16,
+            "x": 87.642,
+            "y": 278.25
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Student",
-          "to": "IdCard",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": {
+            "height": 21.0,
+            "width": 40.04,
+            "x": 73.082,
+            "y": 213.5
+          },
           "points": [
             {
               "x": 134.274,
@@ -53,36 +46,36 @@
               "y": 296.5
             }
           ],
-          "label": {
-            "x": 73.082,
-            "y": 213.5,
-            "width": 40.04,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": {
+            "height": 16.5,
+            "width": 6.16,
             "x": 126.194,
-            "y": 138.25,
-            "width": 6.16,
-            "height": 16.5
+            "y": 138.25
           },
-          "end_label_left": {
-            "x": 87.642,
-            "y": 278.25,
-            "width": 6.16,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "IdCard",
+          "to_cluster": null
         },
         {
-          "id": "1",
+          "end_label_left": {
+            "height": 16.5,
+            "width": 6.16,
+            "x": 248.105,
+            "y": 278.25
+          },
+          "end_label_right": null,
+          "end_marker": null,
           "from": "Student",
-          "to": "Bike",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "1",
+          "label": {
+            "height": 21.0,
+            "width": 28.0,
+            "x": 234.025,
+            "y": 213.5
+          },
           "points": [
             {
               "x": 173.313,
@@ -101,38 +94,45 @@
               "y": 296.5
             }
           ],
-          "label": {
-            "x": 234.025,
-            "y": 213.5,
-            "width": 28.0,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": {
+            "height": 16.5,
+            "width": 6.16,
             "x": 165.233,
-            "y": 154.75,
-            "width": 6.16,
-            "height": 16.5
+            "y": 154.75
           },
-          "end_label_left": {
-            "x": 248.105,
-            "y": 278.25,
-            "width": 6.16,
-            "height": 16.5
-          },
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Bike",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 292.927,
-        "max_y": 431.5
-      }
+      "nodes": [
+        {
+          "height": 114.0,
+          "id": "Student",
+          "is_cluster": false,
+          "width": 137.118,
+          "x": 153.794,
+          "y": 69.0
+        },
+        {
+          "height": 135.0,
+          "id": "IdCard",
+          "is_cluster": false,
+          "width": 123.124,
+          "x": 73.562,
+          "y": 364.0
+        },
+        {
+          "height": 135.0,
+          "id": "Bike",
+          "is_cluster": false,
+          "width": 117.803,
+          "x": 234.025,
+          "y": 364.0
+        }
+      ]
     }
   }
 }

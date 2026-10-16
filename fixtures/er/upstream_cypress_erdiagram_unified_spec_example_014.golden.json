@@ -1,93 +1,93 @@
 {
   "diagramType": "er",
   "model": {
-    "type": "er",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "classes": {},
+    "constants": {
+      "cardinality": {
+        "mdParent": "MD_PARENT",
+        "oneOrMore": "ONE_OR_MORE",
+        "onlyOne": "ONLY_ONE",
+        "zeroOrMore": "ZERO_OR_MORE",
+        "zeroOrOne": "ZERO_OR_ONE"
+      },
+      "identification": {
+        "identifying": "IDENTIFYING",
+        "nonIdentifying": "NON_IDENTIFYING"
+      }
+    },
+    "direction": "TB",
     "entities": {
       "AUTHOR_WITH_LONG_ENTITY_NAME": {
-        "id": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
-        "label": "AUTHOR_WITH_LONG_ENTITY_NAME",
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
-            "name": "name",
+            "comment": "comment",
             "keys": [
               "PK"
             ],
-            "comment": "comment"
+            "name": "name",
+            "type": "string"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
+        "label": "AUTHOR_WITH_LONG_ENTITY_NAME",
+        "shape": "erBox"
       },
       "BOOK": {
-        "id": "entity-BOOK-1",
-        "label": "BOOK",
+        "alias": "",
         "attributes": [
           {
-            "type": "string",
+            "comment": "",
+            "keys": [],
             "name": "description",
-            "keys": [],
-            "comment": ""
+            "type": "string"
           },
           {
-            "type": "float",
+            "comment": "price comment",
+            "keys": [],
             "name": "price",
-            "keys": [],
-            "comment": "price comment"
+            "type": "float"
           },
           {
-            "type": "string",
-            "name": "title",
+            "comment": "title comment",
             "keys": [
               "PK"
             ],
-            "comment": "title comment"
+            "name": "title",
+            "type": "string"
           },
           {
-            "type": "string",
-            "name": "author",
+            "comment": "",
             "keys": [
               "FK"
             ],
-            "comment": ""
+            "name": "author",
+            "type": "string"
           }
         ],
-        "alias": "",
-        "shape": "erBox",
         "cssClasses": "default",
-        "cssStyles": []
+        "cssStyles": [],
+        "id": "entity-BOOK-1",
+        "label": "BOOK",
+        "shape": "erBox"
       }
     },
     "relationships": [
       {
         "entityA": "entity-AUTHOR_WITH_LONG_ENTITY_NAME-0",
-        "roleA": "writes",
         "entityB": "entity-BOOK-1",
         "relSpec": {
           "cardA": "ONE_OR_MORE",
           "cardB": "ONE_OR_MORE",
           "relType": "NON_IDENTIFYING"
-        }
+        },
+        "roleA": "writes"
       }
     ],
-    "classes": {},
-    "constants": {
-      "cardinality": {
-        "zeroOrOne": "ZERO_OR_ONE",
-        "zeroOrMore": "ZERO_OR_MORE",
-        "oneOrMore": "ONE_OR_MORE",
-        "onlyOne": "ONLY_ONE",
-        "mdParent": "MD_PARENT"
-      },
-      "identification": {
-        "nonIdentifying": "NON_IDENTIFYING",
-        "identifying": "IDENTIFYING"
-      }
-    }
+    "type": "er"
   }
 }

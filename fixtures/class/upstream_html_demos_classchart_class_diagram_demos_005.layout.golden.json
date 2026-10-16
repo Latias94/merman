@@ -2,31 +2,22 @@
   "diagramType": "classDiagram",
   "layout": {
     "ClassDiagramV2": {
-      "nodes": [
-        {
-          "id": "Interface1Impl",
-          "x": 66.633,
-          "y": 137.5,
-          "width": 109.266,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "interface0",
-          "x": 66.633,
-          "y": 34.5,
-          "width": 92.2,
-          "height": 45.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 121.266,
+        "max_y": 178.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "interface0",
-          "to": "Interface1Impl",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "0",
+          "label": null,
           "points": [
             {
               "x": 66.633,
@@ -37,23 +28,32 @@
               "y": 97.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "Interface1Impl",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 121.266,
-        "max_y": 178.0
-      }
+      "nodes": [
+        {
+          "height": 81.0,
+          "id": "Interface1Impl",
+          "is_cluster": false,
+          "width": 109.266,
+          "x": 66.633,
+          "y": 137.5
+        },
+        {
+          "height": 45.0,
+          "id": "interface0",
+          "is_cluster": false,
+          "width": 92.2,
+          "x": 66.633,
+          "y": 34.5
+        }
+      ]
     }
   }
 }

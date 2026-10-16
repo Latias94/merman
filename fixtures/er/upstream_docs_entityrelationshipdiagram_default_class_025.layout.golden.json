@@ -2,39 +2,26 @@
   "diagramType": "er",
   "layout": {
     "ErDiagram": {
-      "nodes": [
-        {
-          "id": "entity-CAR-0",
-          "x": 109.73,
-          "y": 351.5,
-          "width": 195.46,
-          "height": 159.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-HOUSE-2",
-          "x": 297.46,
-          "y": 312.5,
-          "width": 100.0,
-          "height": 81.0,
-          "is_cluster": false
-        },
-        {
-          "id": "entity-PERSON-1",
-          "x": 203.595,
-          "y": 91.5,
-          "width": 143.38,
-          "height": 159.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 347.46,
+        "max_y": 431.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
       "edges": [
         {
-          "id": "er-rel-0",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONLY_ONE_END",
           "from": "entity-PERSON-1",
-          "to": "entity-CAR-0",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-0",
+          "label": {
+            "height": 21.0,
+            "width": 28.98,
+            "x": 109.72,
+            "y": 221.5
+          },
           "points": [
             {
               "x": 183.032,
@@ -53,26 +40,26 @@
               "y": 272.0
             }
           ],
-          "label": {
-            "x": 109.72,
-            "y": 221.5,
-            "width": 28.98,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ONLY_ONE_START",
-          "end_marker": "ONLY_ONE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-CAR-0",
+          "to_cluster": null
         },
         {
-          "id": "er-rel-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": "ONLY_ONE_END",
           "from": "entity-PERSON-1",
-          "to": "entity-HOUSE-2",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "er-rel-1",
+          "label": {
+            "height": 21.0,
+            "width": 18.06,
+            "x": 296.99,
+            "y": 221.5
+          },
           "points": [
             {
               "x": 224.158,
@@ -91,27 +78,40 @@
               "y": 272.0
             }
           ],
-          "label": {
-            "x": 296.99,
-            "y": 221.5,
-            "width": 18.06,
-            "height": 21.0
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": "ZERO_OR_MORE_START",
-          "end_marker": "ONLY_ONE_END",
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "entity-HOUSE-2",
+          "to_cluster": null
         }
       ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 347.46,
-        "max_y": 431.0
-      }
+      "nodes": [
+        {
+          "height": 159.0,
+          "id": "entity-CAR-0",
+          "is_cluster": false,
+          "width": 195.46,
+          "x": 109.73,
+          "y": 351.5
+        },
+        {
+          "height": 81.0,
+          "id": "entity-HOUSE-2",
+          "is_cluster": false,
+          "width": 100.0,
+          "x": 297.46,
+          "y": 312.5
+        },
+        {
+          "height": 159.0,
+          "id": "entity-PERSON-1",
+          "is_cluster": false,
+          "width": 143.38,
+          "x": 203.595,
+          "y": 91.5
+        }
+      ]
     }
   }
 }

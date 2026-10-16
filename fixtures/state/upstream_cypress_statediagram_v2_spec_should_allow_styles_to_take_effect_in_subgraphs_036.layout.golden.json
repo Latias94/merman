@@ -2,62 +2,62 @@
   "diagramType": "stateDiagram",
   "layout": {
     "StateDiagramV2": {
-      "nodes": [
+      "bounds": {
+        "max_x": 372.0,
+        "max_y": 142.0,
+        "min_x": 12.0,
+        "min_y": 12.0
+      },
+      "clusters": [
         {
-          "id": "C",
-          "x": 104.0,
-          "y": 89.0,
-          "width": 136.0,
-          "height": 58.0,
-          "is_cluster": false
-        },
-        {
-          "id": "D",
-          "x": 304.0,
-          "y": 77.0,
-          "width": 136.0,
-          "height": 58.0,
-          "is_cluster": false
-        },
-        {
-          "id": "roundWithTitle",
-          "x": 104.0,
-          "y": 77.0,
-          "width": 184.0,
+          "diff": 0.0,
+          "effective_dir": "TB",
           "height": 130.0,
-          "is_cluster": true
+          "id": "roundWithTitle",
+          "offset_y": 0.0,
+          "padding": 8.0,
+          "requested_dir": "TB",
+          "title": "roundWithTitle",
+          "title_label": {
+            "height": 21.0,
+            "width": 86.24,
+            "x": 104.0,
+            "y": 22.5
+          },
+          "title_margin_bottom": 0.0,
+          "title_margin_top": 0.0,
+          "width": 184.0,
+          "x": 104.0,
+          "y": 77.0
         }
       ],
       "edges": [],
-      "clusters": [
+      "nodes": [
         {
-          "id": "roundWithTitle",
+          "height": 58.0,
+          "id": "C",
+          "is_cluster": false,
+          "width": 136.0,
           "x": 104.0,
-          "y": 77.0,
-          "width": 184.0,
+          "y": 89.0
+        },
+        {
+          "height": 58.0,
+          "id": "D",
+          "is_cluster": false,
+          "width": 136.0,
+          "x": 304.0,
+          "y": 77.0
+        },
+        {
           "height": 130.0,
-          "diff": 0.0,
-          "offset_y": 0.0,
-          "title": "roundWithTitle",
-          "title_label": {
-            "x": 104.0,
-            "y": 22.5,
-            "width": 86.24,
-            "height": 21.0
-          },
-          "requested_dir": "TB",
-          "effective_dir": "TB",
-          "padding": 8.0,
-          "title_margin_top": 0.0,
-          "title_margin_bottom": 0.0
+          "id": "roundWithTitle",
+          "is_cluster": true,
+          "width": 184.0,
+          "x": 104.0,
+          "y": 77.0
         }
-      ],
-      "bounds": {
-        "min_x": 12.0,
-        "min_y": 12.0,
-        "max_x": 372.0,
-        "max_y": 142.0
-      }
+      ]
     }
   }
 }

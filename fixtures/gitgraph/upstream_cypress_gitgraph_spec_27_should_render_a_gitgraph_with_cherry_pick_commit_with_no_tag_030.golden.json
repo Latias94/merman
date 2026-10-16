@@ -1,96 +1,8 @@
 {
   "diagramType": "gitGraph",
   "model": {
-    "type": "gitGraph",
-    "commits": [
-      {
-        "id": "ZERO",
-        "message": "",
-        "seq": 0,
-        "type": 0,
-        "tags": [],
-        "parents": [],
-        "branch": "main"
-      },
-      {
-        "id": "A",
-        "message": "",
-        "seq": 1,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "ZERO"
-        ],
-        "branch": "develop"
-      },
-      {
-        "id": "ONE",
-        "message": "",
-        "seq": 2,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "ZERO"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "B",
-        "message": "",
-        "seq": 3,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "A"
-        ],
-        "branch": "develop"
-      },
-      {
-        "id": "TWO",
-        "message": "",
-        "seq": 4,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "ONE"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "5-<dynamic>",
-        "message": "cherry-picked  into main",
-        "seq": 5,
-        "type": 4,
-        "tags": [],
-        "parents": [
-          "TWO",
-          "A"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "THREE",
-        "message": "",
-        "seq": 6,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "5-<dynamic>"
-        ],
-        "branch": "main"
-      },
-      {
-        "id": "C",
-        "message": "",
-        "seq": 7,
-        "type": 0,
-        "tags": [],
-        "parents": [
-          "B"
-        ],
-        "branch": "develop"
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
     "branches": [
       {
         "name": "main"
@@ -99,10 +11,98 @@
         "name": "develop"
       }
     ],
+    "commits": [
+      {
+        "branch": "main",
+        "id": "ZERO",
+        "message": "",
+        "parents": [],
+        "seq": 0,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "develop",
+        "id": "A",
+        "message": "",
+        "parents": [
+          "ZERO"
+        ],
+        "seq": 1,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "ONE",
+        "message": "",
+        "parents": [
+          "ZERO"
+        ],
+        "seq": 2,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "develop",
+        "id": "B",
+        "message": "",
+        "parents": [
+          "A"
+        ],
+        "seq": 3,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "TWO",
+        "message": "",
+        "parents": [
+          "ONE"
+        ],
+        "seq": 4,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "main",
+        "id": "5-<dynamic>",
+        "message": "cherry-picked  into main",
+        "parents": [
+          "TWO",
+          "A"
+        ],
+        "seq": 5,
+        "tags": [],
+        "type": 4
+      },
+      {
+        "branch": "main",
+        "id": "THREE",
+        "message": "",
+        "parents": [
+          "5-<dynamic>"
+        ],
+        "seq": 6,
+        "tags": [],
+        "type": 0
+      },
+      {
+        "branch": "develop",
+        "id": "C",
+        "message": "",
+        "parents": [
+          "B"
+        ],
+        "seq": 7,
+        "tags": [],
+        "type": 0
+      }
+    ],
     "currentBranch": "develop",
     "direction": "TB",
-    "accTitle": null,
-    "accDescr": null,
+    "type": "gitGraph",
     "warningFacts": [],
     "warnings": []
   }

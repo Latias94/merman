@@ -1,489 +1,489 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "left_disk",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "junctionCenter",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "top_disk",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "junctionCenter",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "bottom_disk",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "junctionCenter",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "R",
+        "lhsGroup": null,
+        "lhsId": "junctionCenter",
+        "lhsInto": null,
+        "rhsDir": "L",
+        "rhsGroup": null,
+        "rhsId": "junctionRight",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "B",
+        "lhsGroup": null,
+        "lhsId": "top_gateway",
+        "lhsInto": null,
+        "rhsDir": "T",
+        "rhsGroup": null,
+        "rhsId": "junctionRight",
+        "rhsInto": null,
+        "title": null
+      },
+      {
+        "lhsDir": "T",
+        "lhsGroup": null,
+        "lhsId": "bottom_gateway",
+        "lhsInto": null,
+        "rhsDir": "B",
+        "rhsGroup": null,
+        "rhsId": "junctionRight",
+        "rhsInto": null,
+        "title": null
+      }
+    ],
     "groups": [],
+    "junctions": [
+      {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "left_disk",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "top_disk",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "T",
+            "lhsGroup": null,
+            "lhsId": "bottom_disk",
+            "lhsInto": null,
+            "rhsDir": "B",
+            "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "junctionCenter",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "id": "junctionCenter",
+        "in": null,
+        "title": null,
+        "type": "junction"
+      },
+      {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "junctionCenter",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "top_gateway",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "T",
+            "lhsGroup": null,
+            "lhsId": "bottom_gateway",
+            "lhsInto": null,
+            "rhsDir": "B",
+            "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": null,
+        "iconText": null,
+        "id": "junctionRight",
+        "in": null,
+        "title": null,
+        "type": "junction"
+      }
+    ],
+    "layoutHints": [],
     "nodes": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "left_disk",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
         "id": "left_disk",
-        "type": "service",
+        "in": null,
+        "title": "Disk",
+        "type": "service"
+      },
+      {
         "edges": [
           {
-            "lhsId": "left_disk",
-            "lhsDir": "R",
-            "lhsInto": null,
+            "lhsDir": "B",
             "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "L",
-            "rhsInto": null,
+            "lhsId": "top_disk",
+            "lhsInto": null,
+            "rhsDir": "T",
             "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
-        "title": "Disk",
-        "in": null
-      },
-      {
         "id": "top_disk",
-        "type": "service",
+        "in": null,
+        "title": "Disk",
+        "type": "service"
+      },
+      {
         "edges": [
           {
-            "lhsId": "top_disk",
-            "lhsDir": "B",
-            "lhsInto": null,
+            "lhsDir": "T",
             "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "T",
-            "rhsInto": null,
+            "lhsId": "bottom_disk",
+            "lhsInto": null,
+            "rhsDir": "B",
             "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
-        "title": "Disk",
-        "in": null
-      },
-      {
         "id": "bottom_disk",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "bottom_disk",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "disk",
-        "iconText": null,
+        "in": null,
         "title": "Disk",
-        "in": null
+        "type": "service"
       },
       {
+        "edges": [
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "top_gateway",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
         "id": "top_gateway",
-        "type": "service",
+        "in": null,
+        "title": "Gateway",
+        "type": "service"
+      },
+      {
         "edges": [
           {
-            "lhsId": "top_gateway",
-            "lhsDir": "B",
-            "lhsInto": null,
+            "lhsDir": "T",
             "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "T",
-            "rhsInto": null,
+            "lhsId": "bottom_gateway",
+            "lhsInto": null,
+            "rhsDir": "B",
             "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "internet",
         "iconText": null,
-        "title": "Gateway",
-        "in": null
-      },
-      {
         "id": "bottom_gateway",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "bottom_gateway",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "internet",
-        "iconText": null,
+        "in": null,
         "title": "Gateway",
-        "in": null
+        "type": "service"
       },
       {
-        "id": "junctionCenter",
-        "type": "junction",
         "edges": [
           {
+            "lhsDir": "R",
+            "lhsGroup": null,
             "lhsId": "left_disk",
-            "lhsDir": "R",
             "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionCenter",
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "top_disk",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "junctionCenter",
+            "lhsId": "top_disk",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "bottom_disk",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
             "rhsId": "junctionCenter",
-            "rhsDir": "B",
             "rhsInto": null,
-            "rhsGroup": null,
             "title": null
           },
           {
-            "lhsId": "junctionCenter",
-            "lhsDir": "R",
-            "lhsInto": null,
+            "lhsDir": "T",
             "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "L",
-            "rhsInto": null,
+            "lhsId": "bottom_disk",
+            "lhsInto": null,
+            "rhsDir": "B",
             "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
+            "title": null
+          },
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "junctionCenter",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": null,
         "iconText": null,
+        "id": "junctionCenter",
+        "in": null,
         "title": null,
-        "in": null
+        "type": "junction"
       },
       {
-        "id": "junctionRight",
-        "type": "junction",
         "edges": [
           {
-            "lhsId": "junctionCenter",
             "lhsDir": "R",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "junctionRight",
+            "lhsId": "junctionCenter",
+            "lhsInto": null,
             "rhsDir": "L",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "top_gateway",
             "lhsDir": "B",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "junctionRight",
+            "lhsId": "top_gateway",
+            "lhsInto": null,
             "rhsDir": "T",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
             "title": null
           },
           {
-            "lhsId": "bottom_gateway",
             "lhsDir": "T",
-            "lhsInto": null,
             "lhsGroup": null,
-            "rhsId": "junctionRight",
+            "lhsId": "bottom_gateway",
+            "lhsInto": null,
             "rhsDir": "B",
-            "rhsInto": null,
             "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": null,
         "iconText": null,
+        "id": "junctionRight",
+        "in": null,
         "title": null,
-        "in": null
+        "type": "junction"
       }
     ],
     "services": [
       {
+        "edges": [
+          {
+            "lhsDir": "R",
+            "lhsGroup": null,
+            "lhsId": "left_disk",
+            "lhsInto": null,
+            "rhsDir": "L",
+            "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": "disk",
+        "iconText": null,
         "id": "left_disk",
-        "type": "service",
+        "in": null,
+        "title": "Disk",
+        "type": "service"
+      },
+      {
         "edges": [
           {
-            "lhsId": "left_disk",
-            "lhsDir": "R",
-            "lhsInto": null,
+            "lhsDir": "B",
             "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "L",
-            "rhsInto": null,
+            "lhsId": "top_disk",
+            "lhsInto": null,
+            "rhsDir": "T",
             "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
-        "title": "Disk",
-        "in": null
-      },
-      {
         "id": "top_disk",
-        "type": "service",
+        "in": null,
+        "title": "Disk",
+        "type": "service"
+      },
+      {
         "edges": [
           {
-            "lhsId": "top_disk",
-            "lhsDir": "B",
-            "lhsInto": null,
+            "lhsDir": "T",
             "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "T",
-            "rhsInto": null,
+            "lhsId": "bottom_disk",
+            "lhsInto": null,
+            "rhsDir": "B",
             "rhsGroup": null,
+            "rhsId": "junctionCenter",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "disk",
         "iconText": null,
-        "title": "Disk",
-        "in": null
-      },
-      {
         "id": "bottom_disk",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "bottom_disk",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "disk",
-        "iconText": null,
+        "in": null,
         "title": "Disk",
-        "in": null
+        "type": "service"
       },
       {
+        "edges": [
+          {
+            "lhsDir": "B",
+            "lhsGroup": null,
+            "lhsId": "top_gateway",
+            "lhsInto": null,
+            "rhsDir": "T",
+            "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
+            "title": null
+          }
+        ],
+        "icon": "internet",
+        "iconText": null,
         "id": "top_gateway",
-        "type": "service",
+        "in": null,
+        "title": "Gateway",
+        "type": "service"
+      },
+      {
         "edges": [
           {
-            "lhsId": "top_gateway",
-            "lhsDir": "B",
-            "lhsInto": null,
+            "lhsDir": "T",
             "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "T",
-            "rhsInto": null,
+            "lhsId": "bottom_gateway",
+            "lhsInto": null,
+            "rhsDir": "B",
             "rhsGroup": null,
+            "rhsId": "junctionRight",
+            "rhsInto": null,
             "title": null
           }
         ],
         "icon": "internet",
         "iconText": null,
-        "title": "Gateway",
-        "in": null
-      },
-      {
         "id": "bottom_gateway",
-        "type": "service",
-        "edges": [
-          {
-            "lhsId": "bottom_gateway",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": "internet",
-        "iconText": null,
+        "in": null,
         "title": "Gateway",
-        "in": null
+        "type": "service"
       }
     ],
-    "junctions": [
-      {
-        "id": "junctionCenter",
-        "type": "junction",
-        "edges": [
-          {
-            "lhsId": "left_disk",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "L",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "top_disk",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "T",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "bottom_disk",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionCenter",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "junctionCenter",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "L",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": null,
-        "iconText": null,
-        "title": null,
-        "in": null
-      },
-      {
-        "id": "junctionRight",
-        "type": "junction",
-        "edges": [
-          {
-            "lhsId": "junctionCenter",
-            "lhsDir": "R",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "L",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "top_gateway",
-            "lhsDir": "B",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "T",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          },
-          {
-            "lhsId": "bottom_gateway",
-            "lhsDir": "T",
-            "lhsInto": null,
-            "lhsGroup": null,
-            "rhsId": "junctionRight",
-            "rhsDir": "B",
-            "rhsInto": null,
-            "rhsGroup": null,
-            "title": null
-          }
-        ],
-        "icon": null,
-        "iconText": null,
-        "title": null,
-        "in": null
-      }
-    ],
-    "edges": [
-      {
-        "lhsId": "left_disk",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "junctionCenter",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "top_disk",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "junctionCenter",
-        "rhsDir": "T",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "bottom_disk",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "junctionCenter",
-        "rhsDir": "B",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "junctionCenter",
-        "lhsDir": "R",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "junctionRight",
-        "rhsDir": "L",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "top_gateway",
-        "lhsDir": "B",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "junctionRight",
-        "rhsDir": "T",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      },
-      {
-        "lhsId": "bottom_gateway",
-        "lhsDir": "T",
-        "lhsInto": null,
-        "lhsGroup": null,
-        "rhsId": "junctionRight",
-        "rhsDir": "B",
-        "rhsInto": null,
-        "rhsGroup": null,
-        "title": null
-      }
-    ],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

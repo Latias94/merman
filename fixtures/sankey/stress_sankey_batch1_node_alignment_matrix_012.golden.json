@@ -1,22 +1,7 @@
 {
   "diagramType": "sankey",
   "model": {
-    "type": "sankey",
     "graph": {
-      "nodes": [
-        {
-          "id": "L1"
-        },
-        {
-          "id": "L2"
-        },
-        {
-          "id": "R2"
-        },
-        {
-          "id": "R3"
-        }
-      ],
       "links": [
         {
           "source": "L1",
@@ -38,7 +23,22 @@
           "target": "R3",
           "value": 8
         }
+      ],
+      "nodes": [
+        {
+          "id": "L1"
+        },
+        {
+          "id": "L2"
+        },
+        {
+          "id": "R2"
+        },
+        {
+          "id": "R3"
+        }
       ]
-    }
+    },
+    "type": "sankey"
   }
 }

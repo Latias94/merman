@@ -1,43 +1,46 @@
 {
   "diagramType": "classDiagram",
   "model": {
-    "type": "classDiagram",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classes": {
       "Animal": {
-        "id": "Animal",
-        "type": "",
-        "label": "Animal",
-        "text": "Animal",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Animal-0",
+        "haveCallback": false,
+        "id": "Animal",
+        "label": "Animal",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
         "styles": [
           "fill:#f9f",
           "stroke:#333",
           "stroke-width:4px"
         ],
-        "domId": "classId-Animal-0",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "text": "Animal",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       },
       "Mineral": {
-        "id": "Mineral",
-        "type": "",
-        "label": "Mineral",
-        "text": "Mineral",
-        "cssClasses": "default",
-        "methods": [],
-        "members": [],
         "annotations": [],
+        "callback": null,
+        "callbackEffective": false,
+        "cssClasses": "default",
+        "domId": "classId-Mineral-1",
+        "haveCallback": false,
+        "id": "Mineral",
+        "label": "Mineral",
+        "link": null,
+        "linkTarget": null,
+        "members": [],
+        "methods": [],
+        "parent": null,
         "styles": [
           "fill:#bbf",
           "stroke:#f66",
@@ -45,34 +48,31 @@
           "color:#fff",
           "stroke-dasharray: 5 5"
         ],
-        "domId": "classId-Mineral-1",
-        "parent": null,
-        "link": null,
-        "linkTarget": null,
+        "text": "Mineral",
         "tooltip": null,
-        "haveCallback": false,
-        "callback": null,
-        "callbackEffective": false
+        "type": ""
       }
     },
-    "relations": [],
-    "notes": [],
-    "interfaces": [],
-    "namespaces": {},
     "constants": {
       "lineType": {
-        "line": 0,
-        "dottedLine": 1
+        "dottedLine": 1,
+        "line": 0
       },
       "relationType": {
-        "none": -1,
         "aggregation": 0,
-        "extension": 1,
         "composition": 2,
         "dependency": 3,
-        "lollipop": 4
+        "extension": 1,
+        "lollipop": 4,
+        "none": -1
       }
     },
-    "styleClasses": {}
+    "direction": "TB",
+    "interfaces": [],
+    "namespaces": {},
+    "notes": [],
+    "relations": [],
+    "styleClasses": {},
+    "type": "classDiagram"
   }
 }

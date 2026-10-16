@@ -1,258 +1,195 @@
 {
   "diagramType": "stateDiagram",
   "model": {
-    "type": "stateDiagram",
-    "nodes": [
-      {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "A",
-        "cssClasses": "statediagram-state statediagram-cluster",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "A",
-        "dir": "BT",
-        "domId": "state-A-2",
-        "type": "group",
-        "isGroup": true,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 0,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "a",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "a",
-        "dir": null,
-        "domId": "state-a-0",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": "A",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "b",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "b",
-        "dir": null,
-        "domId": "state-b-0",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": "A",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "roundedWithTitle",
-        "label": "C",
-        "cssClasses": "statediagram-state statediagram-cluster",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "C",
-        "dir": "RL",
-        "domId": "state-C-2",
-        "type": "group",
-        "isGroup": true,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": null,
-        "colorIndex": 1,
-        "wrappingWidth": 120,
-        "minWidth": null,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "c",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "c",
-        "dir": null,
-        "domId": "state-c-1",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": "C",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      },
-      {
-        "labelStyle": "",
-        "shape": "rect",
-        "label": "d",
-        "cssClasses": "statediagram-state",
-        "cssCompiledStyles": [],
-        "cssStyles": [],
-        "id": "d",
-        "dir": null,
-        "domId": "state-d-1",
-        "type": null,
-        "isGroup": false,
-        "padding": 8,
-        "rx": 10,
-        "ry": 10,
-        "look": "neo",
-        "parentId": "C",
-        "colorIndex": null,
-        "wrappingWidth": 120,
-        "minWidth": 120,
-        "centerLabel": true
-      }
-    ],
+    "accDescr": null,
+    "accTitle": null,
+    "direction": "LR",
     "edges": [
       {
-        "id": "edge0",
-        "start": "a",
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
         "end": "b",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
+        "id": "edge0",
         "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "a",
+        "style": "fill:none",
+        "thickness": "normal"
       },
       {
-        "id": "edge1",
-        "start": "c",
+        "arrowTypeEnd": "arrow_barb_neo",
+        "arrowhead": "normal",
+        "arrowheadStyle": "fill: #333",
+        "classes": "transition",
         "end": "d",
-        "arrowhead": "normal",
-        "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
+        "id": "edge1",
         "label": "",
-        "classes": "transition",
-        "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "c",
+        "style": "fill:none",
+        "thickness": "normal"
       },
       {
-        "id": "edge2",
-        "start": "A",
-        "end": "C",
-        "arrowhead": "normal",
         "arrowTypeEnd": "arrow_barb_neo",
-        "style": "fill:none",
-        "labelStyle": "",
-        "label": "",
-        "classes": "transition",
+        "arrowhead": "normal",
         "arrowheadStyle": "fill: #333",
-        "labelpos": "c",
+        "classes": "transition",
+        "end": "C",
+        "id": "edge2",
+        "label": "",
+        "labelStyle": "",
         "labelType": "text",
-        "thickness": "normal",
-        "look": "neo"
+        "labelpos": "c",
+        "look": "neo",
+        "start": "A",
+        "style": "fill:none",
+        "thickness": "normal"
+      }
+    ],
+    "links": {},
+    "nodes": [
+      {
+        "centerLabel": true,
+        "colorIndex": 0,
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "BT",
+        "domId": "state-A-2",
+        "id": "A",
+        "isGroup": true,
+        "label": "A",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-a-0",
+        "id": "a",
+        "isGroup": false,
+        "label": "a",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": "A",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-b-0",
+        "id": "b",
+        "isGroup": false,
+        "label": "b",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": "A",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": 1,
+        "cssClasses": "statediagram-state statediagram-cluster",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": "RL",
+        "domId": "state-C-2",
+        "id": "C",
+        "isGroup": true,
+        "label": "C",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": null,
+        "padding": 8,
+        "parentId": null,
+        "rx": 10,
+        "ry": 10,
+        "shape": "roundedWithTitle",
+        "type": "group",
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-c-1",
+        "id": "c",
+        "isGroup": false,
+        "label": "c",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": "C",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
+      },
+      {
+        "centerLabel": true,
+        "colorIndex": null,
+        "cssClasses": "statediagram-state",
+        "cssCompiledStyles": [],
+        "cssStyles": [],
+        "dir": null,
+        "domId": "state-d-1",
+        "id": "d",
+        "isGroup": false,
+        "label": "d",
+        "labelStyle": "",
+        "look": "neo",
+        "minWidth": 120,
+        "padding": 8,
+        "parentId": "C",
+        "rx": 10,
+        "ry": 10,
+        "shape": "rect",
+        "type": null,
+        "wrappingWidth": 120
       }
     ],
     "other": {},
-    "links": {},
-    "direction": "LR",
-    "accTitle": null,
-    "accDescr": null,
-    "states": {
-      "A": {
-        "id": "A",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "dir",
-            "value": "BT"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "a",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "b",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      },
-      "C": {
-        "id": "C",
-        "type": "default",
-        "descriptions": [],
-        "doc": [
-          {
-            "stmt": "dir",
-            "value": "RL"
-          },
-          {
-            "stmt": "relation",
-            "state1": {
-              "id": "c",
-              "type": "default",
-              "classes": []
-            },
-            "state2": {
-              "id": "d",
-              "type": "default",
-              "classes": []
-            },
-            "description": null
-          }
-        ],
-        "note": null,
-        "classes": [],
-        "styles": [],
-        "textStyles": [],
-        "start": null
-      }
-    },
     "relations": [
       {
         "id1": "A",
@@ -260,6 +197,69 @@
         "relationTitle": null
       }
     ],
-    "styleClasses": {}
+    "states": {
+      "A": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "dir",
+            "value": "BT"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "a",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "b",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "A",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      },
+      "C": {
+        "classes": [],
+        "descriptions": [],
+        "doc": [
+          {
+            "stmt": "dir",
+            "value": "RL"
+          },
+          {
+            "description": null,
+            "state1": {
+              "classes": [],
+              "id": "c",
+              "type": "default"
+            },
+            "state2": {
+              "classes": [],
+              "id": "d",
+              "type": "default"
+            },
+            "stmt": "relation"
+          }
+        ],
+        "id": "C",
+        "note": null,
+        "start": null,
+        "styles": [],
+        "textStyles": [],
+        "type": "default"
+      }
+    },
+    "styleClasses": {},
+    "type": "stateDiagram"
   }
 }

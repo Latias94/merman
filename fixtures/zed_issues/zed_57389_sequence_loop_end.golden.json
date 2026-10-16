@@ -1,80 +1,80 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "foo",
       "bar"
     ],
     "actors": {
-      "foo": {
-        "name": "foo",
-        "description": "foo",
-        "wrap": false,
-        "type": "participant",
-        "links": {},
-        "properties": {}
-      },
       "bar": {
-        "name": "bar",
         "description": "bar",
-        "wrap": false,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "bar",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
+      },
+      "foo": {
+        "description": "foo",
+        "links": {},
+        "name": "foo",
+        "properties": {},
+        "type": "participant",
+        "wrap": false
       }
     },
-    "messages": [
-      {
-        "id": "0",
-        "from": null,
-        "to": null,
-        "message": "for each iteration",
-        "wrap": false,
-        "type": 10,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "foo",
-        "to": "bar",
-        "message": "so something",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "2",
-        "from": null,
-        "to": null,
-        "message": "",
-        "wrap": false,
-        "type": 11,
-        "activate": false
-      },
-      {
-        "id": "3",
-        "from": "bar",
-        "to": "foo",
-        "message": "Post loop",
-        "wrap": false,
-        "type": 0,
-        "activate": false
-      }
-    ],
-    "notes": [],
     "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
     "constants": {
       "placement": {
         "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
+        "over": 2,
+        "rightOf": 1
       }
-    }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
+    "messages": [
+      {
+        "activate": false,
+        "from": null,
+        "id": "0",
+        "message": "for each iteration",
+        "to": null,
+        "type": 10,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "foo",
+        "id": "1",
+        "message": "so something",
+        "to": "bar",
+        "type": 0,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": null,
+        "id": "2",
+        "message": "",
+        "to": null,
+        "type": 11,
+        "wrap": false
+      },
+      {
+        "activate": false,
+        "from": "bar",
+        "id": "3",
+        "message": "Post loop",
+        "to": "foo",
+        "type": 0,
+        "wrap": false
+      }
+    ],
+    "notes": [],
+    "title": null,
+    "type": "sequence"
   }
 }

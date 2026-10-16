@@ -1,54 +1,54 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "graph",
-    "direction": "TB",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "TB",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
-    "vertexCalls": [
-      "1"
-    ],
+    "edges": [],
+    "keyword": "graph",
     "nodes": [
       {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
         "id": "1",
+        "img": null,
         "label": "1",
         "labelType": "text",
-        "shape": null,
         "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
         "link": null,
         "linkTarget": null,
-        "haveCallback": false
+        "pos": null,
+        "shape": null,
+        "styles": []
       }
     ],
-    "edges": [],
     "subgraphs": [
       {
+        "classes": [],
+        "dir": null,
         "id": "hello",
+        "labelType": "text",
         "nodes": [
           "1"
         ],
-        "title": "hello",
-        "classes": [],
         "styles": [],
-        "dir": null,
-        "labelType": "text"
+        "title": "hello"
       }
+    ],
+    "tooltips": {},
+    "type": "flowchart-v2",
+    "vertexCalls": [
+      "1"
     ]
   }
 }

@@ -1,79 +1,79 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "Alice",
       "Bob"
     ],
     "actors": {
       "Alice": {
-        "name": "Alice",
         "description": "Alice",
-        "wrap": true,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Alice",
+        "properties": {},
+        "type": "participant",
+        "wrap": true
       },
       "Bob": {
-        "name": "Bob",
         "description": "Bob",
-        "wrap": true,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "Bob",
+        "properties": {},
+        "type": "participant",
+        "wrap": true
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
-        "id": "0",
-        "from": "Alice",
-        "to": "Bob",
-        "message": "Hello Bob, how are you? If you are not available right now, I can leave you a message. Please get back to me as soon as you can!",
-        "wrap": true,
-        "type": 0,
-        "activate": false
-      },
-      {
-        "id": "1",
-        "from": "Alice",
-        "to": "Alice",
-        "message": "Bob thinks",
-        "wrap": true,
-        "type": 2,
         "activate": false,
-        "placement": 0
+        "from": "Alice",
+        "id": "0",
+        "message": "Hello Bob, how are you? If you are not available right now, I can leave you a message. Please get back to me as soon as you can!",
+        "to": "Bob",
+        "type": 0,
+        "wrap": true
       },
       {
-        "id": "2",
-        "from": "Bob",
+        "activate": false,
+        "from": "Alice",
+        "id": "1",
+        "message": "Bob thinks",
+        "placement": 0,
         "to": "Alice",
+        "type": 2,
+        "wrap": true
+      },
+      {
+        "activate": false,
+        "from": "Bob",
+        "id": "2",
         "message": "Fine!",
-        "wrap": true,
+        "to": "Alice",
         "type": 0,
-        "activate": false
+        "wrap": true
       }
     ],
     "notes": [
       {
         "actor": "Alice",
-        "placement": 0,
         "message": "Bob thinks",
+        "placement": 0,
         "wrap": true
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

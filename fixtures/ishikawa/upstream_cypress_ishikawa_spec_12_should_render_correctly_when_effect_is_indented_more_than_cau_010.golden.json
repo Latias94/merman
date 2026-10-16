@@ -1,70 +1,70 @@
 {
   "diagramType": "ishikawa",
   "model": {
-    "type": "ishikawa",
-    "title": "Problem",
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "text": "Problem",
-      "children": [
-        {
-          "text": "Cause A",
-          "children": [
-            {
-              "text": "Subcause A1",
-              "children": []
-            },
-            {
-              "text": "Subcause A2",
-              "children": []
-            }
-          ]
-        },
-        {
-          "text": "Cause B",
-          "children": [
-            {
-              "text": "Subcause B1",
-              "children": []
-            }
-          ]
-        },
-        {
-          "text": "Cause C",
-          "children": []
-        }
-      ]
-    },
+    "accTitle": null,
     "nodes": [
       {
-        "text": "Problem",
-        "depth": 0
+        "depth": 0,
+        "text": "Problem"
       },
       {
-        "text": "Cause A",
-        "depth": 1
+        "depth": 1,
+        "text": "Cause A"
       },
       {
-        "text": "Subcause A1",
-        "depth": 2
+        "depth": 2,
+        "text": "Subcause A1"
       },
       {
-        "text": "Subcause A2",
-        "depth": 2
+        "depth": 2,
+        "text": "Subcause A2"
       },
       {
-        "text": "Cause B",
-        "depth": 1
+        "depth": 1,
+        "text": "Cause B"
       },
       {
-        "text": "Subcause B1",
-        "depth": 2
+        "depth": 2,
+        "text": "Subcause B1"
       },
       {
-        "text": "Cause C",
-        "depth": 1
+        "depth": 1,
+        "text": "Cause C"
       }
-    ]
+    ],
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "text": "Subcause A1"
+            },
+            {
+              "children": [],
+              "text": "Subcause A2"
+            }
+          ],
+          "text": "Cause A"
+        },
+        {
+          "children": [
+            {
+              "children": [],
+              "text": "Subcause B1"
+            }
+          ],
+          "text": "Cause B"
+        },
+        {
+          "children": [],
+          "text": "Cause C"
+        }
+      ],
+      "text": "Problem"
+    },
+    "title": "Problem",
+    "type": "ishikawa"
   }
 }

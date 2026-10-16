@@ -2,212 +2,19 @@
   "diagramType": "swimlane",
   "layout": {
     "SwimlaneDiagram": {
+      "bounds": {
+        "max_x": 1143.898,
+        "max_y": 663.5,
+        "min_x": -99.0,
+        "min_y": -121.5
+      },
       "direction": "LR",
-      "nodes": [
-        {
-          "id": "A",
-          "label": "Incoming query",
-          "label_type": "text",
-          "shape": "roundedRect",
-          "parent_id": "StatusSeeker",
-          "top_lane_id": "StatusSeeker",
-          "x": 36.0,
-          "y": 0.0,
-          "width": 150.0,
-          "height": 51.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 0.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "A2",
-          "label": "Which team?",
-          "label_type": "text",
-          "shape": "diamond",
-          "parent_id": "StatusSeeker",
-          "top_lane_id": "StatusSeeker",
-          "x": 300.77,
-          "y": 0.0,
-          "width": 171.0,
-          "height": 171.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 1.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "E",
-          "label": "Can answer?",
-          "label_type": "text",
-          "shape": "diamond",
-          "parent_id": "subGraph1",
-          "top_lane_id": "subGraph1",
-          "x": 300.77,
-          "y": 271.0,
-          "width": 171.0,
-          "height": 171.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 1.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "F",
-          "label": "Answer",
-          "label_type": "text",
-          "shape": "roundedRect",
-          "parent_id": "subGraph1",
-          "top_lane_id": "subGraph1",
-          "x": 565.539,
-          "y": 271.0,
-          "width": 150.0,
-          "height": 51.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 2.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "G",
-          "label": "Investigate",
-          "label_type": "text",
-          "shape": "roundedRect",
-          "parent_id": "subGraph1",
-          "top_lane_id": "subGraph1",
-          "x": 812.219,
-          "y": 271.0,
-          "width": 150.0,
-          "height": 51.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 3.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "F2",
-          "label": "Answer",
-          "label_type": "text",
-          "shape": "roundedRect",
-          "parent_id": "subGraph1",
-          "top_lane_id": "subGraph1",
-          "x": 1058.898,
-          "y": 271.0,
-          "width": 150.0,
-          "height": 51.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 4.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "B",
-          "label": "Can answer?",
-          "label_type": "text",
-          "shape": "diamond",
-          "parent_id": "subGraph2",
-          "top_lane_id": "subGraph2",
-          "x": 300.77,
-          "y": 542.0,
-          "width": 171.0,
-          "height": 171.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 1.0,
-          "order": 0.0,
-          "is_edge_label": false
-        },
-        {
-          "id": "C",
-          "label": "Answer",
-          "label_type": "text",
-          "shape": "roundedRect",
-          "parent_id": "subGraph2",
-          "top_lane_id": "subGraph2",
-          "x": 565.539,
-          "y": 542.0,
-          "width": 150.0,
-          "height": 51.0,
-          "label_width": 120.0,
-          "label_height": 21.0,
-          "layer": 2.0,
-          "order": 0.0,
-          "is_edge_label": false
-        }
-      ],
-      "lanes": [
-        {
-          "id": "subGraph2",
-          "title": "Tech Lead",
-          "parent_id": null,
-          "x": 522.449,
-          "y": 535.0,
-          "width": 1242.898,
-          "height": 257.0,
-          "padding": 8.0,
-          "title_label_width": 57.547,
-          "title_label_height": 21.0,
-          "content_top": 456.5,
-          "title_rect": {
-            "left": -99.0,
-            "right": -63.0,
-            "top": 406.5,
-            "bottom": 663.5
-          },
-          "requested_dir": "LR"
-        },
-        {
-          "id": "subGraph1",
-          "title": "Head of Engineering",
-          "parent_id": null,
-          "x": 522.449,
-          "y": 271.0,
-          "width": 1242.898,
-          "height": 271.0,
-          "padding": 8.0,
-          "title_label_width": 112.141,
-          "title_label_height": 21.0,
-          "content_top": 185.5,
-          "title_rect": {
-            "left": -99.0,
-            "right": -63.0,
-            "top": 135.5,
-            "bottom": 406.5
-          },
-          "requested_dir": "LR"
-        },
-        {
-          "id": "StatusSeeker",
-          "title": "StatusSeeker",
-          "parent_id": null,
-          "x": 522.449,
-          "y": 7.0,
-          "width": 1242.898,
-          "height": 257.0,
-          "padding": 8.0,
-          "title_label_width": 78.688,
-          "title_label_height": 21.0,
-          "content_top": -85.5,
-          "title_rect": {
-            "left": -99.0,
-            "right": -63.0,
-            "top": -121.5,
-            "bottom": 135.5
-          },
-          "requested_dir": "LR"
-        }
-      ],
       "edges": [
         {
-          "id": "L_E_F_0",
+          "curve": "rounded",
           "from": "E",
-          "to": "F",
+          "id": "L_E_F_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 386.27,
@@ -218,14 +25,14 @@
               "y": 271.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "F"
         },
         {
-          "id": "L_E_G_0",
+          "curve": "rounded",
           "from": "E",
-          "to": "G",
+          "id": "L_E_G_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 215.27,
@@ -256,14 +63,14 @@
               "y": 245.5
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "G"
         },
         {
-          "id": "L_G_F2_0",
+          "curve": "rounded",
           "from": "G",
-          "to": "F2",
+          "id": "L_G_F2_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 887.219,
@@ -274,14 +81,14 @@
               "y": 271.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "F2"
         },
         {
-          "id": "L_B_C_0",
+          "curve": "rounded",
           "from": "B",
-          "to": "C",
+          "id": "L_B_C_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 386.27,
@@ -292,14 +99,14 @@
               "y": 542.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "C"
         },
         {
-          "id": "L_A_A2_0",
+          "curve": "rounded",
           "from": "A",
-          "to": "A2",
+          "id": "L_A_A2_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 111.0,
@@ -310,14 +117,14 @@
               "y": 0.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "A2"
         },
         {
-          "id": "L_A2_B_0",
+          "curve": "rounded",
           "from": "A2",
-          "to": "B",
+          "id": "L_A2_B_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 386.27,
@@ -344,14 +151,14 @@
               "y": 535.0
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "B"
         },
         {
-          "id": "L_A2_E_0",
+          "curve": "rounded",
           "from": "A2",
-          "to": "E",
+          "id": "L_A2_E_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 300.77,
@@ -362,14 +169,14 @@
               "y": 185.5
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "E"
         },
         {
-          "id": "L_B_E_0",
+          "curve": "rounded",
           "from": "B",
-          "to": "E",
+          "id": "L_B_E_0",
+          "label_node_id": null,
           "points": [
             {
               "x": 300.77,
@@ -380,17 +187,210 @@
               "y": 356.5
             }
           ],
-          "label_node_id": null,
           "reversed_for_layout": false,
-          "curve": "rounded"
+          "to": "E"
         }
       ],
-      "bounds": {
-        "min_x": -99.0,
-        "min_y": -121.5,
-        "max_x": 1143.898,
-        "max_y": 663.5
-      }
+      "lanes": [
+        {
+          "content_top": 456.5,
+          "height": 257.0,
+          "id": "subGraph2",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "Tech Lead",
+          "title_label_height": 21.0,
+          "title_label_width": 57.547,
+          "title_rect": {
+            "bottom": 663.5,
+            "left": -99.0,
+            "right": -63.0,
+            "top": 406.5
+          },
+          "width": 1242.898,
+          "x": 522.449,
+          "y": 535.0
+        },
+        {
+          "content_top": 185.5,
+          "height": 271.0,
+          "id": "subGraph1",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "Head of Engineering",
+          "title_label_height": 21.0,
+          "title_label_width": 112.141,
+          "title_rect": {
+            "bottom": 406.5,
+            "left": -99.0,
+            "right": -63.0,
+            "top": 135.5
+          },
+          "width": 1242.898,
+          "x": 522.449,
+          "y": 271.0
+        },
+        {
+          "content_top": -85.5,
+          "height": 257.0,
+          "id": "StatusSeeker",
+          "padding": 8.0,
+          "parent_id": null,
+          "requested_dir": "LR",
+          "title": "StatusSeeker",
+          "title_label_height": 21.0,
+          "title_label_width": 78.688,
+          "title_rect": {
+            "bottom": 135.5,
+            "left": -99.0,
+            "right": -63.0,
+            "top": -121.5
+          },
+          "width": 1242.898,
+          "x": 522.449,
+          "y": 7.0
+        }
+      ],
+      "nodes": [
+        {
+          "height": 51.0,
+          "id": "A",
+          "is_edge_label": false,
+          "label": "Incoming query",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 0.0,
+          "order": 0.0,
+          "parent_id": "StatusSeeker",
+          "shape": "roundedRect",
+          "top_lane_id": "StatusSeeker",
+          "width": 150.0,
+          "x": 36.0,
+          "y": 0.0
+        },
+        {
+          "height": 171.0,
+          "id": "A2",
+          "is_edge_label": false,
+          "label": "Which team?",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "StatusSeeker",
+          "shape": "diamond",
+          "top_lane_id": "StatusSeeker",
+          "width": 171.0,
+          "x": 300.77,
+          "y": 0.0
+        },
+        {
+          "height": 171.0,
+          "id": "E",
+          "is_edge_label": false,
+          "label": "Can answer?",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "subGraph1",
+          "shape": "diamond",
+          "top_lane_id": "subGraph1",
+          "width": 171.0,
+          "x": 300.77,
+          "y": 271.0
+        },
+        {
+          "height": 51.0,
+          "id": "F",
+          "is_edge_label": false,
+          "label": "Answer",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "parent_id": "subGraph1",
+          "shape": "roundedRect",
+          "top_lane_id": "subGraph1",
+          "width": 150.0,
+          "x": 565.539,
+          "y": 271.0
+        },
+        {
+          "height": 51.0,
+          "id": "G",
+          "is_edge_label": false,
+          "label": "Investigate",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 3.0,
+          "order": 0.0,
+          "parent_id": "subGraph1",
+          "shape": "roundedRect",
+          "top_lane_id": "subGraph1",
+          "width": 150.0,
+          "x": 812.219,
+          "y": 271.0
+        },
+        {
+          "height": 51.0,
+          "id": "F2",
+          "is_edge_label": false,
+          "label": "Answer",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 4.0,
+          "order": 0.0,
+          "parent_id": "subGraph1",
+          "shape": "roundedRect",
+          "top_lane_id": "subGraph1",
+          "width": 150.0,
+          "x": 1058.898,
+          "y": 271.0
+        },
+        {
+          "height": 171.0,
+          "id": "B",
+          "is_edge_label": false,
+          "label": "Can answer?",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 1.0,
+          "order": 0.0,
+          "parent_id": "subGraph2",
+          "shape": "diamond",
+          "top_lane_id": "subGraph2",
+          "width": 171.0,
+          "x": 300.77,
+          "y": 542.0
+        },
+        {
+          "height": 51.0,
+          "id": "C",
+          "is_edge_label": false,
+          "label": "Answer",
+          "label_height": 21.0,
+          "label_type": "text",
+          "label_width": 120.0,
+          "layer": 2.0,
+          "order": 0.0,
+          "parent_id": "subGraph2",
+          "shape": "roundedRect",
+          "top_lane_id": "subGraph2",
+          "width": 150.0,
+          "x": 565.539,
+          "y": 542.0
+        }
+      ]
     }
   }
 }

@@ -1,28 +1,28 @@
 {
   "diagramType": "cynefin",
   "model": {
-    "type": "cynefin",
-    "title": "Minimal Labels",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "domains": [
       {
-        "name": "complex",
         "items": [
           {
             "label": "Item A"
           }
-        ]
+        ],
+        "name": "complex"
       },
       {
-        "name": "clear",
         "items": [
           {
             "label": "Item B"
           }
-        ]
+        ],
+        "name": "clear"
       }
     ],
-    "transitions": []
+    "title": "Minimal Labels",
+    "transitions": [],
+    "type": "cynefin"
   }
 }

@@ -1,70 +1,78 @@
 {
   "diagramType": "sequence",
   "model": {
-    "type": "sequence",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "actorOrder": [
       "A",
       "B"
     ],
     "actors": {
       "A": {
-        "name": "A",
         "description": "Alice",
-        "wrap": true,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "A",
+        "properties": {},
+        "type": "participant",
+        "wrap": true
       },
       "B": {
-        "name": "B",
         "description": "Bob",
-        "wrap": true,
-        "type": "participant",
         "links": {},
-        "properties": {}
+        "name": "B",
+        "properties": {},
+        "type": "participant",
+        "wrap": true
       }
     },
+    "boxes": [],
+    "constants": {
+      "placement": {
+        "leftOf": 0,
+        "over": 2,
+        "rightOf": 1
+      }
+    },
+    "createdActors": {},
+    "destroyedActors": {},
     "messages": [
       {
+        "activate": false,
+        "from": "A",
         "id": "0",
-        "from": "A",
-        "to": "B",
         "message": "A long message that should wrap when the diagram uses the wrap directive and the label is wide enough",
-        "wrap": true,
+        "to": "B",
         "type": 0,
-        "activate": false
+        "wrap": true
       },
       {
+        "activate": false,
+        "from": "A",
         "id": "1",
-        "from": "A",
-        "to": "B",
         "message": "A long note that should also wrap and expand the root viewBox when needed<br/>second line",
-        "wrap": true,
+        "placement": 2,
+        "to": "B",
         "type": 2,
-        "activate": false,
-        "placement": 2
+        "wrap": true
       },
       {
-        "id": "2",
+        "activate": false,
         "from": "A",
-        "to": "B",
+        "id": "2",
         "message": "A long message that should NOT wrap even though the diagram default is wrap",
-        "wrap": false,
+        "to": "B",
         "type": 0,
-        "activate": false
+        "wrap": false
       },
       {
-        "id": "3",
-        "from": "B",
-        "to": "B",
-        "message": "A long note that should NOT wrap<br/>second line",
-        "wrap": false,
-        "type": 2,
         "activate": false,
-        "placement": 1
+        "from": "B",
+        "id": "3",
+        "message": "A long note that should NOT wrap<br/>second line",
+        "placement": 1,
+        "to": "B",
+        "type": 2,
+        "wrap": false
       }
     ],
     "notes": [
@@ -73,26 +81,18 @@
           "A",
           "B"
         ],
-        "placement": 2,
         "message": "A long note that should also wrap and expand the root viewBox when needed<br/>second line",
+        "placement": 2,
         "wrap": true
       },
       {
         "actor": "B",
-        "placement": 1,
         "message": "A long note that should NOT wrap<br/>second line",
+        "placement": 1,
         "wrap": false
       }
     ],
-    "boxes": [],
-    "createdActors": {},
-    "destroyedActors": {},
-    "constants": {
-      "placement": {
-        "leftOf": 0,
-        "rightOf": 1,
-        "over": 2
-      }
-    }
+    "title": null,
+    "type": "sequence"
   }
 }

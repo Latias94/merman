@@ -1,42 +1,42 @@
 {
   "diagramType": "architecture",
   "model": {
-    "type": "architecture",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "edges": [],
     "groups": [
       {
-        "id": "api",
         "icon": "cloud",
-        "title": "API",
-        "in": null
+        "id": "api",
+        "in": null,
+        "title": "API"
       }
     ],
+    "junctions": [],
+    "layoutHints": [],
     "nodes": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": "<img src=x onerror=\"xssAttack()\">",
+        "id": "db",
+        "in": "api",
         "title": "Database",
-        "in": "api"
+        "type": "service"
       }
     ],
     "services": [
       {
-        "id": "db",
-        "type": "service",
         "edges": [],
         "icon": null,
         "iconText": "<img src=x onerror=\"xssAttack()\">",
+        "id": "db",
+        "in": "api",
         "title": "Database",
-        "in": "api"
+        "type": "service"
       }
     ],
-    "junctions": [],
-    "edges": [],
-    "layoutHints": []
+    "title": null,
+    "type": "architecture"
   }
 }

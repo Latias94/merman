@@ -2,111 +2,27 @@
   "diagramType": "sequence",
   "layout": {
     "SequenceDiagram": {
-      "nodes": [
-        {
-          "id": "actor-top-web",
-          "x": 75.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-blog",
-          "x": 275.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-account",
-          "x": 475.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-mail",
-          "x": 675.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-top-db",
-          "x": 945.0,
-          "y": 37.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note-0",
-          "x": 510.0,
-          "y": 103.5,
-          "width": 920.0,
-          "height": 39.0,
-          "is_cluster": false
-        },
-        {
-          "id": "note-10",
-          "x": 510.0,
-          "y": 472.5,
-          "width": 920.0,
-          "height": 39.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-web",
-          "x": 75.0,
-          "y": 889.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-blog",
-          "x": 275.0,
-          "y": 889.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-account",
-          "x": 475.0,
-          "y": 889.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-mail",
-          "x": 675.0,
-          "y": 889.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        },
-        {
-          "id": "actor-bottom-db",
-          "x": 945.0,
-          "y": 889.0,
-          "width": 150.0,
-          "height": 74.0,
-          "is_cluster": false
-        }
-      ],
+      "bounds": {
+        "max_x": 1070.0,
+        "max_y": 937.0,
+        "min_x": -50.0,
+        "min_y": -10.0
+      },
+      "clusters": [],
       "edges": [
         {
-          "id": "msg-1",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "web",
-          "to": "account",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-1",
+          "label": {
+            "height": 17.6,
+            "width": 160.32,
+            "x": 270.0,
+            "y": 138.0
+          },
           "points": [
             {
               "x": 76.0,
@@ -117,26 +33,26 @@
               "y": 169.0
             }
           ],
-          "label": {
-            "x": 270.0,
-            "y": 138.0,
-            "width": 160.32,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "account",
+          "to_cluster": null
         },
         {
-          "id": "msg-3",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "account",
-          "to": "db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-3",
+          "label": {
+            "height": 17.6,
+            "width": 145.92,
+            "x": 709.0,
+            "y": 184.0
+          },
           "points": [
             {
               "x": 480.0,
@@ -147,26 +63,26 @@
               "y": 215.0
             }
           ],
-          "label": {
-            "x": 709.0,
-            "y": 184.0,
-            "width": 145.92,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "db",
+          "to_cluster": null
         },
         {
-          "id": "msg-4",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "db",
-          "to": "account",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-4",
+          "label": {
+            "height": 17.6,
+            "width": 172.64,
+            "x": 715.0,
+            "y": 230.0
+          },
           "points": [
             {
               "x": 944.0,
@@ -177,56 +93,56 @@
               "y": 261.0
             }
           ],
-          "label": {
-            "x": 715.0,
-            "y": 230.0,
-            "width": 172.64,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "account",
+          "to_cluster": null
         },
         {
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
+          "from": "account",
+          "from_cluster": null,
           "id": "msg-6",
-          "from": "account",
-          "to": "web",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 470.0,
-              "y": 352.0
-            },
-            {
-              "x": 82.0,
-              "y": 352.0
-            }
-          ],
           "label": {
-            "x": 276.0,
-            "y": 321.0,
+            "height": 17.6,
             "width": 117.44,
-            "height": 17.6
+            "x": 276.0,
+            "y": 321.0
           },
+          "points": [
+            {
+              "x": 470.0,
+              "y": 352.0
+            },
+            {
+              "x": 82.0,
+              "y": 352.0
+            }
+          ],
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "web",
+          "to_cluster": null
         },
         {
-          "id": "msg-8",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "account",
-          "to": "web",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-8",
+          "label": {
+            "height": 17.6,
+            "width": 143.2,
+            "x": 276.0,
+            "y": 412.0
+          },
           "points": [
             {
               "x": 470.0,
@@ -237,26 +153,26 @@
               "y": 443.0
             }
           ],
-          "label": {
-            "x": 276.0,
-            "y": 412.0,
-            "width": 143.2,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "web",
+          "to_cluster": null
         },
         {
-          "id": "msg-11",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "web",
-          "to": "blog",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-11",
+          "label": {
+            "height": 17.6,
+            "width": 111.52,
+            "x": 170.0,
+            "y": 507.0
+          },
           "points": [
             {
               "x": 76.0,
@@ -267,26 +183,26 @@
               "y": 538.0
             }
           ],
-          "label": {
-            "x": 170.0,
-            "y": 507.0,
-            "width": 111.52,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "blog",
+          "to_cluster": null
         },
         {
-          "id": "msg-13",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "blog",
-          "to": "db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-13",
+          "label": {
+            "height": 17.6,
+            "width": 102.72,
+            "x": 609.0,
+            "y": 553.0
+          },
           "points": [
             {
               "x": 280.0,
@@ -297,26 +213,26 @@
               "y": 584.0
             }
           ],
-          "label": {
-            "x": 609.0,
-            "y": 553.0,
-            "width": 102.72,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "db",
+          "to_cluster": null
         },
         {
-          "id": "msg-15",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "blog",
-          "to": "mail",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-15",
+          "label": {
+            "height": 17.6,
+            "width": 191.84,
+            "x": 474.0,
+            "y": 644.0
+          },
           "points": [
             {
               "x": 280.0,
@@ -327,26 +243,26 @@
               "y": 675.0
             }
           ],
-          "label": {
-            "x": 474.0,
-            "y": 644.0,
-            "width": 191.84,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "mail",
+          "to_cluster": null
         },
         {
-          "id": "msg-16",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "blog",
-          "to": "db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-16",
+          "label": {
+            "height": 17.6,
+            "width": 171.68,
+            "x": 609.0,
+            "y": 690.0
+          },
           "points": [
             {
               "x": 280.0,
@@ -357,26 +273,26 @@
               "y": 721.0
             }
           ],
-          "label": {
-            "x": 609.0,
-            "y": 690.0,
-            "width": 171.68,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "db",
+          "to_cluster": null
         },
         {
-          "id": "msg-18",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "blog",
-          "to": "web",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "msg-18",
+          "label": {
+            "height": 17.6,
+            "width": 128.96,
+            "x": 176.0,
+            "y": 781.0
+          },
           "points": [
             {
               "x": 270.0,
@@ -387,101 +303,96 @@
               "y": 812.0
             }
           ],
-          "label": {
-            "x": 176.0,
-            "y": 781.0,
-            "width": 128.96,
-            "height": 17.6
-          },
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "web",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-web",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-web",
+          "from_cluster": null,
+          "id": "lifeline-web",
+          "label": null,
+          "points": [
+            {
+              "x": 75.0,
+              "y": 74.0
+            },
+            {
+              "x": 75.0,
+              "y": 852.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "actor-bottom-web",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 75.0,
-              "y": 74.0
-            },
-            {
-              "x": 75.0,
-              "y": 852.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "lifeline-blog",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-blog",
+          "from_cluster": null,
+          "id": "lifeline-blog",
+          "label": null,
+          "points": [
+            {
+              "x": 275.0,
+              "y": 74.0
+            },
+            {
+              "x": 275.0,
+              "y": 852.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "actor-bottom-blog",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 275.0,
-              "y": 74.0
-            },
-            {
-              "x": 275.0,
-              "y": 852.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "lifeline-account",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-account",
+          "from_cluster": null,
+          "id": "lifeline-account",
+          "label": null,
+          "points": [
+            {
+              "x": 475.0,
+              "y": 74.0
+            },
+            {
+              "x": 475.0,
+              "y": 852.0
+            }
+          ],
+          "start_label_left": null,
+          "start_label_right": null,
+          "start_marker": null,
+          "stroke_dasharray": null,
           "to": "actor-bottom-account",
-          "from_cluster": null,
-          "to_cluster": null,
-          "points": [
-            {
-              "x": 475.0,
-              "y": 74.0
-            },
-            {
-              "x": 475.0,
-              "y": 852.0
-            }
-          ],
-          "label": null,
-          "start_label_left": null,
-          "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
-          "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "to_cluster": null
         },
         {
-          "id": "lifeline-mail",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-mail",
-          "to": "actor-bottom-mail",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-mail",
+          "label": null,
           "points": [
             {
               "x": 675.0,
@@ -492,21 +403,21 @@
               "y": 852.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-mail",
+          "to_cluster": null
         },
         {
-          "id": "lifeline-db",
+          "end_label_left": null,
+          "end_label_right": null,
+          "end_marker": null,
           "from": "actor-top-db",
-          "to": "actor-bottom-db",
           "from_cluster": null,
-          "to_cluster": null,
+          "id": "lifeline-db",
+          "label": null,
           "points": [
             {
               "x": 945.0,
@@ -517,23 +428,112 @@
               "y": 852.0
             }
           ],
-          "label": null,
           "start_label_left": null,
           "start_label_right": null,
-          "end_label_left": null,
-          "end_label_right": null,
           "start_marker": null,
-          "end_marker": null,
-          "stroke_dasharray": null
+          "stroke_dasharray": null,
+          "to": "actor-bottom-db",
+          "to_cluster": null
         }
       ],
-      "clusters": [],
-      "bounds": {
-        "min_x": -50.0,
-        "min_y": -10.0,
-        "max_x": 1070.0,
-        "max_y": 937.0
-      }
+      "nodes": [
+        {
+          "height": 74.0,
+          "id": "actor-top-web",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-blog",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-account",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-mail",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 675.0,
+          "y": 37.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-top-db",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 945.0,
+          "y": 37.0
+        },
+        {
+          "height": 39.0,
+          "id": "note-0",
+          "is_cluster": false,
+          "width": 920.0,
+          "x": 510.0,
+          "y": 103.5
+        },
+        {
+          "height": 39.0,
+          "id": "note-10",
+          "is_cluster": false,
+          "width": 920.0,
+          "x": 510.0,
+          "y": 472.5
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-web",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 75.0,
+          "y": 889.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-blog",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 275.0,
+          "y": 889.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-account",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 475.0,
+          "y": 889.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-mail",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 675.0,
+          "y": 889.0
+        },
+        {
+          "height": 74.0,
+          "id": "actor-bottom-db",
+          "is_cluster": false,
+          "width": 150.0,
+          "x": 945.0,
+          "y": 889.0
+        }
+      ]
     }
   }
 }

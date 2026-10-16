@@ -1,11 +1,8 @@
 {
   "diagramType": "pie",
   "model": {
-    "type": "pie",
-    "showData": false,
-    "title": null,
-    "accTitle": "sample wow",
     "accDescr": null,
+    "accTitle": "sample wow",
     "sections": [
       {
         "label": "GitHub",
@@ -15,6 +12,9 @@
         "label": "GitLab",
         "value": 50.0
       }
-    ]
+    ],
+    "showData": false,
+    "title": null,
+    "type": "pie"
   }
 }

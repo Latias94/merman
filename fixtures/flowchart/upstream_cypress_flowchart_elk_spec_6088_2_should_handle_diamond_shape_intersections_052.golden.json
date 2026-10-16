@@ -1,17 +1,216 @@
 {
   "diagramType": "flowchart-v2",
   "model": {
-    "type": "flowchart-v2",
-    "keyword": "flowchart",
-    "direction": "LR",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
     "classDefs": {},
-    "tooltips": {},
+    "direction": "LR",
     "edgeDefaults": {
-      "style": [],
-      "interpolate": null
+      "interpolate": null,
+      "style": []
     },
+    "edges": [
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "D",
+        "id": "L_D_I_0",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "I",
+        "type": "arrow_point"
+      },
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "D",
+        "id": "L_D_I_2",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "I",
+        "type": "arrow_point"
+      },
+      {
+        "animate": null,
+        "animation": null,
+        "arrow": "-->",
+        "classes": [],
+        "from": "D",
+        "id": "L_D_I_3",
+        "interpolate": null,
+        "isUserDefinedId": false,
+        "label": null,
+        "labelType": "text",
+        "length": 1,
+        "stroke": "normal",
+        "style": [],
+        "to": "I",
+        "type": "arrow_point"
+      }
+    ],
+    "keyword": "flowchart",
+    "nodes": [
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "a",
+        "img": null,
+        "label": "a",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "D",
+        "img": null,
+        "label": "X",
+        "labelType": "string",
+        "layoutShape": "diamond",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "diamond",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "E",
+        "img": null,
+        "label": "Q",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "F",
+        "img": null,
+        "label": "Q",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "square",
+        "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "I",
+        "img": null,
+        "label": "X",
+        "labelType": "string",
+        "layoutShape": "diamond",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": "diamond",
+        "styles": []
+      }
+    ],
+    "subgraphs": [
+      {
+        "classes": [],
+        "dir": null,
+        "id": "s1",
+        "labelType": "string",
+        "nodes": [
+          "D",
+          "E"
+        ],
+        "styles": [],
+        "title": "APA"
+      },
+      {
+        "classes": [],
+        "dir": null,
+        "id": "s3",
+        "labelType": "string",
+        "nodes": [
+          "F",
+          "I"
+        ],
+        "styles": [],
+        "title": "BAPA"
+      },
+      {
+        "classes": [],
+        "dir": null,
+        "id": "s8",
+        "labelType": "string",
+        "nodes": [
+          "s1",
+          "s3"
+        ],
+        "styles": [],
+        "title": "APA"
+      },
+      {
+        "classes": [],
+        "dir": null,
+        "id": "s0",
+        "labelType": "string",
+        "nodes": [
+          "s8"
+        ],
+        "styles": [],
+        "title": "APA"
+      }
+    ],
+    "tooltips": {},
+    "type": "flowchart-v2",
     "vertexCalls": [
       "a",
       "D",
@@ -25,205 +224,6 @@
       "D",
       "I",
       "I"
-    ],
-    "nodes": [
-      {
-        "id": "a",
-        "label": "a",
-        "labelType": "text",
-        "shape": null,
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "D",
-        "label": "X",
-        "labelType": "string",
-        "shape": "diamond",
-        "layoutShape": "diamond",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "E",
-        "label": "Q",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "F",
-        "label": "Q",
-        "labelType": "text",
-        "shape": "square",
-        "layoutShape": "squareRect",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      },
-      {
-        "id": "I",
-        "label": "X",
-        "labelType": "string",
-        "shape": "diamond",
-        "layoutShape": "diamond",
-        "icon": null,
-        "form": null,
-        "pos": null,
-        "img": null,
-        "constraint": null,
-        "assetWidth": null,
-        "assetHeight": null,
-        "styles": [],
-        "classes": [],
-        "link": null,
-        "linkTarget": null,
-        "haveCallback": false
-      }
-    ],
-    "edges": [
-      {
-        "from": "D",
-        "to": "I",
-        "id": "L_D_I_0",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "D",
-        "to": "I",
-        "id": "L_D_I_2",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      },
-      {
-        "from": "D",
-        "to": "I",
-        "id": "L_D_I_3",
-        "isUserDefinedId": false,
-        "arrow": "-->",
-        "type": "arrow_point",
-        "stroke": "normal",
-        "length": 1,
-        "label": null,
-        "labelType": "text",
-        "style": [],
-        "classes": [],
-        "interpolate": null,
-        "animate": null,
-        "animation": null
-      }
-    ],
-    "subgraphs": [
-      {
-        "id": "s1",
-        "nodes": [
-          "D",
-          "E"
-        ],
-        "title": "APA",
-        "classes": [],
-        "styles": [],
-        "dir": null,
-        "labelType": "string"
-      },
-      {
-        "id": "s3",
-        "nodes": [
-          "F",
-          "I"
-        ],
-        "title": "BAPA",
-        "classes": [],
-        "styles": [],
-        "dir": null,
-        "labelType": "string"
-      },
-      {
-        "id": "s8",
-        "nodes": [
-          "s1",
-          "s3"
-        ],
-        "title": "APA",
-        "classes": [],
-        "styles": [],
-        "dir": null,
-        "labelType": "string"
-      },
-      {
-        "id": "s0",
-        "nodes": [
-          "s8"
-        ],
-        "title": "APA",
-        "classes": [],
-        "styles": [],
-        "dir": null,
-        "labelType": "string"
-      }
     ]
   }
 }

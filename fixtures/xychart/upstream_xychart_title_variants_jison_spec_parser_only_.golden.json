@@ -1,22 +1,22 @@
 {
   "diagramType": "xychart",
   "model": {
-    "orientation": "vertical",
-    "title": "oneLinertitle",
-    "accTitle": null,
     "accDescr": null,
+    "accTitle": null,
+    "orientation": "vertical",
+    "plots": [],
+    "title": "oneLinertitle",
+    "type": "xychart",
     "xAxis": {
-      "type": "band",
+      "categories": [],
       "title": "",
-      "categories": []
+      "type": "band"
     },
     "yAxis": {
-      "type": "linear",
-      "title": "",
+      "max": null,
       "min": null,
-      "max": null
-    },
-    "plots": [],
-    "type": "xychart"
+      "title": "",
+      "type": "linear"
+    }
   }
 }

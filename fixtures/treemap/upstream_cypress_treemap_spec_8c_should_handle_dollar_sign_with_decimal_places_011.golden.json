@@ -1,36 +1,9 @@
 {
   "diagramType": "treemap",
   "model": {
-    "type": "treemap",
-    "title": null,
-    "accTitle": null,
     "accDescr": null,
-    "root": {
-      "name": "",
-      "children": [
-        {
-          "name": "Product Prices",
-          "children": [
-            {
-              "name": "Basic",
-              "value": 19.99
-            },
-            {
-              "name": "Standard",
-              "value": 49.99
-            },
-            {
-              "name": "Premium",
-              "value": 99.99
-            },
-            {
-              "name": "Enterprise",
-              "value": 199.99
-            }
-          ]
-        }
-      ]
-    },
+    "accTitle": null,
+    "classes": {},
     "nodes": [
       {
         "level": 0,
@@ -57,6 +30,33 @@
         "value": 199.99
       }
     ],
-    "classes": {}
+    "root": {
+      "children": [
+        {
+          "children": [
+            {
+              "name": "Basic",
+              "value": 19.99
+            },
+            {
+              "name": "Standard",
+              "value": 49.99
+            },
+            {
+              "name": "Premium",
+              "value": 99.99
+            },
+            {
+              "name": "Enterprise",
+              "value": 199.99
+            }
+          ],
+          "name": "Product Prices"
+        }
+      ],
+      "name": ""
+    },
+    "title": null,
+    "type": "treemap"
   }
 }

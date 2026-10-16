@@ -1,101 +1,101 @@
 {
   "diagramType": "kanban",
   "model": {
-    "type": "kanban",
-    "sections": [
-      {
-        "id": "build",
-        "label": "Build",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false,
-        "icon": "bomb",
-        "cssClasses": "m-4 p-8"
-      },
-      {
-        "id": "ship",
-        "label": "Ship",
-        "level": 2,
-        "width": 200,
-        "padding": 20,
-        "isGroup": false,
-        "icon": "rocket",
-        "cssClasses": "p-2"
-      }
-    ],
+    "edges": [],
     "nodes": [
       {
         "id": "build",
-        "label": "Build",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Build",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "t1",
-        "parentId": "build",
-        "label": "Compile",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
+        "cssStyles": [
+          "text-align: left"
+        ],
         "icon": "star",
-        "shape": "kanbanItem",
+        "id": "t1",
+        "isGroup": false,
+        "label": "Compile",
         "level": 4,
+        "parentId": "build",
+        "priority": null,
         "rx": 5,
         "ry": 5,
-        "cssStyles": [
-          "text-align: left"
-        ]
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
-        "id": "t2",
-        "parentId": "build",
-        "label": "Test",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t2",
+        "isGroup": false,
+        "label": "Test",
+        "level": 4,
+        "parentId": "build",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       },
       {
         "id": "ship",
-        "label": "Ship",
         "isGroup": true,
-        "ticket": null,
-        "shape": "kanbanSection",
+        "label": "Ship",
         "level": 2,
-        "look": "classic"
+        "look": "classic",
+        "shape": "kanbanSection",
+        "ticket": null
       },
       {
-        "id": "t3",
-        "parentId": "ship",
-        "label": "Release",
-        "isGroup": false,
-        "ticket": null,
-        "priority": null,
         "assigned": null,
-        "icon": null,
-        "shape": "kanbanItem",
-        "level": 4,
-        "rx": 5,
-        "ry": 5,
         "cssStyles": [
           "text-align: left"
-        ]
+        ],
+        "icon": null,
+        "id": "t3",
+        "isGroup": false,
+        "label": "Release",
+        "level": 4,
+        "parentId": "ship",
+        "priority": null,
+        "rx": 5,
+        "ry": 5,
+        "shape": "kanbanItem",
+        "ticket": null
       }
     ],
-    "edges": [],
-    "other": {}
+    "other": {},
+    "sections": [
+      {
+        "cssClasses": "m-4 p-8",
+        "icon": "bomb",
+        "id": "build",
+        "isGroup": false,
+        "label": "Build",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      },
+      {
+        "cssClasses": "p-2",
+        "icon": "rocket",
+        "id": "ship",
+        "isGroup": false,
+        "label": "Ship",
+        "level": 2,
+        "padding": 20,
+        "width": 200
+      }
+    ],
+    "type": "kanban"
   }
 }
