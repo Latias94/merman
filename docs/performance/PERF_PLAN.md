@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 16 borrowed compatibility queries](native_theme_evidence_queries_windows_2026-10-16.md)
+remove complete evidence snapshots from admission equality and residual counting. Same-binary
+controls fall from two default allocations (32 bytes), or 772 allocations (45,088 bytes) at 128 frozen
+fields, to zero while preserving exact query results. All 152 SVG identities and 5,163 core/renderer
+tests pass. The native benchmark grows 171,008 bytes (0.42%). A complete 42-observation diagnostic has
+mixed small movements and establishes neither latency improvement nor non-regression; retain only
+the resource-work/ownership claim and continue attributing mandatory standalone finalization.
+
 The [October 16 Class edge ownership refactor](native_class_edge_ownership_windows_2026-10-16.md)
 shares one ordered borrowed edge sequence across path/label emission. Class medium removes 29
 allocations and 1,028 allocated bytes; the zero-edge tiny control is unchanged. All 152 SVG rows
