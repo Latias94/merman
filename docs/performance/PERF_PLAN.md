@@ -17,6 +17,21 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 18 Zenuml source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
+resolves the actual `themeVariables.zenuml` object once for both typography and source colors.
+Missing/non-object namespaces return the same defaults, replacing 36 full role-path requests with
+one namespace lookup; explicit empty strings, non-string fallback and raw activation-background
+priorities remain. The unused stored `surfaceColor` entry is removed while retaining it as a fallback input.
+All 86 public SVG/report/custom-measurer controls and 152 benchmark SVG identities match. Six
+configured inputs reduce allocation, 80 are unchanged; default allocations remain 471, and peak/
+retained bytes never increase. Native 8,252 tests, Clippy, theme qualification, optimized full WASM,
+37-diagram smoke and all-family DOM pass. Fixed adjacent diagnostics observe Zenuml preparation
+4.6143 → 3.8969 us (-15.55%) and public E2E 24.7250 → 24.1535 us (-2.31%), with Packet/Timeline
+E2E -0.38%/-0.64%. These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is
+20.155 → 24.220 us (+20.17%), without an all-family or theme-only cause. Root viewport retention
+and the extra intermediate facade Engine clone remain separate candidates; select the next work
+from fresh remaining-owner evidence. Previous XML A/A remains inconclusive and is not retried.
+
 The [October 17 XML legal-whitespace checkpoint](xml_legal_whitespace_macos_2026-10-17.md)
 lets exact XML-legal TAB/LF/CR use the existing bulk classifier instead of forcing complete chunks
 through scalar state processing. Actual Zenuml CSS scalar bytes fall from 2,818 to zero; 507 paired
@@ -28,9 +43,9 @@ observe Zenuml emission/E2E -25.09%/-9.66%, with Packet/Kanban/Timeline E2E +3.2
 These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is 19.977 → 24.973 us
 (+25.01%), without theme-only attribution. Native, Clippy, private theme, optimized full WASM,
 37-diagram smoke and all-family DOM pass. Preparation samples put 19.66% under source-style
-construction; next resolve the `themeVariables.zenuml` subtree once and preserve all actual source
-configuration/fallback semantics. Post-write root viewport state and the extra facade Engine
-clone remain smaller separate candidates. Previous A/A remains inconclusive and is not retried.
+construction; the subsequent [source-configuration checkpoint](zenuml_source_namespace_macos_2026-10-18.md)
+addresses that repeated path ownership. Post-write root viewport state and the extra facade Engine
+clone remain separate candidates. Previous A/A remains inconclusive and is not retried.
 
 The [October 17 Zenuml CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md) repairs a double XML-encoding bug in configured Zenuml stylesheet values. CSS generation now keeps logical values and the existing `XmlTextOutput` performs the sole XML encoding; font normalization, CSS structure, resource limits, cancellation and error ownership remain unchanged. Four public regressions cover quoted/ampersand/entity/Unicode/style-closing font values, raw color character data, forbidden XML scalars and the corrected exact SVG byte ceiling. The focused Zenuml/XML suite passes 49 tests. Across 74 public controls, 57 SVGs match exactly (39 reduce allocation count/bytes, 18 unchanged); 17 change CSS text only, while parsed structure, attributes, geometry, reports and ordered measurement callbacks remain equivalent. Default Zenuml falls from 564 to 471 allocations and 153,368 to 152,840 allocated bytes, with unchanged peak/retained bytes. No calibrated latency claim is made: two AB/BA diagnostics observe Zenuml end-to-end -12.06%, Packet +1.15% and Timeline +0.31%. Against the frozen v0.9.0 same-output context, Zenuml end-to-end is 20.087 → 27.537 µs (+37.09%); this does not isolate themes or claim release-gap recovery. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. Raw evidence remains under `target/bench/experiments/zenuml-css-encoding-20261017/`.
 
