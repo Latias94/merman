@@ -98,64 +98,65 @@ impl ZenumlTitleThemePlan {
         work_meter: &OperationWorkMeter,
         source_style: ZenumlSourceStyle,
     ) -> crate::Result<Self> {
+        let Some(theme) = theme else {
+            return Ok(Self {
+                fill: SingleTitleFillPlan::default(),
+                source_style,
+            });
+        };
         let title_present = resolve_zenuml_title(model, diagram_title).is_some();
         let non_title_text_present = has_visible_non_title_text(layout);
-        let mut evidence = FamilyThemeEvidence::from_theme(theme);
-        if let Some(theme) = theme {
-            for route in theme.family_mechanism_routes().iter().copied() {
-                match route.mechanism() {
-                    FamilyThemeMechanism::BaseTypography(_) => {
-                        let key = theme.family_mechanism_key(route);
-                        if !title_present && !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence.mark_residual(
-                                key,
-                                FamilyThemeResidualReason::UnsupportedTypography,
-                            );
-                        }
+        let mut evidence = FamilyThemeEvidence::from_theme(Some(theme));
+        for route in theme.family_mechanism_routes().iter().copied() {
+            match route.mechanism() {
+                FamilyThemeMechanism::BaseTypography(_) => {
+                    let key = theme.family_mechanism_key(route);
+                    if !title_present && !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence
+                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
                     }
-                    FamilyThemeMechanism::RuleFacet {
-                        target: ThemeTarget::Text,
-                        facet,
-                        ..
-                    } => {
-                        let key = theme.family_mechanism_key(route);
-                        if !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence.mark_residual(key, unsupported_residual_for_facet(facet));
-                        }
-                    }
-                    FamilyThemeMechanism::OrdinalPalette {
-                        target: ThemeTarget::Text,
-                    } => {
-                        let key = theme.family_mechanism_key(route);
-                        if !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence.mark_residual(
-                                key,
-                                FamilyThemeResidualReason::UnsupportedOrdinalPalette,
-                            );
-                        }
-                    }
-                    FamilyThemeMechanism::EffectBinding {
-                        target: ThemeTarget::Text,
-                        ..
-                    } => {
-                        let key = theme.family_mechanism_key(route);
-                        if !non_title_text_present {
-                            evidence.mark_not_applicable(key);
-                        } else if route.disposition() == FamilyThemeDisposition::Unsupported {
-                            evidence
-                                .mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
-                        }
-                    }
-                    FamilyThemeMechanism::RuleFacet { .. }
-                    | FamilyThemeMechanism::OrdinalPalette { .. }
-                    | FamilyThemeMechanism::EffectBinding { .. } => {}
                 }
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::Text,
+                    facet,
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence.mark_residual(key, unsupported_residual_for_facet(facet));
+                    }
+                }
+                FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::Text,
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence.mark_residual(
+                            key,
+                            FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                        );
+                    }
+                }
+                FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::Text,
+                    ..
+                } => {
+                    let key = theme.family_mechanism_key(route);
+                    if !non_title_text_present {
+                        evidence.mark_not_applicable(key);
+                    } else if route.disposition() == FamilyThemeDisposition::Unsupported {
+                        evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedEffect);
+                    }
+                }
+                FamilyThemeMechanism::RuleFacet { .. }
+                | FamilyThemeMechanism::OrdinalPalette { .. }
+                | FamilyThemeMechanism::EffectBinding { .. } => {}
             }
         }
         let fill = SingleTitleFillPlan::resolve(theme, title_present, false, evidence, work_meter)?;

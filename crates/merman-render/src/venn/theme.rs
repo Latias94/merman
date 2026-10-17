@@ -269,6 +269,11 @@ impl VennTitleThemePlan {
         title: Option<&str>,
         work_meter: &OperationWorkMeter,
     ) -> crate::Result<Self> {
+        let Some(theme) = theme else {
+            return Ok(Self {
+                fill: SingleTitleFillPlan::default(),
+            });
+        };
         let title_present = title.is_some_and(|title| !title.trim().is_empty());
         let config_owns_fill = merman_core::__private::config_path_overrides_typed_default(
             effective_config,
@@ -278,7 +283,7 @@ impl VennTitleThemePlan {
             theme,
             title_present,
             config_owns_fill,
-            FamilyThemeEvidence::from_theme(theme),
+            FamilyThemeEvidence::from_theme(Some(theme)),
             work_meter,
         )?;
         Ok(Self { fill })
