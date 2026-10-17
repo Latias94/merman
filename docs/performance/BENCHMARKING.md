@@ -46,6 +46,11 @@ for exploration, but its internal samples are not independent base/head observat
 themselves establish an optimization claim. Use `compare_self.py --evidence-mode confirmation` for
 that claim.
 
+The `profile_render` example's `--stage render` loop includes artifact preparation in whole-process
+samples and elapsed time. Only its `profile_render::emit_prepared_svg` subtree matches the emission
+and output-consumption boundary timed by Criterion's `render/*` group; preparation runs outside
+that frame. Keep this boundary explicit when attributing a stage benchmark to a sampled CPU owner.
+
 ### Theme compilation and discovery
 
 `merman-bindings-core`'s `theme_operations` Criterion bench separates definition compilation,

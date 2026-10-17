@@ -220,6 +220,14 @@ CARGO_PROFILE_BENCH_DEBUG=true cargo flamegraph --profile bench \
   --stage render --seconds 20
 ```
 
+The example's `render` stage parses once and prepares a fresh artifact before each SVG emission,
+since rendering consumes the artifact. Whole-process flamegraphs, macOS `sample` output, Instruments
+profiles, and the reported elapsed time therefore include preparation. For emission attribution,
+inspect the subtree rooted at `profile_render::emit_prepared_svg`; this non-inlined frame contains
+SVG emission and output consumption, while preparation stays outside it. That is the operation
+boundary timed by Criterion's `render/*` group. Compare emission costs within that subtree rather
+than treating the whole-process profile as an emission-only measurement.
+
 ## 5. Run confirmation without adaptive sampling
 
 This section admits latency and throughput claims. For a structural complexity or

@@ -2,6 +2,7 @@ use merman::svg::{LayoutOptions, SvgDebugOptions, SvgRenderOptions, sanitize_svg
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 use merman_core::{Engine, ParseOptions};
 use merman_render::environment::RenderEnvironment;
+use merman_render::family::FamilyRenderArtifact;
 use std::env;
 use std::fs;
 use std::hint::black_box;
@@ -143,6 +144,10 @@ Stages:
   layout      parse once, then repeatedly prepare the typed layout artifact
   render      parse once, then repeatedly prepare the typed artifact and render SVG
   end-to-end  repeatedly parse, layout, and render SVG
+
+Render profiling:
+  Whole-process samples and elapsed time include artifact preparation.
+  Inspect profile_render::emit_prepared_svg for emission-only samples.
 "
     );
 }
@@ -153,6 +158,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         print_usage();
         message
     })?;
+
+    if args.stage == Stage::Render {
+        eprintln!(
+            "profile_render: whole-process samples and elapsed time include artifact preparation; \
+             inspect profile_render::emit_prepared_svg for emission-only samples"
+        );
+    }
 
     let source = fs::read_to_string(&args.input)?;
     let engine = Engine::new();
@@ -257,12 +269,12 @@ fn run_render(
         .engine
         .parse_diagram_for_render_model_sync(case.source, case.parse_options)?
         .ok_or("no Mermaid diagram detected")?;
-    merman_render::family::prepare(
+    let artifact = merman_render::family::prepare(
         parsed.clone(),
         case.layout_options,
         case.environment.begin_session()?,
-    )?
-    .render_svg(case.svg_options, &SvgDebugOptions::default())?;
+    )?;
+    emit_prepared_svg(artifact, case.svg_options)?;
 
     run_for_duration(duration, batch_size, || {
         let artifact = merman_render::family::prepare(
@@ -270,9 +282,17 @@ fn run_render(
             case.layout_options,
             case.environment.begin_session()?,
         )?;
-        let svg = artifact.render_svg(case.svg_options, &SvgDebugOptions::default())?;
-        Ok(svg.svg().len())
+        Ok(emit_prepared_svg(artifact, case.svg_options)?)
     })
+}
+
+#[inline(never)]
+fn emit_prepared_svg(
+    artifact: FamilyRenderArtifact,
+    svg_options: &SvgRenderOptions,
+) -> merman_render::Result<usize> {
+    let svg = artifact.render_svg(svg_options, &SvgDebugOptions::default())?;
+    Ok(black_box(svg.svg().len()))
 }
 
 fn run_end_to_end(
