@@ -191,15 +191,22 @@ impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
                 .observe_scanned_work(end - start)
                 .map_err(|_| fmt::Error)?;
             let first = bytes[start];
-            let searchable = first >= 0x20
-                && !matches!(first, b'&' | b'<' | b']' | b'>' | 0xef)
-                && bytes[start..end].iter().fold(0u8, |found, &byte| {
-                    found | u8::from((byte < 0x20) | (byte == 0xef))
-                }) == 0;
-            if searchable {
-                self.write_searchable_chunk(value, start, end)?;
-            } else {
+            if first < 0x20 || matches!(first, b'&' | b'<' | b']' | b'>' | 0xef) {
                 self.write_scalar_chunk(value, start, end)?;
+            } else {
+                let flags = bytes[start..end].iter().fold(0u8, |flags, &byte| {
+                    flags
+                        | (u8::from((byte < 0x20) | (byte == 0xef)) << 1)
+                        | u8::from(matches!(byte, b'&' | b'<' | b']'))
+                });
+                match flags {
+                    0 => {
+                        self.trailing_brackets = 0;
+                        self.out.write_scanned_text(&value[start..end])?;
+                    }
+                    1 => self.write_searchable_chunk(value, start, end)?,
+                    _ => self.write_scalar_chunk(value, start, end)?,
+                }
             }
             start = end;
         }
@@ -587,6 +594,37 @@ mod tests {
                 assert_eq!(resource_limit(out.finish().unwrap_err()), first);
             }
             assert_eq!(meter.projected_svg_bytes(), 0);
+        }
+    }
+
+    #[test]
+    fn xml_text_output_preserves_the_first_over_limit_append_boundary() {
+        for (fragments, maximum, retained, actual) in [
+            (vec!["abc&de".to_string()], 4, "abc".to_string(), 8),
+            (
+                vec!["abc".to_string(), "def".to_string()],
+                4,
+                "abc".to_string(),
+                6,
+            ),
+            (vec!["a".repeat(4096)], 2049, "a".repeat(2048), 4096),
+        ] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxSvgBytes, maximum)
+                .unwrap();
+            let meter = OperationWorkMeter::new(policy);
+            let mut out = BoundedSvgOutput::new(&meter);
+            {
+                let mut text = XmlTextOutput::new(&mut out);
+                for fragment in &fragments {
+                    text.push_str(fragment);
+                }
+            }
+            assert_eq!(out.as_str(), retained);
+            let first = resource_limit(out.checkpoint().unwrap_err());
+            assert_eq!(first.actual, actual);
+            assert_eq!(first.max, maximum);
+            assert_eq!(resource_limit(out.finish().unwrap_err()), first);
         }
     }
 
