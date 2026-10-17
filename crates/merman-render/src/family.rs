@@ -1166,7 +1166,10 @@ impl ResolvedFamilyStylePlan {
         self.mermaid_compatibility_residual_count =
             merman_core::__private::theme_parse_mermaid_residual_count(metadata);
         #[cfg(feature = "diagram-packet")]
-        if self.family_id == DiagramFamilyId::PACKET {
+        if self.family_id == DiagramFamilyId::PACKET
+            && self.mermaid_compatibility_residual_count != 0
+            && self.resolved_theme.is_some()
+        {
             let evidence = merman_core::__private::theme_parse_evidence(metadata);
             let deferred = crate::packet::deferred_mermaid_compatibility_consumptions(
                 self.resolved_theme.as_deref(),
@@ -3859,10 +3862,12 @@ impl FamilyRenderArtifact {
         }
         #[cfg(feature = "diagram-packet")]
         if let Some(outcome) = rendered.take_packet_theme_outcome() {
-            let evidence = merman_core::__private::theme_parse_evidence(&metadata);
-            let consumptions = outcome.compatibility_consumptions(&evidence);
+            if merman_core::__private::theme_parse_mermaid_residual_count(&metadata) != 0 {
+                let evidence = merman_core::__private::theme_parse_evidence(&metadata);
+                let consumptions = outcome.compatibility_consumptions(&evidence);
+                context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
+            }
             context.merge_accounted_terminal_evidence(DiagramFamilyId::PACKET, outcome.evidence);
-            context.reconcile_packet_mermaid_compatibility(&evidence, &consumptions);
         }
         #[cfg(all(
             merman_internal_theme_acceptance,
