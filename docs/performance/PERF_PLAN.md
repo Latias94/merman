@@ -17,6 +17,8 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 17 Zenuml CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md) repairs a double XML-encoding bug in configured Zenuml stylesheet values. CSS generation now keeps logical values and the existing `XmlTextOutput` performs the sole XML encoding; font normalization, CSS structure, resource limits, cancellation and error ownership remain unchanged. Four public regressions cover quoted/ampersand/entity/Unicode/style-closing font values, raw color character data, forbidden XML scalars and the corrected exact SVG byte ceiling. The focused Zenuml/XML suite passes 49 tests. Across 74 public controls, 57 SVGs match exactly (39 reduce allocation count/bytes, 18 unchanged); 17 change CSS text only, while parsed structure, attributes, geometry, reports and ordered measurement callbacks remain equivalent. Default Zenuml falls from 564 to 471 allocations and 153,368 to 152,840 allocated bytes, with unchanged peak/retained bytes. No calibrated latency claim is made: two AB/BA diagnostics observe Zenuml end-to-end -12.06%, Packet +1.15% and Timeline +0.31%. Against the frozen v0.9.0 same-output context, Zenuml end-to-end is 20.087 → 27.537 µs (+37.09%); this does not isolate themes or claim release-gap recovery. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. Raw evidence remains under `target/bench/experiments/zenuml-css-encoding-20261017/`.
+
 The [October 17 Zenuml ownership checkpoint](zenuml_style_ownership_macos_2026-10-17.md) removes
 per-message font copies and moves all three single-title owners' unused predicates behind theme
 presence. All 59 public SVG/report and custom-measurer trace pairs match; 35 inputs reduce
@@ -27,10 +29,10 @@ E2E changes of +1.27%/-0.36%/-0.38% for Zenuml/Treemap/Venn, with Timeline contr
 no confirmed latency claim. Fresh same-SVG Zenuml tag context remains +52.58%, without a theme-only
 attribution.
 A CSS Display-wrapper candidate is rejected because repeated placeholders rerun entity decoding
-and increase default/empty allocations. Actual public site-config controls also reproduce a
-pre-existing CSS double-encoding defect for accepted quoted fonts. This batch keeps CSS unchanged;
-next assign logical CSS and terminal XML encoding distinct owners, with authored-value and exact
-resource/error tests. The previous XML A/A failure remains inconclusive and is not retried.
+and increase default/empty allocations. The subsequent [CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md)
+fixes the separate double-encoding defect with logical CSS values and one terminal XML owner; its
+changed-output resource/byte boundaries are reported separately. The previous XML A/A failure
+remains inconclusive and is not retried.
 
 The [October 17 XML chunk-classification checkpoint](xml_chunk_classification_macos_2026-10-17.md)
 reuses the existing full chunk classification to omit the ordinary-text delimiter search, without
