@@ -17,6 +17,14 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 17 Packet/Kanban preparation checkpoint](packet_kanban_preparation_macos_2026-10-17.md)
+removes requestless Packet compatibility snapshots and configured-style declaration roundtrips,
+reuses Kanban's diagram font in CSS, and delays unused typography fallbacks. Its admission claim
+is exact public-operation allocation reduction: 77 SVG/theme-report inputs match, 69 reduce
+allocation count and bytes, eight remain unchanged, and none increase peak growth or alter retained
+bytes. Default Packet saves only one allocation and 16 bytes; Kanban saves six and 187 bytes.
+This closes the small preparation-ownership cleanup, not the remaining release-range latency gap.
+
 The [October 17 shared XML output checkpoint](shared_xml_output_macos_2026-10-17.md) removes
 duplicate plain-text cancellation observation and uses bounded bulk searching at the XML owner.
 All 67 public SVG/report/allocation controls and 152 cross-family SVG identities match. Four-pair
@@ -27,10 +35,11 @@ blocking the entire three-row confirmation set. No calibrated latency improvemen
 Native, private theme, optimized full WASM and all-family DOM checks pass. Strict verification
 exposes and fixes an orphan Railroad gate on the generic fallback helper; the subsequent 661-build
 release/transport sweep is deliberately stopped, so full strict is not certified. Separate tag
-diagnostics leave Timeline/Packet/Kanban E2E gaps of 8.58%/44.41%/38.17%. Next attribute Packet's
-requestless compatibility copies and style parsing, and Kanban's repeated font resolution; these
-are source-backed hypotheses, not yet profiler-proven causes. Preserve CSS validation and actual
-measurement/budget responsibilities. Class/Flowchart remain separate optimization work.
+diagnostics leave Timeline/Packet/Kanban E2E gaps of 8.58%/44.41%/38.17%. That checkpoint selected
+Packet's requestless compatibility copies/style parsing and Kanban's repeated font resolution for
+the preparation batch above. Those small reductions do not explain the full diagnostic gaps.
+Preserve CSS validation and actual measurement/budget responsibilities. Class/Flowchart remain
+separate optimization work.
 
 The [October 17 Timeline writer-outcome checkpoint](timeline_writer_outcomes_macos_2026-10-17.md)
 removes per-event SVG reverse inspection/path reconstruction and expected theme inventories.
