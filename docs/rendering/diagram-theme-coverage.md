@@ -418,7 +418,7 @@ Text fallback; Class retains its namespace-label title-color projection. Block's
 solid/transparent) with Classic, Neo, and HandDrawn witnesses. Separate native PNG pairs keep one
 text-color owner fixed while proving the other node or SVG relation-label consumer. Version 66 adds
 four Timeline Event.stroke routes (unqualified/Default, solid/transparent). Their Redux witnesses prove the visible activity axis with SVG and native
-PNG; family receipts and SVG integration tests cover the shared node/label/line fanout. This does
+PNG; family outcomes and SVG integration tests cover the shared node/label/line fanout. This does
 not qualify shadow-bearing nodes for native export. Version 65 adds four Timeline Text.fill routes
 (unqualified/Default, solid/transparent) with Classic, Neo and HandDrawn witnesses for inherited title and referenced
 arrowhead fill. Version 63 adds eight Requirement Relation.fill/stroke routes (unqualified/Default,
@@ -601,8 +601,9 @@ Important boundaries that a family-level count cannot express:
   connectors, and the activity axis. Explicit `nodeBorder` retains ownership; Classic has no
   consumer. Redux Color and Neo shapes keep their independent border/gradient colors while
   labels and lines still consume the shared stroke. A title-only Redux diagram retains its
-  activity-axis consumer. Writer-owned receipts bind the original CSS declarations to emitted
-  terminals; KTD17 v66 separately proves the visible axis in SVG and PNG. Ordinal stroke remains
+  activity-axis consumer. Successful CSS and SVG writes record the consumed properties without
+  rebuilding expected terminal inventories or rereading SVG. KTD17 v66 separately proves the
+  visible axis in SVG and PNG. Ordinal stroke remains
   Unsupported, with matching winners reported as residuals. Timeline has no family bridge;
   Title.fill remains Unsupported because Timeline has no titleColor consumer.
 - Gantt Task[Warning].stroke is typed and in KTD17. Today-marker and vertical-marker source/config

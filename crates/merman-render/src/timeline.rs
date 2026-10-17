@@ -20,9 +20,9 @@ use task_index::TimelineTaskIndex;
 
 pub(crate) use config::{TimelineConfigView, timeline_theme_color_limit};
 pub(crate) use css_binding::TimelineCssBinding;
-pub(crate) use text_paint::{TimelineTextPaintPlan, TimelineTextPaintReceipt};
-pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeReceipt};
-pub(crate) use typography::{TimelineTypographyThemePlan, TimelineTypographyThemeReceipt};
+pub(crate) use text_paint::{TimelineTextPaintOutcome, TimelineTextPaintPlan};
+pub(crate) use theme::{TimelineEventTheme, TimelineEventThemeOutcome};
+pub(crate) use typography::{TimelineTypographyOutcome, TimelineTypographyThemePlan};
 
 pub(crate) const MERMAID_EVENT_RADIUS_PX: f64 = 5.0;
 pub(crate) const MERMAID_EVENT_RADIUS_TOKEN: &str = "5";
