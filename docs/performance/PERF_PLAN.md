@@ -17,6 +17,17 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 17 Timeline writer-outcome checkpoint](timeline_writer_outcomes_macos_2026-10-17.md)
+removes per-event SVG reverse inspection/path reconstruction and expected theme inventories.
+All 57 allocation/report inputs and 76 cross-family SVG inputs match. Medium Timeline removes
+49 allocations; 256-event classic and fully themed Redux inputs remove 5,389 and 9,531.
+All Timeline allocation/byte counts decrease, retained bytes stay identical, and no peak increases.
+Four-pair diagnostics observe render/public E2E changes of -10.14%/-6.68%, without A/A admission.
+Direct CSS streaming was rejected for worse latency and buffer-growth behavior; the final path
+retains one short-lived CSS batch. The shared XML serialization boundary is the next profiling
+priority, preserving escaping, exact byte ceilings and bounded cancellation. See the checkpoint
+for the separate v0.9.0 context: its public E2E diagnostic still observes a +31.51% gap.
+
 The [October 17 demand-driven cleanup](native_theme_demand_driven_macos_2026-10-17.md) completes the
 next theme ownership batch: Packet/Architecture/Kanban self-certification, State path lists and leaf
 typography copies, immutable default construction, shared writer observation, and ER/Mindmap
