@@ -45,7 +45,6 @@ mod pipeline;
 pub(crate) mod scanner;
 
 pub(crate) use css_identifier::escape_css_identifier;
-#[cfg(feature = "diagram-railroad")]
 pub use fallback::foreign_object_label_fallback_svg_text;
 pub(crate) use icon_registry::IconCurrentColorUse;
 pub use icon_registry::{
