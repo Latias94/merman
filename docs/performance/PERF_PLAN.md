@@ -17,6 +17,21 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 17 shared XML output checkpoint](shared_xml_output_macos_2026-10-17.md) removes
+duplicate plain-text cancellation observation and uses bounded bulk searching at the XML owner.
+All 67 public SVG/report/allocation controls and 152 cross-family SVG identities match. Four-pair
+diagnostics observe Timeline render/public E2E at 24.320/51.725 -> 14.560/42.943 us; Packet and
+Kanban public E2E decrease by 5.46%/8.66%, with small Class/Flowchart changes. The separate
+96-invocation A/A attempt is inconclusive: Kanban's 1.483 us absolute noise exceeds its 1 us gate,
+blocking the entire three-row confirmation set. No calibrated latency improvement is claimed.
+Native, private theme, optimized full WASM and all-family DOM checks pass. Strict verification
+exposes and fixes an orphan Railroad gate on the generic fallback helper; the subsequent 661-build
+release/transport sweep is deliberately stopped, so full strict is not certified. Separate tag
+diagnostics leave Timeline/Packet/Kanban E2E gaps of 8.58%/44.41%/38.17%. Next attribute Packet's
+requestless compatibility copies and style parsing, and Kanban's repeated font resolution; these
+are source-backed hypotheses, not yet profiler-proven causes. Preserve CSS validation and actual
+measurement/budget responsibilities. Class/Flowchart remain separate optimization work.
+
 The [October 17 Timeline writer-outcome checkpoint](timeline_writer_outcomes_macos_2026-10-17.md)
 removes per-event SVG reverse inspection/path reconstruction and expected theme inventories.
 All 57 allocation/report inputs and 76 cross-family SVG inputs match. Medium Timeline removes
@@ -24,9 +39,9 @@ All 57 allocation/report inputs and 76 cross-family SVG inputs match. Medium Tim
 All Timeline allocation/byte counts decrease, retained bytes stay identical, and no peak increases.
 Four-pair diagnostics observe render/public E2E changes of -10.14%/-6.68%, without A/A admission.
 Direct CSS streaming was rejected for worse latency and buffer-growth behavior; the final path
-retains one short-lived CSS batch. The shared XML serialization boundary is the next profiling
-priority, preserving escaping, exact byte ceilings and bounded cancellation. See the checkpoint
-for the separate v0.9.0 context: its public E2E diagnostic still observes a +31.51% gap.
+retains one short-lived CSS batch. At that checkpoint, shared XML serialization was the next
+profiling priority, preserving escaping, exact byte ceilings and bounded cancellation. See that
+checkpoint for the separate v0.9.0 context: its public E2E diagnostic still observes a +31.51% gap.
 
 The [October 17 demand-driven cleanup](native_theme_demand_driven_macos_2026-10-17.md) completes the
 next theme ownership batch: Packet/Architecture/Kanban self-certification, State path lists and leaf
