@@ -1,7 +1,8 @@
 use std::collections::VecDeque;
 
 use crate::diagrams::scan::{
-    consume_line_ending, is_ecmascript_inline_whitespace, is_ecmascript_whitespace,
+    ScanStep, TokenScanner, consume_line_ending, is_ecmascript_inline_whitespace,
+    is_ecmascript_whitespace,
 };
 
 mod ast;
@@ -180,10 +181,6 @@ impl<'input> Lexer<'input> {
         result: std::result::Result<(usize, Tok, usize), LexError>,
     ) -> std::result::Result<(usize, Tok, usize), LexError> {
         result
-    }
-
-    fn position(&self) -> usize {
-        self.pos
     }
 
     fn normalize_note_block_text(raw: &'input str) -> String {
@@ -761,6 +758,7 @@ impl<'input> Lexer<'input> {
 
         // Otherwise treat it as a composite state ID: read only the identifier token.
         let Some(id) = self.read_plain_id() else {
+            self.pop_mode();
             return Some(Err(LexError::new("Expected a state id")));
         };
         self.pop_mode();
@@ -909,191 +907,217 @@ impl<'input> Lexer<'input> {
     }
 }
 
-impl Iterator for Lexer<'_> {
-    type Item = std::result::Result<(usize, Tok, usize), LexError>;
+impl TokenScanner for Lexer<'_> {
+    type Event = std::result::Result<(usize, Tok, usize), LexError>;
 
-    fn next(&mut self) -> Option<Self::Item> {
+    fn scan_step(&mut self) -> ScanStep<Self::Event> {
         if let Some(item) = self.pending.pop_front() {
-            return Some(self.emit_token(item));
+            return ScanStep::Emit(self.emit_token(item));
         }
 
-        loop {
-            if self.pos >= self.input.len() {
-                if self.emitted_eof_newline {
-                    return None;
-                }
-                self.emitted_eof_newline = true;
-                return Some(self.emit_token((self.pos, Tok::Newline, self.pos)));
+        if self.pos >= self.input.len() {
+            if self.emitted_eof_newline {
+                return ScanStep::End;
             }
-            if self.mode() == Mode::Default {
-                // INITIAL keyword and quoted-string rules precede greedy directions.
-                for (keyword, token) in [("click", Tok::Click), ("href", Tok::Href)] {
-                    if self.starts_with_ci(keyword)
-                        && self
-                            .input
-                            .as_bytes()
-                            .get(self.pos + keyword.len())
-                            .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
-                    {
-                        let start = self.pos;
-                        self.pos += keyword.len();
-                        return Some(self.emit_token((start, token, self.pos)));
-                    }
-                }
-                if self.peek() == Some(b'"') && self.input[self.pos + 1..].contains('"') {
-                    return self.lex_string_lit().map(|token| self.emit_result(token));
-                }
-                if self.starts_with_ci("default")
+            self.emitted_eof_newline = true;
+            return ScanStep::Emit(self.emit_token((self.pos, Tok::Newline, self.pos)));
+        }
+        if self.mode() == Mode::Default {
+            // INITIAL keyword and quoted-string rules precede greedy directions.
+            for (keyword, token) in [("click", Tok::Click), ("href", Tok::Href)] {
+                if self.starts_with_ci(keyword)
                     && self
                         .input
                         .as_bytes()
-                        .get(self.pos + 7)
+                        .get(self.pos + keyword.len())
                         .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
                 {
                     let start = self.pos;
-                    self.pos += 7;
-                    return Some(Err(LexError::with_span(
-                        "Unexpected reserved state keyword default",
-                        crate::SourceSpan::new(start, self.pos),
-                    )));
+                    self.pos += keyword.len();
+                    return ScanStep::Emit(self.emit_token((start, token, self.pos)));
                 }
             }
-
-            if self.mode() == Mode::Default
-                && let Some(direction) = self.lex_direction()
+            if self.peek() == Some(b'"')
+                && self.input[self.pos + 1..].contains('"')
+                && let Some(token) = self.lex_string_lit()
             {
-                return Some(self.emit_result(direction));
+                return ScanStep::Emit(self.emit_result(token));
             }
-
-            // Whitespace is a lexer rule, not preprocessing: INITIAL directions see
-            // its original cursor, while struct whitespace precedes directions.
-            let before_whitespace = self.pos;
-            self.skip_ws();
-            if self.pos != before_whitespace {
-                continue;
-            }
-            if let Some(nl) = self.lex_newline() {
-                return Some(self.emit_token(nl));
-            }
-            if self.skip_comment() {
-                continue;
-            }
-
-            if self.mode() == Mode::StateId
-                && let Some(tok) = self.lex_state_mode_token()
+            if self.starts_with_ci("default")
+                && self
+                    .input
+                    .as_bytes()
+                    .get(self.pos + 7)
+                    .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
             {
-                return Some(self.emit_result(tok));
+                let start = self.pos;
+                self.pos += 7;
+                return ScanStep::Emit(Err(LexError::with_span(
+                    "Unexpected reserved state keyword default",
+                    crate::SourceSpan::new(start, self.pos),
+                )));
             }
-
-            if let Some(sd) = self.lex_sd_header() {
-                return Some(self.emit_token(sd));
-            }
-
-            // In struct mode these explicit rules precede directions; in INITIAL they follow them.
-            // Require the upstream whitespace suffix so punctuation does not change rule priority.
-            if self.mode() == Mode::Struct
-                && ["classDef", "class", "style", "state"]
-                    .into_iter()
-                    .any(|keyword| {
-                        self.starts_with_ci(keyword)
-                            && self.input[self.pos + keyword.len()..]
-                                .chars()
-                                .next()
-                                .is_some_and(is_ecmascript_whitespace)
-                    })
-                && let Some(token) = self.lex_stmt_line()
-            {
-                return Some(self.emit_result(token));
-            }
-
-            if self.mode() == Mode::Struct
-                && let Some(dir) = self.lex_direction()
-            {
-                return Some(self.emit_result(dir));
-            }
-
-            if let Some(acc) = self.lex_accessibility() {
-                return Some(self.emit_result(acc));
-            }
-            if self.pos >= self.input.len() {
-                continue;
-            }
-
-            if !matches!(self.mode(), Mode::State | Mode::StateId)
-                && let Some(tok) = self.lex_stmt_line()
-            {
-                return Some(self.emit_result(tok));
-            }
-
-            if self.mode() == Mode::State
-                && let Some(tok) = self.lex_state_mode_token()
-            {
-                return Some(self.emit_result(tok));
-            }
-
-            let start = self.pos;
-            if self.starts_with("-->") {
-                self.pos += 3;
-                return Some(self.emit_token((start, Tok::Arrow, self.pos)));
-            }
-
-            if self.mode() == Mode::Struct && self.starts_with("--") {
-                self.pos += 2;
-                return Some(self.emit_token((start, Tok::Concurrent, self.pos)));
-            }
-
-            if self.starts_with("[*]") && !self.starts_with("[*]:::") {
-                self.pos += 3;
-                return Some(self.emit_token((start, Tok::EdgeState, self.pos)));
-            }
-
-            if self.peek() == Some(b'{') {
-                self.pos += 1;
-                if self.mode() == Mode::State {
-                    self.pop_mode();
-                }
-                self.push_mode(Mode::Struct);
-                return Some(self.emit_token((start, Tok::StructStart, self.pos)));
-            }
-
-            if self.peek() == Some(b'}') {
-                self.pos += 1;
-                if self.mode() == Mode::Struct {
-                    self.pop_mode();
-                }
-                return Some(self.emit_token((start, Tok::StructStop, self.pos)));
-            }
-
-            if let Some(tok) = self.lex_string_lit() {
-                return Some(self.emit_result(tok));
-            }
-
-            if let Some(tok) = self.lex_styled_id() {
-                return Some(self.emit_token(tok));
-            }
-
-            if let Some(tok) = self.lex_descr() {
-                return Some(self.emit_token(tok));
-            }
-
-            if let Some(tok) = self.lex_id() {
-                return Some(self.emit_token(tok));
-            }
-
-            let bad = self
-                .input
-                .get(self.pos..)
-                .and_then(|s| s.chars().next())
-                .unwrap_or('?');
-            self.pos += bad.len_utf8().max(1);
-            return Some(Err(LexError::new(format!("Unexpected character '{bad}'"))));
         }
+
+        if self.mode() == Mode::Default
+            && let Some(direction) = self.lex_direction()
+        {
+            return ScanStep::Emit(self.emit_result(direction));
+        }
+
+        // Whitespace is a lexer rule, not preprocessing: INITIAL directions see
+        // its original cursor, while struct whitespace precedes directions.
+        let before_whitespace = self.pos;
+        self.skip_ws();
+        if self.pos != before_whitespace {
+            return ScanStep::Skip;
+        }
+        if let Some(nl) = self.lex_newline() {
+            return ScanStep::Emit(self.emit_token(nl));
+        }
+        if self.skip_comment() {
+            return ScanStep::Skip;
+        }
+
+        if self.mode() == Mode::StateId
+            && let Some(tok) = self.lex_state_mode_token()
+        {
+            return ScanStep::Emit(self.emit_result(tok));
+        }
+
+        if let Some(sd) = self.lex_sd_header() {
+            return ScanStep::Emit(self.emit_token(sd));
+        }
+
+        // In struct mode these explicit rules precede directions; in INITIAL they follow them.
+        // Require the upstream whitespace suffix so punctuation does not change rule priority.
+        if self.mode() == Mode::Struct
+            && ["classDef", "class", "style", "state"]
+                .into_iter()
+                .any(|keyword| {
+                    self.starts_with_ci(keyword)
+                        && self.input[self.pos + keyword.len()..]
+                            .chars()
+                            .next()
+                            .is_some_and(is_ecmascript_whitespace)
+                })
+            && let Some(token) = self.lex_stmt_line()
+        {
+            return ScanStep::Emit(self.emit_result(token));
+        }
+
+        if self.mode() == Mode::Struct
+            && let Some(dir) = self.lex_direction()
+        {
+            return ScanStep::Emit(self.emit_result(dir));
+        }
+
+        if let Some(acc) = self.lex_accessibility() {
+            return ScanStep::Emit(self.emit_result(acc));
+        }
+        if self.pos >= self.input.len() {
+            return ScanStep::Skip;
+        }
+
+        if !matches!(self.mode(), Mode::State | Mode::StateId)
+            && let Some(tok) = self.lex_stmt_line()
+        {
+            return ScanStep::Emit(self.emit_result(tok));
+        }
+
+        if self.mode() == Mode::State
+            && let Some(tok) = self.lex_state_mode_token()
+        {
+            return ScanStep::Emit(self.emit_result(tok));
+        }
+
+        let start = self.pos;
+        if self.starts_with("-->") {
+            self.pos += 3;
+            return ScanStep::Emit(self.emit_token((start, Tok::Arrow, self.pos)));
+        }
+
+        if self.mode() == Mode::Struct && self.starts_with("--") {
+            self.pos += 2;
+            return ScanStep::Emit(self.emit_token((start, Tok::Concurrent, self.pos)));
+        }
+
+        if self.starts_with("[*]") && !self.starts_with("[*]:::") {
+            self.pos += 3;
+            return ScanStep::Emit(self.emit_token((start, Tok::EdgeState, self.pos)));
+        }
+
+        if self.peek() == Some(b'{') {
+            self.pos += 1;
+            if self.mode() == Mode::State {
+                self.pop_mode();
+            }
+            self.push_mode(Mode::Struct);
+            return ScanStep::Emit(self.emit_token((start, Tok::StructStart, self.pos)));
+        }
+
+        if self.peek() == Some(b'}') {
+            self.pos += 1;
+            if self.mode() == Mode::Struct {
+                self.pop_mode();
+            }
+            return ScanStep::Emit(self.emit_token((start, Tok::StructStop, self.pos)));
+        }
+
+        if let Some(tok) = self.lex_string_lit() {
+            return ScanStep::Emit(self.emit_result(tok));
+        }
+
+        if let Some(tok) = self.lex_styled_id() {
+            return ScanStep::Emit(self.emit_token(tok));
+        }
+
+        if let Some(tok) = self.lex_descr() {
+            return ScanStep::Emit(self.emit_token(tok));
+        }
+
+        if let Some(tok) = self.lex_id() {
+            return ScanStep::Emit(self.emit_token(tok));
+        }
+
+        let bad = self
+            .input
+            .get(self.pos..)
+            .and_then(|s| s.chars().next())
+            .unwrap_or('?');
+        self.pos += bad.len_utf8().max(1);
+        ScanStep::Emit(Err(LexError::new(format!("Unexpected character '{bad}'"))))
+    }
+}
+
+impl Iterator for Lexer<'_> {
+    type Item = <Self as TokenScanner>::Event;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.next_token()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Lexer, Tok};
+
+    #[test]
+    fn missing_state_id_leaves_the_error_state_before_recovery() {
+        let events: Vec<_> = Lexer::new("stateDiagram-v2\nstate {\nA --> B\n}\n")
+            .take(32)
+            .collect();
+        assert!(
+            events.len() < 32,
+            "recovery must leave the missing-id state"
+        );
+        assert_eq!(events.iter().filter(|event| event.is_err()).count(), 1);
+        assert!(
+            events
+                .iter()
+                .any(|event| { matches!(event, Ok((_, Tok::Id(id), _)) if id == "B") })
+        );
+    }
 
     #[test]
     fn state_direction_rules_match_only_complete_statements_and_preserve_value_spans() {

@@ -1,3 +1,48 @@
+/// One rule dispatch. A skipped rule must consume input or leave its lexical state.
+/// Empty tokens are valid when they drain pending output or complete a state transition.
+pub(crate) enum ScanStep<T> {
+    Emit(T),
+    Skip,
+    End,
+}
+
+pub(crate) trait TokenScanner {
+    type Event;
+
+    fn scan_step(&mut self) -> ScanStep<Self::Event>;
+
+    fn next_token(&mut self) -> Option<Self::Event> {
+        loop {
+            match self.scan_step() {
+                ScanStep::Emit(event) => return Some(event),
+                ScanStep::Skip => {}
+                ScanStep::End => return None,
+            }
+        }
+    }
+}
+
+pub(crate) fn collect_lexical_events<S: TokenScanner>(
+    scanner: &mut S,
+    control: &crate::OperationControl,
+) -> crate::OperationControlResult<Vec<S::Event>> {
+    let mut events = Vec::new();
+    let mut steps = 0usize;
+    loop {
+        if steps.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        match scanner.scan_step() {
+            ScanStep::Emit(event) => events.push(event),
+            ScanStep::Skip => {}
+            ScanStep::End => break,
+        }
+        steps = steps.wrapping_add(1);
+    }
+    control.checkpoint()?;
+    Ok(events)
+}
+
 pub(crate) fn strip_line_ending(segment: &str) -> &str {
     let segment = segment.strip_suffix('\n').unwrap_or(segment);
     segment.strip_suffix('\r').unwrap_or(segment)

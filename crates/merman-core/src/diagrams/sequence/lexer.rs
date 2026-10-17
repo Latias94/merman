@@ -1,4 +1,5 @@
 use crate::SourceSpan;
+use crate::diagrams::scan::{ScanStep, TokenScanner};
 
 mod actor;
 mod scanner;
@@ -92,9 +93,13 @@ impl<'input> Lexer<'input> {
             scanner: SequenceScanner::new(input),
         }
     }
+}
 
-    pub(super) fn position(&self) -> usize {
-        self.scanner.position()
+impl TokenScanner for Lexer<'_> {
+    type Event = std::result::Result<(usize, Tok, usize), LexError>;
+
+    fn scan_step(&mut self) -> ScanStep<Self::Event> {
+        self.scanner.scan_step()
     }
 }
 
@@ -102,13 +107,63 @@ impl Iterator for Lexer<'_> {
     type Item = std::result::Result<(usize, Tok, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.scanner.next_token()
+        self.next_token()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{HALF_ARROW_TYPES, Lexer, Tok};
+
+    #[test]
+    fn empty_percent_comments_preserve_statement_boundaries() {
+        for newline in ["\n", "\r\n"] {
+            for comment in ["%%", "  %%", "%% comment", "# comment", "é%% comment"] {
+                let input = format!(
+                    "sequenceDiagram{newline}{comment}{newline}participant A{newline}{comment}"
+                );
+                let tokens: Vec<_> = Lexer::new(&input)
+                    .map(|event| event.expect("comment or statement token").1)
+                    .collect();
+                assert_eq!(
+                    tokens.iter().filter(|t| matches!(t, Tok::Newline)).count(),
+                    3,
+                    "{input:?}"
+                );
+                assert!(
+                    tokens
+                        .iter()
+                        .any(|t| matches!(t, Tok::Actor(id) if id == "A"))
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn invalid_config_does_not_repeat_without_consuming_input() {
+        let mut lexer = Lexer::new("@{}");
+        assert!(lexer.next().unwrap().is_err());
+        assert!(lexer.take(8).count() < 8);
+    }
+
+    #[test]
+    fn unterminated_actor_config_emits_one_error_and_stops_at_eof() {
+        let input = "sequenceDiagram\nparticipant A@{ type: boundary\nparticipant B";
+        let mut lexer = Lexer::new(input);
+        let error = lexer
+            .by_ref()
+            .take(8)
+            .find_map(Result::err)
+            .expect("unterminated actor config diagnostic");
+        assert_eq!(
+            error.span,
+            crate::SourceSpan::new(input.find("@{").unwrap(), input.len())
+        );
+        assert!(
+            lexer.next().is_none(),
+            "unclosed config consumes its remaining body"
+        );
+    }
 
     fn token_trace(input: &str) -> Vec<(usize, &'static str, usize)> {
         Lexer::new(input)
