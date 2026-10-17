@@ -17,18 +17,29 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
-The [October 17 remaining-cost diagnosis](remaining_render_cost_macos_2026-10-17.md) identifies
-fragmented CSS serialization as the next shared-writer experiment. Current emission samples place
-34.55%/52.32% of Packet/Kanban samples beneath XML text writing, including descendant sink work.
-Same-byte String-sink probes show strong fragment-size sensitivity and a hostile-suffix
-counterexample to unconditional coalescing. Fresh same-SVG tag diagnostics observe public E2E
-differences of +41.41%/+32.76%; these are context, without A/A or equal error/resource contracts.
-Default per-element theme certification and complete terminal XML reinspection are absent.
-Next compare reducing per-fragment setup with bounded coalescing/local exceptional-byte handling,
-registering public latency and memory gates before implementation. Keep escaping, exact byte
-admission and bounded cancellation; do not restore an unbounded whole-CSS buffer. Separately
-remove unused root viewport-plan ownership and Kanban temporary label/font copies under exact
-allocation gates. This diagnosis changes no production code.
+The [October 17 XML chunk-classification checkpoint](xml_chunk_classification_macos_2026-10-17.md)
+reuses the existing full chunk classification to omit the ordinary-text delimiter search, without
+buffering or added state. All 77 public SVG/report inputs preserve all four allocation metrics;
+152 adjacent SVG identities match. Ten-row adjacent diagnostics observe Packet/Kanban public E2E
+changes of -2.47%/-3.52%, with Timeline +1.06%; these are not calibrated latency improvements.
+The fresh 64-invocation A/A attempt is inconclusive: Packet base's identity interval excludes zero,
+blocking both rows before A/B despite Kanban calibrating. No retries or confirmed latency claim.
+Fresh diagnostics across all 19 exact-SVG-matching v0.9.0 E2E rows leave Packet/Kanban/Timeline
+at +37.00%/+29.55%/+7.54%; Zenuml remains +54.40%, while Class medium is +1.69%. No all-family
+average, equivalent error/resource contract or theme-only cause is claimed. Changed-output rows
+remain separate. Next profile Zenuml's public path before attributing its remaining gap; examine
+eager no-theme predicates at all three single-title callers (Zenuml/Treemap/Venn), repeated
+measurement-style ownership and CSS value/XML encoding responsibilities. Keep Packet/Kanban
+writer and actual preparation costs separate. Unused root viewport-plan ownership and Kanban
+temporary label/font copies remain small independent allocation candidates.
+
+The [October 17 remaining-cost diagnosis](remaining_render_cost_macos_2026-10-17.md) supplied the
+preceding writer experiment. Inclusive Packet/Kanban emission samples placed 34.55%/52.32% beneath
+XML text writing, including sink descendants. Fixed-byte fragment probes showed sensitivity and a
+hostile-suffix counterexample to unconditional coalescing. The implemented classification reuse
+above does not add buffering; append/error boundaries rule out unconditional coalescing within
+this contract. Default per-element theme certification and complete terminal XML reinspection
+are absent. The diagnosis itself changes no production code.
 
 The [October 17 Packet/Kanban preparation checkpoint](packet_kanban_preparation_macos_2026-10-17.md)
 removes requestless Packet compatibility snapshots and configured-style declaration roundtrips,
