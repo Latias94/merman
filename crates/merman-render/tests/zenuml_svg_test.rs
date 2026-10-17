@@ -357,6 +357,143 @@ fn render_zenuml_source_config(source: &str, config: serde_json::Value) -> Strin
         .to_owned()
 }
 
+#[test]
+fn zenuml_configured_css_font_is_xml_encoded_once() {
+    for (authored, expected) in [
+        (r#""Inter", sans-serif"#, r#""Inter",sans-serif"#),
+        (r#""A&B", monospace"#, r#""A&B",monospace"#),
+        (r#""A&amp;B", serif"#, r#""A&amp;B",serif"#),
+        (r#""A#quot;B", serif"#, r#""A#quot;B",serif"#),
+        (r#""A#65;B", serif"#, r#""A#65;B",serif"#),
+        (r#""A&#35;B", serif"#, r#""A&#35;B",serif"#),
+        (r#""A<B", serif"#, r#""A<B",serif"#),
+        (r#""A]]>B", serif"#, r#""A]]>B",serif"#),
+        (r#""字體 Ω", sans-serif"#, r#""字體 Ω",sans-serif"#),
+        (
+            r#""</style><script>bad()</script>", serif"#,
+            r#""</style><script>bad()</script>",serif"#,
+        ),
+        (
+            r#""Comma, \"Quoted, Font\" Glyph", monospace"#,
+            r#""Comma, \"Quoted, Font\" Glyph",monospace"#,
+        ),
+    ] {
+        let svg = render_zenuml_source_config(
+            "zenuml\nA->B: request\n",
+            serde_json::json!({"themeVariables":{"zenuml":{"fontFamily":authored}}}),
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid configured ZenUML SVG");
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("script"))
+        );
+        let styles = document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .collect::<Vec<_>>();
+        assert_eq!(styles.len(), 1);
+        let css = styles[0].text().unwrap();
+        assert_eq!(
+            css.matches(&format!("font-family:{expected};")).count(),
+            12,
+            "each CSS font declaration must preserve the logical value: {authored}"
+        );
+    }
+}
+
+#[test]
+fn zenuml_configured_css_colors_remain_xml_character_data() {
+    for color in [
+        r"var(--accent\&tone, red)",
+        "var(--accent#quot;, red)",
+        "var(--accent&amp;tone, red)",
+        "red]]></style><script>bad()</script><style>",
+    ] {
+        let svg = render_zenuml_source_config(
+            "zenuml\ntitle Color\nA->B: request\n",
+            serde_json::json!({"themeVariables":{"zenuml":{"textColor":color}}}),
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid CSS-containing SVG");
+        assert!(
+            !document
+                .descendants()
+                .any(|node| node.has_tag_name("script"))
+        );
+        let styles = document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .collect::<Vec<_>>();
+        assert_eq!(styles.len(), 1);
+        let css = styles[0].text().unwrap();
+        assert!(css.contains(&format!("font-weight:600;fill:{color}}}")));
+        assert!(css.contains(&format!(".fragment-icon{{color:{color}}}")));
+    }
+}
+
+#[test]
+fn zenuml_configured_css_removes_forbidden_scalars_at_the_xml_boundary() {
+    let svg = render_zenuml_source_config(
+        "zenuml\nA->B: request\n",
+        serde_json::json!({
+            "themeVariables":{"zenuml":{"noteTextColor":"A]]\0>\u{fffe}&<B"}}
+        }),
+    );
+    let document =
+        roxmltree::Document::parse(&svg).expect("normalized configured CSS is valid XML");
+    let css = document
+        .descendants()
+        .find(|node| node.has_tag_name("style"))
+        .unwrap()
+        .text()
+        .unwrap();
+    assert!(css.contains("fill:A]]>&<B}"));
+    assert!(svg.contains("fill:A]]&gt;&amp;&lt;B}"));
+}
+
+#[test]
+fn zenuml_configured_css_obeys_the_actual_svg_byte_ceiling() {
+    let render = |policy| {
+        let parsed = Engine::new()
+            .with_site_config(merman_core::MermaidConfig::from_value(serde_json::json!({
+                "themeVariables":{"zenuml":{"fontFamily":r#""A&B", monospace"#}}
+            })))
+            .parse_diagram_for_render_model_sync("zenuml\nA->B: request\n", ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session()
+            .unwrap();
+        family::prepare(parsed, &LayoutOptions::headless_svg_defaults(), session)?
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    };
+    let baseline = render(RenderResourcePolicy::unbounded_for_trusted_input()).unwrap();
+    let length = baseline.svg().len();
+    let exact = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, length)
+        .unwrap();
+    assert_eq!(render(exact).unwrap().svg(), baseline.svg());
+    let below = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxSvgBytes, length - 1)
+        .unwrap();
+    let error = render(below)
+        .err()
+        .expect("one byte below the actual SVG length must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.max, length - 1);
+    assert!(limit.actual > limit.max);
+    assert!(limit.explicit_overrides.iter().any(|resource_override| {
+        resource_override.id == ResourceLimitId::MaxSvgBytes
+            && resource_override.value == length - 1
+    }));
+}
+
 fn source_css_rule<'a>(svg: &'a str, class: &str) -> &'a str {
     let prefix = format!("#zenuml .{class}");
     svg.split_once(&prefix)
