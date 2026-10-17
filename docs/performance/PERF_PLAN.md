@@ -17,6 +17,19 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 17 remaining-cost diagnosis](remaining_render_cost_macos_2026-10-17.md) identifies
+fragmented CSS serialization as the next shared-writer experiment. Current emission samples place
+34.55%/52.32% of Packet/Kanban samples beneath XML text writing, including descendant sink work.
+Same-byte String-sink probes show strong fragment-size sensitivity and a hostile-suffix
+counterexample to unconditional coalescing. Fresh same-SVG tag diagnostics observe public E2E
+differences of +41.41%/+32.76%; these are context, without A/A or equal error/resource contracts.
+Default per-element theme certification and complete terminal XML reinspection are absent.
+Next compare reducing per-fragment setup with bounded coalescing/local exceptional-byte handling,
+registering public latency and memory gates before implementation. Keep escaping, exact byte
+admission and bounded cancellation; do not restore an unbounded whole-CSS buffer. Separately
+remove unused root viewport-plan ownership and Kanban temporary label/font copies under exact
+allocation gates. This diagnosis changes no production code.
+
 The [October 17 Packet/Kanban preparation checkpoint](packet_kanban_preparation_macos_2026-10-17.md)
 removes requestless Packet compatibility snapshots and configured-style declaration roundtrips,
 reuses Kanban's diagram font in CSS, and delays unused typography fallbacks. Its admission claim
