@@ -66,24 +66,23 @@ pub(crate) fn resolve_zenuml_title<'a>(
         .or_else(|| diagram_title.filter(|title| !title.is_empty()))
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct ZenumlTypography {
     font_family: Option<String>,
     font_size: Option<f64>,
 }
 
 impl ZenumlTypography {
-    pub(crate) fn new(config: &serde_json::Value) -> Self {
+    fn from_config(config: &serde_json::Map<String, serde_json::Value>) -> Self {
         Self {
-            font_family: crate::config::config_string(
-                config,
-                &["themeVariables", "zenuml", "fontFamily"],
-            ),
-            font_size: crate::config::config_f64_css_px(
-                config,
-                &["themeVariables", "zenuml", "fontSize"],
-            )
-            .filter(|size| *size > 0.0),
+            font_family: config
+                .get("fontFamily")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            font_size: config
+                .get("fontSize")
+                .and_then(crate::config::json_f64_css_px)
+                .filter(|size| *size > 0.0),
         }
     }
 
@@ -2427,10 +2426,13 @@ mod tests {
         for size in [14.0, 18.0, 24.0] {
             let config = serde_json::json!({"themeVariables": {"zenuml": {"fontFamily": "Inter, sans-serif", "fontSize": format!("{size}px")}}});
             let measurer = RecordingMeasurer(std::sync::Mutex::new(Vec::new()));
-            let layout =
-                layout_zenuml_diagram_typed(model, &ZenumlTypography::new(&config), &measurer)
-                    .unwrap();
-            let typography = ZenumlTypography::new(&config);
+            let layout = layout_zenuml_diagram_typed(
+                model,
+                &ZenumlSourceStyle::new(&config).typography,
+                &measurer,
+            )
+            .unwrap();
+            let typography = ZenumlSourceStyle::new(&config).typography;
             let measurements = measurer.0.lock().unwrap();
             assert!(
                 measurements
@@ -2493,7 +2495,7 @@ mod tests {
         let config = serde_json::json!({"themeVariables": {"zenuml": {"fontSize": "1e308px"}}});
         let error = layout_zenuml_diagram_typed(
             model,
-            &ZenumlTypography::new(&config),
+            &ZenumlSourceStyle::new(&config).typography,
             &DeterministicTextMeasurer::default(),
         )
         .expect_err("finite font size must not produce non-finite SVG geometry");
@@ -2512,7 +2514,7 @@ mod tests {
         };
         layout_zenuml_diagram_typed(
             model,
-            &ZenumlTypography::new(&serde_json::Value::Null),
+            &ZenumlTypography::default(),
             &DeterministicTextMeasurer::default(),
         )
         .unwrap()
