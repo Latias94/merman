@@ -191,12 +191,15 @@ impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
                 .observe_scanned_work(end - start)
                 .map_err(|_| fmt::Error)?;
             let first = bytes[start];
-            if first < 0x20 || matches!(first, b'&' | b'<' | b']' | b'>' | 0xef) {
+            if matches!(first, 0..=8 | 11 | 12 | 14..=31 | b'&' | b'<' | b']' | b'>' | 0xef) {
                 self.write_scalar_chunk(value, start, end)?;
             } else {
                 let flags = bytes[start..end].iter().fold(0u8, |flags, &byte| {
+                    // Keep comparisons non-short-circuiting so the classifier can vectorize.
+                    let forbidden =
+                        (byte < 0x20) & (byte != b'\t') & (byte != b'\n') & (byte != b'\r');
                     flags
-                        | (u8::from((byte < 0x20) | (byte == 0xef)) << 1)
+                        | (u8::from(forbidden | (byte == 0xef)) << 1)
                         | u8::from(matches!(byte, b'&' | b'<' | b']'))
                 });
                 match flags {
@@ -750,6 +753,8 @@ mod tests {
         for padding in [0, 1, 15, 16, 17, 31, 32, 33, 2047, 2048, 2049] {
             for suffix in [
                 "]]>尾",
+                "]]\t>",
+                "\n&<]]>尾",
                 "]]\0>",
                 "]]\u{fffe}>",
                 "\u{ffff}&<😀",
