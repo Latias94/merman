@@ -41,7 +41,7 @@ enum KanbanFontSizeOutcome {
 #[derive(Debug)]
 pub(crate) struct KanbanTypographyPlan {
     inherited_font_stack: InheritedFontStackPlan,
-    font_size_css: Box<str>,
+    font_size_css: Option<Box<str>>,
     font_size_px: f64,
     typed_font_size_requested: bool,
     font_size_outcome: KanbanFontSizeOutcome,
@@ -61,26 +61,37 @@ impl KanbanTypographyPlan {
                     && route.disposition() == FamilyThemeDisposition::TypedAdapter
             })
         });
-        let config_owns_font_size = merman_core::__private::config_path_overrides_typed_default(
-            effective_config,
-            "themeVariables.fontSize",
-        );
-        let configured_theme_font_size = positive_font_size(crate::config::config_f64_css_px(
-            effective_config.as_value(),
-            &["themeVariables", "fontSize"],
-        ));
-        let fallback_font_size_px = positive_font_size(
-            crate::config::config_theme_or_root_font_size_px_opt(effective_config.as_value()),
-        )
-        .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
-        .max(1.0);
-        let fallback_font_size_css = positive_font_size(
-            crate::config::config_theme_font_size_css_or_root_number_px_opt(
+        let config_owns_font_size = typed_font_size_requested
+            && merman_core::__private::config_path_overrides_typed_default(
+                effective_config,
+                "themeVariables.fontSize",
+            );
+        let configured_theme_font_size = config_owns_font_size
+            .then(|| {
+                positive_font_size(crate::config::config_f64_css_px(
+                    effective_config.as_value(),
+                    &["themeVariables", "fontSize"],
+                ))
+            })
+            .flatten();
+        let fallback_font_size_px = || {
+            positive_font_size(crate::config::config_theme_or_root_font_size_px_opt(
                 effective_config.as_value(),
-            ),
-        )
-        .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
-        .max(1.0);
+            ))
+            .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
+            .max(1.0)
+        };
+        let fallback_font_size_css = || {
+            positive_font_size(
+                crate::config::config_theme_font_size_css_or_root_number_px_opt(
+                    effective_config.as_value(),
+                ),
+            )
+            .unwrap_or(MERMAID_BASE_FONT_SIZE_PX)
+            .max(1.0)
+        };
+        let resolved_css_requested =
+            inherited_font_stack.typed_font_stack_requested() || typed_font_size_requested;
         let font_size_outcome = match () {
             _ if !typed_font_size_requested => KanbanFontSizeOutcome::Inactive,
             _ if !config_owns_font_size => KanbanFontSizeOutcome::Typed,
@@ -92,18 +103,22 @@ impl KanbanTypographyPlan {
                 let font_size_px = theme.typography().font_size_px().max(1.0);
                 (
                     f64::from(font_size_px),
-                    format!("{font_size_px}px").into_boxed_str(),
+                    Some(format!("{font_size_px}px").into_boxed_str()),
                 )
             }
             (_, KanbanFontSizeOutcome::ConfigOwned) => {
                 let font_size_px = configured_theme_font_size
                     .expect("validated Kanban theme font-size ownership")
                     .max(1.0);
-                (font_size_px, format!("{font_size_px}px").into_boxed_str())
+                (
+                    font_size_px,
+                    Some(format!("{font_size_px}px").into_boxed_str()),
+                )
             }
             _ => (
-                fallback_font_size_px,
-                format!("{fallback_font_size_css}px").into_boxed_str(),
+                fallback_font_size_px(),
+                resolved_css_requested
+                    .then(|| format!("{}px", fallback_font_size_css()).into_boxed_str()),
             ),
         };
 
@@ -120,20 +135,12 @@ impl KanbanTypographyPlan {
         self.inherited_font_stack.font_family_css()
     }
 
-    pub(crate) fn font_size_css(&self) -> &str {
-        &self.font_size_css
-    }
-
     pub(crate) const fn font_size_px(&self) -> f64 {
         self.font_size_px
     }
 
     pub(crate) fn typography_requested(&self) -> bool {
         self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
-    }
-
-    fn uses_resolved_typography_css(&self) -> bool {
-        self.inherited_font_stack.typed_font_stack_requested() || self.typed_font_size_requested
     }
 }
 
@@ -634,10 +641,6 @@ impl KanbanTaskTheme {
         self.typography.font_family_css()
     }
 
-    pub(crate) fn font_size_css(&self) -> &str {
-        self.typography.font_size_css()
-    }
-
     #[cfg(test)]
     pub(crate) fn typography_font_size_px(&self) -> f64 {
         self.typography.font_size_px()
@@ -645,8 +648,9 @@ impl KanbanTaskTheme {
 
     pub(crate) fn resolved_typography_for_css(&self) -> Option<(&str, &str)> {
         self.typography
-            .uses_resolved_typography_css()
-            .then_some((self.font_family_css(), self.font_size_css()))
+            .font_size_css
+            .as_deref()
+            .map(|size| (self.font_family_css(), size))
     }
 
     pub(crate) fn owns_label_foreground(&self, item_index: usize) -> bool {

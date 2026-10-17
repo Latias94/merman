@@ -1759,6 +1759,91 @@ fn kanban_task_radius_is_not_applicable_without_items() {
 }
 
 #[test]
+fn kanban_configured_diagram_and_root_fonts_preserve_typography_binding_semantics() {
+    for (root_font, typed_size, expected_size, expected_root) in [
+        ("Root, serif", false, "16px", Some("Root,serif")),
+        ("", false, "16px", None),
+        ("Root, serif", true, "23px", Some("Diagram,monospace")),
+        ("", true, "23px", Some("Diagram,monospace")),
+    ] {
+        let style = if typed_size {
+            ThemeTextStyle::default()
+                .with_font_size_px(23.0)
+                .expect("valid Kanban font size")
+        } else {
+            ThemeTextStyle::default()
+        };
+        let theme = kanban_typography_theme(style);
+        let (_, rendered) = try_render_kanban_with_layout_and_environment(
+            "kanban\n  todo[Todo]\n    task[Task]",
+            &theme,
+            Engine::new().with_site_config(MermaidConfig::from_value(serde_json::json!({
+                "fontFamily": root_font,
+                "themeVariables": { "fontFamily": "Diagram, monospace" }
+            }))),
+            ThemePortabilityRequirement::BestEffort,
+            RenderEnvironment::deterministic(),
+        )
+        .expect("render configured Kanban fonts");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Kanban SVG");
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Kanban stylesheet");
+        assert!(
+            css.contains(&format!(
+                "#kanban-palette{{font-family:Diagram,monospace;font-size:{expected_size};"
+            )),
+            "root_font={root_font:?}, typed_size={typed_size}: {css}"
+        );
+        match expected_root {
+            Some(family) => assert!(
+                css.contains(&format!(
+                    "#kanban-palette :root{{--mermaid-font-family:{family};}}"
+                )),
+                "root_font={root_font:?}, typed_size={typed_size}: {css}"
+            ),
+            None => assert!(
+                !css.contains(":root{--mermaid-font-family:"),
+                "root_font={root_font:?}, typed_size={typed_size}: {css}"
+            ),
+        }
+    }
+}
+
+#[test]
+fn kanban_root_font_size_preserves_numeric_and_css_unit_fallbacks() {
+    for (font_size, expected_css) in [
+        (serde_json::json!(20), "20px"),
+        (serde_json::json!("20px"), "16px"),
+    ] {
+        let source = format!(
+            "---\nconfig: {}\n---\nkanban\n  todo[Todo]\n    task[Task]\n",
+            serde_json::json!({
+                "fontSize": font_size,
+                "themeVariables": { "fontSize": "" }
+            })
+        );
+        let (_, svg) = parse_layout_and_render(&source);
+        let document = roxmltree::Document::parse(&svg).expect("valid Kanban SVG");
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Kanban stylesheet");
+        let root_rule = css
+            .split('}')
+            .find(|rule| rule.starts_with("#kanban-markdown{"))
+            .expect("Kanban root CSS rule");
+        assert!(
+            root_rule.contains(&format!("font-size:{expected_css};")),
+            "font_size={font_size}: {root_rule}"
+        );
+    }
+}
+
+#[test]
 fn kanban_typed_font_size_reaches_measurement_layout_css_and_evidence() {
     let source = concat!(
         "kanban\n",

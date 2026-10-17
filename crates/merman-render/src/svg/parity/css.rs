@@ -506,7 +506,7 @@ impl PreparedCommonCss {
             font_size_css.to_owned(),
         );
         if !typed_font_stack_active {
-            values.root_font_family = crate::config::config_root_font_family_css(effective_config);
+            values = values.with_configured_root_font_family(effective_config);
         }
         values
     }
@@ -589,9 +589,17 @@ impl PreparedCommonCss {
         let mut values =
             Self::with_resolved_typography(effective_config, font_family, font_size_css);
         if resolved_font_family.is_none() {
-            values.root_font_family = crate::config::config_root_font_family_css(effective_config);
+            values = values.with_configured_root_font_family(effective_config);
         }
         values
+    }
+
+    pub(crate) fn with_configured_root_font_family(
+        mut self,
+        effective_config: &serde_json::Value,
+    ) -> Self {
+        self.root_font_family = crate::config::config_root_font_family_css(effective_config);
+        self
     }
 
     pub(crate) fn with_resolved_typography(

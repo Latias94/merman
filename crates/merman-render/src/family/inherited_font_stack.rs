@@ -204,18 +204,10 @@ impl InheritedFontStackPlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &MermaidConfig,
     ) -> Self {
-        let configured_font = crate::config::config_font_family_css(effective_config.as_value());
-        Self::resolve_inner(theme, effective_config, configured_font)
-    }
-
-    fn resolve_inner(
-        theme: Option<&ResolvedDiagramTheme>,
-        effective_config: &MermaidConfig,
-        configured_font: String,
-    ) -> Self {
         let Some(theme) = theme else {
             return Self {
-                font_family_css: configured_font.into_boxed_str(),
+                font_family_css: crate::config::config_font_family_css(effective_config.as_value())
+                    .into_boxed_str(),
                 outcome: InheritedFontStackOutcome::Inactive,
                 typed_font_stack_requested: false,
                 typed_font_stack_active: false,
@@ -263,7 +255,7 @@ impl InheritedFontStackPlan {
         let font_family_css = if typed_font_stack_active {
             theme.typography().font_stack().as_css()
         } else {
-            configured_font
+            crate::config::config_font_family_css(effective_config.as_value())
         };
         let outcome = match () {
             _ if typed_font_stack && config_owns_font_stack => {
