@@ -17,6 +17,21 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 17 Zenuml ownership checkpoint](zenuml_style_ownership_macos_2026-10-17.md) removes
+per-message font copies and moves all three single-title owners' unused predicates behind theme
+presence. All 59 public SVG/report and custom-measurer trace pairs match; 35 inputs reduce
+allocation and 24 remain unchanged, with identical peak growth and retained bytes. Default
+Zenuml saves six allocations/150 bytes; 128 ordinary messages save 256/6,400 bytes. Treemap/Venn
+save four/two allocations on their default no-theme paths. Fixed adjacent diagnostics observe
+E2E changes of +1.27%/-0.36%/-0.38% for Zenuml/Treemap/Venn, with Timeline control +0.12%;
+no confirmed latency claim. Fresh same-SVG Zenuml tag context remains +52.58%, without a theme-only
+attribution.
+A CSS Display-wrapper candidate is rejected because repeated placeholders rerun entity decoding
+and increase default/empty allocations. Actual public site-config controls also reproduce a
+pre-existing CSS double-encoding defect for accepted quoted fonts. This batch keeps CSS unchanged;
+next assign logical CSS and terminal XML encoding distinct owners, with authored-value and exact
+resource/error tests. The previous XML A/A failure remains inconclusive and is not retried.
+
 The [October 17 XML chunk-classification checkpoint](xml_chunk_classification_macos_2026-10-17.md)
 reuses the existing full chunk classification to omit the ordinary-text delimiter search, without
 buffering or added state. All 77 public SVG/report inputs preserve all four allocation metrics;
@@ -27,11 +42,10 @@ blocking both rows before A/B despite Kanban calibrating. No retries or confirme
 Fresh diagnostics across all 19 exact-SVG-matching v0.9.0 E2E rows leave Packet/Kanban/Timeline
 at +37.00%/+29.55%/+7.54%; Zenuml remains +54.40%, while Class medium is +1.69%. No all-family
 average, equivalent error/resource contract or theme-only cause is claimed. Changed-output rows
-remain separate. Next profile Zenuml's public path before attributing its remaining gap; examine
-eager no-theme predicates at all three single-title callers (Zenuml/Treemap/Venn), repeated
-measurement-style ownership and CSS value/XML encoding responsibilities. Keep Packet/Kanban
-writer and actual preparation costs separate. Unused root viewport-plan ownership and Kanban
-temporary label/font copies remain small independent allocation candidates.
+remain separate. The ownership checkpoint above addresses the measured Zenuml font copies and
+single-title predicates; CSS encoding ownership remains its next correctness/performance question.
+Keep Packet/Kanban writer and actual preparation costs separate. Unused root viewport-plan
+ownership and Kanban temporary label/font copies remain small independent allocation candidates.
 
 The [October 17 remaining-cost diagnosis](remaining_render_cost_macos_2026-10-17.md) supplied the
 preceding writer experiment. Inclusive Packet/Kanban emission samples placed 34.55%/52.32% beneath
