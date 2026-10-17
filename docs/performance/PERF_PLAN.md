@@ -17,6 +17,21 @@ they do not measure the revised default policy.
 
 ## Current evidence
 
+The [October 17 XML legal-whitespace checkpoint](xml_legal_whitespace_macos_2026-10-17.md)
+lets exact XML-legal TAB/LF/CR use the existing bulk classifier instead of forcing complete chunks
+through scalar state processing. Actual Zenuml CSS scalar bytes fall from 2,818 to zero; 507 paired
+byte/append/observation controls match, as do all 74 public SVG/report/allocation/measurer cases
+and 152 benchmark SVG identities. The first range-pattern implementation is rejected for
+Kanban/Timeline public E2E regressions (+10.72%/+18.95%): it lost native vectorization. The retained
+equivalent non-short-circuit predicate restores NEON on this host. Fresh adjacent diagnostics
+observe Zenuml emission/E2E -25.09%/-9.66%, with Packet/Kanban/Timeline E2E +3.29%/+0.19%/+0.99%.
+These are not calibrated latency claims. Same-SVG v0.9.0 Zenuml E2E context is 19.977 → 24.973 us
+(+25.01%), without theme-only attribution. Native, Clippy, private theme, optimized full WASM,
+37-diagram smoke and all-family DOM pass. Preparation samples put 19.66% under source-style
+construction; next resolve the `themeVariables.zenuml` subtree once and preserve all actual source
+configuration/fallback semantics. Post-write root viewport state and the extra facade Engine
+clone remain smaller separate candidates. Previous A/A remains inconclusive and is not retried.
+
 The [October 17 Zenuml CSS encoding checkpoint](zenuml_css_encoding_macos_2026-10-17.md) repairs a double XML-encoding bug in configured Zenuml stylesheet values. CSS generation now keeps logical values and the existing `XmlTextOutput` performs the sole XML encoding; font normalization, CSS structure, resource limits, cancellation and error ownership remain unchanged. Four public regressions cover quoted/ampersand/entity/Unicode/style-closing font values, raw color character data, forbidden XML scalars and the corrected exact SVG byte ceiling. The focused Zenuml/XML suite passes 49 tests. Across 74 public controls, 57 SVGs match exactly (39 reduce allocation count/bytes, 18 unchanged); 17 change CSS text only, while parsed structure, attributes, geometry, reports and ordered measurement callbacks remain equivalent. Default Zenuml falls from 564 to 471 allocations and 153,368 to 152,840 allocated bytes, with unchanged peak/retained bytes. No calibrated latency claim is made: two AB/BA diagnostics observe Zenuml end-to-end -12.06%, Packet +1.15% and Timeline +0.31%. Against the frozen v0.9.0 same-output context, Zenuml end-to-end is 20.087 → 27.537 µs (+37.09%); this does not isolate themes or claim release-gap recovery. Native, Clippy, theme, WASM, smoke, DOM and format gates pass. Raw evidence remains under `target/bench/experiments/zenuml-css-encoding-20261017/`.
 
 The [October 17 Zenuml ownership checkpoint](zenuml_style_ownership_macos_2026-10-17.md) removes
@@ -45,7 +60,8 @@ Fresh diagnostics across all 19 exact-SVG-matching v0.9.0 E2E rows leave Packet/
 at +37.00%/+29.55%/+7.54%; Zenuml remains +54.40%, while Class medium is +1.69%. No all-family
 average, equivalent error/resource contract or theme-only cause is claimed. Changed-output rows
 remain separate. The ownership checkpoint above addresses the measured Zenuml font copies and
-single-title predicates; CSS encoding ownership remains its next correctness/performance question.
+single-title predicates; the subsequent CSS encoding and XML legal-whitespace checkpoints above
+address their independent encoding questions.
 Keep Packet/Kanban writer and actual preparation costs separate. Unused root viewport-plan
 ownership and Kanban temporary label/font copies remain small independent allocation candidates.
 
