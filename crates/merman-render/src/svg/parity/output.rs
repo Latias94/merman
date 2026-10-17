@@ -15,6 +15,12 @@ pub(super) trait SvgOutput: fmt::Write {
     fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()>;
     fn checkpoint(&mut self) -> crate::Result<()>;
 
+    /// Appends an unchanged XML fragment whose bytes have already been observed while scanning.
+    /// Retained-byte admission and sink failures still belong to this append.
+    fn write_scanned_text(&mut self, value: &str) -> fmt::Result {
+        self.write_str(value)
+    }
+
     /// Accounts for scanned input, including input discarded by serialization.
     fn observe_scanned_work(&mut self, _bytes: usize) -> crate::Result<()> {
         self.observe_operation()
@@ -72,6 +78,102 @@ impl<'a, S: SvgOutput> XmlTextOutput<'a, S> {
     }
 }
 
+impl<S: SvgOutput> XmlTextOutput<'_, S> {
+    fn write_scalar_chunk(&mut self, value: &str, start: usize, end: usize) -> fmt::Result {
+        let bytes = value.as_bytes();
+        let mut plain_start = start;
+        let mut offset = start;
+        // A str already proves UTF-8 validity. XML 1.0 excludes only ASCII controls and
+        // U+FFFE/U+FFFF from its scalar range, so other UTF-8 bytes need no decoding.
+        while offset < end {
+            let (replacement, consumed) = match bytes[offset] {
+                0..=8 | 11 | 12 | 14..=31 => (Some(""), 1),
+                0xef if bytes[offset..end].starts_with(&[0xef, 0xbf, 0xbe])
+                    || bytes[offset..end].starts_with(&[0xef, 0xbf, 0xbf]) =>
+                {
+                    (Some(""), 3)
+                }
+                b']' => {
+                    self.trailing_brackets = (self.trailing_brackets + 1).min(2);
+                    (None, 1)
+                }
+                byte => {
+                    let replacement = match byte {
+                        b'&' => Some("&amp;"),
+                        b'<' => Some("&lt;"),
+                        b'>' if self.trailing_brackets == 2 => Some("&gt;"),
+                        _ => None,
+                    };
+                    self.trailing_brackets = 0;
+                    (replacement, 1)
+                }
+            };
+            if let Some(replacement) = replacement {
+                if plain_start < offset {
+                    self.out.write_scanned_text(&value[plain_start..offset])?;
+                }
+                if !replacement.is_empty() {
+                    self.out.write_str(replacement)?;
+                }
+                // Removed scalars do not break a retained `]]` sequence.
+                plain_start = offset + consumed;
+            }
+            offset += consumed;
+        }
+        if plain_start < end {
+            self.out.write_scanned_text(&value[plain_start..end])?;
+        }
+
+        Ok(())
+    }
+    fn write_searchable_chunk(&mut self, value: &str, start: usize, end: usize) -> fmt::Result {
+        let bytes = value.as_bytes();
+        let mut offset = start;
+        let mut plain_start = start;
+        while offset < end {
+            if self.trailing_brackets == 2 && bytes[offset] == b'>' {
+                if plain_start < offset {
+                    self.out.write_scanned_text(&value[plain_start..offset])?;
+                }
+                self.out.write_str("&gt;")?;
+                self.trailing_brackets = 0;
+                offset += 1;
+                plain_start = offset;
+                continue;
+            }
+            let ordinary =
+                memchr::memchr3(b'&', b'<', b']', &bytes[offset..end]).unwrap_or(end - offset);
+            if ordinary != 0 {
+                self.trailing_brackets = 0;
+                offset += ordinary;
+            }
+            if offset == end {
+                break;
+            }
+            match bytes[offset] {
+                b']' => {
+                    self.trailing_brackets = (self.trailing_brackets + 1).min(2);
+                    offset += 1;
+                }
+                byte => {
+                    if plain_start < offset {
+                        self.out.write_scanned_text(&value[plain_start..offset])?;
+                    }
+                    self.out
+                        .write_str(if byte == b'&' { "&amp;" } else { "&lt;" })?;
+                    self.trailing_brackets = 0;
+                    offset += 1;
+                    plain_start = offset;
+                }
+            }
+        }
+        if plain_start < end {
+            self.out.write_scanned_text(&value[plain_start..end])?;
+        }
+        Ok(())
+    }
+}
+
 impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
         const MAX_PLAIN_FRAGMENT_BYTES: usize = 2_048;
@@ -88,47 +190,16 @@ impl<S: SvgOutput> fmt::Write for XmlTextOutput<'_, S> {
             self.out
                 .observe_scanned_work(end - start)
                 .map_err(|_| fmt::Error)?;
-            let mut plain_start = start;
-            let mut offset = start;
-            // A str already proves UTF-8 validity. XML 1.0 excludes only ASCII controls and
-            // U+FFFE/U+FFFF from its scalar range, so other UTF-8 bytes need no decoding.
-            while offset < end {
-                let (replacement, consumed) = match bytes[offset] {
-                    0..=8 | 11 | 12 | 14..=31 => (Some(""), 1),
-                    0xef if bytes[offset..end].starts_with(&[0xef, 0xbf, 0xbe])
-                        || bytes[offset..end].starts_with(&[0xef, 0xbf, 0xbf]) =>
-                    {
-                        (Some(""), 3)
-                    }
-                    b']' => {
-                        self.trailing_brackets = (self.trailing_brackets + 1).min(2);
-                        (None, 1)
-                    }
-                    byte => {
-                        let replacement = match byte {
-                            b'&' => Some("&amp;"),
-                            b'<' => Some("&lt;"),
-                            b'>' if self.trailing_brackets == 2 => Some("&gt;"),
-                            _ => None,
-                        };
-                        self.trailing_brackets = 0;
-                        (replacement, 1)
-                    }
-                };
-                if let Some(replacement) = replacement {
-                    if plain_start < offset {
-                        self.out.write_str(&value[plain_start..offset])?;
-                    }
-                    if !replacement.is_empty() {
-                        self.out.write_str(replacement)?;
-                    }
-                    // Removed scalars do not break a retained `]]` sequence.
-                    plain_start = offset + consumed;
-                }
-                offset += consumed;
-            }
-            if plain_start < end {
-                self.out.write_str(&value[plain_start..end])?;
+            let first = bytes[start];
+            let searchable = first >= 0x20
+                && !matches!(first, b'&' | b'<' | b']' | b'>' | 0xef)
+                && bytes[start..end].iter().fold(0u8, |found, &byte| {
+                    found | u8::from((byte < 0x20) | (byte == 0xef))
+                }) == 0;
+            if searchable {
+                self.write_searchable_chunk(value, start, end)?;
+            } else {
+                self.write_scalar_chunk(value, start, end)?;
             }
             start = end;
         }
@@ -285,6 +356,9 @@ impl<'a> BoundedSvgOutput<'a> {
         };
         if final_len > self.out.len() {
             let growth = final_len - self.out.len();
+            if let Err(error) = self.observe_work(growth) {
+                return Err(self.fail(BoundedSvgOutputFailure::Operation(error)));
+            }
             if let Err(failure) = self.admit_growth(growth) {
                 return Err(self.fail(failure));
             }
@@ -294,8 +368,6 @@ impl<'a> BoundedSvgOutput<'a> {
     }
 
     fn admit_growth(&mut self, additional: usize) -> Result<(), BoundedSvgOutputFailure> {
-        self.observe_work(additional)
-            .map_err(BoundedSvgOutputFailure::Operation)?;
         // Credit is explicit: an allocator may return more capacity than requested. Fitting the
         // admitted end proves both non-overflow and the exact retained-byte ceiling; excess
         // allocator capacity never grants permission to retain more serialized bytes.
@@ -332,12 +404,17 @@ impl<'a> BoundedSvgOutput<'a> {
         Ok(())
     }
 
-    fn record_write(&mut self, value: &str) -> fmt::Result {
+    fn record_write(&mut self, value: &str, scanned: bool) -> fmt::Result {
         #[cfg(test)]
         {
             self.write_attempts += 1;
         }
         if matches!(&self.state, BoundedSvgOutputState::Failed(_)) {
+            return Err(fmt::Error);
+        }
+        if !scanned && let Err(error) = self.observe_work(value.len()) {
+            self.state
+                .record_failure(BoundedSvgOutputFailure::Operation(error));
             return Err(fmt::Error);
         }
         if let Err(failure) = self.admit_growth(value.len()) {
@@ -363,18 +440,18 @@ impl<'a> BoundedSvgOutput<'a> {
 
 impl fmt::Write for BoundedSvgOutput<'_> {
     fn write_str(&mut self, value: &str) -> fmt::Result {
-        self.record_write(value)
+        self.record_write(value, false)
     }
 }
 
 impl SvgOutput for BoundedSvgOutput<'_> {
     fn push_str(&mut self, value: &str) {
-        let _ = self.record_write(value);
+        let _ = self.record_write(value, false);
     }
 
     fn push(&mut self, value: char) {
         let mut encoded = [0u8; 4];
-        let _ = self.record_write(value.encode_utf8(&mut encoded));
+        let _ = self.record_write(value.encode_utf8(&mut encoded), false);
     }
 
     fn len(&self) -> usize {
@@ -394,6 +471,10 @@ impl SvgOutput for BoundedSvgOutput<'_> {
             Some(error) => Err(error),
             None => Ok(()),
         }
+    }
+
+    fn write_scanned_text(&mut self, value: &str) -> fmt::Result {
+        self.record_write(value, true)
     }
 
     fn observe_scanned_work(&mut self, bytes: usize) -> crate::Result<()> {
@@ -623,6 +704,75 @@ mod tests {
             assert!(fmt::Write::write_str(&mut css, &logical).is_err());
         }
         assert!(out.as_str().is_empty());
+        assert!(matches!(out.finish(), Err(crate::Error::Cancelled(_))));
+    }
+
+    #[test]
+    fn xml_text_output_preserves_scalar_and_fragment_boundaries() {
+        for padding in [0, 1, 15, 16, 17, 31, 32, 33, 2047, 2048, 2049] {
+            for suffix in [
+                "]]>尾",
+                "]]\0>",
+                "]]\u{fffe}>",
+                "\u{ffff}&<😀",
+                "\u{feff}合法>",
+            ] {
+                let logical = format!("{}{suffix}", "a".repeat(padding));
+                let expected = crate::xml::strip_forbidden_xml_1_0_chars(&logical)
+                    .replace('&', "&amp;")
+                    .replace('<', "&lt;")
+                    .replace("]]>", "]]&gt;");
+                for split in padding..=logical.len() {
+                    if !logical.is_char_boundary(split) {
+                        continue;
+                    }
+                    let mut serialized = String::new();
+                    let mut out = XmlTextOutput::new(&mut serialized);
+                    out.push_str(&logical[..split]);
+                    out.push_str(&logical[split..]);
+                    assert_eq!(serialized, expected, "padding={padding}, split={split}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn xml_text_output_rejects_an_entity_before_retaining_or_reserving_it() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 8)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let mut out = BoundedSvgOutput::new(&meter);
+        out.push_str("safe");
+        let capacity = out.retained_capacity();
+        XmlTextOutput::new(&mut out).push_str("&");
+        assert_eq!(out.as_str(), "safe");
+        assert_eq!(out.retained_capacity(), capacity);
+        let error = resource_limit(out.finish().unwrap_err());
+        assert_eq!(error.actual, 9);
+        assert_eq!(error.max, 8);
+        assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn xml_text_output_observes_cancellation_during_dense_entity_expansion() {
+        use merman_core::OperationControl;
+
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::unbounded_for_trusted_input(),
+            control.clone(),
+        );
+        let mut out = BoundedSvgOutput::new(&meter);
+        let logical = "&".repeat(16_384);
+        control.cancel_after_checkpoints(3);
+        XmlTextOutput::new(&mut out).push_str(&logical);
+        assert!(!out.as_str().is_empty());
+        assert!(out.len() < logical.len() * 5);
+        assert!(out.as_str().split("&amp;").all(str::is_empty));
+        let retained = out.as_str().to_owned();
+        XmlTextOutput::new(&mut out).push_str("<");
+        assert_eq!(out.as_str(), retained);
         assert!(matches!(out.finish(), Err(crate::Error::Cancelled(_))));
     }
 
