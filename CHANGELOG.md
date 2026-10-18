@@ -22,6 +22,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
   [#197](https://github.com/Latias94/merman/issues/197),
   [#198](https://github.com/Latias94/merman/issues/198), and
   [#199](https://github.com/Latias94/merman/issues/199).
+- Native render operations now isolate font measurement budgets, so failures or cancellation do not affect later renders. ER diagrams reuse prepared text geometry during SVG emission, and native CLI users can raise the default 16,384-measurement limit with `--font-max-measurements <N>`. Fixes [#207](https://github.com/Latias94/merman/issues/207).
 - Resvg-safe HTML label fallbacks preserve their SVG transform and paint context, including rotated
   Swimlane titles in PNG, JPEG, and PDF exports.
   [#200](https://github.com/Latias94/merman/issues/200)
