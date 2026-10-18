@@ -105,8 +105,10 @@ let fonts = NativeFontOptions::default()
 The facade creates fresh measurement state for each render using these font assets;
 one rejected operation does not consume the next operation's allowance. Direct
 `merman-export` callers use `NativeFontContext::for_operation` for each independent
-operation. The error's `actual` reports the first rejected probe, not the total
-needed to finish; increasing to that value alone may fail again. A larger budget
+measurement operation. To retain already admitted font snapshots for independently
+controlled painting, use `NativeFontContext::for_export`. The error's `actual`
+reports the first rejected probe, not the total needed to finish; increasing to
+that value alone may fail again. A larger budget
 permits more font work, so keep cancellation, deadlines, and host concurrency limits.
 
 For the CLI, retain the same font sources and add

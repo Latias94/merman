@@ -114,13 +114,12 @@ impl SvgEnvironment {
         self
     }
 
-    /// Shares explicit fonts between text measurement and native painting.
+    /// Selects reusable font assets for measurement and painting in subsequent operations.
     #[cfg(feature = "native-fonts")]
     pub fn with_native_font_context(
         self,
         context: merman_export::NativeFontContext,
     ) -> Result<Self, merman_export::NativeFontError> {
-        context.check()?;
         use merman_render::environment::{
             MeasurementProfileId, TextMeasurementPhase, TextMeasurementProfileIdentity,
         };

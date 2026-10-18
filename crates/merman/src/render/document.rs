@@ -373,7 +373,11 @@ impl RenderedDocument {
             )
             .into());
         }
-        Ok(self.native_fonts.clone())
+        self.native_fonts
+            .as_ref()
+            .map(|fonts| fonts.for_export(control))
+            .transpose()
+            .map_err(RenderError::from)
     }
 
     #[cfg(all(feature = "native-fonts", any(feature = "png", feature = "jpeg")))]

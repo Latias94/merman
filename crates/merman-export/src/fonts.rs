@@ -511,6 +511,32 @@ impl NativeFontContext {
         }))
     }
 
+    /// Starts an independently controlled export while retaining already admitted font bytes.
+    /// Source snapshots and their acquisition charges are preserved; later export failures do
+    /// not poison the source context. Existing fatal font errors are replayed before forking.
+    pub fn for_export(&self, control: &OperationControl) -> Result<Self, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Export)?;
+        if let Some(error) = self.0.fatal.get() {
+            return Err(error.clone());
+        }
+        let context = Self(Arc::new(FontContextInner {
+            database: Arc::clone(&self.0.database),
+            initial_system_faces: self.0.initial_system_faces.clone(),
+            #[cfg(feature = "system-fonts")]
+            discovery: self.0.discovery.clone(),
+            #[cfg(feature = "system-fonts")]
+            sources: self.0.sources.for_export()?,
+            default_family: self.0.default_family.clone(),
+            identity: self.0.identity.clone(),
+            limits: self.0.limits.clone(),
+            control: control.clone(),
+            state: Mutex::new(MeasurementState::default()),
+            fatal: OnceLock::new(),
+        }));
+        control.terminal_checkpoint_at(OperationPhase::Export)?;
+        Ok(context)
+    }
+
     /// Whether the explicitly authorized font set includes host-system discovery.
     pub fn uses_system_fonts(&self) -> bool {
         #[cfg(feature = "system-fonts")]
@@ -1318,6 +1344,13 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             context.check(),
+            Err(NativeFontError::Limit {
+                resource: "label-bytes",
+                ..
+            })
+        ));
+        assert!(matches!(
+            context.for_export(&OperationControl::new()),
             Err(NativeFontError::Limit {
                 resource: "label-bytes",
                 ..
