@@ -693,6 +693,8 @@ manifest remains private to `target/typst-wasm-artifacts/`; the package transact
 verified artifact to an in-memory frozen wrapper/license source snapshot and must fail before
 replacing the prior version if live source or any staged byte changes.
 
+The crates.io workflow checks the exact workspace plugin's dependency closure, WASM size, version, ABI, capability catalog, and successful/error protocol calls through the package builder, then compiles the real Typst examples with `typst-package-smoke --examples-only`. The independent wrapper's complete suite retains its pinned bundled-engine assertion and runs in its package owner; publishing a workspace plugin patch does not change that wrapper's version mapping.
+
 These commands are Typst owner preflight only. The Cargo crate `merman-typst-plugin` and the Typst Universe package `@preview/merman:0.4.0` are separate publication surfaces; publishing the crate does not publish the wrapper. The 0.4.0 wrapper was published on 2026-10-09, bundling Merman 0.8.0; see the [dated publication record](PUBLISH_ORDER.md#typst-040-publication). The selected next wrapper is 0.5.0, bundling Merman 0.9.0; follow [Typst preparation](TYPST_050_PREPARATION.md). Prepare its final registry import and usage examples before packaging; keep `--package-path` in development guidance. Retain the generated package and private artifact receipt, then verify the registry's exact version after acceptance and record that evidence in `PUBLISH_ORDER.md`.
 
 ## Tag And Push
