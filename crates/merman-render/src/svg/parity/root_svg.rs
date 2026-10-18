@@ -6,6 +6,7 @@ use crate::diagram_theme::{
     paint_capabilities,
 };
 use crate::resources::OperationWorkMeter;
+use std::borrow::Cow;
 use std::ops::Range;
 
 const DEFERRED_ROOT_ATTRIBUTE_VALUE: &str = "";
@@ -441,8 +442,7 @@ impl<'a> RootViewportContext<'a> {
             with_custom_properties(None, chrome.custom_properties)?
         };
         let deferred_style_suffix =
-            with_custom_properties(Some("px;".into()), chrome.custom_properties)?
-                .unwrap_or_default();
+            with_custom_properties(Some("px;"), chrome.custom_properties)?.unwrap_or_default();
         let style_placement = if responsive {
             chrome.dom.responsive_style_placement
         } else {
@@ -631,7 +631,7 @@ impl<'a> RootViewportContext<'a> {
             });
         }
         let viewbox_attr = plan.view_box.map(ViewBox::attr);
-        let style = with_custom_properties(plan.style.clone(), chrome.custom_properties)?;
+        let style = with_custom_properties(plan.style.as_deref(), chrome.custom_properties)?;
         let width = match plan.width.as_deref() {
             None => SvgRootWidth::None,
             Some("100%") => SvgRootWidth::Percent100,
@@ -1752,11 +1752,14 @@ impl RootViewportPlan {
     }
 }
 
-fn with_custom_properties(
-    style: Option<String>,
+fn with_custom_properties<'a>(
+    style: Option<&'a str>,
     properties: &[(&str, &str)],
-) -> Result<Option<String>> {
-    let mut style = style.unwrap_or_default();
+) -> Result<Option<Cow<'a, str>>> {
+    if properties.is_empty() {
+        return Ok(style.filter(|style| !style.is_empty()).map(Cow::Borrowed));
+    }
+    let mut style = style.unwrap_or_default().to_owned();
     for (key, value) in properties {
         let declaration = format!("{key}:{value}");
         if !key.starts_with("--")
@@ -1771,7 +1774,7 @@ fn with_custom_properties(
         }
         let _ = write!(style, "{key}: {value};");
     }
-    Ok((!style.is_empty()).then_some(style))
+    Ok((!style.is_empty()).then_some(Cow::Owned(style)))
 }
 
 fn format_css_max_width(value: f64) -> String {
