@@ -18,7 +18,7 @@ fn context(
 }
 
 #[test]
-fn facade_replays_native_failure_even_with_different_request_control() {
+fn facade_replays_native_failure_without_poisoning_selected_font_assets() {
     let context = context(
         NativeFontLimits {
             max_label_bytes: 1,
@@ -38,15 +38,16 @@ fn facade_replays_native_failure_even_with_different_request_control() {
         RenderTarget::Svg(request),
         OperationControl::new(),
     ));
-    assert!(
-        output.is_err(),
-        "host failure must never become successful fallback output"
-    );
-    assert!(context.check().is_err());
+    let merman::RenderError::ResourceLimitExceeded(limit) = output.unwrap_err() else {
+        panic!("expected a structured native font limit");
+    };
+    assert_eq!(limit.id, "native_font_label_bytes");
+    assert_eq!(limit.maximum, 1);
+    assert!(context.check().is_ok());
 }
 
 #[test]
-fn facade_checks_context_cancellation_before_rendering() {
+fn facade_isolates_request_control_from_selected_font_assets() {
     let control = OperationControl::new();
     let context = context(Default::default(), &control);
     let environment = SvgEnvironment::deterministic()
@@ -61,7 +62,10 @@ fn facade_checks_context_cancellation_before_rendering() {
         }),
         OperationControl::new(),
     ));
-    assert!(output.is_err());
+    assert!(
+        output.is_ok(),
+        "old font control must not cancel this request"
+    );
 }
 
 fn native_request() -> SvgRequest {

@@ -434,9 +434,21 @@ fn render_er_typed_font_size_probe_with_size(
         environment,
     )
     .expect("prepare ER typed FontSize probe");
+    let prepared_entity_calls = entity_size_calls.load(Ordering::Relaxed);
+    let prepared_attribute_calls = attribute_size_calls.load(Ordering::Relaxed);
     let rendered = artifact
         .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
         .expect("render ER typed FontSize probe");
+    assert_eq!(
+        entity_size_calls.load(Ordering::Relaxed),
+        prepared_entity_calls,
+        "ER emission must reuse prepared entity text geometry"
+    );
+    assert_eq!(
+        attribute_size_calls.load(Ordering::Relaxed),
+        prepared_attribute_calls,
+        "ER emission must reuse prepared attribute text geometry"
+    );
 
     assert!(
         typed_size_calls.load(Ordering::Relaxed) > 0,
